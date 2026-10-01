@@ -14,13 +14,13 @@ flowchart LR
     Arrow --> Client
 ```
 
-Each query uses a new process and a fresh DuckDB instance. Only selected source definitions and their explicitly named environment variables enter the worker. Cancellation and deadlines terminate a child while its parent remains alive; deployment supervision must also bound the entire worker process tree when the gateway itself is forcibly terminated. Neither mechanism creates a filesystem or network sandbox. Deployment tools supply those boundaries. A process failure terminates its query; streams are not transparently resumed.
+Each query uses a new process and a fresh DuckDB instance. Only selected source definitions and their explicitly named environment variables enter the worker. Cluster nodes launch that process through a native Landlock/seccomp sandbox before Go creates threads. Tenant containers provide PID, memory and network boundaries. Cancellation terminates the query process group; deployment supervision must also bound the process tree when a node is forcibly terminated. A process failure terminates its query; streams are not transparently resumed.
 
 The callback contract is `Executor.Execute(context, Request, Sink)`. A sink borrows each Arrow batch only during its synchronous Write call. The DuckDB adapter keeps execution, record iteration and Release inside the leased `sql.Conn.Raw` callback.
 
 The pinned DuckDB Go v2.10506.0 path uses non-streaming pending execution, then exposes batches. Kelvo bounds returned rows before execution and enforces delivery limits, but native allocations can precede a limit check. First-batch latency and working memory depend on the engine plan. For a native ClickHouse request, the same configured memory limit is passed to ClickHouse as its per-query memory budget and bounds Kelvo's local Arrow decoding allocator; it is still not a worker-process RSS cap.
 
-HTTP handles have a bounded TTL registry and one result consumer. Authentication currently uses one service token for the configured trust domain. Multi-tenant identity/KMS integration, Arrow Flight SQL, durable exports, materialized generations, CDC and additional native adapters are future acceptance milestones, not present features.
+Single-domain `serve` uses a bounded in-memory TTL registry and one service token. [Cluster mode](cluster.md) uses per-tenant tokens, NATS account isolation, atomic KV admission, worker leases and mTLS result delivery. It distributes independent queries among tenant-bound workers. External identity/KMS integration, Arrow Flight SQL, durable exports, materialized generations, CDC and additional native adapters remain future milestones.
 
 Live federation reads sources independently. It has no global transaction or comparable cross-source watermark. Later CDC must include snapshot/log handoff, durable checkpoints, idempotent replay, deletes, schema changes and recovery from expired source history.
 

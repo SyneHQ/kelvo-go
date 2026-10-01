@@ -4,16 +4,20 @@ An open-source analytics gateway by **SYNEHQ**, built in Go with DuckDB and Apac
 
 Kelvo runs SQL against registered data sources and returns typed Arrow batches. DuckDB handles federation; direct ClickHouse queries stay on ClickHouse. The repository is independent of the Rust Spice distribution. Its default branch is `cargo`.
 
-**Status: developer preview.** This first implementation targets one configured trust domain with read-only data access. It does not yet provide shared multi-tenant hosting, CDC, distributed execution, production HA, or a Flight SQL server. No throughput or production-memory guarantee is implied.
+**Status: developer preview.** Cluster mode distributes independent queries to tenant-bound worker pools using NATS JetStream. It requires Linux sandboxing plus tenant container, network and resource isolation. It does not split one SQL plan across machines or provide CDC, production HA certification, or a Flight SQL server. No throughput or production-memory guarantee is implied.
 
 ## What is implemented
 
-- Registered CSV, Parquet and DuckDB files, plus PostgreSQL/MySQL attachments using approved DuckDB extensions.
+- Registered CSV, Parquet, DuckDB and SQLite files, plus PostgreSQL/MySQL attachments using approved DuckDB extensions.
 - Native ClickHouse queries using its HTTP ArrowStream format.
+- Native relational, warehouse, MongoDB, Elasticsearch and Flight SQL connectors, with source-specific limits and validation status.
+- Explicit optional adapters for the wider database gateway engine checklist; credentials and connection IDs stay source-bound.
 - Typed parameters for DuckDB queries; native ClickHouse parameters are currently unsupported.
 - Arrow IPC file export and authenticated HTTP result delivery.
 - Disposable query subprocesses, deadlines, cancellation, bounded admission, single-use result handles and explicit output-limit failures.
 - Explicit source selection: only requested configured sources enter the worker.
+- Durable cluster admission, worker leases and single-consumer claims; tenant identity comes from authenticated tokens.
+- Direct Arrow results over worker mTLS, with the final stream marker withheld until durable completion. Result data never enters NATS.
 
 The pinned DuckDB Go driver performs non-streaming query execution before exposing Arrow batches. Arrow delivery does not make native query memory constant or guarantee early first rows. DuckDB memory/spill settings and output limits complement an external process/container resource boundary.
 
@@ -61,6 +65,31 @@ Submission creates a handle; execution begins on its first result request. Resul
 
 The listener defaults to loopback. Use authenticated TLS termination and deployment-level filesystem/network/resource isolation before exposing a service. One token authorizes the configured source catalog; tokens are not per-user row or tenant policies.
 
+## Cluster operation
+
+See [cluster lifecycle and failure semantics](docs/cluster.md) and the [tenant deployment example](deploy/README.md). Build the native launcher alongside the Go binary:
+
+```sh
+cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o bin/kelvo-landlock
+bin/kelvo cluster-init --config /private/kelvo/bootstrap.yml
+bin/kelvo gateway --config /private/kelvo/gateway.yml
+bin/kelvo node --config /private/kelvo/node.yml
+```
+
+Bootstrap uses provisioner credentials; running gateways and nodes bind existing broker resources with narrower permissions. Cluster configuration is YAML. `serve` remains the simpler single-trust-domain mode; it has no automatic tenant boundary. The earlier ClickHouse throughput measurements predate cluster mode and do not measure its overhead.
+
+## Source support
+
+| Source | Mode |
+| --- | --- |
+| CSV, Parquet, DuckDB, SQLite files, PostgreSQL, MySQL | DuckDB federation |
+| PostgreSQL, MySQL, MariaDB, CockroachDB, AlloyDB, Redshift | Native SQL protocols |
+| ClickHouse, Databricks, Snowflake, BigQuery, MongoDB, Cloudflare D1, SQL Server, Oracle, Elasticsearch, Trino, Presto | Native |
+| Flight SQL | Native Arrow transport client |
+| Other registered engines | Explicit external adapter required |
+
+See the [complete 44-engine checklist](docs/source-coverage.md), [optional adapters](docs/sources-adapters.md), [PostgreSQL/MySQL families](docs/sources-relational.md), [BigQuery](docs/sources-bigquery.md), [Trino/Presto](docs/sources-trino.md), [Elasticsearch](docs/sources-elasticsearch.md), [Flight SQL](docs/sources-flight.md), and [SQLite](docs/sources-sqlite.md). Native cloud and database connectors require configured read-only provider identities. See the [cloud connectors](docs/sources-cloud.md), [SQL Server/Oracle](docs/sources-sql.md), [MongoDB](docs/sources-mongodb.md) and [YAML source example](deploy/examples/sources.yml). No live cloud-provider validation is claimed here.
+
 ## Sources and parameters
 
 Kelvo reads `kelvo.yml` from the current directory by default. Use `--config` to select another YAML file; both `.yml` and `.yaml` work. Configuration must contain one YAML mapping, with known fields and unique keys, and fit within 1 MiB.
@@ -84,9 +113,9 @@ sources:
     password_env: KELVO_CLICKHOUSE_PASSWORD
 ```
 
-Install version- and platform-matched signed DuckDB extensions into that directory at provisioning time. For the validated Linux amd64 target, run `python3 scripts/provision_extensions.py /opt/kelvo/extensions`. It writes the canonical `postgres_scanner.duckdb_extension` and `mysql_scanner.duckdb_extension` filenames and an artifact-hash manifest. The runtime verifies signatures when loading and does not download extensions. File sources expose a view named by their ID. Database attachments expose their schemas/tables through the source alias.
+Install version- and platform-matched signed DuckDB extensions into that directory at provisioning time. For the validated Linux amd64 target, run `python3 scripts/provision_extensions.py /opt/kelvo/extensions`. It writes the canonical `postgres_scanner.duckdb_extension`, `mysql_scanner.duckdb_extension` and `sqlite_scanner.duckdb_extension` filenames and an artifact-hash manifest. The runtime verifies signatures when loading and does not download extensions. File sources expose a view named by their ID. Database attachments expose their schemas/tables through the source alias. SQLite exposes its tables through the source alias.
 
-Federated requests use DuckDB SQL and `sources`; native requests use `mode: "native"`, one `connection_id`, and ClickHouse SQL. Native result streams are not automatically available to a DuckDB cross-source join. Independent sources do not share an atomic snapshot.
+Federated requests use DuckDB SQL and `sources`; native requests use `mode: "native"`, one `connection_id`, and source-specific query syntax. Native result streams are not automatically available to a DuckDB cross-source join. Independent sources do not share an atomic snapshot.
 
 DuckDB parameters are positional `?` placeholders with a `parameters` array:
 

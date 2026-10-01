@@ -1,0 +1,17 @@
+**
+!go.mod
+!go.sum
+!LICENSE
+!NOTICE
+!cmd
+!cmd/**
+!internal
+!internal/**
+!sandbox
+!sandbox/**
+**/*.pem
+**/*.key
+**/*.env
+**/*-private.*
+**/artifacts/**
+**/.git/**

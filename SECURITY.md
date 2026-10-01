@@ -1,9 +1,13 @@
 # Security
 
-Kelvo Go is an early developer preview for a single configured trust domain. Its source selection, read-only checks and subprocesses do not constitute a hardened hostile-SQL sandbox.
+Kelvo Go is a developer preview. `serve` has one configured trust domain. Cluster mode adds tenant authentication, durable admission, tenant-bound worker pools, TLS 1.3 and a native Linux filesystem sandbox. It requires deployment-enforced tenant container/network/resource boundaries; process isolation and SQL filters alone are insufficient.
 
-Use least-privilege database accounts, dedicated worker/container identity, restricted mounts, outbound network policy, CPU/memory/disk quotas and TLS termination. SQL can invoke functions beyond ordinary table reads; database permissions and network restrictions remain necessary. Do not attach unrelated tenants to one configured server.
+Use least-privilege database accounts, dedicated tenant worker/container identities, restricted mounts, outbound network policy and CPU/memory/PID/disk quotas. SQL can invoke functions beyond ordinary table reads; database permissions and network restrictions remain necessary. Do not attach unrelated tenants to one worker pool or `serve` catalog. See [deployment controls](deploy/README.md).
 
-Source secrets are resolved from explicitly configured environment-variable names. They are excluded from API responses and intentionally not copied into public test fixtures. Never include secrets or customer data in issues.
+Cluster worker startup fails if Landlock ABI 3 or newer is unavailable. The native launcher applies restrictions before the Go runtime creates threads. It allows selected source files, approved extensions, public runtime libraries/CA roots and that query's scratch directory; it denies other file contents and dangerous syscalls. Landlock does not impose network destination rules or process-memory quotas. Keep secrets out of publicly allowed runtime directories.
+
+Each tenant must have a separate NATS account without cross-account imports/exports, restricted users and storage limits. Gateway and node credentials are trusted control-plane credentials for that tenant. NATS holds SQL, parameters and job metadata, so broker storage/backup access and encryption belong to the security boundary. Arrow results and registered database credentials do not enter NATS. API tokens authorize the whole tenant catalog; per-user row/column policies and external identity/KMS integration remain future work.
+
+Source secrets are resolved from explicitly configured environment-variable names in the allowed source namespace. PostgreSQL/MySQL attachments use temporary redacted DuckDB secrets instead of embedding credentials in metadata paths. Custom credential-file mounts require explicit future support; the sandbox fails closed rather than allowing all private configuration paths. Never include secrets or customer data in issues.
 
 Use GitHub private vulnerability reporting on this repository for sensitive reports. Supported-version and response-time guarantees have not yet been established for this preview.
