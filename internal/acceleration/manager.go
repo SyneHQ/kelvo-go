@@ -16,7 +16,7 @@ type ExecutorFactory func(catalog.Config, query.Limits) (query.Executor, error)
 
 type Manager struct {
 	config  catalog.Config
-	store   *Store
+	store   Backend
 	factory ExecutorFactory
 }
 
@@ -24,12 +24,14 @@ func NewManager(c catalog.Config, factory ExecutorFactory) (*Manager, error) {
 	if c.Acceleration == nil || factory == nil {
 		return nil, errors.New("acceleration configuration and executor factory are required")
 	}
-	s, err := OpenStore(c.Acceleration.Directory, c.Acceleration.TenantID)
+	s, err := OpenBackend(*c.Acceleration)
 	if err != nil {
 		return nil, err
 	}
 	return &Manager{config: c, store: s, factory: factory}, nil
 }
+
+func (m *Manager) Close() error { return m.store.Close() }
 
 // Refresh publishes only after a complete successful source result and Parquet
 // footer. A redelivered scheduled job rechecks freshness under the writer lock.
@@ -45,8 +47,8 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snaps
 	ctx, cancel := context.WithTimeout(ctx, d.Limits.Timeout)
 	defer cancel()
 	if onlyIfDue {
-		current, err := m.store.Status(id)
-		if err == nil && current.Fingerprint == fingerprint && d.RefreshInterval > 0 && time.Since(current.RefreshedAt) < d.RefreshInterval {
+		current, err := m.store.Status(ctx, id)
+		if err == nil && current.Fingerprint == fingerprint && d.RefreshInterval > 0 && current.Age() < d.RefreshInterval {
 			return current, nil
 		}
 	}
@@ -59,9 +61,10 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snaps
 		return Snapshot{}, err
 	}
 	defer tx.Abort()
+	ctx = tx.Context()
 	if onlyIfDue {
-		current, err := m.store.Status(id)
-		if err == nil && current.Fingerprint == fingerprint && d.RefreshInterval > 0 && time.Since(current.RefreshedAt) < d.RefreshInterval {
+		current, err := m.store.Status(ctx, id)
+		if err == nil && current.Fingerprint == fingerprint && d.RefreshInterval > 0 && current.Age() < d.RefreshInterval {
 			return current, nil
 		}
 	}
@@ -96,10 +99,23 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snaps
 }
 
 func (m *Manager) Status(id string) (Snapshot, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return m.StatusContext(ctx, id)
+}
+
+func (m *Manager) StatusContext(ctx context.Context, id string) (Snapshot, error) {
 	if _, ok := m.config.Dataset(id); !ok {
 		return Snapshot{}, errors.New("unknown accelerated dataset")
 	}
-	return m.store.Status(id)
+	return m.store.Status(ctx, id)
+}
+
+func (m *Manager) Verify(ctx context.Context, id string) (Snapshot, error) {
+	if _, ok := m.config.Dataset(id); !ok {
+		return Snapshot{}, errors.New("unknown accelerated dataset")
+	}
+	return m.store.Verify(ctx, id)
 }
 
 // Run schedules refreshes serially to give ingestion its own bounded resource
@@ -119,7 +135,7 @@ func (m *Manager) Run(ctx context.Context, onError func(string, error)) error {
 				onError(d.ID, err)
 			}
 			if err == nil {
-				next[d.ID] = s.RefreshedAt.Add(d.RefreshInterval)
+				next[d.ID] = nextRefreshAt(s, d.RefreshInterval)
 			}
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -131,6 +147,10 @@ func (m *Manager) Run(ctx context.Context, onError func(string, error)) error {
 		case <-tick.C:
 		}
 	}
+}
+
+func nextRefreshAt(snapshot Snapshot, interval time.Duration) time.Time {
+	return time.Now().Add(max(0, interval-snapshot.Age()))
 }
 
 // Resolve selects only requested datasets and holds read leases until the query
@@ -146,13 +166,21 @@ func Resolve(ctx context.Context, c catalog.Config, request query.Request) ([]ca
 		return nil, nil, func() {}, query.NewError("INVALID_ARGUMENT", "Unknown or duplicate source")
 	}
 	var leases []*Lease
+	var store Backend
+	var bridgeClose func()
+	var objects []Snapshot
 	closeAll := func() {
+		if bridgeClose != nil {
+			bridgeClose()
+		}
 		for _, lease := range leases {
 			_ = lease.Close()
 		}
+		if store != nil {
+			_ = store.Close()
+		}
 	}
 	var versions []query.AccelerationVersion
-	var store *Store
 	for i, source := range sources {
 		if source.Type != "accelerated" {
 			continue
@@ -162,7 +190,7 @@ func Resolve(ctx context.Context, c catalog.Config, request query.Request) ([]ca
 			return nil, nil, func() {}, query.NewError("INVALID_ARGUMENT", "Accelerated datasets require federated mode")
 		}
 		if store == nil {
-			store, err = OpenStore(c.Acceleration.Directory, c.Acceleration.TenantID)
+			store, err = OpenBackend(*c.Acceleration)
 			if err != nil {
 				closeAll()
 				return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Accelerated dataset storage is unavailable")
@@ -184,7 +212,27 @@ func Resolve(ctx context.Context, c catalog.Config, request query.Request) ([]ca
 		}
 		leases = append(leases, lease)
 		sources[i] = catalog.Source{ID: source.ID, Type: "parquet", Path: lease.Snapshot.Path}
+		if lease.Snapshot.ObjectKey != "" {
+			if c.Acceleration.ObjectStorage == nil {
+				closeAll()
+				return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Object snapshot configuration is unavailable")
+			}
+			objects = append(objects, lease.Snapshot)
+		}
 		versions = append(versions, query.AccelerationVersion{Dataset: source.ID, Generation: lease.Snapshot.Generation, RefreshedAt: lease.Snapshot.RefreshedAt})
+	}
+	if len(objects) > 0 {
+		var ranges map[string]catalog.Source
+		ranges, bridgeClose, err = OpenObjectRanges(ctx, *c.Acceleration.ObjectStorage, objects)
+		if err != nil {
+			closeAll()
+			return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Object snapshot range reader is unavailable")
+		}
+		for i, source := range sources {
+			if resolved, ok := ranges[source.ID]; ok {
+				sources[i] = resolved
+			}
+		}
 	}
 	return sources, versions, closeAll, nil
 }

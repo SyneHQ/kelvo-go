@@ -57,6 +57,7 @@ func runAcceleration(args []string) error {
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Acceleration store cannot be opened")
 	}
+	defer m.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if args[0] == "watch" {
@@ -71,11 +72,7 @@ func runAcceleration(args []string) error {
 	}
 	var snapshot acceleration.Snapshot
 	if args[0] == "verify" {
-		s, err := acceleration.OpenStore(c.Acceleration.Directory, c.Acceleration.TenantID)
-		if err != nil {
-			return err
-		}
-		snapshot, err = s.Verify(ctx, *id)
+		snapshot, err = m.Verify(ctx, *id)
 		if err != nil {
 			return err
 		}
@@ -83,7 +80,7 @@ func runAcceleration(args []string) error {
 	if args[0] == "refresh" {
 		snapshot, err = m.Refresh(ctx, *id, false)
 	} else if args[0] != "verify" {
-		snapshot, err = m.Status(*id)
+		snapshot, err = m.StatusContext(ctx, *id)
 	}
 	if err != nil {
 		return err
@@ -93,7 +90,7 @@ func runAcceleration(args []string) error {
 	return yaml.NewEncoder(os.Stdout).Encode(struct {
 		Ready    bool                  `yaml:"ready"`
 		Snapshot acceleration.Snapshot `yaml:"snapshot"`
-	}{snapshot.Fingerprint == fingerprint && time.Since(snapshot.RefreshedAt) <= d.MaxAge, snapshot})
+	}{snapshot.Fingerprint == fingerprint && snapshot.Age() <= d.MaxAge, snapshot})
 }
 
 // Cluster dispatch uses a tenant's existing authenticated JetStream account.
@@ -104,6 +101,7 @@ func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, qu
 	if err != nil {
 		return err
 	}
+	defer m.Close()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	consumerDone := make(chan error, 1)
@@ -133,8 +131,8 @@ func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, qu
 				continue
 			}
 			fingerprint, _ := c.DatasetFingerprint(d.ID)
-			snapshot, err := m.Status(d.ID)
-			if err == nil && snapshot.Fingerprint == fingerprint && time.Since(snapshot.RefreshedAt) < d.RefreshInterval {
+			snapshot, err := m.StatusContext(ctx, d.ID)
+			if err == nil && snapshot.Fingerprint == fingerprint && snapshot.Age() < d.RefreshInterval {
 				continue
 			}
 			// Duplicate schedulers share a time-window message ID. Durable jobs

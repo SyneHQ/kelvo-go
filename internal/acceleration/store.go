@@ -52,14 +52,39 @@ type Store struct {
 // Snapshot describes an immutable generation. Query code must hold an acquired
 // Lease for as long as an engine may open or read Path.
 type Snapshot struct {
-	Dataset     string    `yaml:"dataset"`
-	Generation  string    `yaml:"generation"`
-	Path        string    `yaml:"path"`
-	Fingerprint string    `yaml:"fingerprint"`
-	SHA256      string    `yaml:"sha256"`
-	Rows        int64     `yaml:"rows"`
-	Bytes       int64     `yaml:"bytes"`
-	RefreshedAt time.Time `yaml:"refreshed_at"`
+	Dataset       string    `yaml:"dataset"`
+	Generation    string    `yaml:"generation"`
+	Path          string    `yaml:"path"`
+	Fingerprint   string    `yaml:"fingerprint"`
+	SHA256        string    `yaml:"sha256"`
+	Rows          int64     `yaml:"rows"`
+	Bytes         int64     `yaml:"bytes"`
+	RefreshedAt   time.Time `yaml:"refreshed_at"`
+	ObjectKey     string    `yaml:"object_key,omitempty"`
+	ObjectVersion string    `yaml:"object_version,omitempty"`
+	// These process-local observations never enter manifests or JSON responses.
+	ageObservedAt time.Time
+	ageObserved   time.Duration
+}
+
+// Age uses the storage clock when one was observed, then advances with elapsed
+// monotonic time. Local snapshots retain their local filesystem clock behavior.
+func (snapshot Snapshot) Age() time.Duration {
+	if snapshot.ageObservedAt.IsZero() {
+		return max(0, time.Since(snapshot.RefreshedAt))
+	}
+	elapsed := max(time.Duration(0), time.Since(snapshot.ageObservedAt))
+	const maximum time.Duration = 1<<63 - 1
+	if snapshot.ageObserved > maximum-elapsed {
+		return maximum
+	}
+	return snapshot.ageObserved + elapsed
+}
+
+func (snapshot Snapshot) observeClock(reference time.Time) Snapshot {
+	snapshot.ageObserved = max(0, reference.Sub(snapshot.RefreshedAt))
+	snapshot.ageObservedAt = time.Now()
+	return snapshot
 }
 
 type storeManifest struct {
@@ -178,6 +203,8 @@ func (tx *Transaction) File() *os.File {
 	defer tx.mu.Unlock()
 	return tx.file
 }
+
+func (tx *Transaction) Context() context.Context { return tx.ctx }
 
 // Commit makes a fully flushed generation visible by atomically replacing its
 // YAML manifest. An error before publication leaves the previous manifest intact.
@@ -312,12 +339,19 @@ func (tx *Transaction) cleanup() error {
 type Lease struct {
 	Snapshot Snapshot
 	file     *os.File
+	release  func() error
 	once     sync.Once
 	err      error
 }
 
 func (lease *Lease) Close() error {
-	lease.once.Do(func() { lease.err = lease.file.Close() })
+	lease.once.Do(func() {
+		if lease.release != nil {
+			lease.err = lease.release()
+		} else if lease.file != nil {
+			lease.err = lease.file.Close()
+		}
+	})
 	return lease.err
 }
 
