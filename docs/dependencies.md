@@ -14,7 +14,7 @@
 | [pgx v5.11.0](https://github.com/jackc/pgx/tree/v5.11.0) | Native PostgreSQL protocol connections | MIT |
 | [Go MySQL driver v1.10.1](https://github.com/go-sql-driver/mysql/tree/v1.10.1) | Native MySQL and MariaDB connections | MPL-2.0 |
 | [gRPC Go v1.78.0](https://github.com/grpc/grpc-go/tree/v1.78.0) | Apache Arrow Flight SQL transport | Apache-2.0 |
-| [AWS SDK for Go v2 core v1.47.1](https://github.com/aws/aws-sdk-go-v2/tree/v1.47.1) | Official SigV4 signer for source-bound Athena and DynamoDB requests; no ambient credential provider chain | Apache-2.0 |
+| [AWS SDK for Go v2 core v1.47.1](https://github.com/aws/aws-sdk-go-v2/tree/v1.47.1) | Official SigV4 signer for source-bound Athena/DynamoDB and S3-compatible snapshot requests; no ambient credential provider chain | Apache-2.0 |
 | [Exasol Go driver v1.1.1](https://github.com/exasol/exasol-driver-go/tree/v1.1.1) | DSN parsing for the exact native WebSocket connector | MIT |
 | [Gorilla WebSocket v1.5.3](https://github.com/gorilla/websocket/tree/v1.5.3) | Bounded Exasol WebSocket transport | BSD-2-Clause |
 | Go standard library | HTTP, subprocess lifecycle, configuration and CLI | Go BSD-style license |
@@ -34,3 +34,9 @@ not provide the required read-only transaction/cancellation semantics. Kelvo use
 its DSN parser with a separate exact-number WebSocket path and read-only database
 credentials. It does not route queries through that driver's database/sql code.
 CDC remains a separate capability requiring its own acceptance evidence.
+
+Object snapshots use the pinned AWS core signer for S3/R2/GCS XML requests and
+standard-library HTTPS for Azure Blob with explicit SAS tokens. No extra cloud
+SDK or credential-provider chain is introduced. DuckDB reads anonymous loopback
+ranges through its version-matched signed `httpfs` extension; the Go parent owns
+cloud TLS, conditional reads and redirect refusal.

@@ -52,6 +52,8 @@ bin/kelvo query --config examples/acceleration.yml --sources sales_fast \
   --sql 'SELECT region, SUM(amount) FROM sales_fast GROUP BY region' --out revenue.arrow
 ```
 
+Snapshots default to local storage. Opt into [S3, R2, GCS or Azure Blob](docs/object-storage.md) for shared object storage with separate reader/publisher credentials and bounded range reads. MongoDB refreshes also accept read-only aggregation pipelines in YAML.
+
 This is full-refresh dataset acceleration. Incremental loading, CDC and query-result caching remain separate work.
 
 ## Security and cluster operation

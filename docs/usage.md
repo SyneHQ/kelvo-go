@@ -79,7 +79,7 @@ Provision version- and platform-matched signed extensions before runtime. For th
 python3 scripts/provision_extensions.py /opt/kelvo/extensions
 ```
 
-The script writes canonical PostgreSQL, MySQL, and SQLite extension files plus a hash manifest. Runtime verifies signatures while loading and does not download extensions. CSV and Parquet files expose a view named by their source ID. DuckDB and SQLite files, plus PostgreSQL and MySQL attachments, expose schemas and tables through the source alias.
+The script writes canonical PostgreSQL, MySQL, and SQLite extension files plus a hash manifest. Add `--extensions postgres,mysql,sqlite,httpfs` to provision `httpfs` for object snapshot range reads. Runtime verifies signatures while loading and does not download extensions. CSV and Parquet files expose a view named by their source ID. DuckDB and SQLite files, plus PostgreSQL and MySQL attachments, expose schemas and tables through the source alias.
 
 ## Native and federated queries
 
@@ -95,7 +95,7 @@ Native requests use `mode: "native"`, one `connection_id`, and source-specific S
 {"mode":"native","connection_id":"events","sql":"SELECT count() FROM events"}
 ```
 
-Native streams are not automatically available for live DuckDB cross-source joins. [Dataset acceleration](acceleration.md) can materialize a configured native query into a local Parquet alias that DuckDB can join. Independent sources do not share an atomic snapshot. See [source coverage](source-coverage.md), [optional adapters](sources-adapters.md), and the source guides below for connector behavior and validation boundaries.
+Native streams are not automatically available for live DuckDB cross-source joins. [Dataset acceleration](acceleration.md) can materialize a configured native query into a Parquet alias backed by local files or [object storage](object-storage.md) that DuckDB can join. Independent sources do not share an atomic snapshot. See [source coverage](source-coverage.md), [optional adapters](sources-adapters.md), and the source guides below for connector behavior and validation boundaries.
 
 ## Source guides
 

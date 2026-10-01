@@ -2,7 +2,7 @@
 
 Kelvo can materialize a configured source query into a persistent Parquet snapshot and run DuckDB SQL against that snapshot. This is **full-refresh dataset acceleration**, currently a developer preview. It is separate from source-native execution and query-result caching.
 
-The first refresh reads the source. Later queries read the local file until another complete refresh publishes a replacement. A missing, expired, incompatible snapshot, or one failing acquisition checks, fails with `DATASET_UNAVAILABLE`. Payload corruption can instead surface during execution; use `verify` for a full digest check. Kelvo does not automatically fall back to the original source.
+The first refresh reads the source. Later queries read the committed Parquet object or local file until another complete refresh publishes a replacement. A missing, expired, incompatible snapshot, or one failing acquisition checks, fails with `DATASET_UNAVAILABLE`. Payload corruption can instead surface during execution; use `verify` for a full digest check. Kelvo does not automatically fall back to the original source.
 
 ## When to use acceleration
 
@@ -65,13 +65,51 @@ acceleration:
         max_temp_mb: 2048
 ```
 
-Use source-specific SQL for a native refresh; use DuckDB SQL and a `sources` list for a federated refresh. Static SQL is supported; refresh parameters and native MongoDB pipeline requests are not. MongoDB's supported SQL path can be used. Refresh inputs must be real registered sources, not other accelerated datasets. No recursive materialization graph is created.
+Use source-specific SQL for a native refresh; use DuckDB SQL and a `sources` list for a federated refresh. Static SQL and native MongoDB aggregation pipelines are supported; refresh parameters are not. MongoDB uses the same read-only stage validation as ordinary native requests, so `$out` and `$merge` are rejected. Pipeline results preserve BSON documents in Arrow Binary rather than inferring relational columns. See the [MongoDB refresh example](#mongodb-pipeline-refresh). Refresh inputs must be real registered sources, not other accelerated datasets. No recursive materialization graph is created.
 
 Query the new alias explicitly with `--sources recent_orders` and DuckDB SQL. Multiple accelerated aliases can be joined, including aliases ingested through native connectors that do not support live DuckDB federation. The original connection remains available for live queries.
 
 `refresh_interval: 0s` disables scheduling but permits manual refresh. Positive intervals must be at least 5 seconds and no greater than `max_age`. `max_age` must be positive and at most 30 days. Age is measured from completed refresh, not a database commit watermark; source extraction can take time. Each query checks freshness before execution and pins its selected generations for the query's lifetime.
 
+## MongoDB pipeline refresh
+
+Use native YAML for the pipeline; Extended JSON typed values are supported:
+
+```yaml
+query:
+  mode: native
+  connection_id: documents
+  mongo:
+    collection: orders
+    pipeline:
+      - $match:
+          status: paid
+      - $group:
+          _id: "$region"
+          revenue:
+            $sum: "$amount"
+```
+
+`documents` must be a built-in MongoDB source. An empty pipeline is valid. Numeric
+YAML scalars are parsed without a float64 conversion; duplicate keys, aliases and
+non-finite values fail configuration validation. `$out` and `$merge` cannot be
+used to turn a refresh into a database write. [Live MongoDB evidence](evidence/mongodb-acceleration.json)
+covers filtered/grouped/empty results and unchanged snapshots after rejected writes.
+
+## Object storage
+
+Set the optional `acceleration.object_storage` block to keep committed snapshots
+in S3, R2, Google Cloud Storage or Azure Blob. `directory` then holds only private
+node-local refresh staging; workers do not need a shared POSIX mount. DuckDB reads
+selected byte ranges through a query-lived Go reader that retains the cloud
+credentials outside the query subprocess. See [configuration, permissions and
+limits](object-storage.md). Object reads currently cannot be mixed with the legacy
+PostgreSQL/MySQL DuckDB extensions in the same query; materialize those sources too
+when joining them to object snapshots.
+
 ## Publication, failure and retention
+
+For the default local POSIX store:
 
 1. The refresher obtains a process-safe dataset writer lock and rechecks whether a scheduled job is still due.
 2. A subprocess executes the registered read-only source query. The parent converts borrowed Arrow batches into bounded Parquet row groups using Snappy compression.
@@ -98,7 +136,7 @@ $JS.API.CONSUMER.MSG.NEXT.KELVO_ACCEL_QUEUE.refresh
 
 Existing stream-info, inbox and ACK permissions remain required. Only the provisioner may create broker resources. The queue contains dataset identifiers and configuration fingerprints, never source SQL, credentials or Arrow data. Delivery is at least once, with confirmed ACK after successful refresh, delayed retries, heartbeats and writer-lock freshness checks. Each node performs at most one refresh at a time, separately from its query admission capacity. Include refresh CPU/memory in node sizing.
 
-All workers for a tenant must use matching catalogs and mount the **same tenant-specific snapshot directory** with the same absolute path and OS UID. The filesystem must provide working POSIX `flock`, atomic rename and `fsync`. A local volume shared by containers on one host works; multi-host filesystems need their own verification. Object-store snapshots, automatic SSD replication and locality-aware scheduling are not implemented. Never give one tenant access to another tenant's snapshot volume.
+For the default local backend, all workers for a tenant must use matching catalogs and mount the **same tenant-specific snapshot directory** with the same absolute path and OS UID. The filesystem must provide working POSIX `flock`, atomic rename and `fsync`. A local volume shared by containers on one host works; multi-host filesystems need their own verification. The opt-in [object backend](object-storage.md) instead uses immutable remote objects and conditional manifest writes. Automatic SSD replication and locality-aware scheduling are not implemented. Never give one tenant access to another tenant's snapshot volume.
 
 The [Compose overlay](../deploy/acceleration.compose.yml) adds separate writable snapshot mounts while leaving the container root filesystem read-only. Pre-create each host directory with mode 0700 and ownership matching UID 65532. Add the tenant's acceleration block to its existing catalog and run Compose with both files. Use encrypted storage and operator-managed backups for sensitive copies. Do not run conflicting catalog versions against one store during a rolling update; mismatched refresh jobs retry and definition changes can otherwise cause availability gaps.
 
@@ -112,7 +150,7 @@ Row groups are bounded by row count and payload, with a separate conservative ca
 
 ## Scope compared with Spice
 
-This release provides persistent full-refresh snapshots, explicit freshness, isolated alias reads, manual/local scheduling and NATS cluster refresh dispatch. Incremental append, CDC, query-result caching, automatic source fallback, object-store distribution, and splitting one query across nodes remain separate work. There is no global transactional snapshot across independent datasets.
+This release provides persistent full-refresh snapshots, explicit freshness, isolated alias reads, manual/local scheduling and NATS cluster refresh dispatch. Incremental append, CDC, query-result caching, automatic source fallback, and splitting one query across nodes remain separate work. There is no global transactional snapshot across independent datasets.
 
 Spice supplies a larger dataset lifecycle around DataFusion and multiple accelerator engines, including DuckDB. Bare DataFusion is not a database gateway: its extra live database coverage comes from community table providers and application connectors. Kelvo's materialized aliases extend joins without adding a Rust runtime dependency. Neither language nor connector count establishes a performance advantage; compare matching workloads and freshness policies.
 

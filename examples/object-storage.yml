@@ -1,0 +1,82 @@
+# Complete S3 example. Replace the object_storage block with ONE of the
+# commented R2, GCS or Azure alternatives below. Keep a single YAML document.
+# Configure credentials in the parent process environment, never in this file.
+extension_directory: ../artifacts/extensions
+sources:
+  - id: sales
+    type: csv
+    path: sales.csv
+acceleration:
+  tenant_id: example
+  directory: ../artifacts/object-staging
+  object_storage:
+    provider: s3
+    endpoint: https://s3.us-east-1.amazonaws.com
+    bucket: example-kelvo-snapshots
+    prefix: kelvo/snapshots
+    region: us-east-1
+    read_credentials:
+      access_key_id_env: KELVO_SOURCE_OBJECT_READER_ID
+      secret_access_key_env: KELVO_SOURCE_OBJECT_READER_SECRET
+      # session_token_env: KELVO_SOURCE_OBJECT_READER_SESSION
+    write_credentials:
+      access_key_id_env: KELVO_SOURCE_OBJECT_WRITER_ID
+      secret_access_key_env: KELVO_SOURCE_OBJECT_WRITER_SECRET
+      # session_token_env: KELVO_SOURCE_OBJECT_WRITER_SESSION
+  datasets:
+    - id: sales_fast
+      query:
+        mode: federated
+        sources: [sales]
+        sql: SELECT id, region, amount::DECIMAL(18,2) AS amount FROM sales
+      authorization_version: grants-v1
+      refresh_interval: 1m
+      max_age: 10m
+      limits:
+        max_rows: 1000000
+        max_bytes: 268435456
+        timeout: 30s
+        memory_mb: 256
+        threads: 2
+        max_temp_mb: 1024
+
+# R2 alternative: replace the account ID, bucket and environment references.
+#  object_storage:
+#    provider: r2
+#    endpoint: https://00000000000000000000000000000000.r2.cloudflarestorage.com
+#    bucket: example-kelvo-snapshots
+#    prefix: kelvo/snapshots
+#    region: auto
+#    read_credentials:
+#      access_key_id_env: KELVO_SOURCE_OBJECT_READER_ID
+#      secret_access_key_env: KELVO_SOURCE_OBJECT_READER_SECRET
+#    write_credentials:
+#      access_key_id_env: KELVO_SOURCE_OBJECT_WRITER_ID
+#      secret_access_key_env: KELVO_SOURCE_OBJECT_WRITER_SECRET
+
+# GCS alternative: use HMAC interoperability credentials for the XML API.
+#  object_storage:
+#    provider: gcs
+#    endpoint: https://storage.googleapis.com
+#    bucket: example-kelvo-snapshots
+#    prefix: kelvo/snapshots
+#    region: auto
+#    read_credentials:
+#      access_key_id_env: KELVO_SOURCE_OBJECT_READER_ID
+#      secret_access_key_env: KELVO_SOURCE_OBJECT_READER_SECRET
+#    write_credentials:
+#      access_key_id_env: KELVO_SOURCE_OBJECT_WRITER_ID
+#      secret_access_key_env: KELVO_SOURCE_OBJECT_WRITER_SECRET
+
+# Azure alternative: reader SAS must have exactly sp=r. Supply raw SAS tokens,
+# without endpoints or connection strings. Publisher needs read/create/write.
+#  object_storage:
+#    provider: azure
+#    endpoint: https://examplestorage.blob.core.windows.net
+#    account: examplestorage
+#    bucket: kelvo-snapshots
+#    prefix: kelvo/snapshots
+#    read_credentials:
+#      sas_token_env: KELVO_SOURCE_OBJECT_READER_SAS
+#    write_credentials:
+#      sas_token_env: KELVO_SOURCE_OBJECT_WRITER_SAS

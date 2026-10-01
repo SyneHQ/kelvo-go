@@ -89,15 +89,16 @@ Use these indicators independently:
 | Snowflake, Databricks, BigQuery, Spanner, Athena, Elasticsearch | Eligible | No | Live acceleration acceptance pending |
 | Trino, Presto, Flight SQL | Eligible | No; the remote engine may itself federate | Live acceleration acceptance pending |
 | Cloudflare D1 | Conditional: value-inferred schema | No | Live acceleration acceptance pending |
-| MongoDB | Eligible through restricted SQL; BSON documents stay binary | No | Live acceleration acceptance pending |
+| MongoDB | Eligible through restricted SQL or read-only aggregation pipeline; BSON documents stay binary | No | [Live MongoDB 8.0.32 refresh, exact values and rejected writes](evidence/mongodb-acceleration.json) |
 | DynamoDB, Cosmos DB for NoSQL | Eligible; document payloads stay binary | No | Live acceleration acceptance pending |
 | CSV, Parquet, DuckDB, SQLite | Eligible through a federated refresh query | Yes | [CSV-derived snapshots and typed Parquet round trips verified](evidence/acceleration-acceptance.json); other file sources as refresh inputs await acceptance |
 | Engines reached through external adapters | Conditional on the configured service and returned types | No | All-provider acceleration acceptance pending |
 
-All eligible snapshots can subsequently be queried or joined as local aliases.
+All eligible snapshots can subsequently be queried or joined as aliases backed by
+local Parquet or the opt-in [object store](object-storage.md).
 Snapshotting a binary BSON/JSON/AttributeValue column does not infer relational
-fields or add document SQL support to DuckDB. MongoDB refresh uses the existing
-SQL compiler; native aggregation-pipeline refresh requests are not implemented.
+fields or add document SQL support to DuckDB. MongoDB refresh supports the existing restricted SQL compiler and read-only native
+aggregation pipelines expressed as YAML. `$out` and `$merge` are rejected.
 
 D1 does not supply typed result metadata: an empty response or all-NULL column
 can leave an unsupported Arrow Null type even if the source SQL contains a cast.
