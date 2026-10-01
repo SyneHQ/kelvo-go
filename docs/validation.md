@@ -1,10 +1,37 @@
 # Validation — 2026-10-01
 
-Status: a tested developer preview. These measurements describe one native ClickHouse workload on one VM; they do not establish production sizing, all-engine performance, or a multi-tenant security boundary.
+Status: a tested developer preview. Cluster, sandbox, connector and failure-handling acceptance is described below. These checks do not certify a production multi-tenant service, establish capacity for every database, or replace deployment-specific security and recovery testing.
 
-The build and benchmark evidence below records the initial release at `45e42f5`. The later YAML configuration change passed the tagged Go tests, vet, build and CLI/HTTP acceptance on the VM; it did not rerun the throughput benchmark.
+## Cluster and connector expansion
 
-## Functional checks
+Builds and tests ran on the dedicated Linux amd64 VM, using Go 1.26.8, DuckDB 1.5.6 and Linux `6.12.95+deb12-cloud-amd64`. No local builds were used. The [container image record](evidence/cluster-connectors-image.json) identifies the Docker image and extracted Go/native-launcher binaries; [source hashes](evidence/cluster-connectors-source.json) match the tested VM and local checkout. The CLI, cluster, container and spill acceptance uses those extracted binaries or that image.
+
+- Full `go test -tags duckdb_arrow -p 2 ./...`, tagged `go vet ./...`, and race tests for every native connector, cluster, worker and HTTP package passed. [Tagged test log](evidence/tests-cluster-connectors.log), [race log](evidence/race-cluster-connectors.log). Live database tests are opt-in; a passing default Go suite does not imply that live credentials were available.
+- [CLI/HTTP acceptance](evidence/acceptance-cluster-connectors.json) covers YAML, exact decimals, atomic failed exports, authentication, single-consumer Arrow results, limits, cancellation and worker process cleanup.
+- [Cluster acceptance](evidence/cluster-acceptance.json) covers tenant isolation, separate worker pools, cross-gateway claims/cancellation, mTLS identities, gateway replacement, one-broker loss with quorum, and worker death without automatic query replay. [NATS store/account tests](evidence/cluster-store-connectors.log) validate durable slots and isolation against three TLS-enabled brokers on the same VM. This is a local failure fixture, not multi-zone HA or backup/restore certification.
+- [Container acceptance](evidence/container-acceptance.json) uses the actual Dockerfile image. It verifies nonroot execution, capabilities, no-new-privileges, read-only root, cgroup settings, sandboxed Arrow values and unselected-file denial. Network checks include positive controls and denied cross-tenant/unapproved destination access.
+- [DuckDB spill acceptance](evidence/duckdb-spill.json) runs a five-million-row hash-sort/window aggregate with a 64 MiB DuckDB budget and a 1 GiB temporary-data budget. The sandboxed checksum matches the control and actual spill files were observed. Recorded process RSS exceeds the DuckDB budget: that setting is not a total process-memory cap. This fixture returns one aggregate row; it is not an export-throughput benchmark.
+
+### Database acceptance boundaries
+
+| Path | Executed validation | Remaining boundary |
+| --- | --- | --- |
+| Native PostgreSQL 17.6 and MySQL 8.4 | [Live verified-TLS databases](evidence/relational-acceptance.json): read-only grants/transactions, exact integers/decimals/timestamps/NULLs, parameters, cancellation and limits | MariaDB, CockroachDB, AlloyDB and Redshift share protocol code but were not separately tested |
+| MongoDB 8.0.32 | [Live aggregation and restricted SQL](evidence/mongodb-acceptance.json): cursor cleanup, exact BSON, int64/Decimal128 literals, SQL NULL semantics, grouping and empty aggregates | Restricted single-collection SQL; no full SQL dialect, writes or cross-source federation |
+| SQLite | [Signed extension fixture](evidence/sqlite-acceptance.json): large int64, text, blob, NULL, read-only access and selected-file boundary | No SQLite concurrency or throughput claim |
+| ClickHouse, PostgreSQL/MySQL federation, CSV/Parquet/DuckDB | Initial live and engine evidence below | The original export benchmark predates cluster mode and new connectors |
+| Databricks, Snowflake, D1, BigQuery, Elasticsearch, Trino/Presto | HTTPS protocol tests for types, polling/paging, cancellation, origin binding, malformed responses and limits | No live cloud/vendor account acceptance or performance claim |
+| SQL Server and Oracle | Driver configuration, conservative read syntax, exact Arrow conversions and request-contract tests | No live vendor server acceptance |
+| Flight SQL | Real TLS Flight fixtures including exact batches, allocation/row limits, schema framing, malicious messages, endpoint binding and cancellation | Client only; one result endpoint; no live vendor service or server implementation |
+| Optional `dbapi` adapter | HTTPS contract tests plus [container CLI acceptance](evidence/adapter-acceptance.json) for source binding and token handoff | Bounded JSON compatibility; no live deployed gateway/all-backend acceptance |
+
+The [44-engine checklist](source-coverage.md) identifies 18 built-in native routes (including protocol families), three reference file-source routes, and 23 routes requiring an external service. Parquet is additional. Names registered for external adapters do not supply JDBC/vendor drivers. The reference gateway's two SAP entries have incomplete connection builders and need a custom adapter. Metadata browsing, writes, migrations and CDC are separate capabilities.
+
+The MongoDB compiler is pinned to the published [zero-sql commit](https://github.com/SyneHQ/zero-sql/commit/b01a7e87002271a661ebd68060824be013347845); no local module replacement is required. Its new read-only path leaves the legacy write-capable conversion API unchanged. Kelvo deliberately uses only the restricted read-only compiler.
+
+## Initial release checks
+
+The checks and throughput benchmark in this section record the initial release at `45e42f5`. The later YAML configuration change passed the tagged Go tests, vet, build and CLI/HTTP acceptance; it did not rerun that throughput benchmark.
 
 - Full tagged Go tests, vet and binary build passed on Debian 12 / Linux amd64 with Go 1.26.8. HTTP and ClickHouse race tests passed. [Test log](evidence/tests-final.log), [race log](evidence/race-final.log), [build inputs and binary hash](evidence/build-evidence.json).
 - The compiled CLI and HTTP server passed exact decimal checks, the README's relative-path configuration, preservation of an existing export on failure, authentication, Arrow delivery, single-consumer results, explicit row-limit failure, queued/active cancellation, and Linux child cleanup after killing the parent. [Acceptance results](evidence/acceptance.json).
@@ -37,4 +64,4 @@ An initial benchmark assertion expected ClickHouse DateTime to be an Arrow times
 
 ## Remaining acceptance work
 
-Production multi-tenant authorization and isolation, Flight SQL, CDC, HA/recovery, durable result storage, additional database adapters, sustained concurrency, cold-cache tests, slow-client/WAN workloads and broad native-memory/spill profiling remain unvalidated or unimplemented. The pinned DuckDB Go path materializes execution before Arrow delivery; the streaming ClickHouse results above do not change that limitation.
+Production deployment review, multi-zone broker/storage recovery, sustained tenant concurrency, cold-cache and slow-client/WAN workloads, per-provider live acceptance and broad native-memory profiling remain outstanding. Per-user row/column authorization, token/tenant management APIs, durable result storage, CDC, a Flight SQL server and distributed execution of one SQL plan are not implemented. The pinned DuckDB Go path materializes execution before Arrow delivery; streaming native ClickHouse output does not change that limitation.

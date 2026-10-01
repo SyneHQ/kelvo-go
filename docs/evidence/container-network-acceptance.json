@@ -1,0 +1,11 @@
+{
+  "cross_tenant_denied": true,
+  "external_control": true,
+  "external_denied": true,
+  "internal_networks": [
+    true,
+    true
+  ],
+  "other_tenant_control": true,
+  "same_tenant": true
+}

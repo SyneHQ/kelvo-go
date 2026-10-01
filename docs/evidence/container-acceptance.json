@@ -1,0 +1,47 @@
+{
+  "binary_sha256": "8089d7941de2a3c0e28ad905ba174d16fd1d72a741451038557e38128bc91311",
+  "container_policy": {
+    "cpu_limit": 1,
+    "dropped_capabilities": [
+      "ALL"
+    ],
+    "memory_bytes": 536870912,
+    "no_new_privileges": true,
+    "pid_limit": 256,
+    "readonly_root": true,
+    "separate_pid_namespace": true,
+    "swap_total_bytes": 536870912,
+    "tmpfs": "rw,nosuid,nodev,noexec,size=128m,uid=65532,gid=65532,mode=0700",
+    "user": "65532:65532"
+  },
+  "filesystem_sandbox": {
+    "same_file_control_succeeded": true,
+    "unselected_file_denied": true
+  },
+  "image": "kelvo-go:accept",
+  "image_id": "sha256:f9257811ecc733effb4fdff9567555d0d7d1adc0fe1c00c2c8013790e84d606b",
+  "network": {
+    "cross_tenant_denied": true,
+    "external_control": true,
+    "external_denied": true,
+    "internal_networks": [
+      true,
+      true
+    ],
+    "other_tenant_control": true,
+    "same_tenant": true
+  },
+  "runtime_enforcement": {
+    "effective_capabilities_zero": true,
+    "no_new_privileges": true,
+    "root_write_denied": true,
+    "scratch_write_allowed": true
+  },
+  "sandboxed_arrow_query": {
+    "decimal_exact": true,
+    "null_preserved": true,
+    "passed": true,
+    "rows": 3
+  },
+  "scope": "Single-query tenant containers, OS sandbox, Arrow values and controlled network reachability"
+}
