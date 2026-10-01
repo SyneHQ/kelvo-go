@@ -15,12 +15,12 @@ import (
 )
 
 type Request struct {
-	SQL          string        `json:"sql"`
-	Mode         string        `json:"mode,omitempty"`
-	Sources      []string      `json:"sources,omitempty"`
-	ConnectionID string        `json:"connection_id,omitempty"`
-	Parameters   []Parameter   `json:"parameters,omitempty"`
-	Mongo        *MongoRequest `json:"mongo,omitempty"`
+	SQL          string        `json:"sql" yaml:"sql"`
+	Mode         string        `json:"mode,omitempty" yaml:"mode,omitempty"`
+	Sources      []string      `json:"sources,omitempty" yaml:"sources,omitempty"`
+	ConnectionID string        `json:"connection_id,omitempty" yaml:"connection_id,omitempty"`
+	Parameters   []Parameter   `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+	Mongo        *MongoRequest `json:"mongo,omitempty" yaml:"mongo,omitempty"`
 }
 
 // MongoRequest carries native aggregation syntax. SQL and Mongo are mutually
@@ -101,14 +101,21 @@ func (l Limits) Validate() error {
 }
 
 type Stats struct {
-	Rows            int64  `json:"rows"`
-	Batches         int64  `json:"batches"`
-	Bytes           int64  `json:"arrow_bytes"`
-	WireBytes       int64  `json:"wire_bytes"`
-	Backend         string `json:"backend"`
-	PrepareNS       int64  `json:"prepare_ns"`
-	DurationNS      int64  `json:"duration_ns"`
-	EngineStreaming bool   `json:"engine_streaming"`
+	Rows            int64                 `json:"rows"`
+	Batches         int64                 `json:"batches"`
+	Bytes           int64                 `json:"arrow_bytes"`
+	WireBytes       int64                 `json:"wire_bytes"`
+	Backend         string                `json:"backend"`
+	PrepareNS       int64                 `json:"prepare_ns"`
+	DurationNS      int64                 `json:"duration_ns"`
+	EngineStreaming bool                  `json:"engine_streaming"`
+	Accelerations   []AccelerationVersion `json:"accelerations,omitempty"`
+}
+
+type AccelerationVersion struct {
+	Dataset     string    `json:"dataset" yaml:"dataset"`
+	Generation  string    `json:"generation" yaml:"generation"`
+	RefreshedAt time.Time `json:"refreshed_at" yaml:"refreshed_at"`
 }
 
 // Sink methods are synchronous. The record is borrowed only for Write's duration.

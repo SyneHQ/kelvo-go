@@ -2,6 +2,7 @@ package rowarrow
 
 import (
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -98,7 +99,7 @@ func TestWriterLifecycleAndLimits(t *testing.T) {
 		t.Fatal(err)
 	}
 	second, err := w.Finish()
-	if err != nil || first != second {
+	if err != nil || !reflect.DeepEqual(first, second) {
 		t.Fatal("Finish is not idempotent")
 	}
 	if err = w.Write([]any{"x"}); err == nil {

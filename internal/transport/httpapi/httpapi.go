@@ -424,6 +424,8 @@ func terminalStatus(err *query.Error) int {
 		return http.StatusTooManyRequests
 	case "INVALID_ARGUMENT":
 		return http.StatusBadRequest
+	case "DATASET_UNAVAILABLE":
+		return http.StatusServiceUnavailable
 	default:
 		return http.StatusConflict
 	}

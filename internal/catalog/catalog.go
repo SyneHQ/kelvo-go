@@ -32,8 +32,9 @@ type Source struct {
 	Options     map[string]string `json:"options,omitempty" yaml:"options,omitempty"`
 }
 type Config struct {
-	Sources            []Source `json:"sources" yaml:"sources"`
-	ExtensionDirectory string   `json:"extension_directory,omitempty" yaml:"extension_directory,omitempty"`
+	Sources            []Source            `json:"sources" yaml:"sources"`
+	ExtensionDirectory string              `json:"extension_directory,omitempty" yaml:"extension_directory,omitempty"`
+	Acceleration       *AccelerationConfig `json:"acceleration,omitempty" yaml:"acceleration,omitempty"`
 }
 
 func Load(path string) (Config, error) {
@@ -102,7 +103,14 @@ func Load(path string) (Config, error) {
 			if !filepath.IsAbs(s.Path) {
 				s.Path = filepath.Join(filepath.Dir(path), s.Path)
 			}
-			s.Path, e = filepath.EvalSymlinks(s.Path)
+			registeredPath := filepath.Clean(s.Path)
+			s.Path, e = filepath.EvalSymlinks(registeredPath)
+			if os.IsNotExist(e) && c.accelerationReferences(s.ID) {
+				// A maintained snapshot remains queryable during a local-source
+				// outage. Direct reads/refresh still validate the file at execution.
+				s.Path = registeredPath
+				continue
+			}
 			if e != nil {
 				return c, fmt.Errorf("source %s path unavailable", s.ID)
 			}
@@ -139,6 +147,9 @@ func Load(path string) (Config, error) {
 	if c.ExtensionDirectory != "" && !filepath.IsAbs(c.ExtensionDirectory) {
 		c.ExtensionDirectory = filepath.Join(filepath.Dir(path), c.ExtensionDirectory)
 	}
+	if err := c.validateAcceleration(filepath.Dir(path)); err != nil {
+		return c, err
+	}
 	return c, nil
 }
 func (c Config) Select(ids []string) ([]Source, error) {
@@ -158,7 +169,11 @@ func (c Config) Select(ids []string) ([]Source, error) {
 			}
 		}
 		if !found {
-			return nil, fmt.Errorf("unknown source")
+			if _, ok := c.Dataset(id); ok {
+				out = append(out, Source{ID: id, Type: "accelerated"})
+			} else {
+				return nil, fmt.Errorf("unknown source")
+			}
 		}
 	}
 	return out, nil

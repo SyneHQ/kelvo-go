@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
@@ -75,16 +76,13 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	if err := query.ValidateRequest(r); err != nil {
 		return stats, err
 	}
-	ids := r.Sources
-	if r.Mode == "native" {
-		ids = []string{r.ConnectionID}
-	}
-	sources, err := e.Config.Select(ids)
-	if err != nil {
-		return stats, query.NewError("INVALID_ARGUMENT", "Unknown or duplicate source")
-	}
 	ctx, cancel := context.WithTimeout(ctx, e.Limits.Timeout)
 	defer cancel()
+	sources, versions, release, err := acceleration.Resolve(ctx, e.Config, r)
+	if err != nil {
+		return stats, err
+	}
+	defer release()
 	dir, err := os.MkdirTemp("", "kelvo-worker-")
 	if err != nil {
 		return stats, err
@@ -149,6 +147,7 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	var outcome Outcome
 	decodeErr := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &outcome)
 	stats = outcome.Stats
+	stats.Accelerations = versions
 	stats.Rows, stats.Bytes, stats.Batches, stats.WireBytes = observed.Rows, observed.Bytes, observed.Batches, observed.WireBytes
 	stats.DurationNS = time.Since(start).Nanoseconds()
 	if parent.Err() != nil {
