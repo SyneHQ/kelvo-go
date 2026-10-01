@@ -1,0 +1,28 @@
+diff --git a/native_connection.go b/native_connection.go
+new file mode 100644
+--- /dev/null
++++ b/native_connection.go
+@@ -0,0 +1,23 @@
++//go:build duckbridge
++
++// This opt-in accessor is a Kelvo patch to duckdb-go v2.10506.0.
++// The rest of the upstream driver remains unchanged.
++package duckdb
++
++import (
++	"errors"
++	"unsafe"
++)
++
++// WithNativeConnection borrows the C API connection for a pinned native shim.
++// Call only inside sql.Conn.Raw. The callback must not retain the pointer,
++// close the connection, or concurrently invoke another connection operation.
++// This method deliberately exposes no Go structure layout or ownership.
++func (conn *Conn) WithNativeConnection(callback func(unsafe.Pointer) error) error {
++	if conn == nil || conn.closed || callback == nil {
++		return errors.New("native DuckDB connection is unavailable")
++	}
++	return callback(conn.conn.Ptr)
++}
++
++
