@@ -8,7 +8,9 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      GOMAXPROCS: '2'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -16,8 +18,14 @@ jobs:
           go-version: '1.26.8'
           cache: true
       - run: go test -tags duckdb_arrow ./...
-      - run: go test -race ./internal/transport/httpapi ./internal/sources/clickhouse
+      - run: go test -race ./internal/transport/httpapi ./internal/sources/... ./internal/cluster ./internal/worker
       - run: go vet -tags duckdb_arrow ./...
       - run: go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
+      - run: cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o bin/kelvo-landlock
       - run: python3 -m pip install pyarrow==25.0.1
       - run: python3 scripts/acceptance.py
+      - run: python3 scripts/cluster_fixture.py provision
+      - run: python3 scripts/cluster_fixture.py test-store --go go
+      - run: python3 scripts/cluster_acceptance.py
+      - if: always()
+        run: python3 scripts/cluster_fixture.py stop

@@ -163,6 +163,27 @@ func TestFederatedSmokeAndTypedInputValidation(t *testing.T) {
 	}
 }
 
+func TestMongoRequestUsesSharedValidation(t *testing.T) {
+	s := newTestServer(t, &fakeExecutor{rows: 1}, time.Second, testLimits())
+	valid := `{"mode":"native","connection_id":"documents","mongo":{"collection":"orders","pipeline":[{"$match":{"amount":{"$numberLong":"9223372036854775807"}}}]}}`
+	w := request(t, s, http.MethodPost, "/v1/queries", valid, true)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("Mongo submission=%d %s", w.Code, w.Body.String())
+	}
+	for _, body := range []string{
+		`{"mode":"native","connection_id":"documents","sql":"SELECT 1","mongo":{"collection":"orders","pipeline":[]}}`,
+		`{"mode":"federated","mongo":{"collection":"orders","pipeline":[]}}`,
+		`{"mode":"native","connection_id":"documents","sources":["other"],"mongo":{"collection":"orders","pipeline":[]}}`,
+		`{"mode":"native","connection_id":"documents","mongo":{"collection":"orders","pipeline":{}}}`,
+		`{"mode":"native","connection_id":"documents","mongo":{"collection":"orders","pipeline":[],"unknown":true}}`,
+		`{"mode":"native","connection_id":"not.a.catalog.id","sql":"SELECT 1"}`,
+	} {
+		if got := request(t, s, http.MethodPost, "/v1/queries", body, true).Code; got != http.StatusBadRequest {
+			t.Fatalf("accepted invalid request (%d): %s", got, body)
+		}
+	}
+}
+
 type blockingExecutor struct{ started chan struct{} }
 
 func (f *blockingExecutor) Execute(ctx context.Context, _ query.Request, sink query.Sink) (query.Stats, error) {

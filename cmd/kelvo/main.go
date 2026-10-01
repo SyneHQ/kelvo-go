@@ -18,7 +18,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	duckengine "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
-	chengine "github.com/SYNEHQ/kelvo-go/internal/sources/clickhouse"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/native"
 	"github.com/SYNEHQ/kelvo-go/internal/transport/httpapi"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
@@ -38,6 +38,9 @@ func run(args []string) error {
 	}
 	if args[0] == "worker" {
 		return runWorker()
+	}
+	if args[0] == "cluster-init" || args[0] == "gateway" || args[0] == "node" {
+		return runCluster(args)
 	}
 	if args[0] == "version" {
 		fmt.Println("Kelvo Go " + version)
@@ -59,6 +62,8 @@ func run(args []string) error {
 	conn := f.String("connection", "", "Native source ID")
 	out := f.String("out", "", "Arrow IPC output file (required for query)")
 	params := f.String("parameters", "[]", "Typed parameter array as JSON")
+	mongoCollection := f.String("mongo-collection", "", "MongoDB collection for a native aggregation")
+	mongoPipeline := f.String("mongo-pipeline", "", "MongoDB aggregation pipeline as a JSON array (defaults to [])")
 	tokenEnv := f.String("token-env", "KELVO_TOKEN", "Environment variable holding the server bearer token")
 	maxConcurrent := f.Int("concurrency", 2, "Maximum concurrent workers")
 	maxQueries := f.Int("max-queries", 128, "Maximum retained query handles")
@@ -67,7 +72,7 @@ func run(args []string) error {
 	f.Int64Var(&limits.MaxRows, "max-rows", limits.MaxRows, "Maximum returned rows")
 	f.Int64Var(&limits.MaxBytes, "max-bytes", limits.MaxBytes, "Maximum result bytes")
 	f.DurationVar(&limits.Timeout, "timeout", limits.Timeout, "Per-query deadline")
-	f.IntVar(&limits.MemoryMB, "memory-mb", limits.MemoryMB, "DuckDB memory budget; native mode: ClickHouse query and Arrow allocation budgets (not process RSS)")
+	f.IntVar(&limits.MemoryMB, "memory-mb", limits.MemoryMB, "Engine/client memory budget (source-specific; not process RSS)")
 	f.IntVar(&limits.Threads, "threads", limits.Threads, "Threads per DuckDB or ClickHouse query")
 	f.IntVar(&limits.MaxTempMB, "temp-mb", limits.MaxTempMB, "DuckDB temporary disk budget")
 	if e := f.Parse(args[1:]); e != nil {
@@ -93,15 +98,12 @@ func run(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if args[0] == "query" {
-		if strings.TrimSpace(*sql) == "" || *out == "" {
-			return query.NewError("INVALID_ARGUMENT", "query requires --sql and --out")
+		if *out == "" {
+			return query.NewError("INVALID_ARGUMENT", "query requires --out")
 		}
-		r := query.Request{SQL: *sql, Mode: *mode, ConnectionID: *conn}
-		if *sourceIDs != "" {
-			r.Sources = strings.Split(*sourceIDs, ",")
-		}
-		if e = json.Unmarshal([]byte(*params), &r.Parameters); e != nil {
-			return query.NewError("INVALID_ARGUMENT", "Invalid typed parameter JSON")
+		r, e := makeRequest(*sql, *mode, *conn, *sourceIDs, *params, *mongoCollection, *mongoPipeline)
+		if e != nil {
+			return e
 		}
 		file, tmp, e := worker.ResolveOutput(*out)
 		if e != nil {
@@ -177,23 +179,21 @@ func runWorker() error {
 	if e := in.Limits.Validate(); e != nil {
 		return emit(e)
 	}
-	if in.Request.Mode != "federated" && in.Request.Mode != "native" && in.Request.Mode != "" {
-		return emit(query.NewError("INVALID_ARGUMENT", "Unknown query mode"))
+	if in.Request.Mode == "" {
+		in.Request.Mode = "federated"
 	}
-	if in.Request.Mode == "native" && (in.Request.ConnectionID == "" || len(in.Request.Sources) > 0) {
-		return emit(query.NewError("INVALID_ARGUMENT", "Native query requires one connection_id"))
-	}
-	if in.Request.Mode != "native" && in.Request.ConnectionID != "" {
-		return emit(query.NewError("INVALID_ARGUMENT", "Federated query cannot set connection_id"))
+	if err := query.ValidateRequest(in.Request); err != nil {
+		return emit(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), in.Limits.Timeout)
 	defer cancel()
 	var executor query.Executor
 	if in.Request.Mode == "native" {
-		e, err := chengine.New(in.Config, in.Limits)
+		e, err := native.New(in.Config, in.Limits, in.Request)
 		if err != nil {
 			return emit(err)
 		}
+		defer e.Close()
 		executor = e
 	} else {
 		e, err := duckengine.New(in.Config, in.Limits)
@@ -211,6 +211,32 @@ func runWorker() error {
 	outcome.Stats.WireBytes = sink.EncodedBytes()
 	return emit(err)
 }
+
+func makeRequest(sql, mode, connection, sources, parameters, collection, pipeline string) (query.Request, error) {
+	r := query.Request{SQL: sql, Mode: mode, ConnectionID: connection}
+	if sources != "" {
+		r.Sources = strings.Split(sources, ",")
+	}
+	if len(parameters) > 128<<10 || json.Unmarshal([]byte(parameters), &r.Parameters) != nil {
+		return r, query.NewError("INVALID_ARGUMENT", "Invalid typed parameter JSON")
+	}
+	if collection != "" || pipeline != "" {
+		if collection == "" || len(pipeline) > 128<<10 {
+			return r, query.NewError("INVALID_ARGUMENT", "MongoDB requires --mongo-collection and a bounded pipeline")
+		}
+		if pipeline == "" {
+			pipeline = "[]"
+		}
+		if !strings.HasPrefix(strings.TrimSpace(pipeline), "[") {
+			return r, query.NewError("INVALID_ARGUMENT", "MongoDB pipeline must be a JSON array")
+		}
+		r.Mongo = &query.MongoRequest{Collection: collection}
+		if json.Unmarshal([]byte(pipeline), &r.Mongo.Pipeline) != nil {
+			return r, query.NewError("INVALID_ARGUMENT", "Invalid MongoDB pipeline JSON")
+		}
+	}
+	return r, query.ValidateRequest(r)
+}
 func usage() {
-	fmt.Println("Kelvo Go by SYNEHQ\n\nUsage: kelvo serve|query|version\nBuild: go build -tags duckdb_arrow ./cmd/kelvo\nUse kelvo query -h or kelvo serve -h for flags.")
+	fmt.Println("Kelvo Go by SYNEHQ\n\nUsage: kelvo serve|query|cluster-init|gateway|node|version\nBuild: go build -tags duckdb_arrow ./cmd/kelvo\nUse kelvo <command> -h for flags.")
 }

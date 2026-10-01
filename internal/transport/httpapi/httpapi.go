@@ -11,7 +11,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -21,13 +20,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 )
 
-const (
-	maxRequestBytes = 1 << 20
-	maxSQLBytes     = 64 << 10
-	maxParameters   = 1024
-)
-
-var sourceID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
+const maxRequestBytes = 1 << 20
 
 // Options bounds the in-memory request registry and each execution.
 type Options struct {
@@ -201,41 +194,8 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 }
 
 func validate(r query.Request) error {
-	if r.SQL == "" || len(r.SQL) > maxSQLBytes {
-		return query.NewError("INVALID_ARGUMENT", "SQL is required and must be within the size limit")
-	}
-	if r.Mode != "native" && r.Mode != "federated" {
-		return query.NewError("INVALID_ARGUMENT", "Mode must be native or federated")
-	}
-	if len(r.Parameters) > maxParameters {
-		return query.NewError("INVALID_ARGUMENT", "Too many parameters")
-	}
-	if _, err := r.Values(); err != nil {
-		return err
-	}
-	if r.Mode == "native" {
-		if !validSource(r.ConnectionID) || len(r.Sources) != 0 {
-			return query.NewError("INVALID_ARGUMENT", "Native queries require one connection_id and no sources")
-		}
-	} else {
-		if r.ConnectionID != "" {
-			return query.NewError("INVALID_ARGUMENT", "Federated queries do not accept connection_id")
-		}
-		seen := make(map[string]struct{}, len(r.Sources))
-		for _, source := range r.Sources {
-			if !validSource(source) {
-				return query.NewError("INVALID_ARGUMENT", "Invalid source identity")
-			}
-			if _, ok := seen[source]; ok {
-				return query.NewError("INVALID_ARGUMENT", "Duplicate source identity")
-			}
-			seen[source] = struct{}{}
-		}
-	}
-	return nil
+	return query.ValidateRequest(r)
 }
-
-func validSource(value string) bool { return sourceID.MatchString(value) }
 
 func (s *Server) status(w http.ResponseWriter, id string) {
 	s.mu.Lock()
