@@ -1,0 +1,14 @@
+{
+  "cli_decimal_values": "passed",
+  "relative_quickstart_configuration": "passed",
+  "default_kelvo_yml_configuration": "passed",
+  "failed_export_preserves_existing_file": "passed",
+  "authentication": "passed",
+  "http_arrow_and_single_consumer": "passed",
+  "output_limit_is_failure": "passed",
+  "queued_cancellation": "passed",
+  "active_cancel_seconds": 0.0008804379976936616,
+  "linux_parent_death_cleanup": "passed",
+  "binary_sha256": "85febc7fe39a54e10abc96d17ddcd24dbaf7cfe79ad178721fda3966268f08e0",
+  "baseline_checked_at": "2026-10-01T19:30:31.139560+00:00"
+}

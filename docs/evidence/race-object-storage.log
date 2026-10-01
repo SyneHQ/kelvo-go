@@ -1,0 +1,7 @@
+ok  	github.com/SYNEHQ/kelvo-go/internal/acceleration	6.630s
+ok  	github.com/SYNEHQ/kelvo-go/internal/objectstore	1.609s
+ok  	github.com/SYNEHQ/kelvo-go/internal/catalog	1.113s
+ok  	github.com/SYNEHQ/kelvo-go/internal/query	1.018s
+ok  	github.com/SYNEHQ/kelvo-go/internal/worker	11.465s
+ok  	github.com/SYNEHQ/kelvo-go/internal/cluster	1.419s
+ok  	github.com/SYNEHQ/kelvo-go/internal/transport/httpapi	1.066s

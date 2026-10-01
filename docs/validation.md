@@ -2,6 +2,48 @@
 
 Status: a tested developer preview. Cluster, sandbox, connector and failure-handling acceptance is described below. These checks do not certify a production multi-tenant service, establish capacity for every database, or replace deployment-specific security and recovery testing.
 
+## Object snapshots and MongoDB refresh
+
+The [object baseline build](evidence/object-storage-build.json) verifies the
+committed source against the tested VM and records binary hashes. Full tagged
+Go tests, focused race tests, vet and CLI/launcher builds passed; see
+[tests](evidence/tests-object-storage.log) and [race checks](evidence/race-object-storage.log).
+The unchanged final baseline binary passed [CLI/HTTP](evidence/acceptance-object-storage.json),
+[cluster](evidence/cluster-object-storage.json) and
+[14 snapshot checks](evidence/acceleration-object-storage.json). The three-broker
+fixture ran on one VM, then its processes were stopped.
+
+[Object protocol acceptance](evidence/object-acceleration.json) passed all 36
+checks across private S3, R2, GCS and Azure TLS fixtures. Each selected-column
+query transferred 16,984 bytes in two ranges from a roughly 3.15 MB Parquet
+object. Reader-only identity, source outage, fresh reader staging, exact values,
+failed refresh retention, metadata corruption and read-only publisher separation
+were checked. Foreign redirects, ignored ranges and wrong intervals failed
+without a completed export; the foreign endpoint received zero requests. These
+are protocol fixtures, not real cloud accounts or IAM certification.
+
+Three alternating trials per provider measured median complete query/validation
+times of 258–285 ms remotely and 59–63 ms locally. The extra 198–226 ms includes
+CLI startup, extension loading, metadata, TLS, range access and export validation;
+it is not isolated bridge overhead. A separate generated 32 MiB loopback test
+measured 663.95 MB/s over three iterations. Neither result establishes cloud/WAN
+throughput or sustained concurrency capacity. Range and copy-buffer limits are
+in the [object storage guide](object-storage.md).
+
+The initial direct-DuckDB cloud reader failed the confinement test: pinned
+`httpfs` followed foreign redirects and forwarded an S3 session token. That path
+was removed. The released path uses a parent-owned Go range reader with redirect
+refusal and no cloud credentials in the query process. Object acceptance predates
+a later scheduling-only clock-skew fix; both binary identities are retained.
+The final code also tests service-clock freshness/scheduling with four-hour host
+clock offsets in both directions.
+
+[Live MongoDB 8.0.32 acceptance](evidence/mongodb-acceleration.json) covers YAML
+aggregation pipelines, filtered/grouped/empty results, exact int64/Decimal128/BSON
+values and DuckDB reads of the resulting local snapshot. `$out` and `$merge`
+refreshes fail and preserve the committed generation. BSON remains binary; this
+does not infer relational document columns or implement CDC.
+
 ## Dataset acceleration
 
 Persistent full-refresh Parquet snapshots are implemented with manual refresh,
@@ -55,7 +97,7 @@ deadline. No Go source changed for that correction.
 
 No new container image or production deployment was validated for acceleration.
 The Compose overlay is provided for operator integration. Incremental refresh,
-CDC, object-store distribution and per-user row/column policies remain absent.
+CDC and per-user row/column policies remain absent. Object snapshots were added in the later validation above.
 
 ## Native connector expansion
 
