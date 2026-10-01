@@ -1,0 +1,30 @@
+{
+  "assertions": {
+    "arrow_binary_document_json": {
+      "null_preserved": true,
+      "passed": true,
+      "raw_large_integer_preserved": true,
+      "rows": 2
+    },
+    "token_reached_worker": {
+      "passed": true
+    },
+    "unregistered_connection_denied": {
+      "passed": true
+    }
+  },
+  "container_policy": {
+    "capabilities_dropped": true,
+    "internal_network": true,
+    "no_new_privileges": true,
+    "nonroot_user": "65532:65532"
+  },
+  "image": "kelvo-go:accept",
+  "image_binaries": {
+    "/usr/local/bin/kelvo": "8089d7941de2a3c0e28ad905ba174d16fd1d72a741451038557e38128bc91311",
+    "/usr/local/bin/kelvo-landlock": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1"
+  },
+  "image_id": "sha256:f9257811ecc733effb4fdff9567555d0d7d1adc0fe1c00c2c8013790e84d606b",
+  "scope": "HTTPS db.api contract fixture only; not cloud or live-database proof. CLI runs in a tenant container; this does not exercise node-startup Landlock.",
+  "tls_verified": true
+}
