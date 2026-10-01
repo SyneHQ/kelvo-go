@@ -53,6 +53,11 @@ func runCluster(args []string) error {
 			return query.NewError("CONFIGURATION_ERROR", err.Error())
 		}
 		stores[tenant.Policy.TenantID] = s
+		if args[0] == "cluster-init" {
+			if _, err = s.OpenRefreshQueue(ctx, true); err != nil {
+				return query.NewError("CONFIGURATION_ERROR", "Acceleration dispatch could not be initialized")
+			}
+		}
 	}
 	if args[0] == "cluster-init" {
 		fmt.Fprintln(os.Stderr, "Kelvo cluster tenant state initialized")
@@ -87,6 +92,9 @@ func runNode(ctx context.Context, file string) error {
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Worker catalog cannot be loaded")
 	}
+	if catalogue.Acceleration != nil && catalogue.Acceleration.TenantID != cfg.Policy.TenantID {
+		return query.NewError("CONFIGURATION_ERROR", "Acceleration tenant must match worker tenant")
+	}
 	executor, err := worker.New(catalogue, cfg.Policy.Limits)
 	if err != nil {
 		return err
@@ -97,6 +105,13 @@ func runNode(ctx context.Context, file string) error {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
 	defer store.Close()
+	var refreshQueue *cluster.RefreshQueue
+	if catalogue.Acceleration != nil {
+		refreshQueue, err = store.OpenRefreshQueue(ctx, false)
+		if err != nil {
+			return query.NewError("CONFIGURATION_ERROR", "Acceleration dispatch is unavailable; run cluster-init")
+		}
+	}
 	// Bind before reserving the durable worker identity or pulling jobs.
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
@@ -107,7 +122,21 @@ func runNode(ctx context.Context, file string) error {
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
-	return serveCluster(ctx, ln, tc, node, func() { _ = node.Close() })
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	var refreshDone chan error
+	if refreshQueue != nil {
+		refreshDone = make(chan error, 1)
+		go func() { refreshDone <- runClusterRefresh(runCtx, catalogue, cfg.SandboxPath, refreshQueue); stop() }()
+	}
+	result := serveCluster(runCtx, ln, tc, node, func() { _ = node.Close() })
+	stop()
+	if refreshDone != nil {
+		if err := <-refreshDone; err != nil && !errors.Is(err, context.Canceled) && result == nil {
+			result = err
+		}
+	}
+	return result
 }
 
 func serveCluster(ctx context.Context, ln net.Listener, tc *tls.Config, handler http.Handler, closeHandler func()) error {
