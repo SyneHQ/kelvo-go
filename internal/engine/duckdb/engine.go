@@ -42,6 +42,9 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		if !catalog.ValidID(source.ID) {
 			return nil, query.NewError("INVALID_ARGUMENT", "Source ID is invalid")
 		}
+		if err := source.ValidateFederation(); err != nil {
+			return nil, query.NewError("CONFIGURATION_ERROR", "Invalid custom federation source")
+		}
 		if err := validateObjectSource(source); err != nil {
 			return nil, err
 		}
@@ -104,6 +107,19 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		return stats, publicError(connErr)
 	}
 	defer conn.Close()
+	bindings := &federationBindings{}
+	defer func() {
+		// Native Arrow scan callbacks remain referenced by bound views until the
+		// connection/database have both released their plans.
+		closeErr := errors.Join(conn.Close(), db.Close())
+		bindings.Close()
+		stats.Federation = bindings.stats()
+		// Stream-release callbacks run during query/connection teardown. A
+		// contained callback failure must prevent a successful Arrow export.
+		if err == nil {
+			err = publicError(bindings.callbackError(closeErr))
+		}
+	}()
 
 	prepareStarted := time.Now()
 	err = conn.Raw(func(raw any) error {
@@ -115,6 +131,9 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 			return err
 		}
 		if err := attachSources(ctx, raw, sources, e.config.ExtensionDirectory, tempDir); err != nil {
+			return err
+		}
+		if err := bindings.attach(ctx, raw, sources, e.limits); err != nil {
 			return err
 		}
 		if err := lockSourceAccess(ctx, raw, sources, tempDir); err != nil {
@@ -130,7 +149,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		stats.PrepareNS = time.Since(prepareStarted).Nanoseconds()
 		return deliver(ctx, driverConn, bounded, values, e.limits, sink, &stats)
 	})
-	if err != nil {
+	if err = bindings.callbackError(err); err != nil {
 		return stats, publicError(err)
 	}
 	return stats, nil
@@ -172,6 +191,9 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 	for _, source := range sources {
 		if source.Adapter != "" {
 			return errors.New("source adapters are unavailable to DuckDB federation")
+		}
+		if source.Federation != nil {
+			continue
 		}
 		id := quoteIdentifier(source.ID)
 		var statement string
@@ -356,6 +378,7 @@ func containsDeniedCapability(sqlText string) bool {
 		"duckdb_logs": {}, "duckdb_logs_parsed": {}, "write_log": {},
 		"read_json_auto": {}, "read_ndjson": {}, "read_ndjson_auto": {},
 		"read_json_objects": {}, "read_json_objects_auto": {}, "read_ndjson_objects": {},
+		"arrow_scan": {}, "arrow_scan_dumb": {},
 		"parquet_scan": {}, "csv_scan": {}, "json_scan": {}, "sniff_csv": {},
 		"postgres_scan_pushdown": {}, "postgres_execute": {}, "mysql_execute": {},
 		"mysql_bind_params": {}, "mysql_create_params": {}, "mysql_pin_connection": {},

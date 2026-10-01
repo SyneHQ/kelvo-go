@@ -46,11 +46,15 @@ func New(c catalog.Config, l query.Limits) (*Executor, error) {
 	return &Executor{Config: c, Limits: l, Binary: exe}, nil
 }
 
+// Fits bounded snapshot and federation statistics together; arbitrary stderr
+// still cannot grow with query data or an unbounded native error message.
+const maxOutcomeBytes = 64 << 10
+
 type boundedBuffer struct{ bytes.Buffer }
 
 func (b *boundedBuffer) Write(p []byte) (int, error) {
 	n := len(p)
-	left := 16384 - b.Len()
+	left := maxOutcomeBytes - b.Len()
 	if left > 0 {
 		if len(p) > left {
 			p = p[:left]
@@ -193,7 +197,7 @@ func sourceEnvironmentNames(source catalog.Source) ([]string, error) {
 		return []string{source.DSNEnv, source.URLEnv, source.UsernameEnv, source.PasswordEnv, source.TokenEnv}, nil
 	}
 	if source.Range.Validate() != nil || source.Type != "parquet" || source.Path != source.Range.URL ||
-		source.Adapter != "" || source.DSNEnv != "" || source.URLEnv != "" || source.UsernameEnv != "" ||
+		source.Federation != nil || source.Adapter != "" || source.DSNEnv != "" || source.URLEnv != "" || source.UsernameEnv != "" ||
 		source.PasswordEnv != "" || source.TokenEnv != "" || len(source.Options) != 0 {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Invalid isolated object range capability")
 	}

@@ -19,7 +19,7 @@ func validateObjectSource(source catalog.Source) error {
 	if source.Range == nil {
 		return nil
 	}
-	if source.Range.Validate() != nil || source.Type != "parquet" || source.Path != source.Range.URL || source.Adapter != "" ||
+	if source.Range.Validate() != nil || source.Type != "parquet" || source.Path != source.Range.URL || source.Federation != nil || source.Adapter != "" ||
 		source.DSNEnv != "" || source.URLEnv != "" || source.UsernameEnv != "" ||
 		source.PasswordEnv != "" || source.TokenEnv != "" || len(source.Options) != 0 {
 		return query.NewError("CONFIGURATION_ERROR", "Object snapshots require one exact range capability without cloud credentials")

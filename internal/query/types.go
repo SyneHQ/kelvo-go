@@ -100,7 +100,19 @@ func (l Limits) Validate() error {
 	return nil
 }
 
+// FederationScan reports source batches actually fetched, not rows scanned by
+// the remote database. Bytes measures logical Arrow buffers, excluding framing.
+type FederationScan struct {
+	Source  string `json:"source"`
+	Table   string `json:"table"`
+	Scans   int64  `json:"scans"`
+	Rows    int64  `json:"rows_fetched"`
+	Bytes   int64  `json:"arrow_bytes_fetched"`
+	Batches int64  `json:"batches_fetched"`
+}
+
 type Stats struct {
+	Federation      []FederationScan      `json:"federation,omitempty"`
 	Rows            int64                 `json:"rows"`
 	Batches         int64                 `json:"batches"`
 	Bytes           int64                 `json:"arrow_bytes"`
