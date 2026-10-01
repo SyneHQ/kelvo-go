@@ -1,0 +1,66 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "test": "startup",
+      "passed": true,
+      "landlock_abi": 6,
+      "gateways": 2,
+      "workers": 3,
+      "tenants": 2,
+      "broker_replicas": 3
+    },
+    {
+      "test": "cross_gateway_arrow_and_tenant_isolation",
+      "passed": true
+    },
+    {
+      "test": "atomic_single_consumer_claim",
+      "passed": true
+    },
+    {
+      "test": "worker_mutual_tls_identity",
+      "passed": true
+    },
+    {
+      "test": "gateway_restart_preserves_handle",
+      "passed": true
+    },
+    {
+      "test": "one_broker_loss_keeps_quorum",
+      "passed": true,
+      "stopped_before_restart": true,
+      "recovered_current_replicas": 3
+    },
+    {
+      "test": "cross_gateway_cancellation",
+      "passed": true
+    },
+    {
+      "test": "million_row_arrow",
+      "passed": true,
+      "rows": 1000000,
+      "wire_bytes": 8070552,
+      "seconds": 0.0964,
+      "rows_per_second": 10371361,
+      "note": "One loopback trial including submit, subprocess startup and Python decoding; not a production benchmark"
+    },
+    {
+      "test": "worker_loss_no_execution_replay",
+      "passed": true
+    },
+    {
+      "test": "partial_arrow_worker_death_has_no_success_or_replay",
+      "passed": true
+    }
+  ],
+  "binary_sha256": "d3d89f6610782a605e36f17bf76308272a4d0eb0a81d36ab75b701041487a807",
+  "launcher_sha256": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1",
+  "checked_at_utc": "2026-10-01T20:01:38.526903+00:00",
+  "scope": "Existing CSV/range-based NATS cluster regression using the bridge-enabled image binary; custom ClickHouse federation is recorded separately.",
+  "fixture_cleanup": {
+    "owned_processes_stopped": true,
+    "fixture_brokers_stopped": true,
+    "private_fixture_state_retained": true
+  }
+}

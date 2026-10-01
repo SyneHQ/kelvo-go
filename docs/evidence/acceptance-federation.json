@@ -1,0 +1,15 @@
+{
+  "cli_decimal_values": "passed",
+  "relative_quickstart_configuration": "passed",
+  "default_kelvo_yml_configuration": "passed",
+  "failed_export_preserves_existing_file": "passed",
+  "authentication": "passed",
+  "http_arrow_and_single_consumer": "passed",
+  "output_limit_is_failure": "passed",
+  "queued_cancellation": "passed",
+  "active_cancel_seconds": 0.0012324780000199098,
+  "linux_parent_death_cleanup": "passed",
+  "scope": "Existing CSV-backed CLI and HTTP regression using the bridge-enabled image binary; custom ClickHouse federation acceptance is recorded separately.",
+  "binary_sha256": "d3d89f6610782a605e36f17bf76308272a4d0eb0a81d36ab75b701041487a807",
+  "checked_at_utc": "2026-10-01T20:02:00.617632+00:00"
+}

@@ -1,0 +1,4 @@
+ok  	github.com/SYNEHQ/kelvo-go/internal/duckbridge	1.211s
+ok  	github.com/SYNEHQ/kelvo-go/internal/federation	1.056s
+ok  	github.com/SYNEHQ/kelvo-go/internal/engine/duckdb	1.259s
+ok  	github.com/SYNEHQ/kelvo-go/internal/worker	11.472s

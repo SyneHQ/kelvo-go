@@ -31,8 +31,8 @@ sources:
 
 Query `warehouse.events` using `mode: federated` and select `warehouse` in the
 request's source list. Only the operator-listed tables become views. There are
-at most 32 custom tables per source and across a selected query; names are plain SQL identifiers. Keep the catalog
-narrow: initial registration fetches each configured table's schema using a
+at most 32 custom tables per source and across a selected query; names are plain
+SQL identifiers. Keep the catalog narrow: initial registration fetches each configured table's schema using a
 zero-row native query. Source grants must independently restrict access to the
 permitted database tables and functions.
 
@@ -79,6 +79,13 @@ Successful statistics include `federation` entries with source/table identity,
 scan count, fetched rows, batches and logical Arrow bytes. These measure data
 received by Kelvo, not rows examined inside ClickHouse. Provider query profiling
 is needed to establish source CPU, disk reads and index effectiveness.
+
+[Live validation](validation.md#duckdb-custom-federation-adapter) demonstrates
+10-row source filtering from a million-row table, exact values, independent
+self-join scans and CSV joins. Three narrow million-row exports measured
+3.28–3.44 million rows/s with 151–158 MiB sampled worker RSS on the shared test
+VM. These are warm-cache, instrumented fixture results; they do not establish
+general production capacity or the memory requirements of large joins.
 
 ## Build and update
 

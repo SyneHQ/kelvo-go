@@ -2,6 +2,85 @@
 
 Status: a tested developer preview. Cluster, sandbox, connector and failure-handling acceptance is described below. These checks do not certify a production multi-tenant service, establish capacity for every database, or replace deployment-specific security and recovery testing.
 
+## DuckDB custom federation adapter
+
+The opt-in Linux amd64 bridge connects the Go ClickHouse reader to DuckDB through
+a small compiled C++ shim. The [build record](evidence/federation-build.json)
+matches 181 source/build inputs against the committed tree and tested VM.
+The [container record](evidence/federation-container.json) identifies the actual
+image and extracted binary used for live acceptance. Full bridge-tagged Go
+[tests](evidence/tests-federation.log), strict cgo pointer checks with
+[race tests](evidence/race-federation.log), and tagged vet passed.
+
+The same image binary passed [CLI/HTTP regression](evidence/acceptance-federation.json),
+[NATS store checks](evidence/cluster-store-federation.log),
+[10 cluster checks](evidence/cluster-federation.json), and
+[14 acceleration checks](evidence/acceleration-federation.json). Those regressions
+exercise the existing CSV/Parquet/range paths, tenant and mTLS enforcement,
+gateway replacement, one-broker loss and snapshot refresh; they are separate
+from custom ClickHouse federation acceptance. Container checks verified nonroot
+execution, a read-only root, dropped capabilities, no-new-privileges, memory/PID
+limits, Landlock file denial and permitted/denied network destinations. Disposable
+processes were stopped afterward. These are same-VM fixtures, not multi-zone HA.
+
+[Live ClickHouse 26.9.7.9 acceptance](evidence/federation-clickhouse.json) passed
+27 checks on a separately owned one-million-row fixture. These cover exact
+Int64/UInt64 extrema, decimal and NULL values, projection and integer predicates,
+self-joins, a CSV join, scan limits, selected-table restrictions, the global
+32-table cap, cancellation and actual Landlock execution. Failed queries leave
+no completed export. The source user has SELECT-only grants, with a real write
+denial checked. Fixture cleanup preserved the existing 100-million-row dataset.
+
+For `row_id >= 999990`, the source sent only 10 rows from the million-row table.
+Selecting `row_id` fetched 80 logical Arrow bytes (352 response-body bytes),
+compared with 5,244 logical bytes (5,624 response-body bytes) when also selecting
+the large payload column. These measurements exclude schema discovery and HTTP
+headers; they demonstrate avoided transfer, not ClickHouse disk-scan reduction.
+The observed NULL predicate remained in DuckDB and fetched all one million rows.
+`COUNT(*)` selected the first physical column. Required string comparison
+pushdown fails explicitly; it is not silently omitted.
+
+### One-million-row federated export
+
+Three complete CLI exports selected `row_id, u64`, ordered by `row_id`, and
+persisted 16,094,328 bytes of Arrow output each. All exact-value and NULL checks
+passed with the same canonical checksum. Timing includes coordinator/worker
+startup, source transfer, DuckDB ordering and file sync; checksum validation
+and fixture loading are outside the interval. Starting/stopping the RSS sampler
+is included, and the source capture proxy remains active during timing.
+
+| Trial | Export seconds | Million rows/s | Coordinator peak RSS | Worker peak RSS |
+| --- | ---: | ---: | ---: | ---: |
+| 1 | 0.291 | 3.442 | 58.76 MiB | 157.82 MiB |
+| 2 | 0.305 | 3.276 | 58.83 MiB | 150.62 MiB |
+| 3 | 0.296 | 3.377 | 57.84 MiB | 152.10 MiB |
+
+The median was **3.377 million rows/s** for this narrow synthetic export. Each
+trial fetched one million source rows in 23 batches. The four-CPU, approximately
+31-GiB VM also hosted ClickHouse, and an active test proxy captured and decoded
+the source batches. Caches were warm/uncontrolled. DuckDB used two threads and a
+256 MiB engine budget, with 64 MiB source/output limits and a two-million-row
+scan ceiling. RSS was sampled every 20 ms, can miss short peaks, and is reported
+separately per process; it excludes ClickHouse, proxy, kernel and filesystem
+cache memory. Do not sum the peaks or treat the engine budget as total RSS.
+
+This workload is narrower and smaller than the earlier ten-million-row native
+export. It does not establish a speedup over that path, Spice, or a production
+workload. DuckDB still materializes execution before Arrow delivery; joins,
+aggregates, ordering and LIMIT are not generally pushed to the source. Sustained
+concurrency, slow consumers, WAN transfer and production recovery remain untested.
+The [adapter guide](federation.md) documents the supported predicates and build
+contract. Other native connectors do not automatically gain federation support.
+
+The first CI run exposed an environment-dependent provisioning error: `git apply`
+inside build artifacts inherited the enclosing checkout and skipped the accessor
+patch while returning success. Provisioning now isolates Git discovery and checks
+the actual patched file before trusting its marker. Five Python regressions cover
+nested and Git-free checkouts, inherited Git environment, and missing/changed
+accessors. CI also caught a disappearing-process race in the acceptance observer;
+it now handles both Linux ENOENT and ESRCH during expected worker exit. Neither
+correction changes the compiled engine used for the measurements above.
+
 ## Object snapshots and MongoDB refresh
 
 The [object baseline build](evidence/object-storage-build.json) verifies the
@@ -95,7 +174,8 @@ The benchmark harness's initial timed wait used polling that could add up to
 50 ms of observer delay. Final evidence uses a blocking wait with a signal
 deadline. No Go source changed for that correction.
 
-No new container image or production deployment was validated for acceleration.
+The original acceleration change did not validate a new container image or
+production deployment; the later federation image and regression are recorded above.
 The Compose overlay is provided for operator integration. Incremental refresh,
 CDC and per-user row/column policies remain absent. Object snapshots were added in the later validation above.
 

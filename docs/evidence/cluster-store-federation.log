@@ -1,0 +1,3 @@
+Scope: Existing Go cluster-store integration tests against a fresh, disposable three-replica NATS fixture. Custom ClickHouse federation is covered separately.
+GOMAXPROCS=2 GOFLAGS=-p=1
+ok  	github.com/SYNEHQ/kelvo-go/internal/cluster	21.931s
