@@ -65,6 +65,52 @@ S3 location. DynamoDB and Cosmos DB preserve document payloads in Arrow Binary;
 they do not infer a tabular schema. Consult the [source guides](usage.md#source-guides)
 for explicit query, type, authentication and pagination limits.
 
+## Acceleration and federation capabilities
+
+Acceleration is not restricted to a database family. All 24 built-in native
+routes can feed the common Arrow-to-Parquet snapshot path, subject to their
+query/result restrictions and the [supported snapshot types](acceleration.md#type-and-memory-boundaries).
+Use these indicators independently:
+
+- **Eligible**: the configured query can use full-refresh acceleration when its
+  result schema is supported. This is not live-provider acceptance.
+- **Verified**: a live acceleration fixture is linked in the validation column.
+- **Conditional**: a separate adapter service or additional result-shape
+  restrictions apply.
+- **Live federation**: DuckDB can query the original source in a cross-source
+  query. Joining materialized snapshot aliases is a separate capability.
+
+| Sources | Full-refresh acceleration | Live federation | Acceleration validation |
+| --- | --- | --- | --- |
+| PostgreSQL, MySQL | Eligible | Yes | Live acceleration acceptance pending; native/federation tests are separate |
+| MariaDB, CockroachDB, AlloyDB, Redshift | Eligible; protocol-family compatibility | Not through these native routes | Product-specific acceleration acceptance pending |
+| ClickHouse | Eligible | No | Verified: [10-million-row snapshot and exact aggregates](evidence/acceleration-clickhouse.json) |
+| SQL Server, Oracle, Exasol, Ignite 2 | Eligible | No | Live acceleration acceptance pending |
+| Snowflake, Databricks, BigQuery, Spanner, Athena, Elasticsearch | Eligible | No | Live acceleration acceptance pending |
+| Trino, Presto, Flight SQL | Eligible | No; the remote engine may itself federate | Live acceleration acceptance pending |
+| Cloudflare D1 | Conditional: value-inferred schema | No | Live acceleration acceptance pending |
+| MongoDB | Eligible through restricted SQL; BSON documents stay binary | No | Live acceleration acceptance pending |
+| DynamoDB, Cosmos DB for NoSQL | Eligible; document payloads stay binary | No | Live acceleration acceptance pending |
+| CSV, Parquet, DuckDB, SQLite | Eligible through a federated refresh query | Yes | [CSV-derived snapshots and typed Parquet round trips verified](evidence/acceleration-acceptance.json); other file sources as refresh inputs await acceptance |
+| Engines reached through external adapters | Conditional on the configured service and returned types | No | All-provider acceleration acceptance pending |
+
+All eligible snapshots can subsequently be queried or joined as local aliases.
+Snapshotting a binary BSON/JSON/AttributeValue column does not infer relational
+fields or add document SQL support to DuckDB. MongoDB refresh uses the existing
+SQL compiler; native aggregation-pipeline refresh requests are not implemented.
+
+D1 does not supply typed result metadata: an empty response or all-NULL column
+can leave an unsupported Arrow Null type even if the source SQL contains a cast.
+Other connectors can return types this snapshot path rejects, including zoned
+nanosecond timestamps, nested values or dictionaries. Preserve such values using
+an explicit, acceptable source representation or query the original connector;
+Kelvo does not silently truncate them to make acceleration succeed.
+
+**Incremental refresh and CDC are not implemented for any connector.** Native
+read-query support, full-refresh eligibility, live federation and CDC must not
+be presented as one combined support status. Snapshots do not automatically
+become faster or cheaper because an engine is eligible; benchmark the workload.
+
 ## External adapters
 
 Set `adapter: flightsql` to connect to a trusted Flight SQL service, or

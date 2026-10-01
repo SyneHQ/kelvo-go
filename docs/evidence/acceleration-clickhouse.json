@@ -1,0 +1,159 @@
+{
+  "benchmark": "kelvo-clickhouse-acceleration-v1",
+  "binary_sha256": "e4b5b0d0880b585e5aa27bd42a5c7d350f67eb8ff3875c6bd63b2cffa8b5a857",
+  "created_at_utc": "2026-10-01T18:41:02.042198+00:00",
+  "median_wall_seconds": {
+    "accelerated": 0.2395058149995748,
+    "native": 0.20145069800128113
+  },
+  "notes": [
+    "Wall timing includes CLI startup, worker execution and durable CLI output; Arrow validation is outside the timed interval.",
+    "GNU time max RSS is its reported maximum resident set size for the command and waited-for children; it is not a process-tree summed peak and excludes remote ClickHouse memory.",
+    "Memory flags are engine/client budgets, not process-RSS caps.",
+    "No caches are flushed. Refresh precedes all trials; warming is included in the individually reported alternating trials. No separate warmup trials are discarded.",
+    "Aggregation returns grouped results over the selected subset. These timings do not measure a million-row query-result transfer or prove physical rows scanned.",
+    "This fixture and host comparison does not establish that acceleration is always faster; refresh cost is reported separately."
+  ],
+  "passed": true,
+  "query_limits": {
+    "max_bytes": 33554432,
+    "max_rows": 100000,
+    "max_temp_mb": 1024,
+    "memory_mb": 512,
+    "threads": 2,
+    "timeout_seconds": 300
+  },
+  "refresh": {
+    "exit_status": 0,
+    "gnu_time_elapsed_seconds": 2.44,
+    "gnu_time_max_rss_kib": 79804,
+    "wall_seconds": 2.447209047000797
+  },
+  "refresh_limits": {
+    "max_bytes": 1073741824,
+    "max_rows": 10000000,
+    "max_temp_mb": 1024,
+    "memory_mb": 512,
+    "threads": 2,
+    "timeout_seconds": 300
+  },
+  "results": {
+    "all_six_trial_results_exactly_equal": true,
+    "group_values_sha256": "345981fffac61547a820aa937da4e9cf1939b30f49adf23be717a8612e2f9c2d",
+    "groups": 4096,
+    "id_sum": 49999995000000,
+    "max_id": 9999999,
+    "min_id": 0,
+    "selected_rows": 10000000
+  },
+  "selected_source_rows": 10000000,
+  "snapshot": {
+    "parquet_bytes": 112829920,
+    "rows": 10000000
+  },
+  "source_fixture": "existing kelvo_bench.fact_events; no source DDL or DML",
+  "source_unavailable_proof": {
+    "accelerated_query": {
+      "exit_status": 0,
+      "gnu_time_elapsed_seconds": 0.24,
+      "gnu_time_max_rss_kib": 117128,
+      "wall_seconds": 0.24438318699867523
+    },
+    "catalog_definition_unchanged": true,
+    "conclusion": "The accelerated query succeeded with the registered source endpoint unavailable.",
+    "exact_result_equal": true,
+    "native_negative_control": {
+      "exit_status": 1,
+      "gnu_time_elapsed_seconds": 0.03,
+      "gnu_time_max_rss_kib": 56424,
+      "wall_seconds": 0.03213017899906845
+    },
+    "source_endpoint_overridden_only_in_child_environment": true
+  },
+  "trials": [
+    {
+      "cache_state": "uncontrolled; warming included",
+      "measurements": {
+        "accelerated": {
+          "arrow_output_bytes": 181248,
+          "exact_result_equal": true,
+          "exit_status": 0,
+          "gnu_time_elapsed_seconds": 0.23,
+          "gnu_time_max_rss_kib": 116152,
+          "output_groups": 4096,
+          "wall_seconds": 0.2395058149995748
+        },
+        "native": {
+          "arrow_output_bytes": 148144,
+          "exact_result_equal": true,
+          "exit_status": 0,
+          "gnu_time_elapsed_seconds": 0.2,
+          "gnu_time_max_rss_kib": 57172,
+          "output_groups": 4096,
+          "wall_seconds": 0.20145069800128113
+        }
+      },
+      "order": [
+        "native",
+        "accelerated"
+      ],
+      "trial": 1
+    },
+    {
+      "cache_state": "uncontrolled; warming included",
+      "measurements": {
+        "accelerated": {
+          "arrow_output_bytes": 181248,
+          "exact_result_equal": true,
+          "exit_status": 0,
+          "gnu_time_elapsed_seconds": 0.23,
+          "gnu_time_max_rss_kib": 117092,
+          "output_groups": 4096,
+          "wall_seconds": 0.23938971200004744
+        },
+        "native": {
+          "arrow_output_bytes": 148144,
+          "exact_result_equal": true,
+          "exit_status": 0,
+          "gnu_time_elapsed_seconds": 0.18,
+          "gnu_time_max_rss_kib": 57144,
+          "output_groups": 4096,
+          "wall_seconds": 0.1875751269999455
+        }
+      },
+      "order": [
+        "accelerated",
+        "native"
+      ],
+      "trial": 2
+    },
+    {
+      "cache_state": "uncontrolled; warming included",
+      "measurements": {
+        "accelerated": {
+          "arrow_output_bytes": 181248,
+          "exact_result_equal": true,
+          "exit_status": 0,
+          "gnu_time_elapsed_seconds": 0.24,
+          "gnu_time_max_rss_kib": 114704,
+          "output_groups": 4096,
+          "wall_seconds": 0.24302278899995144
+        },
+        "native": {
+          "arrow_output_bytes": 148144,
+          "exact_result_equal": true,
+          "exit_status": 0,
+          "gnu_time_elapsed_seconds": 0.23,
+          "gnu_time_max_rss_kib": 57280,
+          "output_groups": 4096,
+          "wall_seconds": 0.2367499140000291
+        }
+      },
+      "order": [
+        "native",
+        "accelerated"
+      ],
+      "trial": 3
+    }
+  ]
+}

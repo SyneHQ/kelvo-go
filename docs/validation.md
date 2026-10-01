@@ -1,6 +1,61 @@
-# Validation — 2026-10-01
+# Validation — 2026-10-02
 
 Status: a tested developer preview. Cluster, sandbox, connector and failure-handling acceptance is described below. These checks do not certify a production multi-tenant service, establish capacity for every database, or replace deployment-specific security and recovery testing.
+
+## Dataset acceleration
+
+Persistent full-refresh Parquet snapshots are implemented with manual refresh,
+local scheduling and tenant-scoped NATS cluster dispatch. DuckDB queries selected
+snapshot aliases. [Configuration and operational boundaries](acceleration.md)
+cover freshness, grants, types, retention and shared storage.
+
+The [integrated build record](evidence/acceleration-build.json) identifies the
+tested Linux binaries and matching VM/local source hashes. Full tagged Go tests,
+acceleration/catalog/cluster/worker/HTTP race tests, vet, CLI and sandbox-launcher
+builds passed. [Tagged test log](evidence/tests-acceleration.log),
+[race log](evidence/race-acceleration.log), [CLI/HTTP regression](evidence/acceptance-acceleration.json)
+and [cluster regression](evidence/cluster-acceleration.json) are retained.
+
+The [14-check acceleration acceptance](evidence/acceleration-acceptance.json)
+passed exact typed Arrow/Parquet round trips, empty schemas, failed-refresh
+retention, source-file outage reads, authorization-version invalidation and
+expiry. Real NATS dispatch refreshed two tenants' snapshots; both tenant A
+workers read the shared snapshot, scheduled replacements became visible, and
+cross-tenant handles remained inaccessible. Linux store race tests also exercise
+separate-process writer locking, writer death, readers and generation cleanup.
+These are same-host fixtures, not multi-host filesystem or recovery certification.
+
+### Ten-million-row snapshot comparison
+
+The [benchmark script](../scripts/acceleration_benchmark.py) reads four columns
+from the first 10 million rows of the existing ClickHouse fixture and creates a
+112,829,920-byte Parquet snapshot. Refresh took **2.447 seconds**. Three alternating
+query pairs returned 4,096 groups with exactly matching counts, integer sums and
+bounds. Median complete CLI query times were **0.201 seconds native** and
+**0.240 seconds accelerated**. Native ClickHouse was faster in this comparison.
+
+[Raw evidence](evidence/acceleration-clickhouse.json) records each trial and the
+source-unavailable positive/negative controls: snapshot SQL returned the same
+result with the registered source endpoint unreachable, while the native query
+failed. This demonstrates independent reads after refresh; it does not establish
+reduced PostgreSQL/Oracle load or a universal latency advantage.
+
+GNU time reported maximum RSS of 77.9 MiB for refresh, 112.0–114.3 MiB for the
+accelerated query trials and 55.8–55.9 MiB for native query trials. These are
+GNU time's command/children maxima, not a summed process-tree peak; they exclude
+ClickHouse server memory. Source and Kelvo shared the four-CPU, approximately
+31-GiB test VM. Engine/client budgets were 512 MiB and two threads; they are not
+total-process memory limits. Caches were uncontrolled, only three pairs ran,
+and query output contained 4,096 rows rather than 10 million rows. No export,
+WAN, cold-cache or sustained-concurrency throughput claim follows from this test.
+
+The benchmark harness's initial timed wait used polling that could add up to
+50 ms of observer delay. Final evidence uses a blocking wait with a signal
+deadline. No Go source changed for that correction.
+
+No new container image or production deployment was validated for acceleration.
+The Compose overlay is provided for operator integration. Incremental refresh,
+CDC, object-store distribution and per-user row/column policies remain absent.
 
 ## Native connector expansion
 
