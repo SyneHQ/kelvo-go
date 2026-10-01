@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<title id="title">Kelvo mark</title>
+<desc id="desc">Seven horizontal bands form a curved uppercase K.</desc>
+<g fill="#271B16" transform="translate(0 0) scale(1.0)"><defs><clipPath id="mark"><path d="M24 24H64V103C92 85 116 55 146 24H226C184 67 147 107 106 128C150 149 194 189 232 232H149C115 192 89 160 64 152V232H24Z"/></clipPath></defs><g clip-path="url(#mark)"><rect x="0" y="24" width="256" height="22"/><rect x="0" y="55" width="256" height="22"/><rect x="0" y="86" width="256" height="22"/><rect x="0" y="117" width="256" height="22"/><rect x="0" y="148" width="256" height="22"/><rect x="0" y="179" width="256" height="22"/><rect x="0" y="210" width="256" height="22"/></g></g>
+</svg>

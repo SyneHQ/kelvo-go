@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<title id="title">Kelvo small mark</title>
+<desc id="desc">A solid curved K for sizes below 32 pixels.</desc>
+<path fill="#271B16" d="M24 24H64V103C92 85 116 55 146 24H226C184 67 147 107 106 128C150 149 194 189 232 232H149C115 192 89 160 64 152V232H24Z"/>
+</svg>
