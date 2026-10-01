@@ -20,6 +20,8 @@ def main():
     parser.add_argument("--image", default="mongo:8.0.32")
     parser.add_argument("--go", default="go")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--acceleration", action="store_true",
+                        help="also verify YAML pipelines through Parquet acceleration and DuckDB")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     command = None
@@ -95,6 +97,23 @@ def main():
                                  "SQL empty and all-null aggregate semantics", "SQL exact large-integer SUM",
                                  "SQL nonnumeric aggregate rejected", "SQL incompatible comparison types rejected"],
                       "test_output": test.stdout.strip()}
+            if args.acceleration:
+                accelerated = subprocess.run(
+                    [args.go, "test", "-tags", "duckdb_arrow", "-p", "2", "-count=1", "-v",
+                     "-run", "^TestMongoPipelineLiveAcceleration$", "./internal/acceleration"],
+                    cwd=root, env=environment, capture_output=True, text=True, timeout=240)
+                if accelerated.returncode or "--- PASS: TestMongoPipelineLiveAcceleration " not in accelerated.stdout:
+                    diagnostic = (accelerated.stdout + accelerated.stderr).replace(password, "<redacted>").replace(reader_password, "<redacted>")
+                    raise RuntimeError("MongoDB acceleration acceptance failed:\n" + diagnostic[-6000:])
+                report["passed"].extend([
+                    "YAML-configured read-only MongoDB pipeline refresh",
+                    "exact YAML Int64 filter boundaries",
+                    "filtered heterogeneous BSON bytes preserved through Parquet and DuckDB",
+                    "grouped Decimal128 and Int64 values preserved through Parquet and DuckDB",
+                    "empty pipeline and zero-row result retain BSON schema",
+                    "$out and $merge rejection preserves the last committed snapshot",
+                    "rejected write stages create no MongoDB output collection"])
+                report["acceleration_test_output"] = accelerated.stdout.strip()
             encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"
             if args.output:
                 args.output.parent.mkdir(parents=True, exist_ok=True)
