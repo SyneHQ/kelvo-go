@@ -2,7 +2,52 @@
 
 Status: a tested developer preview. Cluster, sandbox, connector and failure-handling acceptance is described below. These checks do not certify a production multi-tenant service, establish capacity for every database, or replace deployment-specific security and recovery testing.
 
-## Cluster and connector expansion
+## Native connector expansion
+
+Six additional native routes are implemented: Exasol, Spanner, Ignite 2, Athena,
+DynamoDB, and Cosmos DB for NoSQL. Elasticsearch now supports bound positional
+parameters and has live acceptance evidence. Configuration, source dispatch and
+worker credential-isolation tests include the new routes. These connectors run
+queries at the selected provider; they do not add cross-source DuckDB federation.
+
+The current [integrated build record](evidence/native-expansion-build.json) records
+the Go version, kernel, commands, source hashes and binary hashes. Full tagged
+Go tests, native/worker/cluster/HTTP race tests, vet, binary and sandbox-launcher
+builds, [CLI/HTTP acceptance](evidence/acceptance-native-expansion.json), and
+[cluster regression acceptance](evidence/cluster-native-expansion.json) passed on
+the dedicated Linux VM. [Tagged tests](evidence/tests-native-expansion.log) and
+[race tests](evidence/race-native-expansion.log) are retained. The new connectors
+were not throughput-benchmarked, packaged into a newly validated container image,
+or deployed to production by this change.
+
+| Connector | Executed checks | Remaining boundary |
+| --- | --- | --- |
+| Elasticsearch 8.19.0 | [Secured live server](evidence/elasticsearch-native.json): 1,205 rows, pagination, exact int64/NULLs, parameters, limits, index-restricted key, zero open contexts afterward | Package-level acceptance; no cluster or throughput measurement |
+| Ignite 2.17.0 | [Authenticated live server](evidence/ignite-native.json): 1,205 rows, exact values, UUID metadata refusal/cast, empty results, failure cleanup, six released cursors | One node behind a verified TLS proxy; no RBAC or sticky-routing acceptance; Ignite 3 unsupported |
+| DynamoDB Local 3.1.0 | [Live Local engine](evidence/dynamodb-native.json): complete tagged values, 38-digit decimals, 1,205 rows, empty continuation pages, restrictions/limits, certificate checks | Local does not enforce AWS IAM or prove cloud SigV4 interoperability |
+| Exasol | Native WSS protocol fixtures: RSA login, verified TLS, exact DECIMAL values, metadata, batching/fetch, cancellation, rollback acknowledgement, malformed responses and bounded stalls | No live Exasol server; source-side read permissions required |
+| Spanner | HTTPS fixtures: source-bound sessions, single-use strong read-only transaction, exact scalar types, cancellation and cleanup | No Google account; materialized REST response limited to 10 MiB; complex types unsupported |
+| Athena | Signed HTTPS fixtures: execution/polling, paging/header handling, exact scalar types, cancellation and limits | No AWS account; result files remain in configured S3 storage |
+| Cosmos DB for NoSQL | HTTPS fixtures and official HMAC vector: exact JSON, continuation/session headers, empty pages, RU/page budgets, query restrictions | No Azure account; projections/filters only, no distributed aggregates/sorting/query-plan merging |
+
+Direct connector cancellation/cleanup checks run in-process. The outer worker
+currently uses immediate process-group termination, which can preempt remote
+cleanup on caller cancellation, outer deadlines, or downstream sink failure.
+This release does not guarantee provider-side cancellation through the worker
+boundary; see [the operational limitation](usage.md#native-cancellation-and-remote-cleanup).
+
+New source guides document unsupported parameters, types and query shapes.
+DynamoDB and Cosmos return lossless document bytes in Arrow Binary, not inferred
+relational columns. Ignite decimals use annotated exact numeric text because the
+REST metadata lacks precision/scale. Exasol bypasses its upstream driver's lossy
+number decoding; its rollback-only session does not replace read-only grants.
+
+The first Ignite live scalar test exposed UUID text with binary metadata and
+failed safely. The connector now explicitly rejects that mismatch, with a
+regression and a validated `CAST(... AS VARCHAR)` path. Protocol fixtures alone
+had not exposed this provider behavior.
+
+## Prior cluster and connector expansion
 
 Builds and tests ran on the dedicated Linux amd64 VM, using Go 1.26.8, DuckDB 1.5.6 and Linux `6.12.95+deb12-cloud-amd64`. No local builds were used. The [container image record](evidence/cluster-connectors-image.json) identifies the Docker image and extracted Go/native-launcher binaries; [source hashes](evidence/cluster-connectors-source.json) match the tested VM and local checkout. The CLI, cluster, container and spill acceptance uses those extracted binaries or that image.
 
@@ -25,7 +70,7 @@ Builds and tests ran on the dedicated Linux amd64 VM, using Go 1.26.8, DuckDB 1.
 | Flight SQL | Real TLS Flight fixtures including exact batches, allocation/row limits, schema framing, malicious messages, endpoint binding and cancellation | Client only; one result endpoint; no live vendor service or server implementation |
 | Optional `dbapi` adapter | HTTPS contract tests plus [container CLI acceptance](evidence/adapter-acceptance.json) for source binding and token handoff | Bounded JSON compatibility; no live deployed gateway/all-backend acceptance |
 
-The [44-engine checklist](source-coverage.md) identifies 18 built-in native routes (including protocol families), three reference file-source routes, and 23 routes requiring an external service. Parquet is additional. Names registered for external adapters do not supply JDBC/vendor drivers. The reference gateway's two SAP entries have incomplete connection builders and need a custom adapter. Metadata browsing, writes, migrations and CDC are separate capabilities.
+The [44-engine checklist](source-coverage.md) identifies 24 built-in native routes (including protocol families), three reference file-source routes, and 17 routes requiring an external service. Parquet is additional. Names registered for external adapters do not supply JDBC/vendor drivers. The reference gateway's two SAP entries have incomplete connection builders and need a custom adapter. Metadata browsing, writes, migrations and CDC are separate capabilities.
 
 The MongoDB compiler is pinned to the published [zero-sql commit](https://github.com/SyneHQ/zero-sql/commit/b01a7e87002271a661ebd68060824be013347845); no local module replacement is required. Its new read-only path leaves the legacy write-capable conversion API unchanged. Kelvo deliberately uses only the restricted read-only compiler.
 

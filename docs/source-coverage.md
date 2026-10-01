@@ -21,20 +21,20 @@ bundled driver or evidence that the backend has been tested.
 | `cockroachdb` | PostgreSQL driver | Native protocol-family |
 | `sqlserver` | SQL driver | Native |
 | `clickhouse` | Dedicated client | Native ArrowStream |
-| `cosmosdb` | SQL driver | External adapter |
+| `cosmosdb` | SQL driver | Native NoSQL query REST API; bounded JSON documents |
 | `oracle` | SQL driver | Native |
-| `dynamodb` | SQL driver | External adapter |
+| `dynamodb` | SQL driver | Native read-only PartiQL; lossless AttributeValue documents |
 | `trino` | SQL driver | Native HTTPS statement protocol |
 | `clickhouse_lambda` | Lambda SQL driver | External adapter |
 | `alloydb` | PostgreSQL driver | Native protocol-family |
 | `presto` | SQL driver | Native HTTPS statement protocol |
-| `athena` | SQL driver | External adapter |
+| `athena` | SQL driver | Native signed HTTPS query API |
 | `hive` | External JDBC bridge | External adapter |
 | `h2` | External JDBC bridge | External adapter |
-| `ignite` | SQL driver | External adapter |
-| `spanner` | SQL driver | External adapter |
+| `ignite` | SQL driver | Native Ignite 2 REST SQL fields; same-node cursors |
+| `spanner` | SQL driver | Native read-only REST SQL; bounded materialized results |
 | `db2` | External JDBC bridge | External adapter |
-| `exasol` | SQL driver | External adapter |
+| `exasol` | SQL driver | Native verified-TLS WebSocket SQL |
 | `sap_hana` | Declared; connection builder missing | Custom external adapter required |
 | `sap_ase` | Declared; connection builder missing | Custom external adapter required |
 | `salesforce` | SQL/API driver | External adapter |
@@ -57,6 +57,13 @@ bundled driver or evidence that the backend has been tested.
 | `redis` | External JDBC bridge | External adapter |
 | `arrow_flight` | External gateway | Native Flight SQL only |
 | `google_sheets` | API snapshot into DuckDB | External adapter |
+
+The native expansion is configured in [sources-native.yml](../deploy/examples/sources-native.yml).
+These routes execute at one configured source; they do not add DuckDB federation,
+metadata browsing, write APIs, or CDC. Athena retains query results in the configured
+S3 location. DynamoDB and Cosmos DB preserve document payloads in Arrow Binary;
+they do not infer a tabular schema. Consult the [source guides](usage.md#source-guides)
+for explicit query, type, authentication and pagination limits.
 
 ## External adapters
 

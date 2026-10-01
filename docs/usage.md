@@ -108,6 +108,11 @@ Native streams are not automatically available for DuckDB cross-source joins. In
 | MongoDB | [Restricted SQL and aggregation](sources-mongodb.md) |
 | Trino and Presto | [Statement protocol](sources-trino.md) |
 | Elasticsearch | [SQL API](sources-elasticsearch.md) |
+| Exasol | [WebSocket SQL and verified TLS](sources-exasol.md) |
+| Google Spanner | [Read-only REST SQL](sources-spanner.md) |
+| Apache Ignite 2 | [REST SQL fields](sources-ignite.md) |
+| Athena and DynamoDB | [Explicit AWS credentials and query APIs](sources-aws.md) |
+| Cosmos DB for NoSQL | [Documents, authentication and query budgets](sources-cosmosdb.md) |
 | Flight SQL | [Client connections](sources-flight.md) |
 | SQLite | [Read-only attachments](sources-sqlite.md) |
 | Additional engines | [External adapters](sources-adapters.md) |
@@ -144,3 +149,18 @@ bin/kelvo node --config /private/kelvo/node.yml
 ```
 
 Bootstrap uses provisioner credentials. Running gateways and nodes bind existing broker resources with narrower permissions. `serve` remains a simpler single-trust-domain mode and does not create an automatic tenant boundary. Existing ClickHouse throughput measurements predate cluster mode and do not measure cluster overhead.
+
+## Native cancellation and remote cleanup
+
+Connector cleanup runs inside the query worker. A provider error, conversion
+failure, or limit detected inside that process can trigger its documented cursor,
+session or query cleanup. Direct connector tests validate those paths.
+
+The CLI, HTTP service and cluster executor terminate the worker process group
+immediately on caller cancellation, the outer deadline, or a downstream IPC/sink
+failure. That can preempt connector cleanup, including Athena StopQueryExecution,
+Spanner session deletion, Exasol abort/rollback, and search/grid cursor closure.
+Local process termination is therefore not confirmation that remote work stopped.
+Configure provider-side query deadlines, cursor/session expiry and result-storage
+lifecycle policies. A bounded graceful worker-cancellation protocol and live
+remote-cleanup acceptance through that boundary remain future work.
