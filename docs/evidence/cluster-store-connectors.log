@@ -1,0 +1,61 @@
+# Executed from repository root; Python and Go executable paths normalized for publication.
+# go test compiled package sources independently; no container image or prebuilt Kelvo binary was used.
+GOMAXPROCS=2 GOFLAGS="-p=2 -count=1 -v" python scripts/cluster_fixture.py test-store --go go
+=== RUN   TestGatewayYAMLPolicies
+=== RUN   TestGatewayYAMLPolicies/unknown
+=== RUN   TestGatewayYAMLPolicies/duplicate
+=== RUN   TestGatewayYAMLPolicies/documents
+=== RUN   TestGatewayYAMLPolicies/capacity
+=== RUN   TestGatewayYAMLPolicies/unsafe_endpoint
+=== RUN   TestGatewayYAMLPolicies/short_retention
+=== RUN   TestGatewayYAMLPolicies/unknown_worker
+--- PASS: TestGatewayYAMLPolicies (0.02s)
+    --- PASS: TestGatewayYAMLPolicies/unknown (0.00s)
+    --- PASS: TestGatewayYAMLPolicies/duplicate (0.00s)
+    --- PASS: TestGatewayYAMLPolicies/documents (0.00s)
+    --- PASS: TestGatewayYAMLPolicies/capacity (0.00s)
+    --- PASS: TestGatewayYAMLPolicies/unsafe_endpoint (0.00s)
+    --- PASS: TestGatewayYAMLPolicies/short_retention (0.00s)
+    --- PASS: TestGatewayYAMLPolicies/unknown_worker (0.00s)
+=== RUN   TestEndpointAuthorityOnly
+--- PASS: TestEndpointAuthorityOnly (0.00s)
+=== RUN   TestGatewayDerivesTenantFromTokenNotHeader
+--- PASS: TestGatewayDerivesTenantFromTokenNotHeader (0.00s)
+=== RUN   TestArrowEOSTailWithholdsUntilDurableSuccess
+--- PASS: TestArrowEOSTailWithholdsUntilDurableSuccess (0.00s)
+=== RUN   TestArrowEOSTailDoesNotEmitOnErrorOrCancel
+--- PASS: TestArrowEOSTailDoesNotEmitOnErrorOrCancel (0.00s)
+=== RUN   TestGatewayMissingAuthentication
+--- PASS: TestGatewayMissingAuthentication (0.00s)
+=== RUN   TestQueuedResultsWaitUntilJobExpiry
+--- PASS: TestQueuedResultsWaitUntilJobExpiry (0.05s)
+=== RUN   TestNodeCancellationHoldsPermitUntilExecutorExits
+--- PASS: TestNodeCancellationHoldsPermitUntilExecutorExits (0.04s)
+=== RUN   TestNodeDuplicateDeliveryDoesNotExecuteOrReassign
+--- PASS: TestNodeDuplicateDeliveryDoesNotExecuteOrReassign (0.01s)
+=== RUN   TestNodeRequiresMatchingPolicyAndGatewayIdentity
+--- PASS: TestNodeRequiresMatchingPolicyAndGatewayIdentity (0.00s)
+=== RUN   TestSlot
+--- PASS: TestSlot (0.00s)
+=== RUN   TestValidTransition
+--- PASS: TestValidTransition (0.00s)
+=== RUN   TestClaimValidation
+--- PASS: TestClaimValidation (0.00s)
+=== RUN   TestNATSStoreAdmissionCASAndReuse
+--- PASS: TestNATSStoreAdmissionCASAndReuse (0.03s)
+=== RUN   TestNATSStoreQueueAndWorkerLease
+--- PASS: TestNATSStoreQueueAndWorkerLease (10.13s)
+=== RUN   TestNATSStoreRejectsMetadataMismatch
+--- PASS: TestNATSStoreRejectsMetadataMismatch (0.01s)
+=== RUN   TestNATSStoreReconcileFailsStaleAssigned
+--- PASS: TestNATSStoreReconcileFailsStaleAssigned (0.01s)
+=== RUN   TestNATSStoreCorruptJobFailsClosed
+--- PASS: TestNATSStoreCorruptJobFailsClosed (0.01s)
+=== RUN   TestNATSAccountIsolation
+--- PASS: TestNATSAccountIsolation (0.26s)
+=== RUN   TestMTLSWorkerIdentity
+2026/10/01 16:02:03 http: TLS handshake error from 127.0.0.1:46256: remote error: tls: bad certificate
+2026/10/01 16:02:03 http: TLS handshake error from 127.0.0.1:46270: tls: client offered only unsupported versions: [303]
+--- PASS: TestMTLSWorkerIdentity (0.08s)
+PASS
+ok  	github.com/SYNEHQ/kelvo-go/internal/cluster	10.655s

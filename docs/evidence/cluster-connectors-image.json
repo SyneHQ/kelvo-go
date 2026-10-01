@@ -1,0 +1,8 @@
+{
+  "image": "kelvo-go:accept",
+  "image_id": "sha256:f9257811ecc733effb4fdff9567555d0d7d1adc0fe1c00c2c8013790e84d606b",
+  "sha256": {
+    "bin/kelvo": "8089d7941de2a3c0e28ad905ba174d16fd1d72a741451038557e38128bc91311",
+    "bin/kelvo-landlock": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "passed": true,
+  "uncached": true,
+  "go_flags": "-p=2 -count=1 -v",
+  "tests": [
+    "TestGatewayYAMLPolicies",
+    "TestEndpointAuthorityOnly",
+    "TestGatewayDerivesTenantFromTokenNotHeader",
+    "TestArrowEOSTailWithholdsUntilDurableSuccess",
+    "TestArrowEOSTailDoesNotEmitOnErrorOrCancel",
+    "TestGatewayMissingAuthentication",
+    "TestQueuedResultsWaitUntilJobExpiry",
+    "TestNodeCancellationHoldsPermitUntilExecutorExits",
+    "TestNodeDuplicateDeliveryDoesNotExecuteOrReassign",
+    "TestNodeRequiresMatchingPolicyAndGatewayIdentity",
+    "TestSlot",
+    "TestValidTransition",
+    "TestClaimValidation",
+    "TestNATSStoreAdmissionCASAndReuse",
+    "TestNATSStoreQueueAndWorkerLease",
+    "TestNATSStoreRejectsMetadataMismatch",
+    "TestNATSStoreReconcileFailsStaleAssigned",
+    "TestNATSStoreCorruptJobFailsClosed",
+    "TestNATSAccountIsolation",
+    "TestMTLSWorkerIdentity"
+  ],
+  "log": "cluster-store-connectors.log",
+  "provenance": {
+    "recorded_at_utc": "2026-10-01T16:03:04.892634+00:00",
+    "execution_kind": "go test compiled and executed the Go package sources independently; no Kelvo container image or prebuilt Kelvo binary was used",
+    "gomaxprocs": 2,
+    "go_version": "go version go1.26.8 linux/amd64",
+    "cluster_fixture_sha256": "78c1cc6940d13d8c91ce4a928cc6ecd74ba13c9c59625629a4fa483af0cd1888",
+    "source_status": "Store/account source unchanged since this test run; result retained",
+    "command": "GOMAXPROCS=2 GOFLAGS=\"-p=2 -count=1 -v\" python scripts/cluster_fixture.py test-store --go go",
+    "command_note": "Executed from repository root; Python and Go executable paths normalized for publication"
+  }
+}

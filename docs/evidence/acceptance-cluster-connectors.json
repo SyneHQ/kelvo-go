@@ -1,0 +1,24 @@
+{
+  "cli_decimal_values": "passed",
+  "relative_quickstart_configuration": "passed",
+  "default_kelvo_yml_configuration": "passed",
+  "failed_export_preserves_existing_file": "passed",
+  "authentication": "passed",
+  "http_arrow_and_single_consumer": "passed",
+  "output_limit_is_failure": "passed",
+  "queued_cancellation": "passed",
+  "active_cancel_seconds": 0.0008013799997570459,
+  "linux_parent_death_cleanup": "passed",
+  "provenance": {
+    "recorded_at_utc": "2026-10-01T16:09:13.527780+00:00",
+    "execution_kind": "Acceptance against binaries extracted from the specified container image",
+    "image_id": "sha256:f9257811ecc733effb4fdff9567555d0d7d1adc0fe1c00c2c8013790e84d606b",
+    "kelvo_sha256": "8089d7941de2a3c0e28ad905ba174d16fd1d72a741451038557e38128bc91311",
+    "landlock_sha256": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1",
+    "acceptance_script_sha256": "1bf072bd2ad9a7195bff97c00d2209205816ea1969a24344036548f54d674171",
+    "cluster_fixture_sha256": "78c1cc6940d13d8c91ce4a928cc6ecd74ba13c9c59625629a4fa483af0cd1888",
+    "cluster_acceptance_sha256": "3821321583bfcd5d840f7c63ad2ff16a2697e4c7967778776663e0b277df80cf",
+    "gomaxprocs": 2,
+    "go_version": "go version go1.26.8 linux/amd64"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "date": "2026-10-01",
+  "host": "dedicated-linux-test-vm",
+  "kernel": "6.12.95+deb12-cloud-amd64",
+  "launcher_compile": "cc -O2 -Wall -Wextra -Werror -std=c11 -o /tmp/kelvo-landlock sandbox/launcher.c",
+  "probe": "source=1 proc=0 sibling=0 secret=0 trunc=0",
+  "result": "Landlock allowed the explicitly permitted source read and denied /proc/self/environ, unlisted sibling and secret files, and O_TRUNC on the source."
+}
