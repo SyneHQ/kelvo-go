@@ -2,7 +2,7 @@
 """Render Kelvo's vector identity and PNG exports.
 
 Requires fonttools, CairoSVG and Pillow. Supply OFL-licensed Instrument Serif
-Regular. Lettering is outlined; the font is not bundled.
+Regular and Inter Regular. Lettering is outlined; fonts are not bundled.
 The atmospheric field is original deterministic procedural art, not photography.
 See brand/README.md for font provenance and usage.
 """
@@ -14,6 +14,7 @@ import math
 from pathlib import Path
 import random
 import re
+import xml.etree.ElementTree as ET
 
 import cairosvg
 from fontTools.pens.svgPathPen import SVGPathPen
@@ -34,6 +35,14 @@ class Lettering:
         self.glyphs = self.font.getGlyphSet()
         self.cmap = self.font.getBestCmap()
         self.units = self.font["head"].unitsPerEm
+
+    def width(self, text, size, tracking=0):
+        advance = sum(self.font["hmtx"][self.cmap[ord(c)]][0] for c in text)
+        return advance * size / self.units + max(0, len(text) - 1) * tracking
+
+    def centered(self, text, center, baseline, size, color=INK, tracking=0):
+        return self.draw(text, center - self.width(text, size, tracking) / 2,
+                         baseline, size, color, tracking)
 
     def draw(self, text, x, baseline, size, color=INK, tracking=0):
         paths, cursor = [], 0
@@ -136,13 +145,119 @@ def banner(serif, height):
         "interleaved curved bands. The symbol is geometric, not a monogram.", "".join(parts),
     )
 
+def readme_banner(serif, sans, marks_path):
+    """A database grid framing Kelvo's small lockup and product headline."""
+    width, height = 1600, 800
+    cell_width, cell_height = 200, height / 6
+    background, panel, line, text_color = "#FCFAF8", "#FFFEFD", "#DDD3D5", "#211C1C"
+    # Inline the reviewed sprite: GitHub rendering must not depend on remote assets.
+    ET.register_namespace("", "http://www.w3.org/2000/svg")
+    sprite = ET.parse(marks_path).getroot()
+    symbols = "".join(ET.tostring(child, encoding="unicode") for child in sprite)
+    parts = [f'<defs>{symbols}</defs>',
+             f'<rect width="{width}" height="{height}" fill="{background}"/>']
+
+    # Fine subdivisions provide the quiet graph-paper texture of the reference.
+    fine = []
+    for x in range(0, width + 1, 100):
+        fine.append(f'<path d="M{x} 0V{height}"/>')
+    for row in range(13):
+        y = row * height / 12
+        fine.append(f'<path d="M0 {y:g}H{width}"/>')
+    parts.append('<g fill="none" stroke="#EBE5E5" stroke-width="0.7">'
+                 + "".join(fine) + '</g>')
+
+    labels = {
+        "postgresql": "PostgreSQL", "mysql": "MySQL", "mongodb": "MongoDB",
+        "duckdb": "DuckDB", "clickhouse": "ClickHouse", "snowflake": "Snowflake",
+        "databricks": "Databricks", "elasticsearch": "Elasticsearch",
+    }
+
+    def database(source, column, row, opacity=1):
+        x, y = column * cell_width, row * cell_height
+        label = labels[source]
+        label_size = 18 if source != "elasticsearch" else 16
+        icon_size, gap = 38, 12
+        group_width = icon_size + gap + sans.width(label, label_size)
+        start = x + (cell_width - group_width) / 2
+        center_y = y + cell_height / 2
+        # Clear the fine grid inside occupied cells while retaining major borders.
+        return (
+            f'<rect x="{x}" y="{y:g}" width="{cell_width}" height="{cell_height:g}" fill="{panel}"/>'
+            f'<g opacity="{opacity}">'
+            f'<use xlink:href="#{source}" x="{start:.3f}" y="{center_y - icon_size / 2:.3f}" '
+            f'width="{icon_size}" height="{icon_size}"/>'
+            + sans.draw(label, start + icon_size + gap, center_y + 6, label_size, "#514548")
+            + '</g>'
+        )
+
+    # Only supported database products; no unrelated workplace integrations.
+    placements = [
+        ("mongodb", 1, 0, 1), ("duckdb", 6, 0, 1),
+        ("postgresql", 0, 1, 1), ("mysql", 2, 1, 1),
+        ("snowflake", 5, 1, 1), ("elasticsearch", 7, 1, 1),
+        ("databricks", 0, 2, 1), ("duckdb", 1, 2, 0.22),
+        ("mysql", 6, 2, 0.22), ("clickhouse", 7, 2, 1),
+        ("elasticsearch", 1, 3, 0.9), ("snowflake", 6, 3, 0.22),
+        ("mongodb", 7, 3, 0.22),
+        ("postgresql", 1, 4, 0.28), ("databricks", 3, 4, 0.9),
+        ("duckdb", 5, 4, 0.22), ("clickhouse", 7, 4, 0.65),
+        ("duckdb", 0, 5, 0.3), ("mysql", 2, 5, 0.85),
+        ("snowflake", 4, 5, 0.25), ("postgresql", 6, 5, 0.25),
+    ]
+    parts.extend(database(*placement) for placement in placements)
+    major = []
+    for x in range(0, width + 1, cell_width):
+        major.append(f'<path d="M{x} 0V{height}"/>')
+    for row in range(7):
+        major.append(f'<path d="M0 {row * cell_height:g}H{width}"/>')
+    parts.append(f'<g fill="none" stroke="{line}" stroke-width="1">'
+                 + "".join(major) + '</g>')
+
+    # Top-center signature stays compact and distinct from the product headline.
+    parts.append(f'<rect x="600" y="0" width="400" height="{cell_height:g}" '
+                 f'fill="{panel}" stroke="{line}"/>')
+    word_size, symbol_size, gap = 48, 46, 10
+    lockup_width = symbol_size + gap + serif.width("KELVO", word_size, 0.3)
+    start = (width - lockup_width) / 2
+    parts.extend([
+        mark(VERMILION, start, 42, symbol_size, "readme-lockup"),
+        serif.draw("KELVO", start + symbol_size + gap, 84, word_size,
+                   "#171514", tracking=0.3),
+        f'<rect x="400" y="{2 * cell_height:g}" width="800" height="{2 * cell_height:g}" '
+        f'fill="{panel}" stroke="{line}"/>',
+        sans.centered("Your databases.", 800, 370, 62, text_color, tracking=-2.3),
+        sans.centered("One query gateway.", 800, 438, 62, text_color, tracking=-2.3),
+        sans.centered("Native execution. DuckDB federation. Arrow results.",
+                      800, 489, 20, "#857879", tracking=-0.3),
+        f'<rect x="0.5" y="0.5" width="1599" height="799" fill="none" stroke="{line}"/>',
+    ])
+    return document(width, height, "Kelvo — Your databases. One query gateway.",
+                    "A small red Kelvo symbol and black serif wordmark sit above a warm-white "
+                    "database grid. PostgreSQL, MySQL, MongoDB, DuckDB, ClickHouse, Snowflake, "
+                    "Databricks and Elasticsearch surround the heading. Native execution. "
+                    "DuckDB federation. Arrow results.", "".join(parts))
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serif", type=Path, required=True)
+    parser.add_argument("--sans", type=Path, required=True)
+    parser.add_argument("--database-marks", type=Path,
+                        default=Path(__file__).resolve().parent.parent / "brand/database-marks.svg")
+    parser.add_argument("--banner-only", action="store_true",
+                        help="Update only the README banner SVG and PNG")
     parser.add_argument("--output", type=Path, default=Path("brand"))
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     serif = Lettering(args.serif)
+    header = readme_banner(serif, Lettering(args.sans), args.database_marks)
+    (args.output / "kelvo-banner.svg").write_text(header)
+    cairosvg.svg2png(
+        bytestring=header.encode(), write_to=str(args.output / "kelvo-banner.png"),
+    )
+    if args.banner_only:
+        print(f"Wrote the Kelvo README banner SVG and PNG to {args.output}")
+        return
     for suffix, color in [("", INK), ("-inverse", PAPER)]:
         (args.output / f"kelvo-mark{suffix}.svg").write_text(document(
             256, 256, "Kelvo mark", "Six interleaved curved bands form an abstract circular symbol.",
@@ -157,11 +272,6 @@ def main():
         256, 256, "Kelvo small mark", "Four interleaved curved bands for sizes below 32 pixels.",
         mark(small=True),
     ))
-    header = banner(serif, 720)
-    (args.output / "kelvo-banner.svg").write_text(header)
-    cairosvg.svg2png(
-        bytestring=header.encode(), write_to=str(args.output / "kelvo-banner.png"),
-    )
     social = banner(serif, 840)
     (args.output / "kelvo-social.svg").write_text(social)
     cairosvg.svg2png(

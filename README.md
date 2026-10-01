@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="brand/kelvo-banner.png" alt="Kelvo — open-source analytics by SYNEHQ." width="100%">
+  <img src="brand/kelvo-banner.png" alt="Kelvo — Your databases. One query gateway. Native execution. DuckDB federation. Arrow results." width="100%">
 </p>
 
 <p align="center">
