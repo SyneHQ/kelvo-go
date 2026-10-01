@@ -1,0 +1,146 @@
+# Usage
+
+Kelvo executes SQL against an explicit configured source set and returns Arrow IPC. It has two execution modes: DuckDB federation for selected sources, and native execution for one source-specific connector. This guide covers local usage, HTTP lifecycle, source configuration, limits, and cluster commands.
+
+## Quick start
+
+Kelvo requires Go 1.26 or newer, a C/C++ toolchain for cgo linking, and a supported DuckDB binary platform. Linux amd64 is the initial validation target.
+
+```sh
+git clone https://github.com/SYNEHQ/kelvo-go.git
+cd kelvo-go
+go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
+
+bin/kelvo query --config examples/kelvo.yml --sources sales \
+  --sql 'SELECT region, SUM(amount::DECIMAL(18,2)) AS revenue FROM sales GROUP BY region ORDER BY region' \
+  --out revenue.arrow
+```
+
+The output is Arrow IPC, not JSON. Successful CLI exports replace the requested file atomically; failed exports leave an existing file intact. Statistics are written to standard error.
+
+```python
+import pyarrow.ipc as ipc
+with ipc.open_stream("revenue.arrow") as result:
+    for batch in result:
+        print(batch.to_pydict())
+```
+
+## HTTP API
+
+Start a loopback listener with a token supplied by the environment:
+
+```sh
+export KELVO_TOKEN="$(openssl rand -hex 32)"
+bin/kelvo serve --config examples/kelvo.yml
+```
+
+Submit a federated query with the same token:
+
+```sh
+curl -sS http://127.0.0.1:8080/v1/queries \
+  -H "Authorization: Bearer $KELVO_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"federated","sources":["sales"],"sql":"SELECT * FROM sales"}'
+```
+
+Use the returned `id` with `GET /v1/queries/{id}/results`, inspect `GET /v1/queries/{id}`, or cancel with `POST /v1/queries/{id}/cancel`. Every query operation requires the bearer token; `GET /health` reports liveness.
+
+Submission creates a handle. Execution begins when its results are first requested, and result retrieval is single-consumer. Capacity exhaustion returns HTTP 429 without consuming the handle. Handles expire and cancellation terminates the query worker. Check terminal status after consuming results: an HTTP 200 response may still end with an execution or delivery failure, so partial Arrow data is not a successful analysis.
+
+The listener defaults to loopback. Use authenticated TLS termination and deployment-level filesystem, network, and resource isolation before exposing a service. One token authorizes the configured source catalog; it is not a per-user or row-level policy.
+
+## Configuration
+
+Kelvo reads `kelvo.yml` from the current directory unless `--config` selects another `.yml` or `.yaml` file. Configuration is one YAML mapping with known fields and unique keys, limited to 1 MiB.
+
+```yaml
+extension_directory: /opt/kelvo/extensions
+sources:
+  - id: warehouse
+    type: postgres
+    dsn_env: KELVO_POSTGRES_DSN
+  - id: orders
+    type: mysql
+    dsn_env: KELVO_MYSQL_DSN
+  - id: events
+    type: clickhouse
+    url_env: KELVO_CLICKHOUSE_URL
+    username_env: KELVO_CLICKHOUSE_USER
+    password_env: KELVO_CLICKHOUSE_PASSWORD
+```
+
+Catalog entries contain environment-variable names, never credentials. Each database requires a dedicated read-only account with appropriate grants and source-side timeouts.
+
+Native PostgreSQL and MySQL use their DSN environment variables. DuckDB federation over PostgreSQL or MySQL instead requires the matching signed DuckDB extension at `extension_directory`; it does not reuse the native DSN connector. See [relational sources](sources-relational.md) for the supported native and federated paths.
+
+Provision version- and platform-matched signed extensions before runtime. For the validated Linux amd64 target:
+
+```sh
+python3 scripts/provision_extensions.py /opt/kelvo/extensions
+```
+
+The script writes canonical PostgreSQL, MySQL, and SQLite extension files plus a hash manifest. Runtime verifies signatures while loading and does not download extensions. CSV and Parquet files expose a view named by their source ID. DuckDB and SQLite files, plus PostgreSQL and MySQL attachments, expose schemas and tables through the source alias.
+
+## Native and federated queries
+
+Federated requests use DuckDB SQL and an explicit `sources` list:
+
+```json
+{"mode":"federated","sources":["sales"],"sql":"SELECT * FROM sales"}
+```
+
+Native requests use `mode: "native"`, one `connection_id`, and source-specific SQL:
+
+```json
+{"mode":"native","connection_id":"events","sql":"SELECT count() FROM events"}
+```
+
+Native streams are not automatically available for DuckDB cross-source joins. Independent sources do not share an atomic snapshot. See [source coverage](source-coverage.md), [optional adapters](sources-adapters.md), and the source guides below for connector behavior and validation boundaries.
+
+## Source guides
+
+| Source | Setup and supported behavior |
+| --- | --- |
+| PostgreSQL and MySQL families | [Relational sources](sources-relational.md) |
+| SQL Server and Oracle | [SQL sources](sources-sql.md) |
+| Databricks, Snowflake, Cloudflare D1 | [Cloud sources](sources-cloud.md) |
+| BigQuery | [Jobs API and authentication](sources-bigquery.md) |
+| MongoDB | [Restricted SQL and aggregation](sources-mongodb.md) |
+| Trino and Presto | [Statement protocol](sources-trino.md) |
+| Elasticsearch | [SQL API](sources-elasticsearch.md) |
+| Flight SQL | [Client connections](sources-flight.md) |
+| SQLite | [Read-only attachments](sources-sqlite.md) |
+| Additional engines | [External adapters](sources-adapters.md) |
+
+## Parameters
+
+DuckDB federation accepts positional `?` parameters. Supply typed objects in the request's `parameters` array, in placeholder order:
+
+```json
+{"type":"int64","value":"9223372036854775807"}
+```
+
+Supported parameter types are `string`, `bool`, `int64`, `uint64`, `float64`, and explicit `null`. Use SQL casts for decimal and temporal values rather than converting them through floating point. Native parameter support is connector-specific; native ClickHouse parameters are unsupported.
+
+## Limits
+
+`kelvo serve -h` and `kelvo query -h` list controls for result rows, encoded bytes, duration, DuckDB memory, threads, temporary disk, concurrent workers, and retained handles. They are ceilings, not deployment sizing guidance.
+
+Defaults allow one million rows and 256 MiB of encoded output. Limit failures return errors instead of truncating analysis. A native engine can allocate a single large value before Kelvo detects output size.
+
+For federated DuckDB work, `--memory-mb` configures DuckDB memory. For native ClickHouse it configures ClickHouse `max_memory_usage` and Kelvo's local Arrow decoding allocator. Neither is a hard worker-process RSS cap; enforce process or container limits in deployment.
+
+## Cluster
+
+Cluster mode distributes independent tenant-bound queries to worker pools through NATS JetStream. It does not split one SQL plan across machines. See [cluster lifecycle and failure semantics](cluster.md) and the [tenant deployment example](../deploy/README.md).
+
+Build the Linux launcher with the Go binary:
+
+```sh
+cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o bin/kelvo-landlock
+bin/kelvo cluster-init --config /private/kelvo/bootstrap.yml
+bin/kelvo gateway --config /private/kelvo/gateway.yml
+bin/kelvo node --config /private/kelvo/node.yml
+```
+
+Bootstrap uses provisioner credentials. Running gateways and nodes bind existing broker resources with narrower permissions. `serve` remains a simpler single-trust-domain mode and does not create an automatic tenant boundary. Existing ClickHouse throughput measurements predate cluster mode and do not measure cluster overhead.
