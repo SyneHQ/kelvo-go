@@ -15,11 +15,19 @@ import (
 )
 
 type Request struct {
-	SQL          string      `json:"sql"`
-	Mode         string      `json:"mode,omitempty"`
-	Sources      []string    `json:"sources,omitempty"`
-	ConnectionID string      `json:"connection_id,omitempty"`
-	Parameters   []Parameter `json:"parameters,omitempty"`
+	SQL          string        `json:"sql"`
+	Mode         string        `json:"mode,omitempty"`
+	Sources      []string      `json:"sources,omitempty"`
+	ConnectionID string        `json:"connection_id,omitempty"`
+	Parameters   []Parameter   `json:"parameters,omitempty"`
+	Mongo        *MongoRequest `json:"mongo,omitempty"`
+}
+
+// MongoRequest carries native aggregation syntax. SQL and Mongo are mutually
+// exclusive; collection access is bounded by the configured database grants.
+type MongoRequest struct {
+	Collection string            `json:"collection"`
+	Pipeline   []json.RawMessage `json:"pipeline"`
 }
 type Parameter struct {
 	Type  string          `json:"type"`
@@ -74,12 +82,12 @@ func (r Request) Values() ([]any, error) {
 }
 
 type Limits struct {
-	MaxRows   int64         `json:"max_rows"`
-	MaxBytes  int64         `json:"max_bytes"`
-	Timeout   time.Duration `json:"timeout"`
-	MemoryMB  int           `json:"memory_mb"`
-	Threads   int           `json:"threads"`
-	MaxTempMB int           `json:"max_temp_mb"`
+	MaxRows   int64         `json:"max_rows" yaml:"max_rows"`
+	MaxBytes  int64         `json:"max_bytes" yaml:"max_bytes"`
+	Timeout   time.Duration `json:"timeout" yaml:"timeout"`
+	MemoryMB  int           `json:"memory_mb" yaml:"memory_mb"`
+	Threads   int           `json:"threads" yaml:"threads"`
+	MaxTempMB int           `json:"max_temp_mb" yaml:"max_temp_mb"`
 }
 
 func DefaultLimits() Limits {

@@ -20,13 +20,16 @@ func ValidID(s string) bool { return identifier.MatchString(s) }
 
 // Source holds public metadata and references to secret environment variables.
 type Source struct {
-	ID          string `json:"id" yaml:"id"`
-	Type        string `json:"type" yaml:"type"`
-	Path        string `json:"path,omitempty" yaml:"path,omitempty"`
-	DSNEnv      string `json:"dsn_env,omitempty" yaml:"dsn_env,omitempty"`
-	URLEnv      string `json:"url_env,omitempty" yaml:"url_env,omitempty"`
-	UsernameEnv string `json:"username_env,omitempty" yaml:"username_env,omitempty"`
-	PasswordEnv string `json:"password_env,omitempty" yaml:"password_env,omitempty"`
+	ID          string            `json:"id" yaml:"id"`
+	Type        string            `json:"type" yaml:"type"`
+	Adapter     string            `json:"adapter,omitempty" yaml:"adapter,omitempty"`
+	Path        string            `json:"path,omitempty" yaml:"path,omitempty"`
+	DSNEnv      string            `json:"dsn_env,omitempty" yaml:"dsn_env,omitempty"`
+	URLEnv      string            `json:"url_env,omitempty" yaml:"url_env,omitempty"`
+	UsernameEnv string            `json:"username_env,omitempty" yaml:"username_env,omitempty"`
+	PasswordEnv string            `json:"password_env,omitempty" yaml:"password_env,omitempty"`
+	TokenEnv    string            `json:"token_env,omitempty" yaml:"token_env,omitempty"`
+	Options     map[string]string `json:"options,omitempty" yaml:"options,omitempty"`
 }
 type Config struct {
 	Sources            []Source `json:"sources" yaml:"sources"`
@@ -65,12 +68,34 @@ func Load(path string) (Config, error) {
 	seen := map[string]bool{}
 	for i := range c.Sources {
 		s := &c.Sources[i]
+		for _, name := range []string{s.DSNEnv, s.URLEnv, s.UsernameEnv, s.PasswordEnv, s.TokenEnv} {
+			if name != "" {
+				if err := ValidateEnvironment(name); err != nil {
+					return Config{}, err
+				}
+			}
+		}
 		if !ValidID(s.ID) || seen[s.ID] {
 			return c, fmt.Errorf("source IDs must be unique SQL identifiers")
 		}
 		seen[s.ID] = true
+		s.Type = CanonicalType(s.Type)
+		if len(s.Options) > 16 {
+			return c, fmt.Errorf("source %s has too many options", s.ID)
+		}
+		for key, value := range s.Options {
+			if len(key) > 64 || len(value) > 4096 {
+				return c, fmt.Errorf("source %s option exceeds size limit", s.ID)
+			}
+		}
+		if s.Adapter != "" {
+			if err := s.ValidateAdapter(); err != nil {
+				return c, err
+			}
+			continue
+		}
 		switch s.Type {
-		case "csv", "parquet", "duckdb":
+		case "csv", "parquet", "duckdb", "sqlite":
 			if s.Path == "" {
 				return c, fmt.Errorf("source %s requires path", s.ID)
 			}
@@ -85,7 +110,7 @@ func Load(path string) (Config, error) {
 			if e != nil || !st.Mode().IsRegular() {
 				return c, fmt.Errorf("source %s must name a regular file", s.ID)
 			}
-		case "postgres", "mysql":
+		case "postgres", "mysql", "mariadb", "cockroachdb", "alloydb", "redshift", "sqlserver", "oracle", "mongodb":
 			if s.DSNEnv == "" {
 				return c, fmt.Errorf("source %s requires dsn_env", s.ID)
 			}
@@ -93,7 +118,14 @@ func Load(path string) (Config, error) {
 			if s.URLEnv == "" {
 				return c, fmt.Errorf("source %s requires url_env", s.ID)
 			}
+		case "databricks", "snowflake", "d1", "bigquery", "elasticsearch", "trino", "presto", "arrow_flight":
+			if s.URLEnv == "" || s.TokenEnv == "" {
+				return c, fmt.Errorf("source %s requires url_env and token_env", s.ID)
+			}
 		default:
+			if KnownType(s.Type) {
+				return c, fmt.Errorf("source %s requires an optional adapter", s.ID)
+			}
 			return c, fmt.Errorf("source %s has unsupported type", s.ID)
 		}
 	}
