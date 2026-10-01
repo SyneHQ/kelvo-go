@@ -1,0 +1,45 @@
+{
+  "provider": "dynamodb-local",
+  "server_version": "3.1.0",
+  "image": "amazon/dynamodb-local:3.1.0",
+  "image_id": "sha256:7ef4a2c45b58c2901e70a4f28e0953a422c2c631baaaf5e2c15e0805740c7752",
+  "rows": 1205,
+  "typed_documents": 1,
+  "transport": "verified TLS with disposable CA; loopback-only HTTP backend",
+  "resource_limits": {
+    "memory_mb": 512,
+    "cpus": 1,
+    "pids": 128
+  },
+  "authentication": "dummy local credentials; AWS IAM enforcement and cloud SigV4 interoperability are not validated",
+  "scope": "real DynamoDB Local PartiQL through the native Go connector; not AWS cloud, cluster, snapshot, or throughput validation",
+  "checks": [
+    {
+      "test": "TestLiveDynamoDBTaggedTypesAndExactNumbers",
+      "status": "pass"
+    },
+    {
+      "test": "TestLiveDynamoDBPagination",
+      "status": "pass"
+    },
+    {
+      "test": "TestLiveDynamoDBEmptyFilteredPages",
+      "status": "pass"
+    },
+    {
+      "test": "TestLiveDynamoDBRestrictionsAndLimits",
+      "status": "pass"
+    },
+    {
+      "test": "TestLiveDynamoDBRequiresVerifiedTLS",
+      "status": "pass"
+    }
+  ],
+  "observed_protocol": {
+    "partiql_requests": 6,
+    "continuation_requests": 2,
+    "empty_pages_with_token": 1
+  },
+  "go_mod_sha256": "ac7ba6dd8f79a4bfa1ddad9482da4bce67ce2484a72267c0537362fb37c1523c",
+  "passed": true
+}
