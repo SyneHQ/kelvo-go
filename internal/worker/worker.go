@@ -108,7 +108,11 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	// Only explicitly configured secrets enter the query process.
 	seen := map[string]bool{}
 	for _, s := range sources {
-		for _, key := range []string{s.DSNEnv, s.URLEnv, s.UsernameEnv, s.PasswordEnv, s.TokenEnv} {
+		names, err := sourceEnvironmentNames(s)
+		if err != nil {
+			return stats, err
+		}
+		for _, key := range names {
 			if key != "" && !seen[key] {
 				if err := catalog.ValidateEnvironment(key); err != nil {
 					return stats, query.NewError("CONFIGURATION_ERROR", "Source environment reference is not permitted")
@@ -177,6 +181,23 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		return stats, outcome.Error
 	}
 	return stats, nil
+}
+
+// The parent retains cloud reader and writer credentials. Query children only
+// receive a range capability with no provider identity or upstream object URL.
+func sourceEnvironmentNames(source catalog.Source) ([]string, error) {
+	if source.Object != nil {
+		return nil, query.NewError("CONFIGURATION_ERROR", "Cloud object credentials cannot enter the query worker")
+	}
+	if source.Range == nil {
+		return []string{source.DSNEnv, source.URLEnv, source.UsernameEnv, source.PasswordEnv, source.TokenEnv}, nil
+	}
+	if source.Range.Validate() != nil || source.Type != "parquet" || source.Path != source.Range.URL ||
+		source.Adapter != "" || source.DSNEnv != "" || source.URLEnv != "" || source.UsernameEnv != "" ||
+		source.PasswordEnv != "" || source.TokenEnv != "" || len(source.Options) != 0 {
+		return nil, query.NewError("CONFIGURATION_ERROR", "Invalid isolated object range capability")
+	}
+	return nil, nil
 }
 
 // IPCSink borrows each batch until Write returns. Finish emits EOS only on success.

@@ -42,6 +42,9 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		if !catalog.ValidID(source.ID) {
 			return nil, query.NewError("INVALID_ARGUMENT", "Source ID is invalid")
 		}
+		if err := validateObjectSource(source); err != nil {
+			return nil, err
+		}
 	}
 	return &Engine{config: config, limits: limits}, nil
 }
@@ -68,6 +71,9 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	sources, selectErr := e.config.Select(req.Sources)
 	if selectErr != nil {
 		return stats, query.NewError("PERMISSION_DENIED", "Requested source is unavailable")
+	}
+	if err := validateObjectCombination(sources); err != nil {
+		return stats, err
 	}
 	if containsDeniedCapability(req.SQL) {
 		return stats, query.NewError("PERMISSION_DENIED", "Query uses a capability unavailable to this execution")
@@ -139,6 +145,9 @@ func configure(ctx context.Context, raw any, extensionDir, tempDir string, limit
 		"SET autoinstall_known_extensions = false",
 		"SET autoload_known_extensions = false",
 		"SET allow_community_extensions = false",
+		"SET allow_unredacted_secrets = false",
+		"SET allow_persistent_secrets = false",
+		"SET enable_logging = false",
 		"SET memory_limit = '" + strconv.Itoa(limits.MemoryMB) + "MB'",
 		"SET threads = " + strconv.Itoa(limits.Threads),
 		"SET temp_directory = '" + quoteLiteral(tempDir) + "'",
@@ -170,6 +179,11 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 		case "csv":
 			statement = "CREATE VIEW " + id + " AS SELECT * FROM read_csv_auto('" + quoteLiteral(source.Path) + "')"
 		case "parquet":
+			if source.Range != nil {
+				if err := prepareObjectRange(ctx, exec, source, extensionDir, tempDir); err != nil {
+					return err
+				}
+			}
 			statement = "CREATE VIEW " + id + " AS SELECT * FROM read_parquet('" + quoteLiteral(source.Path) + "')"
 		case "sqlite":
 			if err := loadApprovedExtension(ctx, exec, source.Type, extensionDir, tempDir); err != nil {
@@ -212,6 +226,9 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 // remote scans, so this developer-preview adapter leaves it enabled for those
 // requests; it is not a security boundary or SQL sandbox.
 func lockSourceAccess(ctx context.Context, raw any, sources []catalog.Source, tempDir string) error {
+	if err := validateObjectCombination(sources); err != nil {
+		return err
+	}
 	exec, ok := raw.(driver.ExecerContext)
 	if !ok {
 		return errors.New("DuckDB driver does not support source lockdown")
@@ -260,6 +277,7 @@ func loadApprovedExtension(ctx context.Context, exec driver.ExecerContext, sourc
 		"postgres": "postgres_scanner",
 		"mysql":    "mysql_scanner",
 		"sqlite":   "sqlite_scanner",
+		"httpfs":   "httpfs",
 	}[sourceType]
 	if canonicalName == "" {
 		return errors.New("unsupported approved extension")
@@ -335,6 +353,7 @@ func containsDeniedCapability(sqlText string) bool {
 		"glob": {}, "http_get": {}, "load_extension": {}, "query": {}, "query_table": {},
 		"read_blob": {}, "read_text": {}, "postgres_query": {}, "mysql_query": {},
 		"duckdb_secrets": {}, "getenv": {}, "postgres_scan": {}, "mysql_scan": {}, "sqlite_scan": {},
+		"duckdb_logs": {}, "duckdb_logs_parsed": {}, "write_log": {},
 		"read_json_auto": {}, "read_ndjson": {}, "read_ndjson_auto": {},
 		"read_json_objects": {}, "read_json_objects_auto": {}, "read_ndjson_objects": {},
 		"parquet_scan": {}, "csv_scan": {}, "json_scan": {}, "sniff_csv": {},

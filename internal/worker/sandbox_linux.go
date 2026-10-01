@@ -49,6 +49,15 @@ func SandboxCommand(binary, jobdir string, cfg catalog.Config, limits query.Limi
 		return nil
 	}
 	for _, source := range cfg.Sources {
+		if source.Object != nil || source.Range != nil {
+			if _, err := sourceEnvironmentNames(source); err != nil {
+				return nil, err
+			}
+			// Loopback range capabilities are not host filesystem paths. The
+			// parent owns all cloud credentials and upstream requests. DuckDB
+			// enforces exact URLs; Landlock ABI 3 does not constrain network.
+			continue
+		}
 		if source.Adapter != "" {
 			if err := source.ValidateAdapter(); err != nil {
 				return nil, err

@@ -65,3 +65,26 @@ func TestSandboxCommandRejectsUnresolvedOrUnsafePaths(t *testing.T) {
 		t.Fatal("relative source was accepted")
 	}
 }
+
+func TestSandboxObjectReadDoesNotGrantLocalSourcePaths(t *testing.T) {
+	directory := t.TempDir()
+	binary := filepath.Join(directory, "kelvo")
+	job := filepath.Join(directory, "job")
+	extensions := filepath.Join(directory, "extensions")
+	if err := os.WriteFile(binary, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{job, extensions} {
+		if err := os.Mkdir(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	args, err := SandboxCommand(binary, job, catalog.Config{ExtensionDirectory: extensions, Sources: []catalog.Source{workerObjectFixture()}}, query.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--read-exec", extensions, "--write", job, "--", binary, "worker"}
+	if !reflect.DeepEqual(args, want) {
+		t.Fatalf("remote object added a host filesystem grant: %q", args)
+	}
+}

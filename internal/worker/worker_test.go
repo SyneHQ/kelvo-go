@@ -45,7 +45,11 @@ func testWorkerMain() int {
 	if json.NewDecoder(os.Stdin).Decode(&in) != nil {
 		return 2
 	}
-	if in.Request.SQL == "SELECT source_environment" || in.Request.SQL == "SELECT aws_environment" {
+	if in.Request.SQL == "SELECT object_environment" {
+		if !objectWorkerEnvironmentMatches(in) {
+			return 2
+		}
+	} else if in.Request.SQL == "SELECT source_environment" || in.Request.SQL == "SELECT aws_environment" {
 		if in.Request.Mode != "native" || in.Request.ConnectionID != "selected" || len(in.Config.Sources) != 1 || in.Config.Sources[0].ID != "selected" {
 			return 2
 		}
