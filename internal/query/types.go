@@ -26,8 +26,8 @@ type Request struct {
 // MongoRequest carries native aggregation syntax. SQL and Mongo are mutually
 // exclusive; collection access is bounded by the configured database grants.
 type MongoRequest struct {
-	Collection string            `json:"collection"`
-	Pipeline   []json.RawMessage `json:"pipeline"`
+	Collection string            `json:"collection" yaml:"collection"`
+	Pipeline   []json.RawMessage `json:"pipeline" yaml:"pipeline"`
 }
 type Parameter struct {
 	Type  string          `json:"type"`

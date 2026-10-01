@@ -30,6 +30,8 @@ type Source struct {
 	PasswordEnv string            `json:"password_env,omitempty" yaml:"password_env,omitempty"`
 	TokenEnv    string            `json:"token_env,omitempty" yaml:"token_env,omitempty"`
 	Options     map[string]string `json:"options,omitempty" yaml:"options,omitempty"`
+	Object      *ObjectRead       `json:"object,omitempty" yaml:"-"`
+	Range       *ObjectRange      `json:"object_range,omitempty" yaml:"-"`
 }
 type Config struct {
 	Sources            []Source            `json:"sources" yaml:"sources"`

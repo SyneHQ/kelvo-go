@@ -16,9 +16,10 @@ import (
 // Accelerations belong to one operator-provisioned tenant. Query callers cannot
 // supply paths, refresh SQL, source credentials, or a different tenant identity.
 type AccelerationConfig struct {
-	Directory string    `json:"directory" yaml:"directory"`
-	TenantID  string    `json:"tenant_id" yaml:"tenant_id"`
-	Datasets  []Dataset `json:"datasets" yaml:"datasets"`
+	Directory     string         `json:"directory" yaml:"directory"`
+	TenantID      string         `json:"tenant_id" yaml:"tenant_id"`
+	Datasets      []Dataset      `json:"datasets" yaml:"datasets"`
+	ObjectStorage *ObjectStorage `json:"object_storage,omitempty" yaml:"object_storage,omitempty"`
 }
 
 type Dataset struct {
@@ -72,6 +73,11 @@ func (c *Config) validateAcceleration(base string) error {
 		a.Directory = filepath.Join(base, a.Directory)
 	}
 	a.Directory = filepath.Clean(a.Directory)
+	if a.ObjectStorage != nil {
+		if err := a.ObjectStorage.Validate(); err != nil {
+			return err
+		}
+	}
 	seen := map[string]bool{}
 	for _, s := range c.Sources {
 		seen[s.ID] = true
@@ -88,8 +94,8 @@ func (c *Config) validateAcceleration(base string) error {
 		if err := query.ValidateRequest(d.Query); err != nil {
 			return errors.New("invalid dataset refresh query")
 		}
-		if d.Query.Mongo != nil || len(d.Query.Parameters) != 0 {
-			return errors.New("dataset refreshes require static SQL; pipeline and parameter requests are unsupported")
+		if len(d.Query.Parameters) != 0 {
+			return errors.New("dataset refresh queries cannot contain unbound parameters")
 		}
 		if d.MaxAge <= 0 || d.MaxAge > 30*24*time.Hour || d.RefreshInterval < 0 || (d.RefreshInterval > 0 && (d.RefreshInterval < 5*time.Second || d.RefreshInterval > d.MaxAge)) {
 			return errors.New("dataset max_age must be positive; refresh_interval must be zero or between 5s and max_age")
@@ -119,6 +125,9 @@ func (c *Config) validateAcceleration(base string) error {
 		if err := d.Limits.Validate(); err != nil {
 			return errors.New("invalid dataset refresh resource limits")
 		}
+		if a.ObjectStorage != nil && d.Limits.MaxBytes > 4<<30 {
+			return errors.New("object snapshots currently require max_bytes at most 4 GiB")
+		}
 		// Refresh inputs must be real registered sources. Disallow dependencies on
 		// other accelerated datasets so freshness and permissions stay explicit.
 		baseCatalog := Config{Sources: c.Sources}
@@ -126,8 +135,12 @@ func (c *Config) validateAcceleration(base string) error {
 		if d.Query.Mode == "native" {
 			ids = []string{d.Query.ConnectionID}
 		}
-		if _, err := baseCatalog.Select(ids); err != nil {
+		selected, err := baseCatalog.Select(ids)
+		if err != nil {
 			return errors.New("dataset refresh names an unavailable source")
+		}
+		if d.Query.Mongo != nil && (len(selected) != 1 || selected[0].Type != "mongodb" || selected[0].Adapter != "") {
+			return errors.New("pipeline refreshes require a built-in MongoDB source")
 		}
 	}
 	return nil
@@ -154,7 +167,8 @@ func (c Config) DatasetFingerprint(id string) (string, error) {
 		Tenant, ID, Authorization string
 		Query                     query.Request
 		Sources                   []Source
-	}{1, c.Acceleration.TenantID, d.ID, d.AuthorizationVersion, d.Query, sources})
+		ObjectStorage             *ObjectStorage `json:"object_storage,omitempty"`
+	}{1, c.Acceleration.TenantID, d.ID, d.AuthorizationVersion, d.Query, sources, c.Acceleration.ObjectStorage})
 	if err != nil {
 		return "", err
 	}

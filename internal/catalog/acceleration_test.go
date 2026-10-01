@@ -86,3 +86,34 @@ func TestAccelerationRejectsInvalidDefinitions(t *testing.T) {
 		})
 	}
 }
+
+func TestAccelerationMongoPipelineConfiguration(t *testing.T) {
+	input := strings.ReplaceAll(acceleratedYAML, "type: clickhouse\n    url_env: KELVO_SOURCE_TEST_WAREHOUSE_URL", "type: mongodb\n    dsn_env: KELVO_SOURCE_MONGO_DSN\n    options:\n      database: analytics")
+	input = strings.Replace(input, "sql: SELECT id, total FROM orders", `mongo:
+          collection: orders
+          pipeline:
+            - $match:
+                account_id: 9223372036854775807
+            - $group:
+                _id: "$region"
+                total:
+                  $sum: "$amount"`, 1)
+	c, err := loadAccelerationFixture(t, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, _ := c.Dataset("orders_fast")
+	if d.Query.Mongo == nil || len(d.Query.Mongo.Pipeline) != 2 {
+		t.Fatal("pipeline was not retained")
+	}
+	original, _ := c.DatasetFingerprint(d.ID)
+	c.Acceleration.Datasets[0].Query.Mongo.Collection = "other_orders"
+	changed, _ := c.DatasetFingerprint(d.ID)
+	if original == changed {
+		t.Fatal("pipeline collection change reused fingerprint")
+	}
+	bad := strings.Replace(input, "type: mongodb", "type: oracle", 1)
+	if _, err = loadAccelerationFixture(t, bad); err == nil {
+		t.Fatal("pipeline accepted for a non-MongoDB source")
+	}
+}
