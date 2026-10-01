@@ -9,6 +9,11 @@
 !internal/**
 !sandbox
 !sandbox/**
+!scripts
+!scripts/provision_duckbridge.py
+!scripts/duckbridge-driver.patch
+!licenses
+!licenses/**
 **/*.pem
 **/*.key
 **/*.env
