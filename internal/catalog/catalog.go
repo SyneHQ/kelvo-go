@@ -2,31 +2,35 @@
 package catalog
 
 import (
-	"encoding/json"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"go.yaml.in/yaml/v3"
 )
 
 var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
+
+const maxConfigBytes = 1 << 20
 
 func ValidID(s string) bool { return identifier.MatchString(s) }
 
 // Source holds public metadata and references to secret environment variables.
 type Source struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	Path        string `json:"path,omitempty"`
-	DSNEnv      string `json:"dsn_env,omitempty"`
-	URLEnv      string `json:"url_env,omitempty"`
-	UsernameEnv string `json:"username_env,omitempty"`
-	PasswordEnv string `json:"password_env,omitempty"`
+	ID          string `json:"id" yaml:"id"`
+	Type        string `json:"type" yaml:"type"`
+	Path        string `json:"path,omitempty" yaml:"path,omitempty"`
+	DSNEnv      string `json:"dsn_env,omitempty" yaml:"dsn_env,omitempty"`
+	URLEnv      string `json:"url_env,omitempty" yaml:"url_env,omitempty"`
+	UsernameEnv string `json:"username_env,omitempty" yaml:"username_env,omitempty"`
+	PasswordEnv string `json:"password_env,omitempty" yaml:"password_env,omitempty"`
 }
 type Config struct {
-	Sources            []Source `json:"sources"`
-	ExtensionDirectory string   `json:"extension_directory,omitempty"`
+	Sources            []Source `json:"sources" yaml:"sources"`
+	ExtensionDirectory string   `json:"extension_directory,omitempty" yaml:"extension_directory,omitempty"`
 }
 
 func Load(path string) (Config, error) {
@@ -41,15 +45,23 @@ func Load(path string) (Config, error) {
 		return Config{}, fmt.Errorf("source configuration is unavailable")
 	}
 	defer f.Close()
-	var c Config
-	d := json.NewDecoder(io.LimitReader(f, 1<<20))
-	d.DisallowUnknownFields()
-	if e = d.Decode(&c); e != nil {
-		return c, fmt.Errorf("invalid source configuration")
+	data, e := io.ReadAll(io.LimitReader(f, maxConfigBytes+1))
+	if e != nil {
+		return Config{}, fmt.Errorf("source configuration is unavailable")
+	}
+	if len(data) > maxConfigBytes {
+		return Config{}, fmt.Errorf("source configuration exceeds 1 MiB")
+	}
+	var parsed *Config
+	d := yaml.NewDecoder(bytes.NewReader(data))
+	d.KnownFields(true)
+	if e = d.Decode(&parsed); e != nil || parsed == nil {
+		return Config{}, fmt.Errorf("invalid YAML source configuration")
 	}
 	if e = d.Decode(new(any)); e != io.EOF {
-		return c, fmt.Errorf("source configuration must contain one JSON object")
+		return Config{}, fmt.Errorf("source configuration must contain one YAML document")
 	}
+	c := *parsed
 	seen := map[string]bool{}
 	for i := range c.Sources {
 		s := &c.Sources[i]

@@ -66,7 +66,7 @@ Build the binary separately, configure a catalog whose ClickHouse source uses en
 ```bash
 python3 scripts/benchmark_clickhouse.py \
   --binary /path/to/kelvo \
-  --catalog /path/to/catalog.json \
+  --catalog /path/to/kelvo.yml \
   --connection clickhouse \
   --output /path/to/result.arrow \
   --report /path/to/result.json

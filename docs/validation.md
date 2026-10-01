@@ -2,6 +2,8 @@
 
 Status: a tested developer preview. These measurements describe one native ClickHouse workload on one VM; they do not establish production sizing, all-engine performance, or a multi-tenant security boundary.
 
+The build and benchmark evidence below records the initial release at `45e42f5`. The later YAML configuration change passed the tagged Go tests, vet, build and CLI/HTTP acceptance on the VM; it did not rerun the throughput benchmark.
+
 ## Functional checks
 
 - Full tagged Go tests, vet and binary build passed on Debian 12 / Linux amd64 with Go 1.26.8. HTTP and ClickHouse race tests passed. [Test log](evidence/tests-final.log), [race log](evidence/race-final.log), [build inputs and binary hash](evidence/build-evidence.json).

@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | duckdb-go v2.10506.0 / DuckDB 1.5.6 | Embedded SQL execution, file analysis and supported federation | MIT |
 | Arrow Go v18.5.1 | Typed record batches and IPC encoding/decoding | Apache-2.0 |
+| [Go YAML v3.0.5](https://github.com/yaml/go-yaml/tree/v3.0.5) | Strict YAML source configuration | MIT and Apache-2.0, by file |
 | Go standard library | HTTP, subprocess lifecycle, configuration and CLI | Go BSD-style license |
 
 Transitive dependencies are pinned by `go.sum`; review their licenses when distributing binaries. DuckDB's driver includes platform-specific native libraries. Matching signed extensions are external provisioned artifacts, with their own dependency notices.

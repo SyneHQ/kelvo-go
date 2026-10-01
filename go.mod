@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/apache/arrow-go/v18 v18.5.1
 	github.com/duckdb/duckdb-go/v2 v2.10506.0
+	go.yaml.in/yaml/v3 v3.0.5
 )
 
 require (

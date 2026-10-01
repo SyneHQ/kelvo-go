@@ -1,0 +1,5 @@
+# A registered source catalog. Keep credentials outside this file.
+sources:
+  - id: sales
+    type: csv
+    path: sales.csv

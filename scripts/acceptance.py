@@ -28,7 +28,7 @@ def main():
         work = Path(work)
         output = work / "result.arrow"
         query = "SELECT region, SUM(amount::DECIMAL(18,2)) AS revenue FROM sales GROUP BY region ORDER BY region"
-        command = [binary, "query", "--config", "examples/kelvo.json", "--sources", "sales", "--sql", query, "--out", str(output)]
+        command = [binary, "query", "--config", "examples/kelvo.yml", "--sources", "sales", "--sql", query, "--out", str(output)]
         result = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=30)
         assert result.returncode == 0, result.stderr
         expected = [{"region":"east","revenue":decimal.Decimal("25.00")},{"region":"west","revenue":decimal.Decimal("19.75")}]
@@ -36,6 +36,15 @@ def main():
             assert reader.read_all().to_pylist() == expected
         results["cli_decimal_values"] = "passed"
         results["relative_quickstart_configuration"] = "passed"
+        default_catalog = work / "kelvo.yml"
+        default_catalog.write_text("sources:\n  - id: sales\n    type: csv\n    path: " + json.dumps(str((root / "examples" / "sales.csv").resolve())) + "\n")
+        default_output = work / "default-name.arrow"
+        default_command = [binary, "query", "--sources", "sales", "--sql", query, "--out", str(default_output)]
+        default_result = subprocess.run(default_command, cwd=work, capture_output=True, text=True, timeout=30)
+        assert default_result.returncode == 0, default_result.stderr
+        with ipc.open_stream(default_output) as reader:
+            assert reader.read_all().to_pylist() == expected
+        results["default_kelvo_yml_configuration"] = "passed"
         before = output.read_bytes()
         failed = subprocess.run(command + ["--max-rows","1"], cwd=root, capture_output=True, text=True, timeout=30)
         assert failed.returncode != 0 and output.read_bytes() == before
@@ -47,7 +56,7 @@ def main():
             address.bind(("127.0.0.1",0))
             port = address.getsockname()[1]
         log = (work/"server.log").open("w+")
-        server = subprocess.Popen([binary,"serve","--config","examples/kelvo.json","--listen",f"127.0.0.1:{port}","--token-env","KELVO_ACCEPTANCE_TOKEN","--max-rows","3","--timeout","10s"],cwd=root,env=env,stdout=log,stderr=log)
+        server = subprocess.Popen([binary,"serve","--config","examples/kelvo.yml","--listen",f"127.0.0.1:{port}","--token-env","KELVO_ACCEPTANCE_TOKEN","--max-rows","3","--timeout","10s"],cwd=root,env=env,stdout=log,stderr=log)
         url = f"http://127.0.0.1:{port}"
         def request(path, value=None, auth=True):
             data = json.dumps(value).encode() if value is not None else None

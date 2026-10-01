@@ -30,7 +30,7 @@ SAMPLE_INTERVAL_SECONDS = 0.02
 def arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True, help="Built kelvo binary")
-    parser.add_argument("--catalog", type=Path, required=True, help="Public source catalog JSON")
+    parser.add_argument("--catalog", type=Path, required=True, help="Public source catalog YAML")
     parser.add_argument("--connection", default="clickhouse", help="Registered ClickHouse source ID")
     parser.add_argument("--query", default=DEFAULT_QUERY, help="Native ClickHouse SQL")
     parser.add_argument("--output", type=Path, required=True, help="New Arrow IPC output path")

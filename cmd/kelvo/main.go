@@ -51,7 +51,7 @@ func run(args []string) error {
 		return query.NewError("INVALID_ARGUMENT", "Expected serve, query, version, or help")
 	}
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
-	config := f.String("config", "kelvo.json", "Registered source configuration")
+	config := f.String("config", "kelvo.yml", "Registered source configuration (YAML)")
 	listen := f.String("listen", "127.0.0.1:8080", "HTTP listen address")
 	sql := f.String("sql", "", "SQL query")
 	sourceIDs := f.String("sources", "", "Comma-separated source IDs for federation")

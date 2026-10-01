@@ -28,7 +28,7 @@ git clone https://github.com/SYNEHQ/kelvo-go.git
 cd kelvo-go
 go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
 
-bin/kelvo query --config examples/kelvo.json --sources sales \
+bin/kelvo query --config examples/kelvo.yml --sources sales \
   --sql 'SELECT region, SUM(amount::DECIMAL(18,2)) AS revenue FROM sales GROUP BY region ORDER BY region' \
   --out revenue.arrow
 ```
@@ -46,7 +46,7 @@ with ipc.open_stream("revenue.arrow") as result:
 
 ```sh
 export KELVO_TOKEN="$(openssl rand -hex 32)"
-bin/kelvo serve --config examples/kelvo.json
+bin/kelvo serve --config examples/kelvo.yml
 
 # In another terminal with the same KELVO_TOKEN:
 curl -sS http://127.0.0.1:8080/v1/queries \
@@ -63,17 +63,25 @@ The listener defaults to loopback. Use authenticated TLS termination and deploym
 
 ## Sources and parameters
 
-`examples/kelvo.json` shows local files. PostgreSQL/MySQL sources use `dsn_env`; ClickHouse uses `url_env`, with optional `username_env` and `password_env`. Configuration contains environment-variable **names**, never credentials. Each database must use a dedicated read-only account with appropriate source grants and timeouts.
+Kelvo reads `kelvo.yml` from the current directory by default. Use `--config` to select another YAML file; both `.yml` and `.yaml` work. Configuration must contain one YAML mapping, with known fields and unique keys, and fit within 1 MiB.
 
-```json
-{
-  "extension_directory": "/opt/kelvo/extensions",
-  "sources": [
-    {"id":"warehouse","type":"postgres","dsn_env":"KELVO_POSTGRES_DSN"},
-    {"id":"orders","type":"mysql","dsn_env":"KELVO_MYSQL_DSN"},
-    {"id":"events","type":"clickhouse","url_env":"KELVO_CLICKHOUSE_URL","username_env":"KELVO_CLICKHOUSE_USER","password_env":"KELVO_CLICKHOUSE_PASSWORD"}
-  ]
-}
+`examples/kelvo.yml` shows local files. PostgreSQL/MySQL sources use `dsn_env`; ClickHouse uses `url_env`, with optional `username_env` and `password_env`. Configuration contains environment-variable **names**, never credentials. Each database must use a dedicated read-only account with appropriate source grants and timeouts.
+
+```yaml
+# Catalog entries name environment variables; they never contain credentials.
+extension_directory: /opt/kelvo/extensions
+sources:
+  - id: warehouse
+    type: postgres
+    dsn_env: KELVO_POSTGRES_DSN
+  - id: orders
+    type: mysql
+    dsn_env: KELVO_MYSQL_DSN
+  - id: events
+    type: clickhouse
+    url_env: KELVO_CLICKHOUSE_URL
+    username_env: KELVO_CLICKHOUSE_USER
+    password_env: KELVO_CLICKHOUSE_PASSWORD
 ```
 
 Install version- and platform-matched signed DuckDB extensions into that directory at provisioning time. For the validated Linux amd64 target, run `python3 scripts/provision_extensions.py /opt/kelvo/extensions`. It writes the canonical `postgres_scanner.duckdb_extension` and `mysql_scanner.duckdb_extension` filenames and an artifact-hash manifest. The runtime verifies signatures when loading and does not download extensions. File sources expose a view named by their ID. Database attachments expose their schemas/tables through the source alias.
