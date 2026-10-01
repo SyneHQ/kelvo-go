@@ -30,6 +30,17 @@ def digest(path):
     return h.hexdigest()
 
 
+def apply_driver_patch(patched, patch, *options):
+    # A copied module is not a Git repository. Without a discovery ceiling,
+    # artifacts nested in a checkout inherit its .git, and git apply silently
+    # skips this module-relative patch while still returning success.
+    environment = {key: value for key, value in os.environ.items()
+                   if not key.startswith("GIT_")}
+    environment["GIT_CEILING_DIRECTORIES"] = str(patched.resolve().parent)
+    subprocess.run(["git", "apply", *options, str(patch.resolve())],
+                   cwd=patched, env=environment, check=True)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("directory", type=pathlib.Path)
@@ -95,9 +106,15 @@ def main():
     else:
         shutil.copytree(module["Dir"], patched)
         patched.chmod(0o755)
-        subprocess.run(["git", "apply", "--check", str(patch)], cwd=patched, check=True)
-        subprocess.run(["git", "apply", str(patch)], cwd=patched, check=True)
-        marker.write_text(patch_sha + "\n")
+        apply_driver_patch(patched, patch, "--check")
+        apply_driver_patch(patched, patch)
+    # Verify the files even when reusing an artifact with a matching marker:
+    # earlier helpers could write the marker after Git had skipped the patch.
+    try:
+        apply_driver_patch(patched, patch, "--reverse", "--check")
+    except subprocess.CalledProcessError as error:
+        raise ValueError("optional driver patch is missing or changed; use a fresh artifact directory") from error
+    marker.write_text(patch_sha + "\n")
     modfile = directory / "duckbridge.mod"
     shutil.copyfile(source / "go.mod", modfile)
     shutil.copyfile(source / "go.sum", modfile.with_suffix(".sum"))

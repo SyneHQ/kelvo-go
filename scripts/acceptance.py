@@ -81,11 +81,11 @@ def main():
             found = set()
             for p in Path(f"/proc/{server.pid}/task").glob("*/children"):
                 try: found.update(int(x) for x in p.read_text().split())
-                except FileNotFoundError: pass
+                except (FileNotFoundError, ProcessLookupError): pass
             return found
         def alive(pid):
             try: return Path(f"/proc/{pid}/stat").read_text().split(") ",1)[1].split()[0] not in ("Z","X")
-            except FileNotFoundError: return False
+            except (FileNotFoundError, ProcessLookupError): return False
         try:
             def ready():
                 if server.poll() is not None:

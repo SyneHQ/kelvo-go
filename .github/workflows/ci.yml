@@ -42,6 +42,7 @@ jobs:
         with:
           go-version: '1.26.8'
           cache: true
+      - run: python3 scripts/test_provision_duckbridge.py
       - run: python3 scripts/provision_duckbridge.py artifacts/duckbridge
       - name: Verify pinned Arrow bridge and native adapters
         run: |
