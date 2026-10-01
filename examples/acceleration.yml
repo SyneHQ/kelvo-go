@@ -1,0 +1,23 @@
+sources:
+  - id: sales
+    type: csv
+    path: sales.csv
+acceleration:
+  tenant_id: local
+  directory: ../artifacts/local-acceleration
+  datasets:
+    - id: sales_fast
+      query:
+        mode: federated
+        sources: [sales]
+        sql: SELECT id, region, amount::DECIMAL(18,2) AS amount FROM sales
+      authorization_version: grants-v1
+      refresh_interval: 1m
+      max_age: 10m
+      limits:
+        max_rows: 1000000
+        max_bytes: 268435456
+        timeout: 30s
+        memory_mb: 256
+        threads: 2
+        max_temp_mb: 1024

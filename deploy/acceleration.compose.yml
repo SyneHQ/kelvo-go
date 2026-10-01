@@ -1,0 +1,12 @@
+# Optional overlay. Each bind directory must exist, mode 0700, owned by 65532.
+# Tenant A workers share only A's directory; B has a separate volume.
+services:
+  worker-a1:
+    volumes:
+      - ${KELVO_TENANT_A_ACCEL_DIR:?set private tenant-a snapshot directory}:/var/lib/kelvo/acceleration:rw
+  worker-a2:
+    volumes:
+      - ${KELVO_TENANT_A_ACCEL_DIR}:/var/lib/kelvo/acceleration:rw
+  worker-b1:
+    volumes:
+      - ${KELVO_TENANT_B_ACCEL_DIR:?set private tenant-b snapshot directory}:/var/lib/kelvo/acceleration:rw

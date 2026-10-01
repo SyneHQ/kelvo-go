@@ -10,6 +10,7 @@ These files are an operator starting point, not a production certification. The 
 - Docker Engine with cgroup CPU/memory/PID enforcement and Docker Compose v2. Avoid rootless configurations that lack the configured resource controls.
 - A TLS-enabled, persistent NATS JetStream cluster. The sample policies use three replicas, so at least three healthy JetStream members are required. Broker deployment, storage backups and quorum failure handling belong to the operator.
 - A different NATS account for each tenant, with no cross-tenant imports/exports and no application access to the system account. Provision separate gateway and worker users within each account. Kelvo reuses its stream/bucket names within accounts, so subject prefixes alone are not the isolation boundary. Apply storage/connection quotas to each account.
+- Allow at least four streams per tenant account: the existing metadata, job and dispatch streams plus the bounded acceleration refresh stream. `cluster-init` provisions the latter; existing installations must increase quotas before rerunning bootstrap.
 - Source database credentials with database-enforced read-only access. Every node has only its tenant's catalog, credentials and mounted data. A connection identifier is resolved within that catalog.
 
 Build the image on the designated Linux build host:
@@ -116,3 +117,5 @@ Verify with real container processes and actual source databases:
 Current evidence belongs in the repository's validation record. Do not infer production HA, isolation or throughput from image construction, config validation or unit tests alone.
 
 References: [Landlock](https://docs.kernel.org/userspace-api/landlock.html), [Docker Compose service controls](https://docs.docker.com/reference/compose-file/services/), [NATS account isolation](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/accounts), [DuckDB untrusted SQL guidance](https://duckdb.org/docs/stable/operations_manual/securing_duckdb/overview).
+
+For optional persistent dataset acceleration, follow the [acceleration guide](../docs/acceleration.md) and apply [acceleration.compose.yml](acceleration.compose.yml). It adds separate writable tenant snapshot mounts. Cluster refresh consumers also require the additional NATS permissions listed in that guide; source query subprocesses still receive read-only access only to selected snapshot files.

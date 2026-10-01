@@ -4,6 +4,7 @@
 | --- | --- | --- |
 | duckdb-go v2.10506.0 / DuckDB 1.5.6 | Embedded SQL execution, file analysis and supported federation | MIT |
 | Arrow Go v18.5.1 | Typed record batches and IPC encoding/decoding | Apache-2.0 |
+| Arrow Go Parquet/pqarrow v18.5.1 | Bounded Parquet snapshot encoding with Snappy and stored Arrow schema | Apache-2.0 |
 | [NATS Go v1.54.0](https://github.com/nats-io/nats.go/tree/v1.54.0) | Durable cluster jobs, KV state and authenticated broker connections | Apache-2.0 |
 | [Go YAML v3.0.5](https://github.com/yaml/go-yaml/tree/v3.0.5) | Strict YAML source configuration | MIT and Apache-2.0, by file |
 | [Microsoft SQL Server driver v1.9.8](https://github.com/microsoft/go-mssqldb/tree/v1.9.8) | Native SQL Server connector | BSD-3-Clause |

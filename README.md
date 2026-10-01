@@ -40,6 +40,20 @@ The result is Arrow IPC, not JSON. Read the full [usage guide](docs/usage.md) fo
 
 The [44-engine routing matrix](docs/source-coverage.md) distinguishes native connectors, protocol families, and external adapters. It is a coverage checklist, not 44 live-validated databases. Find provider setup, supported types, and query examples in the [source guides](docs/usage.md#source-guides).
 
+## Dataset acceleration
+
+Enable acceleration for selected datasets to serve repeated analytics from persistent Parquet snapshots. Native connectors feed the same snapshot path when their result types are supported; the source does not need a lakehouse. Query or join snapshot aliases with DuckDB. Original connections remain available for live queries.
+
+Every full refresh reruns the configured source query and consumes source resources. Queries using only accelerated aliases avoid source reads between refreshes. Configure freshness and resource limits in YAML; use local scheduling or tenant-scoped NATS jobs in cluster mode. Refreshes publish complete generations while existing readers keep their pinned files. See [acceleration setup and limits](docs/acceleration.md) and [capability indicators](docs/source-coverage.md#acceleration-and-federation-capabilities).
+
+```sh
+bin/kelvo accelerate refresh --config examples/acceleration.yml --dataset sales_fast
+bin/kelvo query --config examples/acceleration.yml --sources sales_fast \
+  --sql 'SELECT region, SUM(amount) FROM sales_fast GROUP BY region' --out revenue.arrow
+```
+
+This is full-refresh dataset acceleration. Incremental loading, CDC and query-result caching remain separate work.
+
 ## Security and cluster operation
 
 Configuration references environment-variable names, never credentials. Sources need dedicated read-only identities; requests name only registered sources. Query workers have deadlines, output limits, cancellation, and single-use result delivery. Deployment still needs its own filesystem, network, process, and resource isolation.
