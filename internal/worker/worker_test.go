@@ -1,0 +1,173 @@
+package worker
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/SYNEHQ/kelvo-go/internal/catalog"
+	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
+)
+
+func TestMain(m *testing.M) {
+	if len(os.Args) == 2 {
+		switch os.Args[1] {
+		case "worker":
+			os.Exit(testWorkerMain())
+		case "--group-child":
+			time.Sleep(time.Hour)
+			os.Exit(0)
+		case "--group-parent", "--group-orphan-parent":
+			child := exec.Command(os.Args[0], "--group-child")
+			if err := child.Start(); err != nil {
+				os.Exit(2)
+			}
+			fmt.Fprintln(os.Stdout, child.Process.Pid)
+			if os.Args[1] == "--group-parent" {
+				time.Sleep(time.Hour)
+			}
+			os.Exit(0)
+		}
+	}
+	os.Exit(m.Run())
+}
+
+func testWorkerMain() int {
+	var in Input
+	if json.NewDecoder(os.Stdin).Decode(&in) != nil {
+		return 2
+	}
+	if in.Request.SQL == "SELECT source_environment" {
+		if in.Request.Mode != "native" || in.Request.ConnectionID != "selected" || len(in.Config.Sources) != 1 || in.Config.Sources[0].ID != "selected" {
+			return 2
+		}
+		if os.Getenv("KELVO_SOURCE_SELECTED_URL") != "https://source.example" || os.Getenv("KELVO_SOURCE_SELECTED_TOKEN") != "fixture-source-token" {
+			return 2
+		}
+		for _, name := range []string{"KELVO_SOURCE_OTHER_TOKEN", "KELVO_TOKEN", "KELVO_TENANT_A_NATS_PASSWORD"} {
+			if _, present := os.LookupEnv(name); present {
+				return 2
+			}
+		}
+	} else if in.Request.Mode != "federated" {
+		return 2
+	}
+	if in.Request.SQL == "SELECT wait" {
+		time.Sleep(time.Hour)
+		return 0
+	}
+	schema := arrow.NewSchema([]arrow.Field{{Name: "value", Type: arrow.PrimitiveTypes.Int64}}, nil)
+	b := array.NewInt64Builder(memory.DefaultAllocator)
+	b.AppendValues([]int64{1, 2, 3}, nil)
+	column := b.NewArray()
+	b.Release()
+	record := array.NewRecordBatch(schema, []arrow.Array{column}, 3)
+	column.Release()
+	defer record.Release()
+	sink := NewIPCSink(os.Stdout, in.Limits)
+	if sink.Schema(schema) != nil || sink.Write(record) != nil || sink.Finish() != nil {
+		return 3
+	}
+	// Deliberately incorrect claimed counts: the parent must use observed data.
+	outcome := Outcome{Stats: query.Stats{Rows: 999, Batches: 999, Backend: "test"}}
+	if json.NewEncoder(os.Stderr).Encode(outcome) != nil {
+		return 4
+	}
+	return 0
+}
+
+func TestExecutorNormalizesModeAndCountsObservedResults(t *testing.T) {
+	e, err := New(catalog.Config{}, query.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		stats, err := e.Execute(context.Background(), query.Request{SQL: "SELECT 1"}, &workerTestSink{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stats.Rows != 3 || stats.Batches != 1 || stats.WireBytes == 0 {
+			t.Fatalf("trusted fabricated worker counts: %+v", stats)
+		}
+	}
+}
+
+func TestExecutorRejectsRequestsBeforeStartingProcess(t *testing.T) {
+	e := &Executor{Binary: "/does/not/exist", Limits: query.DefaultLimits()}
+	for _, req := range []query.Request{{SQL: ""}, {SQL: strings.Repeat("x", (64<<10)+1)}, {SQL: "SELECT 1", ConnectionID: "unexpected"}, {SQL: "SELECT 1", Mode: "other"}} {
+		_, err := e.Execute(context.Background(), req, &workerTestSink{})
+		if err == nil || query.PublicError(err).Code != "INVALID_ARGUMENT" {
+			t.Fatalf("request reached subprocess: %v", err)
+		}
+	}
+	e.Config = catalog.Config{Sources: []catalog.Source{{ID: "db", Type: "postgres", DSNEnv: "LD_PRELOAD"}}}
+	_, err := e.Execute(context.Background(), query.Request{SQL: "SELECT 1", Sources: []string{"db"}}, &workerTestSink{})
+	if err == nil || query.PublicError(err).Code != "CONFIGURATION_ERROR" {
+		t.Fatalf("ambient capability reference accepted: %v", err)
+	}
+}
+
+func TestExecutorForwardsOnlySelectedSourceToken(t *testing.T) {
+	t.Setenv("KELVO_SOURCE_SELECTED_URL", "https://source.example")
+	t.Setenv("KELVO_SOURCE_SELECTED_TOKEN", "fixture-source-token")
+	for _, name := range []string{"KELVO_SOURCE_OTHER_TOKEN", "KELVO_TOKEN", "KELVO_TENANT_A_NATS_PASSWORD"} {
+		t.Setenv(name, "fixture-must-stay-in-parent")
+	}
+	cfg := catalog.Config{Sources: []catalog.Source{
+		{ID: "selected", Type: "databricks", URLEnv: "KELVO_SOURCE_SELECTED_URL", TokenEnv: "KELVO_SOURCE_SELECTED_TOKEN"},
+		{ID: "other", Type: "databricks", TokenEnv: "KELVO_SOURCE_OTHER_TOKEN"},
+	}}
+	e, err := New(cfg, query.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats, err := e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "selected", SQL: "SELECT source_environment"}, &workerTestSink{})
+	if err != nil || stats.Rows != 3 {
+		t.Fatalf("selected source credentials did not reach the isolated worker: %v", err)
+	}
+}
+
+func TestExecutorRejectsMissingOrForbiddenSourceToken(t *testing.T) {
+	for _, tokenEnv := range []string{"KELVO_SOURCE_MISSING_TOKEN", "KELVO_TOKEN", "LD_PRELOAD"} {
+		t.Run(tokenEnv, func(t *testing.T) {
+			if tokenEnv == "KELVO_SOURCE_MISSING_TOKEN" {
+				t.Setenv(tokenEnv, "")
+				if err := os.Unsetenv(tokenEnv); err != nil {
+					t.Fatal(err)
+				}
+			}
+			e := &Executor{Binary: "/does/not/exist", Limits: query.DefaultLimits(), Config: catalog.Config{Sources: []catalog.Source{
+				{ID: "selected", Type: "databricks", TokenEnv: tokenEnv},
+			}}}
+			_, err := e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "selected", SQL: "SELECT 1"}, &workerTestSink{})
+			if err == nil || query.PublicError(err).Code != "CONFIGURATION_ERROR" {
+				t.Fatalf("invalid token reference reached process launch: %v", err)
+			}
+		})
+	}
+}
+
+func TestExecutorCancellationInterruptsBlockedIPC(t *testing.T) {
+	e, err := New(catalog.Config{}, query.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err = e.Execute(ctx, query.Request{SQL: "SELECT wait"}, &workerTestSink{})
+	if err == nil || query.PublicError(err).Code != "DEADLINE_EXCEEDED" {
+		t.Fatalf("cancellation: %v", err)
+	}
+	if time.Since(started) > 2*time.Second {
+		t.Fatal("blocked pipe delayed cancellation")
+	}
+}

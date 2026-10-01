@@ -7,3 +7,5 @@ import "os/exec"
 
 // Non-Linux deployments need an external supervisor for parent-death cleanup.
 func configureProcess(cmd *exec.Cmd) {}
+
+func cleanupProcess(cmd *exec.Cmd) error { return nil }

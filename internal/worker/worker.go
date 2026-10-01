@@ -31,9 +31,10 @@ type Outcome struct {
 	Error *query.Error `json:"error,omitempty"`
 }
 type Executor struct {
-	Config catalog.Config
-	Limits query.Limits
-	Binary string
+	Config      catalog.Config
+	Limits      query.Limits
+	Binary      string
+	SandboxPath string
 }
 
 func New(c catalog.Config, l query.Limits) (*Executor, error) {
@@ -62,21 +63,25 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	parent := ctx
 	start := time.Now()
 	var stats query.Stats
+	if err := e.Limits.Validate(); err != nil {
+		return stats, err
+	}
+	if sink == nil {
+		return stats, query.NewError("INVALID_ARGUMENT", "Result sink is required")
+	}
+	if r.Mode == "" {
+		r.Mode = "federated"
+	}
+	if err := query.ValidateRequest(r); err != nil {
+		return stats, err
+	}
 	ids := r.Sources
 	if r.Mode == "native" {
-		if r.ConnectionID == "" || len(r.Sources) > 0 {
-			return stats, query.NewError("INVALID_ARGUMENT", "Native queries require one connection_id")
-		}
 		ids = []string{r.ConnectionID}
-	} else if r.Mode != "" && r.Mode != "federated" {
-		return stats, query.NewError("INVALID_ARGUMENT", "Unknown query mode")
 	}
 	sources, err := e.Config.Select(ids)
 	if err != nil {
 		return stats, query.NewError("INVALID_ARGUMENT", "Unknown or duplicate source")
-	}
-	if _, err = r.Values(); err != nil {
-		return stats, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.Limits.Timeout)
 	defer cancel()
@@ -90,15 +95,26 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	if err != nil {
 		return stats, err
 	}
-	cmd := exec.CommandContext(ctx, e.Binary, "worker")
+	command, args := e.Binary, []string{"worker"}
+	if e.SandboxPath != "" {
+		args, err = SandboxCommand(e.Binary, dir, cfg, e.Limits)
+		if err != nil {
+			return stats, err
+		}
+		command = e.SandboxPath
+	}
+	cmd := exec.CommandContext(ctx, command, args...)
 	configureProcess(cmd)
 	cmd.Dir = dir
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "TMPDIR=" + dir, "GOMAXPROCS=" + fmt.Sprint(e.Limits.Threads)}
 	// Only explicitly configured secrets enter the query process.
 	seen := map[string]bool{}
 	for _, s := range sources {
-		for _, key := range []string{s.DSNEnv, s.URLEnv, s.UsernameEnv, s.PasswordEnv} {
+		for _, key := range []string{s.DSNEnv, s.URLEnv, s.UsernameEnv, s.PasswordEnv, s.TokenEnv} {
 			if key != "" && !seen[key] {
+				if err := catalog.ValidateEnvironment(key); err != nil {
+					return stats, query.NewError("CONFIGURATION_ERROR", "Source environment reference is not permitted")
+				}
 				v, ok := os.LookupEnv(key)
 				if !ok {
 					return stats, query.NewError("CONFIGURATION_ERROR", "A source environment variable is missing")
@@ -119,29 +135,21 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	if err = cmd.Start(); err != nil {
 		return stats, err
 	}
-	reader, readErr := ipc.NewReader(stdout)
-	if readErr == nil {
-		readErr = sink.Schema(reader.Schema())
-		for readErr == nil && reader.Next() {
-			if ctx.Err() != nil {
-				readErr = ctx.Err()
-				break
-			}
-			batch := reader.RecordBatch()
-			readErr = sink.Write(batch)
-		}
-		if readErr == nil {
-			readErr = reader.Err()
-		}
-		reader.Release()
-	}
+	stopClose := context.AfterFunc(ctx, func() { _ = stdout.Close() })
+	defer stopClose()
+	observed, readErr := readWorkerIPC(ctx, stdout, e.Limits, sink)
 	if readErr != nil {
 		cancel()
 	}
+	// On Linux the process-group ID stays pinned by the unreaped child. Kill
+	// any descendants before Wait reaps it, including children that closed the
+	// output pipe and would otherwise survive a successful leader exit.
+	cleanupErr := cleanupProcess(cmd)
 	waitErr := cmd.Wait()
 	var outcome Outcome
 	decodeErr := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &outcome)
 	stats = outcome.Stats
+	stats.Rows, stats.Bytes, stats.Batches, stats.WireBytes = observed.Rows, observed.Bytes, observed.Batches, observed.WireBytes
 	stats.DurationNS = time.Since(start).Nanoseconds()
 	if parent.Err() != nil {
 		return stats, parent.Err()
@@ -163,7 +171,7 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		}
 		return stats, query.NewError("QUERY_FAILED", "Query worker did not complete an Arrow result")
 	}
-	if waitErr != nil || decodeErr != nil {
+	if waitErr != nil || decodeErr != nil || (cleanupErr != nil && !errors.Is(cleanupErr, os.ErrProcessDone)) {
 		return stats, query.NewError("QUERY_FAILED", "Query worker failed")
 	}
 	if outcome.Error != nil {
