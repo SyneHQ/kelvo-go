@@ -18,7 +18,7 @@ jobs:
           go-version: '1.26.8'
           cache: true
       - run: go test -tags duckdb_arrow ./...
-      - run: go test -race ./internal/transport/httpapi ./internal/sources/... ./internal/cluster ./internal/worker
+      - run: go test -race ./internal/transport/httpapi ./internal/sources/... ./internal/cluster ./internal/worker ./internal/acceleration ./internal/catalog
       - run: go vet -tags duckdb_arrow ./...
       - run: go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
       - run: cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o bin/kelvo-landlock
@@ -27,5 +27,6 @@ jobs:
       - run: python3 scripts/cluster_fixture.py provision
       - run: python3 scripts/cluster_fixture.py test-store --go go
       - run: python3 scripts/cluster_acceptance.py
+      - run: python3 scripts/acceleration_acceptance.py --cluster
       - if: always()
         run: python3 scripts/cluster_fixture.py stop
