@@ -110,7 +110,7 @@ func Load(path string) (Config, error) {
 			if e != nil || !st.Mode().IsRegular() {
 				return c, fmt.Errorf("source %s must name a regular file", s.ID)
 			}
-		case "postgres", "mysql", "mariadb", "cockroachdb", "alloydb", "redshift", "sqlserver", "oracle", "mongodb":
+		case "postgres", "mysql", "mariadb", "cockroachdb", "alloydb", "redshift", "sqlserver", "oracle", "mongodb", "exasol":
 			if s.DSNEnv == "" {
 				return c, fmt.Errorf("source %s requires dsn_env", s.ID)
 			}
@@ -118,9 +118,16 @@ func Load(path string) (Config, error) {
 			if s.URLEnv == "" {
 				return c, fmt.Errorf("source %s requires url_env", s.ID)
 			}
-		case "databricks", "snowflake", "d1", "bigquery", "elasticsearch", "trino", "presto", "arrow_flight":
+		case "databricks", "snowflake", "d1", "bigquery", "elasticsearch", "trino", "presto", "arrow_flight", "spanner", "cosmosdb":
 			if s.URLEnv == "" || s.TokenEnv == "" {
 				return c, fmt.Errorf("source %s requires url_env and token_env", s.ID)
+			}
+		case "athena", "dynamodb", "ignite":
+			if s.URLEnv == "" || s.UsernameEnv == "" || s.PasswordEnv == "" {
+				return c, fmt.Errorf("source %s requires url_env, username_env and password_env", s.ID)
+			}
+			if s.DSNEnv != "" || s.Path != "" || (s.Type == "ignite" && s.TokenEnv != "") {
+				return c, fmt.Errorf("source %s has conflicting credentials", s.ID)
 			}
 		default:
 			if KnownType(s.Type) {

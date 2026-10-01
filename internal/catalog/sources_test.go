@@ -53,7 +53,7 @@ func TestCatalogRejectsUnsafeTokenAndIncompleteNativeCloudSources(t *testing.T) 
 			t.Fatal("unsafe token environment accepted")
 		}
 	})
-	for _, typ := range []string{"databricks", "snowflake", "d1"} {
+	for _, typ := range []string{"databricks", "snowflake", "d1", "spanner", "cosmosdb"} {
 		t.Run(typ+" requires url and token", func(t *testing.T) {
 			for _, input := range []string{
 				"sources:\n  - id: cloud\n    type: " + typ + "\n    token_env: KELVO_SOURCE_TOKEN\n",
@@ -86,4 +86,38 @@ func loadCatalogError(t *testing.T, content string) (Config, error) {
 		t.Fatal(err)
 	}
 	return Load(path)
+}
+
+func TestNativeExpansionCatalog(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "deploy", "examples", "sources-native.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"elasticsearch": true, "exasol": true, "spanner": true, "ignite": true, "athena": true, "dynamodb": true, "cosmosdb": true}
+	for _, s := range cfg.Sources {
+		if !want[s.Type] || !NativeType(s.Type) || s.Adapter != "" {
+			t.Fatalf("unexpected route: %#v", s)
+		}
+		delete(want, s.Type)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing native sources: %v", want)
+	}
+	for _, kind := range []string{"athena", "dynamodb", "ignite"} {
+		fields := []string{"url_env: KELVO_SOURCE_URL", "username_env: KELVO_SOURCE_USER", "password_env: KELVO_SOURCE_PASSWORD"}
+		for omit := range fields {
+			text := "sources:\n  - id: source\n    type: " + kind + "\n"
+			for i, field := range fields {
+				if i != omit {
+					text += "    " + field + "\n"
+				}
+			}
+			if _, err := loadCatalogError(t, text); err == nil {
+				t.Fatalf("%s accepted missing credential %d", kind, omit)
+			}
+		}
+	}
+	if _, err := loadCatalogError(t, "sources:\n  - id: source\n    type: exasol\n"); err == nil {
+		t.Fatal("Exasol accepted without a DSN reference")
+	}
 }

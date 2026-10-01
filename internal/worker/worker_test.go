@@ -45,14 +45,17 @@ func testWorkerMain() int {
 	if json.NewDecoder(os.Stdin).Decode(&in) != nil {
 		return 2
 	}
-	if in.Request.SQL == "SELECT source_environment" {
+	if in.Request.SQL == "SELECT source_environment" || in.Request.SQL == "SELECT aws_environment" {
 		if in.Request.Mode != "native" || in.Request.ConnectionID != "selected" || len(in.Config.Sources) != 1 || in.Config.Sources[0].ID != "selected" {
 			return 2
 		}
 		if os.Getenv("KELVO_SOURCE_SELECTED_URL") != "https://source.example" || os.Getenv("KELVO_SOURCE_SELECTED_TOKEN") != "fixture-source-token" {
 			return 2
 		}
-		for _, name := range []string{"KELVO_SOURCE_OTHER_TOKEN", "KELVO_TOKEN", "KELVO_TENANT_A_NATS_PASSWORD"} {
+		if in.Request.SQL == "SELECT aws_environment" && (os.Getenv("KELVO_SOURCE_SELECTED_USER") != "fixture-access-key" || os.Getenv("KELVO_SOURCE_SELECTED_PASSWORD") != "fixture-secret-key") {
+			return 2
+		}
+		for _, name := range []string{"KELVO_SOURCE_OTHER_TOKEN", "KELVO_TOKEN", "KELVO_TENANT_A_NATS_PASSWORD", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE", "GOOGLE_APPLICATION_CREDENTIALS", "AZURE_CLIENT_SECRET"} {
 			if _, present := os.LookupEnv(name); present {
 				return 2
 			}
@@ -152,6 +155,34 @@ func TestExecutorRejectsMissingOrForbiddenSourceToken(t *testing.T) {
 				t.Fatalf("invalid token reference reached process launch: %v", err)
 			}
 		})
+	}
+}
+
+func TestExecutorIsolatesExplicitCloudCredentials(t *testing.T) {
+	for name, value := range map[string]string{
+		"KELVO_SOURCE_SELECTED_URL":      "https://source.example",
+		"KELVO_SOURCE_SELECTED_TOKEN":    "fixture-source-token",
+		"KELVO_SOURCE_SELECTED_USER":     "fixture-access-key",
+		"KELVO_SOURCE_SELECTED_PASSWORD": "fixture-secret-key",
+	} {
+		t.Setenv(name, value)
+	}
+	for _, name := range []string{"KELVO_SOURCE_OTHER_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_PROFILE", "GOOGLE_APPLICATION_CREDENTIALS", "AZURE_CLIENT_SECRET"} {
+		t.Setenv(name, "fixture-must-stay-in-parent")
+	}
+	for _, kind := range []string{"athena", "dynamodb"} {
+		cfg := catalog.Config{Sources: []catalog.Source{
+			{ID: "selected", Type: kind, URLEnv: "KELVO_SOURCE_SELECTED_URL", UsernameEnv: "KELVO_SOURCE_SELECTED_USER", PasswordEnv: "KELVO_SOURCE_SELECTED_PASSWORD", TokenEnv: "KELVO_SOURCE_SELECTED_TOKEN"},
+			{ID: "other", Type: kind, TokenEnv: "KELVO_SOURCE_OTHER_TOKEN"},
+		}}
+		e, err := New(cfg, query.DefaultLimits())
+		if err != nil {
+			t.Fatal(err)
+		}
+		stats, err := e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "selected", SQL: "SELECT aws_environment"}, &workerTestSink{})
+		if err != nil || stats.Rows != 3 {
+			t.Fatalf("%s credential boundary failed: %v", kind, err)
+		}
 	}
 }
 

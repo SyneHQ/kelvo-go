@@ -8,18 +8,24 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/athena"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/bigquery"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/clickhouse"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/cosmosdb"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/d1"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/databricks"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/dbapi"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/elasticsearch"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/exasol"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/flightsql"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/ignite"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/mongodb"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/mysql"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/oracle"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/postgres"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/snowflake"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/spanner"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/sqlserver"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/trino"
 )
@@ -118,6 +124,18 @@ func New(config catalog.Config, limits query.Limits, request query.Request) (Eng
 		engine, err = bigquery.New(selected, limits)
 	case "elasticsearch":
 		engine, err = elasticsearch.New(selected, limits)
+	case "exasol":
+		engine, err = exasol.New(selected, limits)
+	case "spanner":
+		engine, err = spanner.New(selected, limits)
+	case "ignite":
+		engine, err = ignite.New(selected, limits)
+	case "athena":
+		engine, err = athena.New(selected, limits)
+	case "dynamodb":
+		engine, err = dynamodb.New(selected, limits)
+	case "cosmosdb":
+		engine, err = cosmosdb.New(selected, limits)
 	case "trino", "presto":
 		engine, err = trino.New(selected, limits)
 	case "arrow_flight":

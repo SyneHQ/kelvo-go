@@ -1,0 +1,55 @@
+# Native query sources. Supply secrets through these explicit environment names.
+# See docs/usage.md#source-guides for endpoint, permission and type requirements.
+sources:
+  - id: elasticsearch
+    type: elasticsearch
+    url_env: KELVO_SOURCE_ELASTICSEARCH_URL
+    token_env: KELVO_SOURCE_ELASTICSEARCH_TOKEN
+    options:
+      authentication: ApiKey
+  - id: exasol
+    type: exasol
+    dsn_env: KELVO_SOURCE_EXASOL_DSN
+  - id: spanner
+    type: spanner
+    url_env: KELVO_SOURCE_SPANNER_URL
+    token_env: KELVO_SOURCE_SPANNER_TOKEN
+    options:
+      project: example-project
+      instance: analytics
+      database: analytics
+  - id: ignite
+    type: ignite
+    url_env: KELVO_SOURCE_IGNITE_URL
+    username_env: KELVO_SOURCE_IGNITE_USER
+    password_env: KELVO_SOURCE_IGNITE_PASSWORD
+    options:
+      cache_name: SQL_PUBLIC_EVENTS
+  - id: athena
+    type: athena
+    url_env: KELVO_SOURCE_ATHENA_URL
+    username_env: KELVO_SOURCE_ATHENA_ACCESS_KEY
+    password_env: KELVO_SOURCE_ATHENA_SECRET_KEY
+    token_env: KELVO_SOURCE_ATHENA_SESSION_TOKEN
+    options:
+      region: us-east-1
+      workgroup: primary
+      database: analytics
+      output_location: s3://example-query-results/kelvo/
+  - id: dynamodb
+    type: dynamodb
+    url_env: KELVO_SOURCE_DYNAMODB_URL
+    username_env: KELVO_SOURCE_DYNAMODB_ACCESS_KEY
+    password_env: KELVO_SOURCE_DYNAMODB_SECRET_KEY
+    # Omit token_env when using static credentials without a session token.
+    token_env: KELVO_SOURCE_DYNAMODB_SESSION_TOKEN
+    options:
+      region: us-east-1
+  - id: cosmosdb
+    type: cosmosdb
+    url_env: KELVO_SOURCE_COSMOSDB_URL
+    token_env: KELVO_SOURCE_COSMOSDB_TOKEN
+    options:
+      database: analytics
+      container: events
+      auth: aad

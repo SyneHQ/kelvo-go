@@ -48,7 +48,8 @@ func NativeType(kind string) bool {
 	switch CanonicalType(kind) {
 	case "clickhouse", "databricks", "snowflake", "d1", "mongodb", "sqlserver",
 		"oracle", "postgres", "mysql", "mariadb", "cockroachdb", "alloydb",
-		"redshift", "bigquery", "elasticsearch", "trino", "presto", "arrow_flight":
+		"redshift", "bigquery", "elasticsearch", "trino", "presto", "arrow_flight",
+		"exasol", "spanner", "ignite", "athena", "dynamodb", "cosmosdb":
 		return true
 	}
 	return false

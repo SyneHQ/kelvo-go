@@ -16,6 +16,8 @@ func TestNativeFactoryRoutesOnlySelectedSource(t *testing.T) {
 	t.Setenv("KELVO_SOURCE_DISPATCH_URL", "https://example.invalid")
 	t.Setenv("KELVO_SOURCE_DISPATCH_TOKEN", "fixture-token")
 	t.Setenv("KELVO_SOURCE_DISPATCH_USER", "fixture-user")
+	t.Setenv("KELVO_SOURCE_DISPATCH_PASSWORD", "fixture-password")
+	t.Setenv("KELVO_SOURCE_DISPATCH_DSN", "exa:example.com:8563;user=reader;password=test-only;encryption=1;validateservercertificate=1;autocommit=0")
 	t.Setenv("KELVO_SOURCE_FLIGHT_URL", "grpcs://example.invalid:443")
 	for _, test := range []struct{ kind, implementation string }{
 		{"clickhouse", "*clickhouse.Engine"}, {"databricks", "*databricks.Engine"},
@@ -24,11 +26,33 @@ func TestNativeFactoryRoutesOnlySelectedSource(t *testing.T) {
 		{"postgres", "*sqlnative.Engine"}, {"postgresql", "*sqlnative.Engine"}, {"cockroachdb", "*sqlnative.Engine"},
 		{"alloydb", "*sqlnative.Engine"}, {"redshift", "*sqlnative.Engine"}, {"mysql", "*sqlnative.Engine"}, {"mariadb", "*sqlnative.Engine"},
 		{"bigquery", "*bigquery.Engine"}, {"elasticsearch", "*elasticsearch.Engine"},
+		{"exasol", "*exasol.Engine"}, {"spanner", "*spanner.Engine"}, {"ignite", "*ignite.Engine"},
+		{"athena", "*athena.Engine"}, {"dynamodb", "*dynamodb.Engine"}, {"cosmosdb", "*cosmosdb.Engine"},
 		{"trino", "*trino.Engine"}, {"presto", "*trino.Engine"}, {"arrow_flight", "*flightsql.Engine"},
 	} {
 		t.Run(test.kind, func(t *testing.T) {
 			source := catalog.Source{ID: "selected", Type: test.kind, DSNEnv: "KELVO_SOURCE_DISPATCH_DSN", URLEnv: "KELVO_SOURCE_DISPATCH_URL", TokenEnv: "KELVO_SOURCE_DISPATCH_TOKEN"}
 			switch test.kind {
+			case "exasol":
+				source = catalog.Source{ID: "selected", Type: test.kind, DSNEnv: "KELVO_SOURCE_DISPATCH_DSN"}
+			case "spanner":
+				source.Options = map[string]string{"project": "fixture-project", "instance": "fixture-instance", "database": "analytics"}
+			case "cosmosdb":
+				source.Options = map[string]string{"database": "analytics", "container": "events", "auth": "aad"}
+			case "athena", "dynamodb", "ignite":
+				source.DSNEnv = ""
+				source.UsernameEnv, source.PasswordEnv = "KELVO_SOURCE_DISPATCH_USER", "KELVO_SOURCE_DISPATCH_PASSWORD"
+				if test.kind == "ignite" {
+					source.TokenEnv = ""
+					source.Options = map[string]string{"cache_name": "analytics"}
+				} else {
+					source.Options = map[string]string{"region": "us-east-1"}
+					if test.kind == "athena" {
+						source.Options["database"] = "analytics"
+						source.Options["workgroup"] = "primary"
+						source.Options["output_location"] = "s3://fixture-results/"
+					}
+				}
 			case "mongodb":
 				source.Options = map[string]string{"database": "analytics"}
 			case "databricks":
@@ -66,7 +90,7 @@ func TestNativeFactoryRequiresExplicitAdapter(t *testing.T) {
 	t.Setenv("KELVO_SOURCE_ADAPTER_URL", "https://adapter.invalid")
 	t.Setenv("KELVO_SOURCE_ADAPTER_FLIGHT", "grpcs://adapter.invalid:443")
 	t.Setenv("KELVO_SOURCE_ADAPTER_TOKEN", "fixture-token")
-	for _, kind := range []string{"h2", "hive", "spark", "db2", "ignite", "exasol", "sap_hana", "sap_ase", "redis", "cassandra", "scylla", "cosmosdb", "dynamodb", "spanner", "athena", "clickhouse_lambda", "salesforce", "google_sheets", "stripe", "posthog", "ga4", "google_ads", "facebook_ads"} {
+	for _, kind := range []string{"h2", "hive", "spark", "db2", "sap_hana", "sap_ase", "redis", "cassandra", "scylla", "clickhouse_lambda", "salesforce", "google_sheets", "stripe", "posthog", "ga4", "google_ads", "facebook_ads"} {
 		t.Run(kind, func(t *testing.T) {
 			source := catalog.Source{ID: "selected", Type: kind, URLEnv: "KELVO_SOURCE_ADAPTER_URL", TokenEnv: "KELVO_SOURCE_ADAPTER_TOKEN"}
 			r := query.Request{Mode: "native", ConnectionID: "selected", SQL: "SELECT 1"}
