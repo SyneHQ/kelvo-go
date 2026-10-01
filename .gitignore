@@ -1,0 +1,14 @@
+/bin/
+/dist/
+/artifacts/
+.env
+.env.*
+!*.example
+*.duckdb
+*.duckdb.wal
+*.prof
+*.arrow
+__pycache__/
+*.py[cod]
+.venv/
+/kelvo.local.json

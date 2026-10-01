@@ -1,0 +1,7 @@
+Kelvo Go
+Copyright 2026 SYNEHQ
+
+Kelvo Go is independently implemented and maintained by SYNEHQ.
+Apache Arrow and DuckDB are dependencies with their own licenses and trademarks.
+Spice OSS is an architectural reference; this repository is not a Spice distribution
+and does not include the private Rust derivative or private platform source.

@@ -1,0 +1,8 @@
+{
+  "phase": "benchmark harness validation",
+  "export_exit": 0,
+  "validation": "failed before throughput report",
+  "cause": "Benchmark expected timestamp[s]; ClickHouse ArrowStream emitted DateTime as uint32 epoch seconds.",
+  "action": "Validate source Arrow mapping and rerun final benchmark after fixing the harness.",
+  "output_file_bytes": 659299304
+}

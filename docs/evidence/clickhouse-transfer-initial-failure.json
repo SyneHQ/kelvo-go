@@ -1,0 +1,16 @@
+{
+  "scope": "CLI native ClickHouse -> worker -> coordinator -> Arrow IPC file including process start and fsync; validation runs after timed export; source warm-cache uncontrolled; no browser or WAN",
+  "query": "SELECT id, tenant_id, customer_id, event_time, amount, payload FROM kelvo_bench.fact_events WHERE tenant_id < 100 ORDER BY tenant_id, event_day, grp, id",
+  "binary_sha256": "110a386912df94f43c69cd368690482dd9f738ab79c0fe4454d4003f2ceff0bb",
+  "trials": [
+    {
+      "trial": 1,
+      "exit": 1,
+      "seconds": 1.4728830139974889,
+      "coordinator_rss_kib": 52488,
+      "worker_rss_kib": 50260,
+      "sample_interval_seconds": 0.02,
+      "error": "Source Arrow stream exceeds memory or byte limit"
+    }
+  ]
+}

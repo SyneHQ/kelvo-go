@@ -1,0 +1,53 @@
+[
+  {
+    "name": "csv",
+    "exit": 0,
+    "elapsed_seconds": 0.05593364900050801,
+    "stderr": "{\"rows\":2,\"batches\":1,\"arrow_bytes\":54,\"wire_bytes\":456,\"backend\":\"duckdb\",\"prepare_ns\":11588164,\"duration_ns\":38395280,\"engine_streaming\":false}",
+    "matches": true,
+    "rows": [
+      {
+        "region": "east",
+        "revenue": "25.00"
+      },
+      {
+        "region": "west",
+        "revenue": "19.75"
+      }
+    ]
+  },
+  {
+    "name": "federation",
+    "exit": 0,
+    "elapsed_seconds": 0.25647125099931145,
+    "stderr": "{\"rows\":3,\"batches\":1,\"arrow_bytes\":76,\"wire_bytes\":488,\"backend\":\"duckdb\",\"prepare_ns\":212556164,\"duration_ns\":240911510,\"engine_streaming\":false}",
+    "matches": true,
+    "rows": [
+      {
+        "name": "Ada",
+        "amount": "19.75"
+      },
+      {
+        "name": "Lin",
+        "amount": "20.00"
+      },
+      {
+        "name": "Null",
+        "amount": null
+      }
+    ]
+  },
+  {
+    "name": "clickhouse",
+    "exit": 0,
+    "elapsed_seconds": 0.35783936900043045,
+    "stderr": "{\"rows\":1,\"batches\":1,\"arrow_bytes\":16,\"wire_bytes\":408,\"backend\":\"clickhouse\",\"prepare_ns\":334466783,\"duration_ns\":342470336,\"engine_streaming\":true}",
+    "matches": true,
+    "rows": [
+      {
+        "rows": 100000000,
+        "sum_id": 4999999950000000
+      }
+    ]
+  }
+]

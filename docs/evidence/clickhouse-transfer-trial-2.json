@@ -1,0 +1,97 @@
+{
+  "benchmark": "kelvo-clickhouse-native-arrow-v1",
+  "binary_sha256": "5609a922e407a634dc69ea6aeb9dc064422dbb17aa5e86637e9ca541c7a3cad1",
+  "cache_note": "Warm/uncontrolled does not establish a cold-cache measurement.",
+  "cache_state": "warm-uncontrolled",
+  "command_exit": 0,
+  "connection_id": "ch",
+  "elapsed_seconds_process_plus_fsync": 8.489780601998064,
+  "kelvo_stats": {
+    "arrow_bytes": 659232799,
+    "backend": "clickhouse",
+    "batches": 154,
+    "duration_ns": 3227030722,
+    "engine_streaming": true,
+    "prepare_ns": 339472271,
+    "rows": 10000000,
+    "wire_bytes": 659299304
+  },
+  "platform": {
+    "python": "3.11.2 (main, May 12 2026, 05:17:27) [GCC 12.2.0]",
+    "system": "Linux-6.1.0-53-cloud-amd64-x86_64-with-glibc2.36"
+  },
+  "query": "SELECT id, tenant_id, customer_id, event_time, amount, payload\nFROM kelvo_bench.fact_events\nWHERE tenant_id < 100\nORDER BY tenant_id, event_day, grp, id",
+  "rss": {
+    "coordinator_peak_rss_kib": 59260,
+    "method": "Linux /proc/<pid>/status VmRSS; coordinator and direct worker children sampled separately",
+    "sample_interval_seconds": 0.02,
+    "samples": 416,
+    "worker_peak_rss_kib_by_pid": {
+      "145434": 51008
+    },
+    "worker_peak_rss_kib_max": 51008
+  },
+  "scope": "Kelvo coordinator process, isolated worker, native ClickHouse query, Arrow IPC export, and caller fsync; validation is outside the timed interval.",
+  "source_memory_flag": "--memory-mb",
+  "source_memory_mib": 1024,
+  "source_memory_note": "In native mode this budget covers the ClickHouse source query and Arrow decoder allocations; it is not a process-RSS cap.",
+  "throughput": {
+    "arrow_file_bytes_per_second": 77657990.81366536,
+    "rows_per_second": 1177886.7404001593
+  },
+  "validation_outside_timer": {
+    "arrow_buffer_sha256": "04753f498d265d0f4254236b1eeda8f4ec96626c2d4b2d20ad6464d00e9f9823",
+    "arrow_file_bytes": 659299304,
+    "arrow_file_sha256": "5bac26a6d2fc65ec7a63dc151ecc05c2b54628515104f7f47e4b3c5f33498403",
+    "default_fixture_expected": {
+      "amount_nulls": 434784,
+      "id_sum": 499995495000000,
+      "payload_nulls": 588235,
+      "rows": 10000000
+    },
+    "null_counts": {
+      "amount": 434784,
+      "customer_id": 0,
+      "event_time": 0,
+      "id": 0,
+      "payload": 588235,
+      "tenant_id": 0
+    },
+    "row_count": 10000000,
+    "schema": [
+      [
+        "id",
+        "int64",
+        false
+      ],
+      [
+        "tenant_id",
+        "int32",
+        false
+      ],
+      [
+        "customer_id",
+        "int32",
+        false
+      ],
+      [
+        "event_time",
+        "uint32",
+        false
+      ],
+      [
+        "amount",
+        "double",
+        true
+      ],
+      [
+        "payload",
+        "string",
+        true
+      ]
+    ],
+    "value_sums": {
+      "id": 499995495000000
+    }
+  }
+}

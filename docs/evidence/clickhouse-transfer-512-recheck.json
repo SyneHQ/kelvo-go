@@ -1,0 +1,18 @@
+{
+  "source_query_memory_bytes": 536870912,
+  "local_arrow_allocation_budget_bytes": 536870912,
+  "scope": "CLI native ClickHouse -> worker -> coordinator -> Arrow IPC file including process start and fsync; validation runs after timed export; source warm-cache uncontrolled; no browser or WAN",
+  "query": "SELECT id, tenant_id, customer_id, event_time, amount, payload FROM kelvo_bench.fact_events WHERE tenant_id < 100 ORDER BY tenant_id, event_day, grp, id",
+  "binary_sha256": "5609a922e407a634dc69ea6aeb9dc064422dbb17aa5e86637e9ca541c7a3cad1",
+  "trials": [
+    {
+      "trial": 1,
+      "exit": 1,
+      "seconds": 0.7083605289990373,
+      "coordinator_rss_kib": 57404,
+      "worker_rss_kib": 50832,
+      "sample_interval_seconds": 0.02,
+      "error": "ClickHouse source query exceeded its memory limit (code 241)"
+    }
+  ]
+}

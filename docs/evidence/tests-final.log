@@ -1,0 +1,7 @@
+?   	github.com/SYNEHQ/kelvo-go/cmd/kelvo	[no test files]
+ok  	github.com/SYNEHQ/kelvo-go/internal/catalog	0.004s
+ok  	github.com/SYNEHQ/kelvo-go/internal/engine/duckdb	0.193s
+ok  	github.com/SYNEHQ/kelvo-go/internal/query	0.002s
+ok  	github.com/SYNEHQ/kelvo-go/internal/sources/clickhouse	0.012s
+ok  	github.com/SYNEHQ/kelvo-go/internal/transport/httpapi	0.052s
+?   	github.com/SYNEHQ/kelvo-go/internal/worker	[no test files]

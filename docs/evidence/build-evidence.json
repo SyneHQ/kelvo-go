@@ -1,0 +1,32 @@
+{
+  "build_input_sha256": "da0c660cce5901553c77ae30b6c74392cd95c907a8d3e226a4ba2c7f3bde13e7",
+  "build_inputs": {
+    "cmd/kelvo/main.go": "2147a0de614b6eb554b9c47f22e680bf179f569463987820d5fe7897692d2888",
+    "go.mod": "427c574aabad724809e358154af37bd54ed2e20356b014f3827029907a0100d4",
+    "go.sum": "a2ccac71d93b891cbf86e445cf2d6a66366244cd0d5562347776a1c9dd171b11",
+    "internal/catalog/catalog.go": "4ff96ecbd81e1aea69da7335cff4522e570fc1905f4869e9b1fefb77a79a28fe",
+    "internal/catalog/catalog_test.go": "6c76a591d40aabb7194ac527e12137c260d2d91ca2ed3a3c0c89f13240cb45e5",
+    "internal/engine/duckdb/engine.go": "5eac54d454d100bf3397f40e378c42b17622b3e29fe4d22bb1d7254e9fd88f9b",
+    "internal/engine/duckdb/engine_test.go": "f75eb97e0ab9d04f47655f73283be9cf4be15e51de6dfb3eff355fd7ce320386",
+    "internal/engine/duckdb/stub.go": "c61e1844ec5c19c6c88f772377d254babf962805b7aec403175f7a8835c666b2",
+    "internal/query/types.go": "bf0bcbc2237d921819171b77c802b1741c837731d7c53426f6fd3ea1bfb11e60",
+    "internal/query/types_test.go": "6c092cb2d93ef131e24b076c48ab9fd95f0264ee71358f4ba4cfc4d869418858",
+    "internal/sources/clickhouse/clickhouse.go": "80a58672c5c433ef91d815c3d0fc27f6f6d0b8932fa6b6383cc21494d739a76a",
+    "internal/sources/clickhouse/clickhouse_test.go": "1cee77b05e39c2dfd3ba974abab9a8e026b719d77821dd6120ab1becb8c452ea",
+    "internal/transport/httpapi/httpapi.go": "4e242870b50c8fef844051bada95a66edd47900202a8c77428861dcde2d8f385",
+    "internal/transport/httpapi/httpapi_test.go": "c1af7b9fda8e4296e6e1a0dd18d0ff2adce56cc79a85e9380aa7eb4496c04a04",
+    "internal/worker/process_linux.go": "970430deb99a52fd802230c7a121b07dcaa358a6aff1e233844a7f74250ce429",
+    "internal/worker/process_other.go": "eb5525fa613a0d5687cefbb1bb95cc6be65cb106488dbdcc6e0ebc25ea47f7bc",
+    "internal/worker/worker.go": "cd256d7c4e1de27c29294c72fbed28140540239dd56e1b77e45d9e0e47444eee"
+  },
+  "binary_sha256": "5609a922e407a634dc69ea6aeb9dc064422dbb17aa5e86637e9ca541c7a3cad1",
+  "build_command": "GOMAXPROCS=2 go build -tags duckdb_arrow -ldflags '-s -w' -o bin/kelvo ./cmd/kelvo",
+  "go_version": "go version go1.26.8 linux/amd64",
+  "platform": "Debian 12, Linux amd64",
+  "logical_cpus": 4,
+  "host_memory_kib": 32873924,
+  "clickhouse_version": "26.9.7.9",
+  "clickhouse_container_memory_bytes": 4294967296,
+  "clickhouse_container_cpus": 1.5,
+  "pyarrow_version": "25.0.1"
+}
