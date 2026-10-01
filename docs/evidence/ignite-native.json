@@ -1,0 +1,38 @@
+{
+  "provider": "ignite",
+  "server_version": "2.17.0",
+  "image": "apacheignite/ignite:2.17.0",
+  "image_id": "sha256:9b350ea397b5e64d5ff2baddf0205049527a135e4526ab4e0b88fdf6fc7876bd",
+  "rows": 1205,
+  "transport": "verified TLS to disposable loopback proxy; loopback HTTP to Ignite",
+  "authentication": "Ignite native authentication with generated password; not an authorization/RBAC test",
+  "scope": "live Go connector metadata, types, pagination, cleanup and failure limits; not throughput or cluster validation",
+  "checks": [
+    {
+      "test": "TestLiveIgnitePagination",
+      "status": "pass"
+    },
+    {
+      "test": "TestLiveIgniteExactTypes",
+      "status": "pass"
+    },
+    {
+      "test": "TestLiveIgniteUUIDMetadataRefusal",
+      "status": "pass"
+    },
+    {
+      "test": "TestLiveIgniteEmptyResult",
+      "status": "pass"
+    },
+    {
+      "test": "TestLiveIgniteFailureCleanup",
+      "status": "pass"
+    }
+  ],
+  "successful_fetch_requests": 1,
+  "successful_close_requests": 3,
+  "all_observed_cursors_released": true,
+  "observed_cursor_count": 6,
+  "go_mod_sha256": "ac7ba6dd8f79a4bfa1ddad9482da4bce67ce2484a72267c0537362fb37c1523c",
+  "passed": true
+}
