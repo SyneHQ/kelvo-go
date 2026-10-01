@@ -56,7 +56,7 @@ func TestTransportRejectsRedirectsPathsErrorsAndTrailingJSON(t *testing.T) {
 	for _, test := range []struct {
 		name, body string
 		status     int
-	}{{"redirect", "", 302}, {"rejected", "private-token", 403}, {"trailing", `{} {}`, 200}, {"malformed", `private-token`, 200}} {
+	}{{"redirect", "", 302}, {"rejected", "private-token", 403}, {"trailing", `{} {}`, 200}, {"malformed", `private-token`, 200}, {"invalid UTF-8", "{\"value\":\"\xff\"}", 200}} {
 		t.Run(test.name, func(t *testing.T) {
 			calls := 0
 			c := testClient(t, func(w http.ResponseWriter, r *http.Request) {

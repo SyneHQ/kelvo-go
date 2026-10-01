@@ -4,6 +4,7 @@ package elasticsearch
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -67,8 +68,20 @@ func (e *Engine) Execute(parent context.Context, r query.Request, sink query.Sin
 	if err = query.ValidateRequest(r); err != nil {
 		return stats, err
 	}
-	if r.Mongo != nil || len(r.Parameters) != 0 {
-		return stats, query.NewError("UNSUPPORTED", "Elasticsearch requires SQL without parameters")
+	if r.Mongo != nil {
+		return stats, query.NewError("UNSUPPORTED", "Elasticsearch requires SQL")
+	}
+	values, err := r.Values()
+	if err != nil {
+		return stats, err
+	}
+	for i, value := range values {
+		if n, ok := value.(uint64); ok {
+			if n > math.MaxInt64 {
+				return stats, query.NewError("UNSUPPORTED", "Elasticsearch SQL parameters require signed 64-bit integers")
+			}
+			values[i] = int64(n)
+		}
 	}
 	sql, err := sqlguard.ReadOnly(r.SQL)
 	if err != nil {
@@ -78,7 +91,10 @@ func (e *Engine) Execute(parent context.Context, r query.Request, sink query.Sin
 	defer cancel()
 	headers := map[string]string{"Authorization": e.auth + " " + e.client.Token}
 	// Synchronous API only. Partial/async replies are never accepted as complete.
-	body := map[string]any{"query": sql, "fetch_size": min(1000, e.limits.MaxRows+1), "field_multi_value_leniency": false, "columnar": false, "time_zone": "UTC", "request_timeout": strconv.FormatInt(e.limits.Timeout.Milliseconds(), 10) + "ms", "page_timeout": "30s"}
+	body := map[string]any{"query": sql, "fetch_size": min(1000, e.limits.MaxRows+1), "field_multi_value_leniency": false, "allow_partial_search_results": false, "columnar": false, "time_zone": "UTC", "request_timeout": strconv.FormatInt(e.limits.Timeout.Milliseconds(), 10) + "ms", "page_timeout": "30s"}
+	if len(values) > 0 {
+		body["params"] = values
+	}
 	cursor := ""
 	defer func() {
 		if cursor != "" {

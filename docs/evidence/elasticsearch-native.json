@@ -1,0 +1,27 @@
+{
+  "provider": "elasticsearch",
+  "server_version": "8.19.0",
+  "image": "docker.elastic.co/elasticsearch/elasticsearch:8.19.0",
+  "image_id": "sha256:e1e66bfabae0fd03a0a36651a9bb198e7f061e0c99f457a6203b116e053e9cdb",
+  "rows": 1205,
+  "transport": "verified TLS with disposable fixture CA",
+  "authentication": "index-restricted API key",
+  "scope": "live Go connector package, not cluster or throughput validation",
+  "checks": [
+    {
+      "test": "TestLiveElasticsearchPaginationAndTypes",
+      "status": "pass"
+    },
+    {
+      "test": "TestLiveElasticsearchBoundParameters",
+      "status": "pass"
+    },
+    {
+      "test": "TestLiveElasticsearchLimitsAndPermissions",
+      "status": "pass"
+    }
+  ],
+  "open_search_contexts_after_tests": 0,
+  "go_mod_sha256": "ac7ba6dd8f79a4bfa1ddad9482da4bce67ce2484a72267c0537362fb37c1523c",
+  "passed": true
+}

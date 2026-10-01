@@ -14,6 +14,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
@@ -127,6 +128,9 @@ func (c *Client) do(ctx context.Context, method, path string, input io.Reader, c
 	}
 	if out == nil {
 		return response.StatusCode, wire.n, nil
+	}
+	if !utf8.Valid(b) {
+		return response.StatusCode, wire.n, query.NewError("QUERY_FAILED", "Cloud source returned invalid UTF-8")
 	}
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.UseNumber()

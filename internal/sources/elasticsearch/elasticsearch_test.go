@@ -129,3 +129,47 @@ func TestCancelBetweenPagesClosesCursor(t *testing.T) {
 		t.Fatalf("err=%v close=%v", err, closed.Load())
 	}
 }
+
+func TestParametersAreBoundWithoutSQLInterpolation(t *testing.T) {
+	sql := "SELECT id FROM logs WHERE id > ? AND label = ? AND active = ? AND optional = ?"
+	e := setup(t, func(w http.ResponseWriter, r *http.Request) {
+		d := json.NewDecoder(r.Body)
+		d.UseNumber()
+		var body struct {
+			Query   string `json:"query"`
+			Params  []any  `json:"params"`
+			Partial *bool  `json:"allow_partial_search_results"`
+		}
+		if err := d.Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.Query != sql || len(body.Params) != 4 || body.Params[0] != json.Number("9007199254740993") || body.Params[1] != "'; DELETE FROM logs; --" || body.Params[2] != true || body.Params[3] != nil || body.Partial == nil || *body.Partial {
+			t.Errorf("incorrect bound parameters or partial-result setting")
+		}
+		fmt.Fprint(w, `{"columns":[{"name":"id","type":"long"}],"rows":[[9007199254740994]]}`)
+	})
+	r := request()
+	r.SQL = sql
+	r.Parameters = []query.Parameter{
+		{Type: "int64", Value: json.RawMessage(`"9007199254740993"`)},
+		{Type: "string", Value: json.RawMessage(`"'; DELETE FROM logs; --"`)},
+		{Type: "bool", Value: json.RawMessage("true")},
+		{Type: "null", Value: json.RawMessage("null")},
+	}
+	stats, err := e.Execute(context.Background(), r, &capture{})
+	if err != nil || stats.Rows != 1 {
+		t.Fatalf("stats=%+v err=%v", stats, err)
+	}
+}
+
+func TestUnsignedParameterOverflowFailsBeforeRequest(t *testing.T) {
+	calls := 0
+	e := setup(t, func(w http.ResponseWriter, r *http.Request) { calls++ })
+	r := request()
+	r.SQL = "SELECT id FROM logs WHERE id > ?"
+	r.Parameters = []query.Parameter{{Type: "uint64", Value: json.RawMessage(`"18446744073709551615"`)}}
+	_, err := e.Execute(context.Background(), r, &capture{})
+	if err == nil || query.PublicError(err).Code != "UNSUPPORTED" || calls != 0 {
+		t.Fatalf("err=%v calls=%d", err, calls)
+	}
+}
