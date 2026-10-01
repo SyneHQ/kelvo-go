@@ -1,0 +1,57 @@
+listen: ":8443"
+tls:
+  cert_file: /run/kelvo/tls/api.crt
+  key_file: /run/kelvo/tls/api.key
+worker_tls:
+  cert_file: /run/kelvo/tls/client.crt
+  key_file: /run/kelvo/tls/client.key
+  ca_file: /run/kelvo/tls/worker-ca.crt
+max_queries: 48
+max_concurrent: 3
+max_http_requests: 64
+tenants:
+  - token_env: KELVO_TENANT_A_TOKEN
+    policy:
+      tenant_id: tenant-a
+      max_queries: 24
+      job_ttl: 10m
+      lease_duration: 15s
+      replicas: 3
+      limits:
+        max_rows: 1000000
+        max_bytes: 134217728
+        timeout: 30s
+        memory_mb: 512
+        threads: 2
+        max_temp_mb: 256
+      workers: {a1: 1, a2: 1}
+    nats:
+      url: tls://nats:4222
+      username: tenant-a-gateway
+      password_env: KELVO_TENANT_A_NATS_PASSWORD
+      ca_file: /run/kelvo/tls/nats-ca.crt
+    workers:
+      - {id: a1, url: "https://worker-a1:8443"}
+      - {id: a2, url: "https://worker-a2:8443"}
+  - token_env: KELVO_TENANT_B_TOKEN
+    policy:
+      tenant_id: tenant-b
+      max_queries: 24
+      job_ttl: 10m
+      lease_duration: 15s
+      replicas: 3
+      limits:
+        max_rows: 1000000
+        max_bytes: 134217728
+        timeout: 30s
+        memory_mb: 512
+        threads: 2
+        max_temp_mb: 256
+      workers: {b1: 1}
+    nats:
+      url: tls://nats:4222
+      username: tenant-b-gateway
+      password_env: KELVO_TENANT_B_NATS_PASSWORD
+      ca_file: /run/kelvo/tls/nats-ca.crt
+    workers:
+      - {id: b1, url: "https://worker-b1:8443"}

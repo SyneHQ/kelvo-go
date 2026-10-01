@@ -1,0 +1,100 @@
+name: kelvo
+
+x-runtime: &runtime
+  image: ${KELVO_IMAGE:-kelvo-go:dev}
+  user: "65532:65532"
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  sysctls:
+    net.ipv4.ip_forward: "0"
+    net.ipv6.conf.all.forwarding: "0"
+  pids_limit: 256
+  mem_limit: 1536m
+  memswap_limit: 1536m
+  cpus: "2.0"
+  tmpfs:
+    - /tmp:rw,nosuid,nodev,noexec,size=768m,uid=65532,gid=65532,mode=0700
+  ulimits:
+    nofile:
+      soft: 1024
+      hard: 4096
+  stop_grace_period: 40s
+  restart: "on-failure:3"
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  gateway:
+    <<: *runtime
+    command: [gateway, --config, /etc/kelvo/gateway.yml]
+    env_file: ["${KELVO_PRIVATE_DIR:?set an absolute private configuration directory}/gateway.env"]
+    volumes:
+      - ${KELVO_PRIVATE_DIR}/gateway.yml:/etc/kelvo/gateway.yml:ro
+      - ${KELVO_PRIVATE_DIR}/gateway-tls:/run/kelvo/tls:ro
+    ports:
+      - "${KELVO_BIND_ADDRESS:-127.0.0.1}:8443:8443"
+    networks: [edge, tenant-a, tenant-b]
+
+  cluster-init:
+    <<: *runtime
+    profiles: [operations]
+    restart: "no"
+    command: [cluster-init, --config, /etc/kelvo/bootstrap.yml]
+    env_file: ["${KELVO_PRIVATE_DIR}/bootstrap.env"]
+    volumes:
+      - ${KELVO_PRIVATE_DIR}/bootstrap.yml:/etc/kelvo/bootstrap.yml:ro
+      - ${KELVO_PRIVATE_DIR}/gateway-tls:/run/kelvo/tls:ro
+    networks: [tenant-a, tenant-b]
+
+  worker-a1:
+    <<: *runtime
+    command: [node, --config, /etc/kelvo/node.yml]
+    env_file: ["${KELVO_PRIVATE_DIR}/tenant-a.env"]
+    volumes:
+      - ${KELVO_PRIVATE_DIR}/worker-a1.yml:/etc/kelvo/node.yml:ro
+      - ${KELVO_PRIVATE_DIR}/tenant-a-catalog.yml:/etc/kelvo/catalog.yml:ro
+      - ${KELVO_PRIVATE_DIR}/worker-a1-tls:/run/kelvo/tls:ro
+      - ${KELVO_TENANT_A_DATA_DIR:?set tenant-a data directory}:/data:ro
+      - ${KELVO_EXTENSION_DIR:?set approved extension directory}:/opt/kelvo/extensions:ro
+    networks: [tenant-a]
+
+  worker-a2:
+    <<: *runtime
+    command: [node, --config, /etc/kelvo/node.yml]
+    env_file: ["${KELVO_PRIVATE_DIR}/tenant-a.env"]
+    volumes:
+      - ${KELVO_PRIVATE_DIR}/worker-a2.yml:/etc/kelvo/node.yml:ro
+      - ${KELVO_PRIVATE_DIR}/tenant-a-catalog.yml:/etc/kelvo/catalog.yml:ro
+      - ${KELVO_PRIVATE_DIR}/worker-a2-tls:/run/kelvo/tls:ro
+      - ${KELVO_TENANT_A_DATA_DIR}:/data:ro
+      - ${KELVO_EXTENSION_DIR}:/opt/kelvo/extensions:ro
+    networks: [tenant-a]
+
+  worker-b1:
+    <<: *runtime
+    command: [node, --config, /etc/kelvo/node.yml]
+    env_file: ["${KELVO_PRIVATE_DIR}/tenant-b.env"]
+    volumes:
+      - ${KELVO_PRIVATE_DIR}/worker-b1.yml:/etc/kelvo/node.yml:ro
+      - ${KELVO_PRIVATE_DIR}/tenant-b-catalog.yml:/etc/kelvo/catalog.yml:ro
+      - ${KELVO_PRIVATE_DIR}/worker-b1-tls:/run/kelvo/tls:ro
+      - ${KELVO_TENANT_B_DATA_DIR:?set tenant-b data directory}:/data:ro
+      - ${KELVO_EXTENSION_DIR}:/opt/kelvo/extensions:ro
+    networks: [tenant-b]
+
+networks:
+  edge: {}
+  # Pre-create these as separate --internal networks. Attach only the matching
+  # tenant's source services, a policy-enforcing source proxy if needed, and the
+  # authenticated broker. Do not attach workers to edge or a shared data bridge.
+  tenant-a:
+    external: true
+    name: ${KELVO_TENANT_A_NETWORK:-kelvo-tenant-a}
+  tenant-b:
+    external: true
+    name: ${KELVO_TENANT_B_NETWORK:-kelvo-tenant-b}

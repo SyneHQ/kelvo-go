@@ -1,0 +1,27 @@
+listen: ":8443"
+worker_id: a2
+catalog_file: /etc/kelvo/catalog.yml
+sandbox_path: /usr/local/bin/kelvo-landlock
+tls:
+  cert_file: /run/kelvo/tls/server.crt
+  key_file: /run/kelvo/tls/server.key
+  ca_file: /run/kelvo/tls/gateway-ca.crt
+nats:
+  url: tls://nats:4222
+  username: tenant-a-worker
+  password_env: KELVO_TENANT_A_NATS_PASSWORD
+  ca_file: /run/kelvo/tls/nats-ca.crt
+policy:
+  tenant_id: tenant-a
+  max_queries: 24
+  job_ttl: 10m
+  lease_duration: 15s
+  replicas: 3
+  limits:
+    max_rows: 1000000
+    max_bytes: 134217728
+    timeout: 30s
+    memory_mb: 512
+    threads: 2
+    max_temp_mb: 256
+  workers: {a1: 1, a2: 1}

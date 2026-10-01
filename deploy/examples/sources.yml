@@ -1,0 +1,30 @@
+# Public catalog only: values name environment variables, never credentials.
+sources:
+  - id: databricks
+    type: databricks
+    url_env: KELVO_SOURCE_DATABRICKS_URL
+    token_env: KELVO_SOURCE_DATABRICKS_TOKEN
+    options: { warehouse_id: warehouse-id }
+  - id: snowflake
+    type: snowflake
+    url_env: KELVO_SOURCE_SNOWFLAKE_URL
+    token_env: KELVO_SOURCE_SNOWFLAKE_TOKEN
+    options: { database: ANALYTICS, schema: PUBLIC, warehouse: COMPUTE_WH, role: READER, token_type: OAUTH }
+  - id: mongodb
+    type: mongodb
+    dsn_env: KELVO_SOURCE_MONGODB_DSN
+    options: { database: analytics }
+  - id: d1
+    type: d1
+    url_env: KELVO_SOURCE_D1_URL
+    token_env: KELVO_SOURCE_D1_TOKEN
+    # Replace the placeholder IDs with your account and database IDs.
+    options:
+      account_id: "00000000000000000000000000000000"
+      database_id: "00000000-0000-0000-0000-000000000000"
+  - id: sqlserver
+    type: sqlserver
+    dsn_env: KELVO_SOURCE_SQLSERVER_DSN
+  - id: oracle
+    type: oracle
+    dsn_env: KELVO_SOURCE_ORACLE_DSN

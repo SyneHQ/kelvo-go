@@ -1,0 +1,8 @@
+extension_directory: /opt/kelvo/extensions
+sources:
+  - id: sales
+    type: csv
+    path: /data/sales.csv
+  - id: pg
+    type: postgres
+    dsn_env: KELVO_SOURCE_POSTGRES_DSN
