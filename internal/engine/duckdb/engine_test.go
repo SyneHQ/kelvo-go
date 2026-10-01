@@ -5,7 +5,9 @@ package duckdb
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -262,5 +264,205 @@ func TestExecuteHonorsAlreadyCancelledContext(t *testing.T) {
 	_, err = e.Execute(ctx, query.Request{SQL: "SELECT 1"}, new(captureSink))
 	if err == nil || query.PublicError(err).Code != "CANCELLED" {
 		t.Fatalf("expected cancellation, got %v", err)
+	}
+}
+
+func TestNativeParserRejectsMultipleStatementsBeforeAnyExecution(t *testing.T) {
+	db, err := sql.Open("duckdb", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	err = conn.Raw(func(raw any) error {
+		exec := raw.(driver.ExecerContext)
+		if _, err := exec.ExecContext(context.Background(), "CREATE TABLE sentinel (id INTEGER)", nil); err != nil {
+			return err
+		}
+		for _, candidate := range []string{
+			"INSERT INTO sentinel VALUES (1); SELECT 1",
+			`SELECT E'\\\''; INSERT INTO sentinel VALUES (2); SELECT 1`,
+			"SELECT 1 /* outer /* nested */ ; ignored */; INSERT INTO sentinel VALUES (3); SELECT 1",
+			"SELECT $$semi; quote'$$; INSERT INTO sentinel VALUES (4); SELECT 1",
+		} {
+			if err := validateReadOnly(context.Background(), raw, candidate); err == nil {
+				t.Fatalf("multiple statements accepted: %q", candidate)
+			}
+		}
+		for _, candidate := range []string{
+			"SELECT 'semi;colon'",
+			"SELECT $$semi; quote'$$",
+			"SELECT 1 /* outer /* nested */ comment */",
+		} {
+			if err := validateReadOnly(context.Background(), raw, candidate); err != nil {
+				t.Fatalf("native single SELECT rejected: %q: %v", candidate, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := conn.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM sentinel").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("parser validation executed %d untrusted writes", count)
+	}
+}
+
+func TestDeniedNativeCapabilityAliases(t *testing.T) {
+	for _, sql := range []string{
+		"SELECT * FROM read_json_auto('/tmp/data.json')",
+		"SELECT * FROM read_ndjson_auto('/tmp/data.json')",
+		"SELECT * FROM postgres_scan_pushdown('private', 'public', 'data')",
+		"SELECT * FROM postgres_execute('pg', 'DELETE FROM data')",
+		"SELECT * FROM mysql_execute('my', 'DELETE FROM data')",
+		`SELECT * FROM "read_json_objects"('/tmp/data.json')`,
+	} {
+		if !containsDeniedCapability(sql) {
+			t.Errorf("native capability was not denied: %s", sql)
+		}
+	}
+}
+
+func TestRealConnectionMetadataDoesNotExposeDSNs(t *testing.T) {
+	catalogPath := os.Getenv("KELVO_REAL_INTEGRATION_CATALOG")
+	if catalogPath == "" || os.Getenv("KELVO_REAL_INTEGRATION") != "1" {
+		t.Skip("set KELVO_REAL_INTEGRATION=1 and KELVO_REAL_INTEGRATION_CATALOG to run")
+	}
+	config, err := catalog.Load(catalogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := New(config, query.Limits{MaxRows: 10, MaxBytes: 1 << 20, Timeout: 15 * time.Second, MemoryMB: 512, Threads: 1, MaxTempMB: 128})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := new(captureSink)
+	_, err = e.Execute(context.Background(), query.Request{
+		Sources: []string{"pg", "my"},
+		SQL:     "SELECT coalesce(path, '') FROM duckdb_databases() WHERE database_name IN ('pg', 'my') ORDER BY database_name",
+	}, sink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sink.rows != 2 || len(sink.values) != 2 {
+		t.Fatal("metadata did not include both registered databases")
+	}
+	for _, path := range sink.values {
+		// This fixture uses only connection-secret options. Deliberately never
+		// include a failed value in output: a regression could expose a DSN.
+		if path != "" {
+			t.Fatal("database metadata exposed a private attachment path")
+		}
+	}
+	t.Run("public MySQL options remain effective", func(t *testing.T) {
+		var envName string
+		for _, source := range config.Sources {
+			if source.ID == "my" {
+				envName = source.DSNEnv
+			}
+		}
+		if envName == "" {
+			t.Fatal("MySQL integration source missing")
+		}
+		options, err := parseMySQLDSN(os.Getenv(envName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		delete(options, "compression")
+		delete(options, "connect_timeout")
+		options["compress"] = "false"
+		var pairs []string
+		for key, value := range options {
+			value = strings.ReplaceAll(strings.ReplaceAll(value, `\`, `\\`), `"`, `\"`)
+			pairs = append(pairs, key+`="`+value+`"`)
+		}
+		t.Setenv(envName, strings.Join(pairs, " "))
+		publicSink := new(captureSink)
+		_, err = e.Execute(context.Background(), query.Request{
+			Sources: []string{"my"},
+			SQL:     "SELECT path FROM duckdb_databases() WHERE database_name = 'my'",
+		}, publicSink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(publicSink.values) != 1 || publicSink.values[0] != "compress=false" {
+			t.Fatal("MySQL attachment did not retain only the expected public options")
+		}
+	})
+}
+
+func TestExecuteSQLiteFixture(t *testing.T) {
+	if os.Getenv("KELVO_SQLITE_ACCEPTANCE") != "1" {
+		t.Skip("set KELVO_SQLITE_ACCEPTANCE=1")
+	}
+	path := os.Getenv("KELVO_SQLITE_SOURCE")
+	ext := os.Getenv("KELVO_SQLITE_EXTENSIONS")
+	if path == "" || ext == "" {
+		t.Fatal("fixture paths required")
+	}
+	e, err := New(catalog.Config{ExtensionDirectory: ext, Sources: []catalog.Source{{ID: "events", Type: "sqlite", Path: path}}}, limits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := new(sqliteAcceptanceSink)
+	defer sink.Close()
+	stats, err := e.Execute(context.Background(), query.Request{Sources: []string{"events"}, SQL: "SELECT id, name, data FROM events.events ORDER BY name NULLS LAST"}, sink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Rows != 2 || sink.schema == nil || sink.record == nil {
+		t.Fatalf("stats=%#v schema=%v", stats, sink.schema)
+	}
+	ids := sink.record.Column(0).(*array.Int64)
+	names := sink.record.Column(1).(*array.String)
+	blobs := sink.record.Column(2).(*array.Binary)
+	if ids.Value(0) != 9007199254740993 || !ids.IsNull(1) || names.Value(0) != "ok" || !names.IsNull(1) || string(blobs.Value(0)) != "\x01\x02" || !blobs.IsNull(1) {
+		t.Fatalf("id0=%d id1null=%t name0=%q name1null=%t blob0=%x blob1null=%t", ids.Value(0), ids.IsNull(1), names.Value(0), names.IsNull(1), blobs.Value(0), blobs.IsNull(1))
+	}
+
+	for _, q := range []string{"DELETE FROM events.events", "SELECT * FROM read_csv_auto('/etc/passwd')"} {
+		if _, err := e.Execute(context.Background(), query.Request{Sources: []string{"events"}, SQL: q}, new(captureSink)); err == nil {
+			t.Fatal(q)
+		}
+	}
+}
+
+type sqliteAcceptanceSink struct {
+	schema *arrow.Schema
+	record arrow.RecordBatch
+}
+
+func (s *sqliteAcceptanceSink) Schema(x *arrow.Schema) error { s.schema = x; return nil }
+func (s *sqliteAcceptanceSink) Write(r arrow.RecordBatch) error {
+	if s.record != nil {
+		return fmt.Errorf("unexpected extra batch")
+	}
+	r.Retain()
+	s.record = r
+	return nil
+}
+func (s *sqliteAcceptanceSink) Close() {
+	if s.record != nil {
+		s.record.Release()
+	}
+}
+func TestExecuteRejectsNativeAndMongoRequests(t *testing.T) {
+	e := makeEngine(t, filepath.Join(t.TempDir(), "missing.csv"))
+	for _, r := range []query.Request{
+		{Mode: "native", ConnectionID: "events", SQL: "SELECT 1"},
+		{Mode: "federated", ConnectionID: "events", SQL: "SELECT 1"},
+		{Mode: "federated", Sources: []string{"events"}, Mongo: &query.MongoRequest{Collection: "x"}},
+	} {
+		if _, err := e.Execute(context.Background(), r, new(captureSink)); err == nil {
+			t.Fatalf("accepted %#v", r)
+		}
 	}
 }

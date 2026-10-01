@@ -1,0 +1,15 @@
+{
+  "duckdb_version": "v1.5.6",
+  "platform": "linux_amd64",
+  "extension_url": "https://extensions.duckdb.org/v1.5.6/linux_amd64/sqlite_scanner.duckdb_extension.gz",
+  "sha256": "0b3c576e7a9b65846285e5e7f4980a700d79d9c14b10b2fb56d495f4d36b566a",
+  "test": "TestExecuteSQLiteFixture",
+  "assertions": [
+    "int64 9007199254740993",
+    "text ok",
+    "blob 0102",
+    "NULL row",
+    "write denied",
+    "unselected file denied"
+  ]
+}

@@ -55,11 +55,21 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	if sink == nil || strings.TrimSpace(req.SQL) == "" {
 		return stats, query.NewError("INVALID_ARGUMENT", "Query and result sink are required")
 	}
+	// The original public DuckDB API predates mode. Preserve its implicit federation.
+	if req.Mode == "" {
+		req.Mode = "federated"
+	}
+	if err := query.ValidateRequest(req); err != nil {
+		return stats, err
+	}
+	if req.Mode != "federated" {
+		return stats, query.NewError("INVALID_ARGUMENT", "DuckDB requires federated execution mode")
+	}
 	sources, selectErr := e.config.Select(req.Sources)
 	if selectErr != nil {
 		return stats, query.NewError("PERMISSION_DENIED", "Requested source is unavailable")
 	}
-	if hasMultipleStatements(req.SQL) || containsDeniedCapability(req.SQL) {
+	if containsDeniedCapability(req.SQL) {
 		return stats, query.NewError("PERMISSION_DENIED", "Query uses a capability unavailable to this execution")
 	}
 	values, valueErr := req.Values()
@@ -151,6 +161,9 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 		return errors.New("DuckDB driver does not support trusted source setup")
 	}
 	for _, source := range sources {
+		if source.Adapter != "" {
+			return errors.New("source adapters are unavailable to DuckDB federation")
+		}
 		id := quoteIdentifier(source.ID)
 		var statement string
 		switch source.Type {
@@ -158,6 +171,11 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 			statement = "CREATE VIEW " + id + " AS SELECT * FROM read_csv_auto('" + quoteLiteral(source.Path) + "')"
 		case "parquet":
 			statement = "CREATE VIEW " + id + " AS SELECT * FROM read_parquet('" + quoteLiteral(source.Path) + "')"
+		case "sqlite":
+			if err := loadApprovedExtension(ctx, exec, source.Type, extensionDir, tempDir); err != nil {
+				return err
+			}
+			statement = "ATTACH '" + quoteLiteral(source.Path) + "' AS " + id + " (TYPE SQLITE, READ_ONLY)"
 		case "duckdb":
 			statement = "ATTACH '" + quoteLiteral(source.Path) + "' AS " + id + " (READ_ONLY)"
 		case "postgres", "mysql":
@@ -168,7 +186,16 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 			if err := loadApprovedExtension(ctx, exec, source.Type, extensionDir, tempDir); err != nil {
 				return err
 			}
-			statement = "ATTACH '" + quoteLiteral(dsn) + "' AS " + id + " (TYPE " + source.Type + ", READ_ONLY)"
+			secretName := "kelvo_source_" + source.ID
+			secretSQL, publicPath, err := sourceSecret(source.Type, secretName, dsn)
+			if err != nil {
+				return err
+			}
+			if _, err := exec.ExecContext(ctx, secretSQL, nil); err != nil {
+				// Driver errors can echo CREATE SECRET and its private values.
+				return errors.New("trusted source secret could not be prepared")
+			}
+			statement = "ATTACH '" + quoteLiteral(publicPath) + "' AS " + id + " (TYPE " + source.Type + ", SECRET " + quoteIdentifier(secretName) + ", READ_ONLY)"
 		default:
 			return errors.New("unsupported source")
 		}
@@ -192,8 +219,11 @@ func lockSourceAccess(ctx context.Context, raw any, sources []catalog.Source, te
 	paths := []string{tempDir}
 	networkSource := false
 	for _, source := range sources {
+		if source.Adapter != "" {
+			return errors.New("source adapters are unavailable to DuckDB federation")
+		}
 		switch source.Type {
-		case "csv", "parquet", "duckdb":
+		case "csv", "parquet", "duckdb", "sqlite":
 			paths = append(paths, source.Path)
 		case "postgres", "mysql":
 			networkSource = true
@@ -229,6 +259,7 @@ func loadApprovedExtension(ctx context.Context, exec driver.ExecerContext, sourc
 	canonicalName := map[string]string{
 		"postgres": "postgres_scanner",
 		"mysql":    "mysql_scanner",
+		"sqlite":   "sqlite_scanner",
 	}[sourceType]
 	if canonicalName == "" {
 		return errors.New("unsupported approved extension")
@@ -256,15 +287,26 @@ func loadApprovedExtension(ctx context.Context, exec driver.ExecerContext, sourc
 }
 
 func validateReadOnly(ctx context.Context, raw any, sqlText string) error {
-	preparer, ok := raw.(driver.ConnPrepareContext)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	preparer, ok := raw.(driver.Conn)
 	if !ok {
 		return errors.New("DuckDB parser introspection is unavailable")
 	}
-	stmt, err := preparer.PrepareContext(ctx, sqlText)
+	// The pinned driver's PrepareContext executes all statements preceding the
+	// final one. Prepare extracts the SQL with DuckDB's own parser and rejects
+	// any count other than one before preparing or executing a statement. Do not
+	// replace this with PrepareContext or rely on a hand-written SQL lexer.
+	// The worker process deadline bounds preparation, which lacks a context API.
+	stmt, err := preparer.Prepare(sqlText)
 	if err != nil {
-		return fmt.Errorf("SQL could not be parsed: %w", err)
+		return query.NewError("PERMISSION_DENIED", "Only one valid read-only SELECT statement is permitted")
 	}
 	defer stmt.Close()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	classified, ok := stmt.(interface{ StatementType() (duck.StmtType, error) })
 	if !ok {
 		return errors.New("DuckDB statement introspection is unavailable")
@@ -279,88 +321,10 @@ func validateReadOnly(ctx context.Context, raw any, sqlText string) error {
 	return nil
 }
 
-// hasMultipleStatements is a conservative lexical preflight, not SQL authorization.
-// duckdb-go's PrepareContext executes every statement before the final one, so
-// this rejects a second non-comment statement before calling into the driver.
-// DuckDB still parses and classifies the sole candidate statement below.
-func hasMultipleStatements(sqlText string) bool {
-	for i := 0; i < len(sqlText); {
-		switch sqlText[i] {
-		case '\'', '"':
-			quote := sqlText[i]
-			i++
-			for i < len(sqlText) {
-				if sqlText[i] == quote {
-					i++
-					if i < len(sqlText) && sqlText[i] == quote { // SQL doubled quote escape
-						i++
-						continue
-					}
-					break
-				}
-				i++
-			}
-		case '-':
-			if i+1 < len(sqlText) && sqlText[i+1] == '-' {
-				i += 2
-				for i < len(sqlText) && sqlText[i] != '\n' {
-					i++
-				}
-			} else {
-				i++
-			}
-		case '/':
-			if i+1 < len(sqlText) && sqlText[i+1] == '*' {
-				i += 2
-				for i+1 < len(sqlText) && !(sqlText[i] == '*' && sqlText[i+1] == '/') {
-					i++
-				}
-				if i+1 < len(sqlText) {
-					i += 2
-				}
-			} else {
-				i++
-			}
-		case ';':
-			if hasSQLAfterSeparator(sqlText[i+1:]) {
-				return true
-			}
-			i++
-		default:
-			i++
-		}
-	}
-	return false
-}
-
-func hasSQLAfterSeparator(s string) bool {
-	for i := 0; i < len(s); {
-		switch {
-		case s[i] == ';' || s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r':
-			i++
-		case i+1 < len(s) && s[i] == '-' && s[i+1] == '-':
-			i += 2
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
-		case i+1 < len(s) && s[i] == '/' && s[i+1] == '*':
-			i += 2
-			for i+1 < len(s) && !(s[i] == '*' && s[i+1] == '/') {
-				i++
-			}
-			if i+1 < len(s) {
-				i += 2
-			}
-		default:
-			return true
-		}
-	}
-	return false
-}
-
 // This conservative preflight guard blocks user-invoked file/network/extension
-// entry points before source setup. Statement classification remains the
-// statement-class authorization mechanism.
+// entry points before source setup. It is defense in depth; SQL classification
+// and this denylist do not sandbox native code or every table-function alias.
+// Shared deployments must execute workers inside an OS sandbox.
 func containsDeniedCapability(sqlText string) bool {
 	denied := map[string]struct{}{
 		"attach": {}, "detach": {}, "install": {}, "load": {}, "pragma": {},
@@ -371,6 +335,14 @@ func containsDeniedCapability(sqlText string) bool {
 		"glob": {}, "http_get": {}, "load_extension": {}, "query": {}, "query_table": {},
 		"read_blob": {}, "read_text": {}, "postgres_query": {}, "mysql_query": {},
 		"duckdb_secrets": {}, "getenv": {}, "postgres_scan": {}, "mysql_scan": {}, "sqlite_scan": {},
+		"read_json_auto": {}, "read_ndjson": {}, "read_ndjson_auto": {},
+		"read_json_objects": {}, "read_json_objects_auto": {}, "read_ndjson_objects": {},
+		"parquet_scan": {}, "csv_scan": {}, "json_scan": {}, "sniff_csv": {},
+		"postgres_scan_pushdown": {}, "postgres_execute": {}, "mysql_execute": {},
+		"mysql_bind_params": {}, "mysql_create_params": {}, "mysql_pin_connection": {},
+		"mysql_close_pinned_connection": {}, "mysql_configure_pool": {},
+		"postgres_attach": {}, "postgres_clear_cache": {}, "mysql_clear_cache": {},
+		"sqlite_attach": {}, "sqlite_query": {}, "sqlite_execute": {},
 	}
 	for _, token := range strings.FieldsFunc(strings.ToLower(sqlText), func(r rune) bool { return !(r == '_' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9') }) {
 		if _, found := denied[token]; found {

@@ -1,0 +1,49 @@
+{
+  "assertions": [
+    "sandboxed worker completed with Arrow EOS",
+    "dedicated sandbox worker directory had nonzero temporary-file high-water mark",
+    "sandboxed checksum equals unsandboxed same-query control"
+  ],
+  "binary_sha256": "8089d7941de2a3c0e28ad905ba174d16fd1d72a741451038557e38128bc91311",
+  "final_image": {
+    "image": "kelvo-go:accept",
+    "image_id": "sha256:f9257811ecc733effb4fdff9567555d0d7d1adc0fe1c00c2c8013790e84d606b",
+    "sha256": {
+      "bin/kelvo": "8089d7941de2a3c0e28ad905ba174d16fd1d72a741451038557e38128bc91311",
+      "bin/kelvo-landlock": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1"
+    }
+  },
+  "fixture_only": true,
+  "kernel_release": "6.12.95+deb12-cloud-amd64",
+  "launcher_sha256": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1",
+  "limits": {
+    "max_bytes": 1048576,
+    "max_rows": 10,
+    "max_temp_mb": 1024,
+    "memory_mb": 64,
+    "threads": 1,
+    "timeout": 45000000000
+  },
+  "query": "SELECT sum(id * rn)::VARCHAR AS checksum FROM (SELECT i AS id,row_number() OVER (ORDER BY hash(i)) AS rn FROM range(5000000) t(i))",
+  "sampling": {
+    "caveat": "Sampled RSS is an observed peak, not a hard process memory cap.",
+    "interval_ms": 10,
+    "rss_source": "/proc/<worker-pid>/status:VmRSS"
+  },
+  "sandboxed": {
+    "arrow_eos": true,
+    "checksum": "31251329047863996591",
+    "elapsed_seconds": 1.364581530000578,
+    "sampled_peak_rss_bytes": 146690048,
+    "temp_high_water_bytes": 134348800,
+    "wire_bytes": 328
+  },
+  "unsandboxed_control": {
+    "arrow_eos": true,
+    "checksum": "31251329047863996591",
+    "elapsed_seconds": 1.3627191259993197,
+    "sampled_peak_rss_bytes": 152436736,
+    "temp_high_water_bytes": 135593984,
+    "wire_bytes": 328
+  }
+}

@@ -17,7 +17,7 @@ def main():
     args = p.parse_args()
     args.directory.mkdir(parents=True, exist_ok=True)
     manifest = {}
-    for alias in ("postgres", "mysql"):
+    for alias in ("postgres", "mysql", "sqlite"):
         url = f"https://extensions.duckdb.org/{args.version}/{args.platform}/{alias}_scanner.duckdb_extension.gz"
         request = urllib.request.Request(url, headers={"User-Agent": f"duckdb/{args.version}"})
         with urllib.request.urlopen(request, timeout=60) as response:
