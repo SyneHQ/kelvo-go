@@ -20,6 +20,7 @@ func ValidID(s string) bool { return identifier.MatchString(s) }
 
 // Source holds public metadata and references to secret environment variables.
 type Source struct {
+	Federation  *FederationConfig `json:"federation,omitempty" yaml:"federation,omitempty"`
 	ID          string            `json:"id" yaml:"id"`
 	Type        string            `json:"type" yaml:"type"`
 	Adapter     string            `json:"adapter,omitempty" yaml:"adapter,omitempty"`
@@ -83,6 +84,9 @@ func Load(path string) (Config, error) {
 		}
 		seen[s.ID] = true
 		s.Type = CanonicalType(s.Type)
+		if err := s.ValidateFederation(); err != nil {
+			return c, err
+		}
 		if len(s.Options) > 16 {
 			return c, fmt.Errorf("source %s has too many options", s.ID)
 		}
