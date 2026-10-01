@@ -1,0 +1,115 @@
+{
+  "acceptance": {
+    "binary_sha256": "d3d89f6610782a605e36f17bf76308272a4d0eb0a81d36ab75b701041487a807",
+    "container_policy": {
+      "cpu_limit": 1,
+      "dropped_capabilities": [
+        "ALL"
+      ],
+      "memory_bytes": 536870912,
+      "no_new_privileges": true,
+      "pid_limit": 256,
+      "readonly_root": true,
+      "separate_pid_namespace": true,
+      "swap_total_bytes": 536870912,
+      "tmpfs": "rw,nosuid,nodev,noexec,size=128m,uid=65532,gid=65532,mode=0700",
+      "user": "65532:65532"
+    },
+    "filesystem_sandbox": {
+      "same_file_control_succeeded": true,
+      "unselected_file_denied": true
+    },
+    "image": "kelvo-federation:validation",
+    "image_id": "sha256:ecead720c996dc776704b5ada43eadeb58a4dc8ce879fde20432b828bb6f5af9",
+    "network": {
+      "cross_tenant_denied": true,
+      "external_control": true,
+      "external_denied": true,
+      "internal_networks": [
+        true,
+        true
+      ],
+      "other_tenant_control": true,
+      "same_tenant": true
+    },
+    "runtime_enforcement": {
+      "effective_capabilities_zero": true,
+      "no_new_privileges": true,
+      "root_write_denied": true,
+      "scratch_write_allowed": true
+    },
+    "sandboxed_arrow_query": {
+      "decimal_exact": true,
+      "null_preserved": true,
+      "passed": true,
+      "rows": 3
+    },
+    "scope": "Single-query tenant containers, OS sandbox, Arrow values and controlled network reachability"
+  },
+  "acceptance_script_sha256": {
+    "container_acceptance.py": "a16025a50a11e6bb1120955bdf169929411b47bc070bac90172af352c44a222b",
+    "container_network_acceptance.py": "caca5b6a0f912515a786426455bb4936b99f5c589d2234a8769f97332183928d"
+  },
+  "build": {
+    "architecture": "amd64",
+    "binary_sha256": "d3d89f6610782a605e36f17bf76308272a4d0eb0a81d36ab75b701041487a807",
+    "build_args": {
+      "DUCKBRIDGE": "1",
+      "VERSION": "federation-validation"
+    },
+    "go_build_metadata": "/home/syenuser/kelvo-federation/artifacts/image-bin/kelvo: go1.26.8\n\tpath\tgithub.com/SYNEHQ/kelvo-go/cmd/kelvo\n\tmod\tgithub.com/SYNEHQ/kelvo-go\t(devel)\t\n\tdep\tfilippo.io/edwards25519\tv1.2.0\th1:crnVqOiS4jqYleHd9vaKZ+HKtHfllngJIiOpNpoJsjo=\n\tdep\tgithub.com/andybalholm/brotli\tv1.2.3\th1:8H1qwOkl2LPfjf3YezB90JnCliZb6SInJ/OJkEbA5NQ=\n\tdep\tgithub.com/apache/arrow-go/v18\tv18.5.1\th1:yaQ6zxMGgf9YCYw4/oaeOU3AULySDlAYDOcnr4LdHdI=\n\tdep\tgithub.com/apache/thrift\tv0.22.0\th1:r7mTJdj51TMDe6RtcmNdQxgn9XcyfGDOzegMDRg47uc=\n\tdep\tgithub.com/aws/aws-sdk-go-v2\tv1.47.1\th1:uOIZnp4PK3ZhKI0dNrJrhTEsLxbpXHTAJlwoS1pvAtw=\n\tdep\tgithub.com/aws/smithy-go\tv1.28.1\th1:R/nXH00c8qcfCzQVELtRw+eLQWtzv+VAIEFJ1/xxXlQ=\n\tdep\tgithub.com/cespare/xxhash/v2\tv2.3.0\th1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=\n\tdep\tgithub.com/duckdb/duckdb-go-bindings\tv0.10506.0\th1:+s/v55ghAy8MV/QJnwuafD9n+ZoYQkrRd/ceSU0KReA=\n\tdep\tgithub.com/duckdb/duckdb-go-bindings/lib/linux-amd64\tv0.10506.0\th1:yy2TUU+YWxiBiOQryYseUl0AcUzoFFYRmmrCGijUxiU=\n\tdep\tgithub.com/duckdb/duckdb-go/v2\tv2.10506.0\n\t=>\t/src/artifacts/duckbridge/duckdb-go\t(devel)\t\n\t\n\tdep\tgithub.com/exasol/error-reporting-go\tv0.2.1\th1:OHHmL4cz2TNEwryvzkR4Y+y2r2wXcYOjbm0Fr+y8PtQ=\n\tdep\tgithub.com/exasol/exasol-driver-go\tv1.1.1\th1:njNAJGSOxGE114mxMLyozEoGPaLxu6dgQzDmjETU8eo=\n\tdep\tgithub.com/go-sql-driver/mysql\tv1.10.1\th1:arlSnNLq6a5yxGxV7qg9lF4j0C+KwD6NbQyKr9QL6ME=\n\tdep\tgithub.com/go-viper/mapstructure/v2\tv2.5.0\th1:vM5IJoUAy3d7zRSVtIwQgBj7BiWtMPfmPEgAXnvj1Ro=\n\tdep\tgithub.com/goccy/go-json\tv0.10.5\th1:Fq85nIqj+gXn/S5ahsiTlK3TmC85qgirsdTP/+DeaC4=\n\tdep\tgithub.com/golang-sql/civil\tv0.0.0-20220223132316-b832511892a9\th1:au07oEsX2xN0ktxqI+Sida1w446QrXBRJ0nee3SNZlA=\n\tdep\tgithub.com/golang-sql/sqlexp\tv0.1.0\th1:ZCD6MBpcuOVfGVqsEmY5/4FtYiKz6tSyUv9LPEDei6A=\n\tdep\tgithub.com/golang/snappy\tv1.0.0\th1:Oy607GVXHs7RtbggtPBnr2RmDArIsAefDwvrdWvRhGs=\n\tdep\tgithub.com/google/flatbuffers\tv25.12.19+incompatible\th1:haMV2JRRJCe1998HeW/p0X9UaMTK6SDo0ffLn2+DbLs=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/gorilla/websocket\tv1.5.3\th1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=\n\tdep\tgithub.com/jackc/pgpassfile\tv1.0.0\th1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=\n\tdep\tgithub.com/jackc/pgservicefile\tv0.0.0-20240606120523-5a60cdf6a761\th1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=\n\tdep\tgithub.com/jackc/pgx/v5\tv5.11.0\th1:IzBBtyK9AHqf98cctWFifYSci2hgQR/cd56wB4p+ogg=\n\tdep\tgithub.com/jackc/puddle/v2\tv2.2.2\th1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=\n\tdep\tgithub.com/klauspost/compress\tv1.20.0\th1:a3C1ke2ohxFymNlb2HWAHjDeKCI90scRskErZkR0ezA=\n\tdep\tgithub.com/klauspost/cpuid/v2\tv2.3.0\th1:S4CRMLnYUhGeDFDqkGriYKdfoFlDnMtqTiI/sFzhA9Y=\n\tdep\tgithub.com/microsoft/go-mssqldb\tv1.9.8\th1:d4IFMvF/o+HdpXUqbBfzHvn/NlFA75YGcfHUUvDFJEM=\n\tdep\tgithub.com/nats-io/nats.go\tv1.54.0\th1:vsXoOxjHp/GmPUN+EcI7uOf/uB+iAP+kEsAFNQN0yzA=\n\tdep\tgithub.com/nats-io/nkeys\tv0.4.16\th1:rd5oAuLOb8mnAycB0xleuEBNS1pVVnN0fv/FF34Eypg=\n\tdep\tgithub.com/nats-io/nuid\tv1.0.1\th1:5iA8DT8V7q8WK2EScv2padNa/rTESc1KdnPw4TC2paw=\n\tdep\tgithub.com/pierrec/lz4/v4\tv4.1.29\th1:CDQY6qZOLI4DW0Nx6R1vRrifrCeQHnNXkMb0hZWXFjg=\n\tdep\tgithub.com/shopspring/decimal\tv1.4.0\th1:bxl37RwXBklmTi0C79JfXCEBD1cqqHt0bbgBAGFp81k=\n\tdep\tgithub.com/sijms/go-ora/v2\tv2.9.0\th1:+iQbUeTeCOFMb5BsOMgUhV8KWyrv9yjKpcK4x7+MFrg=\n\tdep\tgithub.com/stoewer/go-strcase\tv1.3.1\th1:iS0MdW+kVTxgMoE1LAZyMiYJFKlOzLooE4MxjirtkAs=\n\tdep\tgithub.com/synehq/zero-sql\tv1.0.2-0.20261001152631-b01a7e870022\th1:WcNbruJQ0xYr/QDWCQTRy67UaUjRzcPysFreZPe2UOw=\n\tdep\tgithub.com/xdg-go/scram\tv1.2.0\th1:bYKF2AEwG5rqd1BumT4gAnvwU/M9nBp2pTSxeZw7Wvs=\n\tdep\tgithub.com/xdg-go/stringprep\tv1.0.4\th1:XLI/Ng3O1Atzq0oBs3TWm+5ZVgkq2aqdlvP9JtoZ6c8=\n\tdep\tgithub.com/xwb1989/sqlparser\tv0.0.0-20180606152119-120387863bf2\th1:zzrxE1FKn5ryBNl9eKOeqQ58Y/Qpo3Q9QNxKHX5uzzQ=\n\tdep\tgithub.com/youmark/pkcs8\tv0.0.0-20240726163527-a2c0da244d78\th1:ilQV1hzziu+LLM3zUTJ0trRztfwgjqKnBWNtSRkbmwM=\n\tdep\tgithub.com/zeebo/xxh3\tv1.1.0\th1:s7DLGDK45Dyfg7++yxI0khrfwq9661w9EN78eP/UZVs=\n\tdep\tgo.mongodb.org/mongo-driver/v2\tv2.9.1\th1:jewiFs2m1/VOQp8qhFshX6hWZ+EAXDhZHXExAUMcOgQ=\n\tdep\tgo.yaml.in/yaml/v3\tv3.0.5\th1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=\n\tdep\tgolang.org/x/crypto\tv0.57.0\th1:3ZVCjf8Ggz7zneR/EHRVx68Ctf+2pmIMP2UFhh9cC6M=\n\tdep\tgolang.org/x/exp\tv0.0.0-20260112195511-716be5621a96\th1:Z/6YuSHTLOHfNFdb8zVZomZr7cqNgTJvA8+Qz75D8gU=\n\tdep\tgolang.org/x/net\tv0.58.0\th1:ynWG7rqYi4ccpTEuPZ2QGWHktVEM9DMCj9yzDE0Q7To=\n\tdep\tgolang.org/x/sync\tv0.23.0\th1:KameEIfc1IkluZyXWLn39Wd4tURc6GbCiISGiZm2bQk=\n\tdep\tgolang.org/x/sys\tv0.48.0\th1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=\n\tdep\tgolang.org/x/text\tv0.42.0\th1:JbOZXgfeCPU9gacVtYliJqOhD+zhrEqK4LfdpmlUZqI=\n\tdep\tgolang.org/x/xerrors\tv0.0.0-20240903120638-7835f813f4da\th1:noIWHXmPHxILtqtCOPIhSt0ABwskkZKjD3bXGnZGpNY=\n\tdep\tgoogle.golang.org/genproto/googleapis/rpc\tv0.0.0-20251029180050-ab9386a59fda\th1:i/Q+bfisr7gq6feoJnS/DlpdwEL4ihp41fvRiM3Ork0=\n\tdep\tgoogle.golang.org/grpc\tv1.78.0\th1:K1XZG/yGDJnzMdd/uZHAkVqJE+xIDOcmdSFZkBUicNc=\n\tdep\tgoogle.golang.org/protobuf\tv1.36.12\th1:pJOKDDOyeXErUroCihFAd5LQuwXBSpVnKGrj5o/fwxc=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-tags=duckdb_arrow,duckbridge\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=1\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=linux\n\tbuild\tGOAMD64=v1\n",
+    "image": "kelvo-federation:validation",
+    "image_bytes": 292911842,
+    "image_created_utc": "2026-10-01T19:55:23.767939104Z",
+    "image_id": "sha256:ecead720c996dc776704b5ada43eadeb58a4dc8ce879fde20432b828bb6f5af9",
+    "launcher_sha256": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1",
+    "license_files_match": true,
+    "os": "linux",
+    "user": "65532:65532",
+    "version": "Kelvo Go federation-validation"
+  },
+  "build_provenance": {
+    "base_images": [
+      "docker.io/library/debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251",
+      "docker.io/library/golang:1.26.8-bookworm@sha256:a688600ca24f8a4d3ca77f95b0dd40704a9fc787c826660eb7ba0b641b8b175d"
+    ],
+    "build_log_sha256": "6e8774665c7fc5b7078aa0c921f0610e578fe19b52313604debeef517183b0a2",
+    "command": "sudo docker build --build-arg DUCKBRIDGE=1 --build-arg VERSION=federation-validation -t kelvo-federation:validation .",
+    "duckdb_pins": {
+      "driver": "v2.10506.0",
+      "driver_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+      "duckdb": "v1.5.6",
+      "header_count": 1364,
+      "module_sum": "h1:mcZjUQ/kSNeZdtGCqyj5/JEDUdj7/kvILfIOUTzQIu0=",
+      "source_sha256": "1fadcbe9e69e1470f9093b6bcde08daf477d729c449e59a807f45c346622099b"
+    },
+    "final_inputs_unchanged_after_build": true,
+    "gomaxprocs": 2,
+    "input_file_count": 187,
+    "input_manifest_sha256": "9eef9027765394f689a3dd5cc4dee65a38d98f62ad4e8e2523f781b27822d536",
+    "performed_inside_docker_on_designated_vm": true,
+    "source_hashes": {
+      ".dockerignore": "de1dae7be519dba965cf2fa8389237d309bed7323340b80fb792c7e05ba247d2",
+      "Dockerfile": "90570016c50e01342ab45569ac74180c2d661de91a2124beb2d02dbea275a4f0",
+      "go.mod": "e6ad61c0e63551e632f442123e691c39a2d887b094646adf9b1548e32c0e9740",
+      "go.sum": "924bbcce5053f759ac2992c88b61a10a1b1da93243584a5c2d58ff7f65b8ebfb",
+      "internal/duckbridge/factory.go": "c9f70b9a92e40bf5d01cd1465893b6081818d9427160a5f7064bbe3ea6f7c7ea",
+      "internal/duckbridge/shim.cpp": "379bf4da71d20cff58d7823e0fd76624bd3de924f4858e25a0ac3dbdaf517cec",
+      "internal/engine/duckdb/engine.go": "0dbc30f15397719e2a0557927ab33d4647ed4112c314123dc44e690a28abe40d",
+      "internal/worker/worker.go": "9674d73e016966d31933e078326e119beb39c1d4e008faac4be3a6feb8959cf1",
+      "scripts/duckbridge-driver.patch": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+      "scripts/provision_duckbridge.py": "992292b2146df25a1e2b77aca9efda9bc1440a1ee1e0e5f5fd054d073db4de71"
+    }
+  },
+  "cleanup": {
+    "acceptance_containers_removed": true,
+    "acceptance_networks_removed": true,
+    "existing_clickhouse_preserved": true
+  },
+  "publication": {
+    "production_deployment": false,
+    "registry_push": false
+  },
+  "scope": "VM-built opt-in native federation image; exact image binary, sandboxed CSV Arrow values, operating-system runtime policy and controlled tenant-network acceptance. Live ClickHouse federation acceptance is recorded separately against the same extracted binary.",
+  "verified_at_utc": "2026-10-01T19:58:06.570891+00:00"
+}

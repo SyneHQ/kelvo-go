@@ -1,0 +1,909 @@
+{
+  "acceptance": "kelvo-clickhouse-go-arrow-duckdb-federation-v1",
+  "suite": "all",
+  "created_at": "2026-10-01T19:57:57.445758+00:00",
+  "passed": true,
+  "failure": null,
+  "binary_sha256": "d3d89f6610782a605e36f17bf76308272a4d0eb0a81d36ab75b701041487a807",
+  "clickhouse_version": "26.9.7.9",
+  "checks": [
+    {
+      "test": "owned_fixture_created",
+      "passed": true,
+      "fixture_rows": 1000000,
+      "existing_benchmark_rows": 100000000,
+      "clickhouse_version": "26.9.7.9",
+      "reader_write_denied": true
+    },
+    {
+      "test": "typed_fidelity",
+      "passed": true,
+      "elapsed_seconds": 0.0689259890023095,
+      "coordinator_peak_rss_kib": 56312,
+      "worker_peak_rss_kib_max": 78076,
+      "observed_worker_count": 1,
+      "rss_samples": 4,
+      "federation": [
+        {
+          "source": "warehouse",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 3,
+          "arrow_bytes_fetched": 151,
+          "batches_fetched": 1
+        }
+      ],
+      "output_rows": 3,
+      "output_wire_bytes": 880,
+      "upstream_scans": [
+        {
+          "sql": "SELECT `row_id`, `i64`, `u64`, `amount`, `label` FROM `acceptance_fixture`.`fact` WHERE (`row_id` < CAST('3' AS UInt64))",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 848,
+          "complete": true,
+          "arrow_rows": 3,
+          "arrow_buffer_bytes": 151,
+          "arrow_columns": [
+            "row_id",
+            "i64",
+            "u64",
+            "amount",
+            "label"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        }
+      ]
+    },
+    {
+      "test": "projection_and_filter_pushdown",
+      "passed": true,
+      "narrow": {
+        "elapsed_seconds": 0.06551110299915308,
+        "coordinator_peak_rss_kib": 54748,
+        "worker_peak_rss_kib_max": 79344,
+        "observed_worker_count": 1,
+        "rss_samples": 4,
+        "federation": [
+          {
+            "source": "warehouse",
+            "table": "fact",
+            "scans": 1,
+            "rows_fetched": 10,
+            "arrow_bytes_fetched": 80,
+            "batches_fetched": 1
+          }
+        ],
+        "output_rows": 10,
+        "output_wire_bytes": 360,
+        "upstream_scans": [
+          {
+            "sql": "SELECT `row_id` FROM `acceptance_fixture`.`fact` WHERE (`row_id` >= CAST('999990' AS UInt64))",
+            "describe": false,
+            "status": 200,
+            "wire_bytes": 352,
+            "complete": true,
+            "arrow_rows": 10,
+            "arrow_buffer_bytes": 80,
+            "arrow_columns": [
+              "row_id"
+            ],
+            "readonly": true,
+            "overflow_mode": "throw",
+            "max_result_rows": 2000000,
+            "max_result_bytes": 67108864
+          }
+        ]
+      },
+      "wide": {
+        "elapsed_seconds": 0.06712299599894322,
+        "coordinator_peak_rss_kib": 56600,
+        "worker_peak_rss_kib_max": 82896,
+        "observed_worker_count": 1,
+        "rss_samples": 4,
+        "federation": [
+          {
+            "source": "warehouse",
+            "table": "fact",
+            "scans": 1,
+            "rows_fetched": 10,
+            "arrow_bytes_fetched": 5244,
+            "batches_fetched": 1
+          }
+        ],
+        "output_rows": 10,
+        "output_wire_bytes": 5640,
+        "upstream_scans": [
+          {
+            "sql": "SELECT `row_id`, `payload` FROM `acceptance_fixture`.`fact` WHERE (`row_id` >= CAST('999990' AS UInt64))",
+            "describe": false,
+            "status": 200,
+            "wire_bytes": 5624,
+            "complete": true,
+            "arrow_rows": 10,
+            "arrow_buffer_bytes": 5244,
+            "arrow_columns": [
+              "row_id",
+              "payload"
+            ],
+            "readonly": true,
+            "overflow_mode": "throw",
+            "max_result_rows": 2000000,
+            "max_result_bytes": 67108864
+          }
+        ]
+      },
+      "source_fixture_rows": 1000000,
+      "selected_source_rows": 10
+    },
+    {
+      "test": "uint64_max_predicate",
+      "passed": true,
+      "elapsed_seconds": 0.07210119299998041,
+      "coordinator_peak_rss_kib": 56512,
+      "worker_peak_rss_kib_max": 80812,
+      "observed_worker_count": 1,
+      "rss_samples": 4,
+      "federation": [
+        {
+          "source": "warehouse",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 1,
+          "arrow_bytes_fetched": 16,
+          "batches_fetched": 1
+        }
+      ],
+      "output_rows": 1,
+      "output_wire_bytes": 288,
+      "upstream_scans": [
+        {
+          "sql": "SELECT `row_id`, `u64` FROM `acceptance_fixture`.`fact` WHERE (`u64` = CAST('18446744073709551615' AS UInt64))",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 392,
+          "complete": true,
+          "arrow_rows": 1,
+          "arrow_buffer_bytes": 16,
+          "arrow_columns": [
+            "row_id",
+            "u64"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        }
+      ]
+    },
+    {
+      "test": "int64_min_predicate",
+      "passed": true,
+      "elapsed_seconds": 0.06789170800038846,
+      "coordinator_peak_rss_kib": 56264,
+      "worker_peak_rss_kib_max": 81700,
+      "observed_worker_count": 1,
+      "rss_samples": 4,
+      "federation": [
+        {
+          "source": "warehouse",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 1,
+          "arrow_bytes_fetched": 16,
+          "batches_fetched": 1
+        }
+      ],
+      "output_rows": 1,
+      "output_wire_bytes": 288,
+      "upstream_scans": [
+        {
+          "sql": "SELECT `row_id`, `i64` FROM `acceptance_fixture`.`fact` WHERE (`i64` = CAST('-9223372036854775808' AS Int64))",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 400,
+          "complete": true,
+          "arrow_rows": 1,
+          "arrow_buffer_bytes": 16,
+          "arrow_columns": [
+            "row_id",
+            "i64"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        }
+      ]
+    },
+    {
+      "test": "null_predicate",
+      "passed": true,
+      "elapsed_seconds": 0.09311681199687882,
+      "coordinator_peak_rss_kib": 56524,
+      "worker_peak_rss_kib_max": 94608,
+      "observed_worker_count": 1,
+      "rss_samples": 5,
+      "federation": [
+        {
+          "source": "warehouse",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 1000000,
+          "arrow_bytes_fetched": 16007168,
+          "batches_fetched": 23
+        }
+      ],
+      "output_rows": 1,
+      "output_wire_bytes": 288,
+      "upstream_scans": [
+        {
+          "sql": "SELECT `row_id`, `i64` FROM `acceptance_fixture`.`fact`",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 16129600,
+          "complete": true,
+          "arrow_rows": 1000000,
+          "arrow_buffer_bytes": 16007168,
+          "arrow_columns": [
+            "row_id",
+            "i64"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        }
+      ],
+      "filter_executed_upstream": false
+    },
+    {
+      "test": "range_conjunction",
+      "passed": true,
+      "elapsed_seconds": 0.07108359899939387,
+      "coordinator_peak_rss_kib": 56244,
+      "worker_peak_rss_kib_max": 71608,
+      "observed_worker_count": 1,
+      "rss_samples": 4,
+      "federation": [
+        {
+          "source": "warehouse",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 3,
+          "arrow_bytes_fetched": 24,
+          "batches_fetched": 1
+        }
+      ],
+      "output_rows": 3,
+      "output_wire_bytes": 304,
+      "upstream_scans": [
+        {
+          "sql": "SELECT `row_id` FROM `acceptance_fixture`.`fact` WHERE ((`row_id` >= CAST('5' AS UInt64)) AND (`row_id` < CAST('8' AS UInt64)))",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 296,
+          "complete": true,
+          "arrow_rows": 3,
+          "arrow_buffer_bytes": 24,
+          "arrow_columns": [
+            "row_id"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        }
+      ]
+    },
+    {
+      "test": "count_star_projection",
+      "passed": true,
+      "observed_count_projection": [
+        "row_id"
+      ],
+      "projection_note": "Pinned DuckDB may retain the first physical column for COUNT(*); an empty producer projection uses the private count column.",
+      "elapsed_seconds": 0.08203129400135367,
+      "coordinator_peak_rss_kib": 55952,
+      "worker_peak_rss_kib_max": 93904,
+      "observed_worker_count": 1,
+      "rss_samples": 4,
+      "federation": [
+        {
+          "source": "warehouse",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 1000000,
+          "arrow_bytes_fetched": 8000000,
+          "batches_fetched": 23
+        }
+      ],
+      "output_rows": 1,
+      "output_wire_bytes": 288,
+      "upstream_scans": [
+        {
+          "sql": "SELECT `row_id` FROM `acceptance_fixture`.`fact`",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 8003440,
+          "complete": true,
+          "arrow_rows": 1000000,
+          "arrow_buffer_bytes": 8000000,
+          "arrow_columns": [
+            "row_id"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        }
+      ]
+    },
+    {
+      "test": "self_join_rescan",
+      "passed": true,
+      "elapsed_seconds": 0.06912322899734136,
+      "coordinator_peak_rss_kib": 54192,
+      "worker_peak_rss_kib_max": 81952,
+      "observed_worker_count": 1,
+      "rss_samples": 4,
+      "federation": [
+        {
+          "source": "warehouse",
+          "table": "fact",
+          "scans": 2,
+          "rows_fetched": 6,
+          "arrow_bytes_fetched": 98,
+          "batches_fetched": 2
+        }
+      ],
+      "output_rows": 3,
+      "output_wire_bytes": 568,
+      "upstream_scans": [
+        {
+          "sql": "SELECT `row_id`, `u64` FROM `acceptance_fixture`.`fact` WHERE (`row_id` < CAST('3' AS UInt64))",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 424,
+          "complete": true,
+          "arrow_rows": 3,
+          "arrow_buffer_bytes": 49,
+          "arrow_columns": [
+            "row_id",
+            "u64"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        },
+        {
+          "sql": "SELECT `row_id`, `i64` FROM `acceptance_fixture`.`fact` WHERE (`row_id` < CAST('3' AS UInt64))",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 432,
+          "complete": true,
+          "arrow_rows": 3,
+          "arrow_buffer_bytes": 49,
+          "arrow_columns": [
+            "row_id",
+            "i64"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        }
+      ]
+    },
+    {
+      "test": "csv_cross_join",
+      "passed": true,
+      "elapsed_seconds": 0.07610342899715761,
+      "coordinator_peak_rss_kib": 55960,
+      "worker_peak_rss_kib_max": 107440,
+      "observed_worker_count": 1,
+      "rss_samples": 4,
+      "federation": [
+        {
+          "source": "warehouse",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 3,
+          "arrow_bytes_fetched": 24,
+          "batches_fetched": 1
+        }
+      ],
+      "output_rows": 6,
+      "output_wire_bytes": 488,
+      "upstream_scans": [
+        {
+          "sql": "SELECT `row_id` FROM `acceptance_fixture`.`fact` WHERE (`row_id` < CAST('3' AS UInt64))",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 296,
+          "complete": true,
+          "arrow_rows": 3,
+          "arrow_buffer_bytes": 24,
+          "arrow_columns": [
+            "row_id"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        }
+      ]
+    },
+    {
+      "test": "million_row_projected_exports",
+      "passed": true,
+      "fixture_rows": 1000000,
+      "trials": [
+        {
+          "elapsed_seconds": 0.2905628530024842,
+          "coordinator_peak_rss_kib": 60168,
+          "worker_peak_rss_kib_max": 161604,
+          "observed_worker_count": 1,
+          "rss_samples": 15,
+          "federation": [
+            {
+              "source": "warehouse",
+              "table": "fact",
+              "scans": 1,
+              "rows_fetched": 1000000,
+              "arrow_bytes_fetched": 16007168,
+              "batches_fetched": 23
+            }
+          ],
+          "output_rows": 1000000,
+          "output_wire_bytes": 16094328,
+          "upstream_scans": [
+            {
+              "sql": "SELECT `row_id`, `u64` FROM `acceptance_fixture`.`fact`",
+              "describe": false,
+              "status": 200,
+              "wire_bytes": 16129592,
+              "complete": true,
+              "arrow_rows": 1000000,
+              "arrow_buffer_bytes": 16007168,
+              "arrow_columns": [
+                "row_id",
+                "u64"
+              ],
+              "readonly": true,
+              "overflow_mode": "throw",
+              "max_result_rows": 2000000,
+              "max_result_bytes": 67108864
+            }
+          ],
+          "trial": 1,
+          "canonical_value_sha256": "7201d7e9149d165079cc2204210ab4aeaedf7ca6b1c5cb5621eef63d8199c3ec",
+          "rows_per_complete_cli_second": 3441596.162987326
+        },
+        {
+          "elapsed_seconds": 0.30529523299992434,
+          "coordinator_peak_rss_kib": 60244,
+          "worker_peak_rss_kib_max": 154232,
+          "observed_worker_count": 1,
+          "rss_samples": 15,
+          "federation": [
+            {
+              "source": "warehouse",
+              "table": "fact",
+              "scans": 1,
+              "rows_fetched": 1000000,
+              "arrow_bytes_fetched": 16007168,
+              "batches_fetched": 23
+            }
+          ],
+          "output_rows": 1000000,
+          "output_wire_bytes": 16094328,
+          "upstream_scans": [
+            {
+              "sql": "SELECT `row_id`, `u64` FROM `acceptance_fixture`.`fact`",
+              "describe": false,
+              "status": 200,
+              "wire_bytes": 16129592,
+              "complete": true,
+              "arrow_rows": 1000000,
+              "arrow_buffer_bytes": 16007168,
+              "arrow_columns": [
+                "row_id",
+                "u64"
+              ],
+              "readonly": true,
+              "overflow_mode": "throw",
+              "max_result_rows": 2000000,
+              "max_result_bytes": 67108864
+            }
+          ],
+          "trial": 2,
+          "canonical_value_sha256": "7201d7e9149d165079cc2204210ab4aeaedf7ca6b1c5cb5621eef63d8199c3ec",
+          "rows_per_complete_cli_second": 3275517.898441106
+        },
+        {
+          "elapsed_seconds": 0.296099758001219,
+          "coordinator_peak_rss_kib": 59224,
+          "worker_peak_rss_kib_max": 155752,
+          "observed_worker_count": 1,
+          "rss_samples": 15,
+          "federation": [
+            {
+              "source": "warehouse",
+              "table": "fact",
+              "scans": 1,
+              "rows_fetched": 1000000,
+              "arrow_bytes_fetched": 16007168,
+              "batches_fetched": 23
+            }
+          ],
+          "output_rows": 1000000,
+          "output_wire_bytes": 16094328,
+          "upstream_scans": [
+            {
+              "sql": "SELECT `row_id`, `u64` FROM `acceptance_fixture`.`fact`",
+              "describe": false,
+              "status": 200,
+              "wire_bytes": 16129592,
+              "complete": true,
+              "arrow_rows": 1000000,
+              "arrow_buffer_bytes": 16007168,
+              "arrow_columns": [
+                "row_id",
+                "u64"
+              ],
+              "readonly": true,
+              "overflow_mode": "throw",
+              "max_result_rows": 2000000,
+              "max_result_bytes": 67108864
+            }
+          ],
+          "trial": 3,
+          "canonical_value_sha256": "7201d7e9149d165079cc2204210ab4aeaedf7ca6b1c5cb5621eef63d8199c3ec",
+          "rows_per_complete_cli_second": 3377240.17996625
+        }
+      ],
+      "checksum_encoding": "Rows sorted by row_id; each is little-endian UInt64 row_id, UInt64 u64-or-zero, boolean u64-validity (<QQ?).",
+      "memory_limit_mib": 256,
+      "threads": 2,
+      "scan_row_limit": 2000000,
+      "scan_byte_limit": 67108864,
+      "final_byte_limit": 67108864,
+      "measurement_note": "Complete CLI includes coordinator, worker, source scan, DuckDB ORDER BY and file-synced Arrow export; an active test proxy captures/decodes source batches. Validation/checksum and fixture loading are outside the interval. Caches are warm/uncontrolled; this is not a production throughput claim."
+    },
+    {
+      "test": "query_wide_table_cap",
+      "passed": true,
+      "configured_tables": 33,
+      "no_upstream_describe_or_scan": true,
+      "elapsed_seconds": 0.048707613997976296,
+      "coordinator_peak_rss_kib": 56504,
+      "worker_peak_rss_kib_max": 77804,
+      "observed_worker_count": 1,
+      "rss_samples": 3,
+      "error_code": "nonzero_exit",
+      "upstream_scans": []
+    },
+    {
+      "test": "unsupported_required_predicate",
+      "passed": true,
+      "elapsed_seconds": 0.055264499998884276,
+      "coordinator_peak_rss_kib": 56012,
+      "worker_peak_rss_kib_max": 79544,
+      "observed_worker_count": 1,
+      "rss_samples": 3,
+      "error_code_basis": "known sanitized CLI message; CLI does not print structured codes",
+      "error_code": "UNSUPPORTED",
+      "upstream_scans": []
+    },
+    {
+      "test": "row_budget_no_truncation",
+      "passed": true,
+      "elapsed_seconds": 0.05823588299972471,
+      "coordinator_peak_rss_kib": 54276,
+      "worker_peak_rss_kib_max": 79128,
+      "observed_worker_count": 1,
+      "rss_samples": 3,
+      "error_code_basis": "known sanitized CLI message; CLI does not print structured codes",
+      "error_code": "QUERY_FAILED",
+      "upstream_scans": [
+        {
+          "sql": "SELECT `row_id` FROM `acceptance_fixture`.`fact`",
+          "describe": false,
+          "status": 500,
+          "wire_bytes": 161,
+          "complete": true,
+          "arrow_rows": null,
+          "arrow_buffer_bytes": null,
+          "arrow_columns": null,
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 10,
+          "max_result_bytes": 67108864
+        }
+      ]
+    },
+    {
+      "test": "byte_budget_no_truncation",
+      "passed": true,
+      "elapsed_seconds": 0.0598977539993939,
+      "coordinator_peak_rss_kib": 54424,
+      "worker_peak_rss_kib_max": 81500,
+      "observed_worker_count": 1,
+      "rss_samples": 3,
+      "error_code_basis": "known sanitized CLI message; CLI does not print structured codes",
+      "error_code": "QUERY_FAILED",
+      "upstream_scans": [
+        {
+          "sql": "SELECT `payload` FROM `acceptance_fixture`.`fact`",
+          "describe": false,
+          "status": 500,
+          "wire_bytes": 160,
+          "complete": true,
+          "arrow_rows": null,
+          "arrow_buffer_bytes": null,
+          "arrow_columns": null,
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 1024
+        }
+      ]
+    },
+    {
+      "test": "unselected_source_denied",
+      "passed": true,
+      "elapsed_seconds": 0.0524911760003306,
+      "coordinator_peak_rss_kib": 55904,
+      "worker_peak_rss_kib_max": 80048,
+      "observed_worker_count": 1,
+      "rss_samples": 3,
+      "error_code": "nonzero_exit",
+      "upstream_scans": []
+    },
+    {
+      "test": "unregistered_table_denied",
+      "passed": true,
+      "elapsed_seconds": 0.05321815199931734,
+      "coordinator_peak_rss_kib": 54000,
+      "worker_peak_rss_kib_max": 81360,
+      "observed_worker_count": 1,
+      "rss_samples": 3,
+      "error_code": "nonzero_exit",
+      "upstream_scans": []
+    },
+    {
+      "test": "source_not_selected_denied",
+      "passed": true,
+      "elapsed_seconds": 0.05242280399761512,
+      "coordinator_peak_rss_kib": 56048,
+      "worker_peak_rss_kib_max": 84008,
+      "observed_worker_count": 1,
+      "rss_samples": 3,
+      "error_code": "nonzero_exit",
+      "upstream_scans": []
+    },
+    {
+      "test": "direct_arrow_scan_denied",
+      "passed": true,
+      "elapsed_seconds": 0.030319512999994913,
+      "coordinator_peak_rss_kib": 57964,
+      "worker_peak_rss_kib_max": 34492,
+      "observed_worker_count": 1,
+      "rss_samples": 2,
+      "error_code_basis": "known sanitized CLI message; CLI does not print structured codes",
+      "error_code": "PERMISSION_DENIED",
+      "upstream_scans": []
+    },
+    {
+      "test": "quoted_arrow_scan_denied",
+      "passed": true,
+      "elapsed_seconds": 0.02849308399891015,
+      "coordinator_peak_rss_kib": 55912,
+      "worker_peak_rss_kib_max": 43392,
+      "observed_worker_count": 1,
+      "rss_samples": 2,
+      "error_code_basis": "known sanitized CLI message; CLI does not print structured codes",
+      "error_code": "PERMISSION_DENIED",
+      "upstream_scans": []
+    },
+    {
+      "test": "dynamic_query_denied",
+      "passed": true,
+      "elapsed_seconds": 0.028926443999807816,
+      "coordinator_peak_rss_kib": 56152,
+      "worker_peak_rss_kib_max": 42792,
+      "observed_worker_count": 1,
+      "rss_samples": 2,
+      "error_code_basis": "known sanitized CLI message; CLI does not print structured codes",
+      "error_code": "PERMISSION_DENIED",
+      "upstream_scans": []
+    },
+    {
+      "test": "direct_file_access_denied",
+      "passed": true,
+      "elapsed_seconds": 0.028807021997636184,
+      "coordinator_peak_rss_kib": 56012,
+      "worker_peak_rss_kib_max": 42736,
+      "observed_worker_count": 1,
+      "rss_samples": 2,
+      "error_code_basis": "known sanitized CLI message; CLI does not print structured codes",
+      "error_code": "PERMISSION_DENIED",
+      "upstream_scans": []
+    },
+    {
+      "test": "concurrent_query_workers",
+      "passed": true,
+      "runs": [
+        {
+          "elapsed_seconds": 0.22815013400031603,
+          "coordinator_peak_rss_kib": 56608,
+          "worker_peak_rss_kib_max": 89556,
+          "observed_worker_count": 1,
+          "rss_samples": 12,
+          "federation": [
+            {
+              "source": "warehouse",
+              "table": "fact",
+              "scans": 1,
+              "rows_fetched": 10,
+              "arrow_bytes_fetched": 80,
+              "batches_fetched": 1
+            }
+          ],
+          "output_rows": 1,
+          "output_wire_bytes": 296
+        },
+        {
+          "elapsed_seconds": 0.22503334599969094,
+          "coordinator_peak_rss_kib": 56068,
+          "worker_peak_rss_kib_max": 91076,
+          "observed_worker_count": 1,
+          "rss_samples": 11,
+          "federation": [
+            {
+              "source": "warehouse",
+              "table": "fact",
+              "scans": 1,
+              "rows_fetched": 10,
+              "arrow_bytes_fetched": 80,
+              "batches_fetched": 1
+            }
+          ],
+          "output_rows": 1,
+          "output_wire_bytes": 296
+        }
+      ],
+      "distinct_worker_processes": true,
+      "upstream_scans": [
+        {
+          "sql": "SELECT `row_id` FROM `acceptance_fixture`.`fact` WHERE (`row_id` < CAST('10' AS UInt64))",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 352,
+          "complete": true,
+          "arrow_rows": 10,
+          "arrow_buffer_bytes": 80,
+          "arrow_columns": [
+            "row_id"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        },
+        {
+          "sql": "SELECT `row_id` FROM `acceptance_fixture`.`fact` WHERE (`row_id` >= CAST('999990' AS UInt64))",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 352,
+          "complete": true,
+          "arrow_rows": 10,
+          "arrow_buffer_bytes": 80,
+          "arrow_columns": [
+            "row_id"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        }
+      ]
+    },
+    {
+      "test": "cancel_live_upstream_scan",
+      "passed": true,
+      "no_worker_remaining": true,
+      "no_proxy_stream_remaining": true,
+      "no_upstream_query_remaining": true,
+      "elapsed_seconds": 0.19999453699711012,
+      "coordinator_peak_rss_kib": 54596,
+      "worker_peak_rss_kib_max": 82608,
+      "observed_worker_count": 1,
+      "rss_samples": 10,
+      "error_code_basis": "known sanitized CLI message; CLI does not print structured codes",
+      "error_code": "CANCELLED",
+      "cancellation_cleanup_seconds": 1.1842469520015584,
+      "upstream_scans": [
+        {
+          "sql": "SELECT `delay` FROM `acceptance_fixture`.`slow`",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 7330,
+          "complete": false,
+          "arrow_rows": null,
+          "arrow_buffer_bytes": null,
+          "arrow_columns": null,
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 3000000,
+          "max_result_bytes": 33554432
+        }
+      ]
+    },
+    {
+      "test": "landlock_custom_federation",
+      "passed": true,
+      "rows": 3,
+      "exact_values_preserved": true,
+      "launcher_sha256": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1",
+      "worker_environment_names": [
+        "GOMAXPROCS",
+        "HOME",
+        "KELVO_SOURCE_FED_ACCEPTANCE_PASSWORD",
+        "KELVO_SOURCE_FED_ACCEPTANCE_URL",
+        "KELVO_SOURCE_FED_ACCEPTANCE_USER",
+        "PATH",
+        "TMPDIR"
+      ],
+      "selected_source_credentials_only": true,
+      "upstream_scans": [
+        {
+          "sql": "SELECT `row_id`, `i64`, `u64`, `amount`, `label` FROM `acceptance_fixture`.`fact` WHERE (`row_id` < CAST('3' AS UInt64))",
+          "describe": false,
+          "status": 200,
+          "wire_bytes": 848,
+          "complete": true,
+          "arrow_rows": 3,
+          "arrow_buffer_bytes": 151,
+          "arrow_columns": [
+            "row_id",
+            "i64",
+            "u64",
+            "amount",
+            "label"
+          ],
+          "readonly": true,
+          "overflow_mode": "throw",
+          "max_result_rows": 2000000,
+          "max_result_bytes": 67108864
+        }
+      ],
+      "scope": "Direct worker through real Landlock launcher; this is separate from the CLI coordinator measurements. Landlock filesystem policy does not isolate network destinations."
+    },
+    {
+      "test": "landlock_unselected_file_denial",
+      "passed": true,
+      "same_file_control_succeeded": true,
+      "denied_without_arrow_output": true
+    },
+    {
+      "test": "fixture_cleanup_and_service_preservation",
+      "passed": true,
+      "existing_benchmark_rows": 100000000,
+      "owned_database_removed": true,
+      "owned_reader_removed": true,
+      "existing_service_responds": true
+    }
+  ],
+  "elapsed_seconds": 7.074316704001831,
+  "measurement_scope": "Synthetic acceptance fixture, tagged CLI coordinator and isolated worker; warm/uncontrolled caches. Proxy records generated SQL, dechunked source HTTP body bytes and decoded Arrow rows/buffers. Timings and 20ms /proc VmRSS samples are diagnostic observations, not production throughput claims.",
+  "limitations": [
+    "SQL capability guards are defense in depth; native DuckDB workers require OS isolation in shared deployments.",
+    "External process cleanup and upstream query cleanup do not measure internal Go/C handle counts; bridge lifetime tests cover those separately."
+  ]
+}
