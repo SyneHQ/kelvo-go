@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
 <title id="title">Kelvo mark</title>
-<desc id="desc">Seven horizontal bands form a curved uppercase K.</desc>
-<g fill="#F4E9D8" transform="translate(0 0) scale(1.0)"><defs><clipPath id="mark"><path d="M24 24H64V103C92 85 116 55 146 24H226C184 67 147 107 106 128C150 149 194 189 232 232H149C115 192 89 160 64 152V232H24Z"/></clipPath></defs><g clip-path="url(#mark)"><rect x="0" y="24" width="256" height="22"/><rect x="0" y="55" width="256" height="22"/><rect x="0" y="86" width="256" height="22"/><rect x="0" y="117" width="256" height="22"/><rect x="0" y="148" width="256" height="22"/><rect x="0" y="179" width="256" height="22"/><rect x="0" y="210" width="256" height="22"/></g></g>
+<desc id="desc">Six interleaved curved bands form an abstract circular symbol.</desc>
+<g fill="#F4E9D8" transform="translate(0 0) scale(1.0)"><defs><clipPath id="mark-outer"><circle cx="128" cy="128" r="112"/></clipPath><clipPath id="mark-left"><path d="M0 0H178C84 46 84 88 128 128C172 168 172 210 78 256H0Z"/></clipPath><clipPath id="mark-right"><path d="M178 0H256V256H78C172 210 172 168 128 128C84 88 84 46 178 0Z"/></clipPath></defs><g clip-path="url(#mark-outer)"><g clip-path="url(#mark-left)"><rect x="0" y="16" width="256" height="32"/><rect x="0" y="92.8" width="256" height="32"/><rect x="0" y="169.6" width="256" height="32"/></g><g clip-path="url(#mark-right)"><rect x="0" y="54.4" width="256" height="32"/><rect x="0" y="131.2" width="256" height="32"/><rect x="0" y="208" width="256" height="32"/></g></g></g>
 </svg>

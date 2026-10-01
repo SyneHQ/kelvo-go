@@ -2,7 +2,7 @@
 """Render Kelvo's vector identity and PNG exports.
 
 Requires fonttools, CairoSVG and Pillow. Supply OFL-licensed Instrument Serif
-Regular and Space Mono Regular. Lettering is outlined; fonts are not bundled.
+Regular. Lettering is outlined; the font is not bundled.
 The atmospheric field is original deterministic procedural art, not photography.
 See brand/README.md for font provenance and usage.
 """
@@ -24,13 +24,9 @@ INK = "#271B16"
 PAPER = "#F4E9D8"
 VERMILION = "#FF4B00"
 SEA = "#9CAFA8"
-# A curved, expanding K silhouette. Seven horizontal cuts retain its outline.
-SILHOUETTE = (
-    "M24 24H64V103C92 85 116 55 146 24H226"
-    "C184 67 147 107 106 128"
-    "C150 149 194 189 232 232H149"
-    "C115 192 89 160 64 152V232H24Z"
-)
+# Two complementary curved fields, alternated inside a circle. No letterform.
+LEFT_FIELD = "M0 0H178C84 46 84 88 128 128C172 168 172 210 78 256H0Z"
+RIGHT_FIELD = "M178 0H256V256H78C172 210 172 168 128 128C84 88 84 46 178 0Z"
 
 class Lettering:
     def __init__(self, path):
@@ -63,14 +59,22 @@ class Lettering:
             + "".join(paths) + "</g>"
         )
 
-def mark(color=INK, x=0, y=0, size=256, key="mark"):
+def mark(color=INK, x=0, y=0, size=256, key="mark", small=False):
+    count, height, step = (4, 44, 60) if small else (6, 32, 38.4)
+    def bands(parity):
+        return "".join(
+            f'<rect x="0" y="{16 + i * step:g}" width="256" height="{height}"/>'
+            for i in range(parity, count, 2)
+        )
     return (
         f'<g fill="{color}" transform="translate({x} {y}) scale({size / 256})">'
-        f'<defs><clipPath id="{key}"><path d="{SILHOUETTE}"/></clipPath></defs>'
-        f'<g clip-path="url(#{key})">'
-        + "".join(f'<rect x="0" y="{24 + i * 31}" width="256" height="22"/>'
-                  for i in range(7))
-        + '</g></g>'
+        f'<defs><clipPath id="{key}-outer"><circle cx="128" cy="128" r="112"/></clipPath>'
+        f'<clipPath id="{key}-left"><path d="{LEFT_FIELD}"/></clipPath>'
+        f'<clipPath id="{key}-right"><path d="{RIGHT_FIELD}"/></clipPath></defs>'
+        f'<g clip-path="url(#{key}-outer)">'
+        f'<g clip-path="url(#{key}-left)">{bands(0)}</g>'
+        f'<g clip-path="url(#{key}-right)">{bands(1)}</g>'
+        '</g></g>'
     )
 
 def document(width, height, title, description, content):
@@ -113,7 +117,7 @@ def atmosphere(width, height):
     field.save(buffer, format="PNG", optimize=True)
     return base64.b64encode(buffer.getvalue()).decode()
 
-def banner(serif, mono, height):
+def banner(serif, height):
     width, divide = 1600, 920
     offset = (height - 720) / 2
     texture = atmosphere(divide, height)
@@ -121,55 +125,50 @@ def banner(serif, mono, height):
         f'<rect width="1600" height="{height}" fill="{VERMILION}"/>',
         f'<image x="0" y="0" width="{divide}" height="{height}" '
         f'xlink:href="data:image/png;base64,{texture}"/>',
-        mono.draw("OPEN-SOURCE ANALYTICS", 72, 65, 15, tracking=1.1),
-        mono.draw("BY SYNEHQ", 1000, 65, 15, tracking=1.1),
-        serif.draw("KELVO", 85, 399 + offset, 245, tracking=0.5),
-        serif.draw("SQL in. Arrow out.", 94, 477 + offset, 46),
-        mono.draw("GO / DUCKDB / APACHE ARROW", 76, height - 56, 14, tracking=0.35),
+        mark(INK, 294, 318 + offset, 84, "banner-lockup"),
+        serif.draw("KELVO", 389, 396 + offset, 100, tracking=0.5),
         mark(INK, 1016, 111 + offset, 492, "banner-bands"),
-        mono.draw("BUILT FOR ANALYSIS.", 1000, height - 56, 14, tracking=0.35),
     ]
     return document(
-        width, height, "Kelvo — SQL in. Arrow out.",
-        "An open-source analytics gateway by SYNEHQ. A tall editorial wordmark "
-        "over a grained sea-glass and peach field, beside a seven-band curved K "
-        "on vermilion. Built with Go, DuckDB and Apache Arrow.", "".join(parts),
+        width, height, "Kelvo — open-source analytics by SYNEHQ.",
+        "A small serif Kelvo lockup centered over a grained sea-glass and peach "
+        "field. On vermilion, a large abstract circular mark is formed by six "
+        "interleaved curved bands. The symbol is geometric, not a monogram.", "".join(parts),
     )
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--serif", type=Path, required=True)
-    parser.add_argument("--mono", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=Path("brand"))
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    serif, mono = Lettering(args.serif), Lettering(args.mono)
+    serif = Lettering(args.serif)
     for suffix, color in [("", INK), ("-inverse", PAPER)]:
         (args.output / f"kelvo-mark{suffix}.svg").write_text(document(
-            256, 256, "Kelvo mark", "Seven horizontal bands form a curved uppercase K.",
+            256, 256, "Kelvo mark", "Six interleaved curved bands form an abstract circular symbol.",
             mark(color),
         ))
         (args.output / f"kelvo-wordmark{suffix}.svg").write_text(document(
-            760, 208, "Kelvo", "Kelvo's banded K and editorial serif wordmark.",
+            760, 208, "Kelvo", "Kelvo's abstract circular symbol and editorial serif wordmark.",
             mark(color, 0, 0, 208, "lockup-bands")
             + serif.draw("KELVO", 236, 177, 218, color, tracking=0.4),
         ))
     (args.output / "kelvo-mark-small.svg").write_text(document(
-        256, 256, "Kelvo small mark", "A solid curved K for sizes below 32 pixels.",
-        f'<path fill="{INK}" d="{SILHOUETTE}"/>',
+        256, 256, "Kelvo small mark", "Four interleaved curved bands for sizes below 32 pixels.",
+        mark(small=True),
     ))
-    header = banner(serif, mono, 720)
+    header = banner(serif, 720)
     (args.output / "kelvo-banner.svg").write_text(header)
     cairosvg.svg2png(
         bytestring=header.encode(), write_to=str(args.output / "kelvo-banner.png"),
     )
-    social = banner(serif, mono, 840)
+    social = banner(serif, 840)
     (args.output / "kelvo-social.svg").write_text(social)
     cairosvg.svg2png(
         bytestring=social.encode(), write_to=str(args.output / "kelvo-social.png"),
         output_width=1200, output_height=630,
     )
-    icon = document(512, 512, "Kelvo", "Kelvo's banded K in ink on vermilion.",
+    icon = document(512, 512, "Kelvo", "Kelvo's abstract circular symbol in ink on vermilion.",
                     f'<rect width="512" height="512" fill="{VERMILION}"/>'
                     + mark(INK, 32, 32, 448, "icon-bands"))
     cairosvg.svg2png(bytestring=icon.encode(), write_to=str(args.output / "kelvo-icon.png"))
