@@ -1,0 +1,15 @@
+# Kelvo by SYNEHQ. Requires the optional pinned DuckDB bridge build.
+# Provide an existing ClickHouse analytics.events table with event_id/account_id.
+sources:
+  - id: warehouse
+    type: clickhouse
+    url_env: KELVO_SOURCE_WAREHOUSE_URL
+    username_env: KELVO_SOURCE_WAREHOUSE_USER
+    password_env: KELVO_SOURCE_WAREHOUSE_PASSWORD
+    federation:
+      max_scan_rows: 10000000
+      max_scan_bytes: 536870912
+      tables:
+        - name: events
+          database: analytics
+          table: events

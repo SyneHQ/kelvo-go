@@ -19,6 +19,8 @@ Build the image on the designated Linux build host:
 docker build --platform linux/amd64 --build-arg VERSION=dev -t kelvo-go:dev .
 ```
 
+For the optional Linux amd64 ClickHouse federation bridge, add `--build-arg DUCKBRIDGE=1`. See [its build and operational boundaries](../docs/federation.md).
+
 The build includes the Go executable and the native pre-exec launcher. The runtime uses UID/GID `65532`, has no build toolchain and installs only runtime libraries, CA roots and timezone data. Build context rules omit private configs, certificates, artifacts and repository history. For a released deployment, publish a reviewed image and set `KELVO_IMAGE` to its immutable digest.
 
 ## Network boundary

@@ -1,7 +1,7 @@
 # Architecture
 
 Kelvo Go owns source registration, query lifecycle, Arrow delivery and admission.
-DuckDB supplies SQL execution and federation. Native ClickHouse executes at the source.
+DuckDB supplies SQL execution and federation. Native ClickHouse executes at the source; an optional pinned C++ Arrow bridge connects its Go connector to DuckDB for selected-table federation.
 No DataFusion, Drill, LLM/GPU runtime, Kubernetes operator or Hakopod dependency is included.
 
 ```mermaid
@@ -9,6 +9,8 @@ flowchart LR
     Client[CLI or HTTP client] --> Coordinator[Go coordinator]
     Coordinator --> Worker[Disposable Go query worker]
     Worker --> DuckDB[DuckDB: files and PG/MySQL federation]
+    DuckDB --> Bridge[Optional C++ Arrow scan bridge]
+    Bridge --> ClickHouse
     Worker --> ClickHouse[Native ClickHouse ArrowStream]
     Worker --> Arrow[Arrow IPC batches]
     Arrow --> Client
@@ -33,3 +35,9 @@ Source references:
 - [DuckDB streaming flag](https://github.com/duckdb/duckdb/blob/v1.5.6/src/main/capi/pending-c.cpp#L17-L44)
 - [Arrow IPC](https://arrow.apache.org/docs/format/Columnar.html#serialization-and-interprocess-communication-ipc)
 - [Spice OSS](https://github.com/spiceai/spiceai), architectural reference
+
+The [custom federation bridge](federation.md) receives DuckDB optimizer projections
+and typed filters, executes supported predicates through Go native connectors,
+and lends retained/pinned Arrow batches back through the C Data interface. The
+first adapter is ClickHouse. It retains the existing subprocess trust boundary
+and uses an opt-in pinned driver accessor patch; no Rust service is introduced.

@@ -35,6 +35,7 @@ The result is Arrow IPC, not JSON. Read the full [usage guide](docs/usage.md) fo
 | Path | Sources | Scope |
 | --- | --- | --- |
 | DuckDB federation | CSV, Parquet, DuckDB, SQLite, PostgreSQL, MySQL | Join selected sources with DuckDB SQL. Execution materializes before Arrow delivery. |
+| Optional native federation | ClickHouse tables through the pinned Go/C++ Arrow bridge | Source column/filter pushdown; joins and aggregates in DuckDB. [Build and limits](docs/federation.md). |
 | Native connectors | ClickHouse, PostgreSQL/MySQL families, SQL Server, Oracle, MongoDB, Snowflake, Databricks, BigQuery, D1, Trino/Presto, Elasticsearch, Exasol, Spanner, Ignite 2, Athena, DynamoDB, Cosmos DB, Flight SQL | Query one configured connection using its supported SQL or protocol. |
 | External adapters | Additional engines through an explicitly configured service | Connect a separately operated `dbapi` or Flight SQL adapter. Drivers are not bundled. |
 

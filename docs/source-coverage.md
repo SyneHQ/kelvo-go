@@ -20,7 +20,7 @@ bundled driver or evidence that the backend has been tested.
 | `duckdb` | Embedded SQL/file | DuckDB federation |
 | `cockroachdb` | PostgreSQL driver | Native protocol-family |
 | `sqlserver` | SQL driver | Native |
-| `clickhouse` | Dedicated client | Native ArrowStream |
+| `clickhouse` | Dedicated client | Native ArrowStream; opt-in DuckDB bridge federation |
 | `cosmosdb` | SQL driver | Native NoSQL query REST API; bounded JSON documents |
 | `oracle` | SQL driver | Native |
 | `dynamodb` | SQL driver | Native read-only PartiQL; lossless AttributeValue documents |
@@ -59,7 +59,7 @@ bundled driver or evidence that the backend has been tested.
 | `google_sheets` | API snapshot into DuckDB | External adapter |
 
 The native expansion is configured in [sources-native.yml](../deploy/examples/sources-native.yml).
-These routes execute at one configured source; they do not add DuckDB federation,
+The ClickHouse [native bridge](federation.md) separately adds selected-table DuckDB federation. The other native routes execute at one configured source; they do not add DuckDB federation,
 metadata browsing, write APIs, or CDC. Athena retains query results in the configured
 S3 location. DynamoDB and Cosmos DB preserve document payloads in Arrow Binary;
 they do not infer a tabular schema. Consult the [source guides](usage.md#source-guides)
@@ -84,7 +84,7 @@ Use these indicators independently:
 | --- | --- | --- | --- |
 | PostgreSQL, MySQL | Eligible | Yes | Live acceleration acceptance pending; native/federation tests are separate |
 | MariaDB, CockroachDB, AlloyDB, Redshift | Eligible; protocol-family compatibility | Not through these native routes | Product-specific acceleration acceptance pending |
-| ClickHouse | Eligible | No | Verified: [10-million-row snapshot and exact aggregates](evidence/acceleration-clickhouse.json) |
+| ClickHouse | Eligible | [Opt-in native bridge](federation.md); supported column/filter pushdown | Verified: [10-million-row snapshot and exact aggregates](evidence/acceleration-clickhouse.json) |
 | SQL Server, Oracle, Exasol, Ignite 2 | Eligible | No | Live acceleration acceptance pending |
 | Snowflake, Databricks, BigQuery, Spanner, Athena, Elasticsearch | Eligible | No | Live acceleration acceptance pending |
 | Trino, Presto, Flight SQL | Eligible | No; the remote engine may itself federate | Live acceleration acceptance pending |
