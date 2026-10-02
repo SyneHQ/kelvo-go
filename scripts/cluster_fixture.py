@@ -270,10 +270,10 @@ def provision():
                 pub = ["$JS.API.INFO", "$JS.API.STREAM.INFO.*", "$JS.API.STREAM.MSG.GET.KV_KELVO_META", "$JS.API.STREAM.MSG.GET.KV_KELVO_JOBS", "$KV.KELVO_JOBS.>", "$JS.API.CONSUMER.INFO.KELVO_QUEUE.dispatch"]
                 pub += ["job.ready"] if name.endswith("gateway") else ["$JS.API.CONSUMER.MSG.NEXT.KELVO_QUEUE.dispatch", "$JS.ACK.>"]
                 if not name.endswith("gateway"):
-                    pub += ["acceleration.refresh", "$JS.API.CONSUMER.INFO.KELVO_ACCEL_QUEUE.refresh", "$JS.API.CONSUMER.MSG.NEXT.KELVO_ACCEL_QUEUE.refresh"]
+                    pub += ["$JS.API.STREAM.MSG.GET.KV_KELVO_ACCEL_STATUS", "$KV.KELVO_ACCEL_STATUS.>", "$JS.API.STREAM.MSG.GET.KV_KELVO_SOURCE_QUOTAS", "$KV.KELVO_SOURCE_QUOTAS.>", "acceleration.refresh", "$JS.API.CONSUMER.INFO.KELVO_ACCEL_QUEUE.refresh", "$JS.API.CONSUMER.MSG.NEXT.KELVO_ACCEL_QUEUE.refresh"]
                 user["permissions"] = {"publish": {"allow": pub}, "subscribe": {"allow": ["_INBOX.>"]}}
             users.append(user)
-        accounts[tenant] = {"jetstream": {"max_memory": 16777216, "max_file": 67108864, "max_streams": 4, "max_consumers": 4}, "users": users}
+        accounts[tenant] = {"jetstream": {"max_memory": 16777216, "max_file": 67108864, "max_streams": 6, "max_consumers": 4}, "users": users}
 
         def nats(name):
             return {"url": "tls://127.0.0.1:14222", "username": name, "password_env": "KELVO_NATS_" + name.upper(), "ca_file": str(DIR / "ca.pem")}
@@ -298,7 +298,7 @@ def provision():
     test_password_env = "KELVO_NATS_STORETESTADMIN"
     env[test_password_env] = secrets.token_hex(24)
     accounts["storetest"] = {
-        "jetstream": {"max_memory": 16777216, "max_file": 67108864, "max_streams": 4, "max_consumers": 4},
+        "jetstream": {"max_memory": 16777216, "max_file": 67108864, "max_streams": 6, "max_consumers": 4},
         "users": [{"user": test_user, "password": env[test_password_env]}],
     }
     env.update({

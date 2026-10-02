@@ -224,7 +224,8 @@ class Acceptance:
                 "directory": str(store), "tenant_id": "acceptance",
                 "datasets": [dataset("typed_snapshot", TYPED_SQL),
                              dataset("empty_snapshot", TYPED_SQL + " WHERE false"),
-                             dataset("short_lived", TYPED_SQL, max_age="5s")],
+                             dataset("short_lived", TYPED_SQL, max_age="5s"),
+                             dataset("schema_guard", "SELECT * FROM raw")],
             },
         }
         catalog = self.directory / "catalog.yml"
@@ -271,6 +272,36 @@ class Acceptance:
         require(updated["generation"] != first["generation"], "successful refresh reused a generation")
         check_typed(self.query(catalog)[0], "updated")
         self.record("source_changes_visible_only_after_refresh", repeated_cached_queries=2)
+
+        self.stage = "verified_generation_restore"
+        inventory, _ = self.cli(["accelerate", "inventory", "--config", catalog, "--dataset", "typed_snapshot"])
+        require(first["generation"].encode() in inventory and updated["generation"].encode() in inventory,
+                "inventory omitted retained generations")
+        restored, _ = self.cli(["accelerate", "restore", "--config", catalog, "--dataset", "typed_snapshot",
+                               "--generation", first["generation"], "--expected-generation", updated["generation"]])
+        restored = parse_status(restored)
+        require(restored["generation"] == first["generation"] and restored["refreshed_at"] == first["refreshed_at"],
+                "restore changed generation identity or freshness")
+        check_typed(self.query(catalog)[0])
+        self.cli(["accelerate", "restore", "--config", catalog, "--dataset", "typed_snapshot",
+                  "--generation", updated["generation"], "--expected-generation", updated["generation"]], success=False)
+        require(self.status(catalog, "typed_snapshot")["generation"] == first["generation"],
+                "stale restore precondition changed current generation")
+        self.cli(["accelerate", "restore", "--config", catalog, "--dataset", "typed_snapshot",
+                  "--generation", updated["generation"], "--expected-generation", first["generation"]])
+        check_typed(self.query(catalog)[0], "updated")
+        self.record("verified_restore_preserves_timestamp_and_fences_stale_requests")
+
+        self.stage = "cross_generation_schema_contract"
+        guard = self.status(catalog, "schema_guard", command="refresh")
+        write_private(raw, typed_csv("updated").replace("\n1,", "\nchanged,", 1))
+        try:
+            self.status(catalog, "schema_guard", command="refresh", success=False)
+            require(self.status(catalog, "schema_guard")["generation"] == guard["generation"],
+                    "incompatible schema replaced valid snapshot")
+        finally:
+            write_private(raw, typed_csv("updated"))
+        self.record("source_schema_change_preserves_previous_generation")
 
         self.stage = "failed_refresh_preserves_snapshot"
         write_private(raw, typed_csv("updated", invalid=True))

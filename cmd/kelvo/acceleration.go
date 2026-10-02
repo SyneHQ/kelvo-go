@@ -21,11 +21,20 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-func refreshFactory(sandbox string) acceleration.ExecutorFactory {
+type refreshOptions struct {
+	Admission worker.SourceAdmitter
+	Secrets   worker.SecretResolver
+}
+
+func refreshFactory(sandbox string, options ...refreshOptions) acceleration.ExecutorFactory {
 	return func(c catalog.Config, limits query.Limits) (query.Executor, error) {
 		e, err := worker.New(c, limits)
 		if err == nil {
 			e.SandboxPath = sandbox
+			if len(options) > 0 {
+				e.SourceAdmission = options[0].Admission
+				e.Secrets = options[0].Secrets
+			}
 		}
 		return e, err
 	}
@@ -33,11 +42,13 @@ func refreshFactory(sandbox string) acceleration.ExecutorFactory {
 
 func runAcceleration(args []string) error {
 	if len(args) == 0 {
-		return query.NewError("INVALID_ARGUMENT", "Expected accelerate refresh, status, verify, or watch")
+		return query.NewError("INVALID_ARGUMENT", "Expected accelerate refresh, status, verify, inventory, restore, or watch")
 	}
 	f := flag.NewFlagSet("accelerate "+args[0], flag.ContinueOnError)
 	file := f.String("config", "kelvo.yml", "Registered sources and acceleration configuration (YAML)")
 	id := f.String("dataset", "", "Dataset ID (required except for watch)")
+	generation := f.String("generation", "", "Generation to restore (restore only)")
+	expected := f.String("expected-generation", "", "Current generation precondition (restore only)")
 	sandbox := f.String("sandbox", "", "Optional native sandbox launcher for source refresh workers")
 	if err := f.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -48,8 +59,11 @@ func runAcceleration(args []string) error {
 	if f.NArg() != 0 || (args[0] != "watch" && *id == "") || (args[0] == "watch" && *id != "") {
 		return query.NewError("INVALID_ARGUMENT", "Specify --dataset for refresh, status, or verify; watch schedules all configured datasets")
 	}
-	if args[0] != "refresh" && args[0] != "status" && args[0] != "watch" && args[0] != "verify" {
+	if args[0] != "refresh" && args[0] != "status" && args[0] != "watch" && args[0] != "verify" && args[0] != "inventory" && args[0] != "restore" {
 		return query.NewError("INVALID_ARGUMENT", "Unknown acceleration command")
+	}
+	if (args[0] == "restore" && (*generation == "" || *expected == "")) || (args[0] != "restore" && (*generation != "" || *expected != "")) {
+		return query.NewError("INVALID_ARGUMENT", "Restore requires generation and expected-generation; other commands reject them")
 	}
 	c, err := catalog.Load(*file)
 	if err != nil {
@@ -72,6 +86,13 @@ func runAcceleration(args []string) error {
 	if _, ok := c.Dataset(*id); !ok {
 		return query.NewError("INVALID_ARGUMENT", "Unknown accelerated dataset")
 	}
+	if args[0] == "inventory" {
+		generations, err := m.Inventory(ctx, *id)
+		if err != nil {
+			return err
+		}
+		return yaml.NewEncoder(os.Stdout).Encode(generations)
+	}
 	var snapshot acceleration.Snapshot
 	if args[0] == "verify" {
 		snapshot, err = m.Verify(ctx, *id)
@@ -79,7 +100,9 @@ func runAcceleration(args []string) error {
 			return err
 		}
 	}
-	if args[0] == "refresh" {
+	if args[0] == "restore" {
+		snapshot, err = m.Restore(ctx, *id, *generation, *expected)
+	} else if args[0] == "refresh" {
 		snapshot, err = m.Refresh(ctx, *id, false)
 	} else if args[0] != "verify" {
 		snapshot, err = m.StatusContext(ctx, *id)
@@ -98,8 +121,8 @@ func runAcceleration(args []string) error {
 // Cluster dispatch uses a tenant's existing authenticated JetStream account.
 // Messages contain dataset identity and definition fingerprint only. Every node
 // must mount the same tenant snapshot store with working POSIX flock semantics.
-func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate) error {
-	m, err := acceleration.NewManager(c, refreshFactory(sandbox))
+func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate, sourceQuotas worker.SourceAdmitter, secrets worker.SecretResolver) error {
+	m, err := acceleration.NewManager(c, refreshFactory(sandbox, refreshOptions{Admission: sourceQuotas, Secrets: secrets}))
 	if err != nil {
 		return err
 	}

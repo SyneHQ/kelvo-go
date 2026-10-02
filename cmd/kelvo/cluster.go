@@ -18,6 +18,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/cluster"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/secrets"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
@@ -60,6 +61,9 @@ func runCluster(args []string) error {
 		}
 		stores[tenant.Policy.TenantID] = s
 		if args[0] == "cluster-init" {
+			if _, err = s.OpenSourceQuotas(ctx, true); err != nil {
+				return query.NewError("CONFIGURATION_ERROR", "Source quotas could not be initialized")
+			}
 			if _, err = s.OpenRefreshQueue(ctx, true); err != nil {
 				return query.NewError("CONFIGURATION_ERROR", "Acceleration dispatch could not be initialized")
 			}
@@ -106,6 +110,20 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 		return err
 	}
 	executor.SandboxPath = cfg.SandboxPath
+	if cfg.Secrets != nil {
+		provider, err := secrets.New(*cfg.Secrets)
+		if err != nil {
+			return query.NewError("CONFIGURATION_ERROR", "File secret provider is unavailable")
+		}
+		defer provider.Close()
+		executor.Secrets = provider
+	}
+	if cfg.History != nil {
+		cfg.RuntimeHistory, err = telemetry.NewHistory(*cfg.History)
+		if err != nil {
+			return err
+		}
+	}
 	cfg.RuntimeMetrics = telemetry.New()
 	executor.Metrics = cfg.RuntimeMetrics
 	var pool *admission.Pool
@@ -131,6 +149,17 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
 	defer store.Close()
+	for id := range cfg.Policy.SourceQuotas {
+		selected, err := catalogue.Select([]string{id})
+		if err != nil || len(selected) != 1 || selected[0].Type == "accelerated" {
+			return query.NewError("CONFIGURATION_ERROR", "Source quota names an unavailable live source")
+		}
+	}
+	sourceQuotas, err := store.OpenSourceQuotas(ctx, false)
+	if err != nil {
+		return query.NewError("CONFIGURATION_ERROR", "Source quotas are unavailable; initialize tenant resources first")
+	}
+	executor.SourceAdmission = sourceQuotas
 	var refreshQueue *cluster.RefreshQueue
 	if catalogue.Acceleration != nil {
 		refreshQueue, err = store.OpenRefreshQueue(ctx, false)
@@ -157,7 +186,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 	if refreshQueue != nil {
 		refreshDone = make(chan error, 1)
 		go func() {
-			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate)
+			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets)
 			stop()
 		}()
 	}

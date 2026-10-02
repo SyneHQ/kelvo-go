@@ -41,6 +41,9 @@ func run(args []string) error {
 	if args[0] == "worker" {
 		return runWorker()
 	}
+	if args[0] == "refresh-status" || args[0] == "refresh-reset" {
+		return runRefreshControl(args)
+	}
 	if args[0] == "accelerate" {
 		return runAcceleration(args[1:])
 	}
@@ -64,6 +67,7 @@ func run(args []string) error {
 	listen := f.String("listen", "127.0.0.1:8080", "HTTP listen address")
 	sql := f.String("sql", "", "SQL query")
 	sourceIDs := f.String("sources", "", "Comma-separated source IDs for federation")
+	scanDiagnostics := f.Bool("scan-diagnostics", false, "Include bounded redacted actual federation scan diagnostics")
 	mode := f.String("mode", "federated", "federated or native")
 	conn := f.String("connection", "", "Native source ID")
 	out := f.String("out", "", "Arrow IPC output file (required for query)")
@@ -113,6 +117,7 @@ func run(args []string) error {
 			return query.NewError("INVALID_ARGUMENT", "query requires --out")
 		}
 		r, e := makeRequest(*sql, *mode, *conn, *sourceIDs, *params, *mongoCollection, *mongoPipeline)
+		r.ScanDiagnostics = *scanDiagnostics
 		if e != nil {
 			return e
 		}
@@ -278,5 +283,5 @@ func makeRequest(sql, mode, connection, sources, parameters, collection, pipelin
 	return r, query.ValidateRequest(r)
 }
 func usage() {
-	fmt.Println("Kelvo Go by SYNEHQ\n\nUsage: kelvo serve|query|accelerate|cluster-init|gateway|node|version\nBuild: go build -tags duckdb_arrow ./cmd/kelvo\nUse kelvo <command> -h for flags.")
+	fmt.Println("Kelvo Go by SYNEHQ\n\nUsage: kelvo serve|query|accelerate|refresh-status|refresh-reset|cluster-init|gateway|node|version\nBuild: go build -tags duckdb_arrow ./cmd/kelvo\nUse kelvo <command> -h for flags.")
 }
