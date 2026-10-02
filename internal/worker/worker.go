@@ -20,6 +20,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
+	arrowutil "github.com/apache/arrow-go/v18/arrow/util"
 )
 
 type Input struct {
@@ -206,37 +207,105 @@ func sourceEnvironmentNames(source catalog.Source) ([]string, error) {
 
 // IPCSink borrows each batch until Write returns. Finish emits EOS only on success.
 type IPCSink struct {
-	out     io.Writer
-	writer  *ipc.Writer
-	limits  query.Limits
-	rows    int64
-	counter *countWriter
+	out          io.Writer
+	writer       *ipc.Writer
+	limits       query.Limits
+	rows         int64
+	decodedBytes int64
+	counter      *countWriter
+	err          error
+	closed       bool
 }
 
 func NewIPCSink(out io.Writer, l query.Limits) *IPCSink { return &IPCSink{out: out, limits: l} }
 func (s *IPCSink) Schema(schema *arrow.Schema) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.closed {
+		return query.NewError("INTERNAL", "Result stream is closed")
+	}
+	if schema == nil {
+		return s.fail(query.NewError("INTERNAL", "Missing result schema"))
+	}
 	if s.writer != nil {
-		return query.NewError("INTERNAL", "Result schema repeated")
+		return s.fail(query.NewError("INTERNAL", "Result schema repeated"))
+	}
+	options, err := query.ResultIPCOptions(s.limits.ResultCompression)
+	if err != nil {
+		return s.fail(err)
 	}
 	s.counter = &countWriter{w: s.out, max: s.limits.MaxBytes}
-	s.writer = ipc.NewWriter(s.counter, ipc.WithSchema(schema))
+	s.writer = ipc.NewWriter(s.counter, append(options, ipc.WithSchema(schema))...)
 	return nil
 }
 func (s *IPCSink) Write(b arrow.RecordBatch) error {
+	if s.err != nil {
+		return s.err
+	}
+	if s.closed {
+		return query.NewError("INTERNAL", "Result stream is closed")
+	}
 	if s.writer == nil {
-		return query.NewError("INTERNAL", "Missing result schema")
+		return s.fail(query.NewError("INTERNAL", "Missing result schema"))
+	}
+	if b == nil || b.NumRows() < 0 {
+		return s.fail(query.NewError("INTERNAL", "Invalid result batch"))
 	}
 	if b.NumRows() > s.limits.MaxRows-s.rows {
-		return query.NewError("RESOURCE_EXHAUSTED", "Result row limit exceeded")
+		return s.fail(query.NewError("RESOURCE_EXHAUSTED", "Result row limit exceeded"))
+	}
+	// Bound decoded buffers before compression; a small encoded result must not
+	// allow a highly compressible batch to bypass the logical result byte cap.
+	size := arrowutil.TotalRecordSize(b)
+	if size < 0 || size > s.limits.MaxBytes-s.decodedBytes {
+		return s.fail(query.NewError("RESOURCE_EXHAUSTED", "Result byte limit exceeded"))
+	}
+	if err := s.writer.Write(b); err != nil {
+		return s.fail(err)
 	}
 	s.rows += b.NumRows()
-	return s.writer.Write(b)
+	s.decodedBytes += size
+	return nil
 }
 func (s *IPCSink) Finish() error {
-	if s.writer == nil {
-		return query.NewError("INTERNAL", "Missing result schema")
+	if s.err != nil {
+		return s.err
 	}
-	return s.writer.Close()
+	if s.closed {
+		return nil
+	}
+	if s.writer == nil {
+		return s.fail(query.NewError("INTERNAL", "Missing result schema"))
+	}
+	if err := s.writer.Close(); err != nil {
+		return s.fail(err)
+	}
+	s.closed = true
+	return nil
+}
+
+// Abort releases writer state after an executor fails outside a sink method.
+// It never emits EOS and is safe to defer alongside a successful Finish.
+func (s *IPCSink) Abort() {
+	if s.closed {
+		return
+	}
+	_ = s.fail(query.NewError("CANCELLED", "Result stream aborted"))
+}
+
+func (s *IPCSink) fail(err error) error {
+	if s.err == nil {
+		s.err = err
+		if !s.closed && s.writer != nil {
+			// Release Arrow's retained dictionaries without publishing EOS or
+			// counting bytes from cleanup after an incomplete result.
+			s.counter.discard = true
+			_ = s.writer.Close()
+		}
+		s.closed = true
+	}
+	return s.err
 }
 func (s *IPCSink) EncodedBytes() int64 {
 	if s.counter == nil {
@@ -246,11 +315,15 @@ func (s *IPCSink) EncodedBytes() int64 {
 }
 
 type countWriter struct {
-	w      io.Writer
-	max, n int64
+	w       io.Writer
+	max, n  int64
+	discard bool
 }
 
 func (w *countWriter) Write(p []byte) (int, error) {
+	if w.discard {
+		return len(p), nil
+	}
 	if int64(len(p)) > w.max-w.n {
 		return 0, query.NewError("RESOURCE_EXHAUSTED", "Encoded result byte limit exceeded")
 	}

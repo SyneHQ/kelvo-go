@@ -82,12 +82,13 @@ func (r Request) Values() ([]any, error) {
 }
 
 type Limits struct {
-	MaxRows   int64         `json:"max_rows" yaml:"max_rows"`
-	MaxBytes  int64         `json:"max_bytes" yaml:"max_bytes"`
-	Timeout   time.Duration `json:"timeout" yaml:"timeout"`
-	MemoryMB  int           `json:"memory_mb" yaml:"memory_mb"`
-	Threads   int           `json:"threads" yaml:"threads"`
-	MaxTempMB int           `json:"max_temp_mb" yaml:"max_temp_mb"`
+	MaxRows           int64         `json:"max_rows" yaml:"max_rows"`
+	MaxBytes          int64         `json:"max_bytes" yaml:"max_bytes"`
+	Timeout           time.Duration `json:"timeout" yaml:"timeout"`
+	MemoryMB          int           `json:"memory_mb" yaml:"memory_mb"`
+	Threads           int           `json:"threads" yaml:"threads"`
+	MaxTempMB         int           `json:"max_temp_mb" yaml:"max_temp_mb"`
+	ResultCompression string        `json:"result_compression,omitempty" yaml:"result_compression,omitempty"`
 }
 
 func DefaultLimits() Limits {
@@ -97,7 +98,7 @@ func (l Limits) Validate() error {
 	if l.MaxRows < 1 || l.MaxRows > 100000000 || l.MaxBytes < 1024 || l.MaxBytes > 1<<40 || l.Timeout <= 0 || l.Timeout > time.Hour || l.MemoryMB < 16 || l.MemoryMB > 1048576 || l.Threads < 1 || l.Threads > 1024 || l.MaxTempMB < 1 || l.MaxTempMB > 1048576 {
 		return NewError("INVALID_ARGUMENT", "Invalid query resource limits")
 	}
-	return nil
+	return validateResultCompression(l.ResultCompression)
 }
 
 // FederationScan reports source batches actually fetched, not rows scanned by

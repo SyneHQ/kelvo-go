@@ -102,7 +102,10 @@ func testWorkerMain() int {
 	record := array.NewRecordBatch(schema, []arrow.Array{column}, 3)
 	column.Release()
 	defer record.Release()
-	sink := NewIPCSink(os.Stdout, in.Limits)
+	pipeLimits := in.Limits
+	pipeLimits.ResultCompression = ""
+	sink := NewIPCSink(os.Stdout, pipeLimits)
+	defer sink.Abort()
 	if sink.Schema(schema) != nil || sink.Write(record) != nil || sink.Finish() != nil {
 		return 3
 	}
