@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "mode": "standalone_and_cluster",
+  "checked_at": "2026-10-02T18:02:29.059820+00:00",
+  "checks": [
+    {
+      "test": "cold_snapshot_requires_refresh",
+      "passed": true
+    },
+    {
+      "test": "typed_arrow_parquet_roundtrip",
+      "passed": true,
+      "rows": 3,
+      "types": [
+        "int64_extremes",
+        "uint64_max",
+        "decimal128_38_12",
+        "date32",
+        "timestamp_us",
+        "utf8",
+        "null"
+      ]
+    },
+    {
+      "test": "cli_status_and_integrity_verify",
+      "passed": true
+    },
+    {
+      "test": "empty_snapshot_preserves_schema",
+      "passed": true
+    },
+    {
+      "test": "source_changes_visible_only_after_refresh",
+      "passed": true,
+      "repeated_cached_queries": 2
+    },
+    {
+      "test": "source_cast_failure_preserves_previous_generation",
+      "passed": true
+    },
+    {
+      "test": "source_file_outage_keeps_healthy_snapshot_readable",
+      "passed": true
+    },
+    {
+      "test": "authorization_version_rejects_old_snapshot",
+      "passed": true
+    },
+    {
+      "test": "max_age_expiry_fails_closed",
+      "passed": true,
+      "configured_max_age_seconds": 5
+    },
+    {
+      "test": "cluster_cold_refresh_through_nats",
+      "passed": true,
+      "tenants": 2,
+      "broker_replicas": 3
+    },
+    {
+      "test": "cluster_alias_works_on_both_tenant_a_nodes",
+      "passed": true,
+      "nodes_verified": 2
+    },
+    {
+      "test": "cluster_scheduled_refresh_replaces_both_tenant_snapshots",
+      "passed": true,
+      "configured_interval_seconds": 5
+    },
+    {
+      "test": "cluster_tenant_snapshots_and_handles_are_isolated",
+      "passed": true,
+      "spoofed_tenant_header_ignored": true
+    },
+    {
+      "test": "private_refresh_queues_delivered_jobs",
+      "passed": true,
+      "tenant_queues": 2
+    }
+  ],
+  "scope": "Real-process correctness acceptance; no throughput or production-readiness claim"
+}

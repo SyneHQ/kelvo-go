@@ -42,6 +42,9 @@ The node records `result_ready` after successful execution. The gateway verifies
 
 `/health` reports process liveness. Gateway `/ready` requires successful reconciliation for every configured tenant and recovers after broker service recovers. Worker readiness requires the native sandbox startup probe and worker-identity claim. A node that loses its lease becomes unavailable and should be restarted by deployment supervision.
 
+See [worker admission, metrics and maintenance](operations.md) for optional shared
+query/refresh budgets, protected diagnostics and graceful draining.
+
 ## Operations and security
 
 Use `cluster-init` with separate provisioner credentials. Running `gateway` and `node` commands bind and validate existing resources; they do not silently alter policies or create missing streams. Policy changes require a deliberate drain and reprovisioning procedure; there is no rolling policy migration API yet. See the [container example](../deploy/README.md) for YAML and mandatory operating-system boundaries.

@@ -1,7 +1,17 @@
 # Production roadmap: industry standards
 
-Source review: **2 October 2026**. These are proposed changes, not implemented
-features or new performance results.
+Source review: **2 October 2026**. The review below records the pre-implementation
+baseline; proposals remain pending unless listed in delivery status.
+
+## Delivery status
+
+The first operational slice adds optional shared node query/refresh reservations,
+bounded worker execution telemetry and protected resource diagnostics, independent
+probes and phased cluster drain. See [operations](operations.md) for configuration,
+semantics and limits. This is partial delivery of the operational foundation, not
+completion of the P0 roadmap. Class-specific budgets, distributed source quotas,
+full queue/stage timing, tracing/history, dataset readiness and measured mixed-load
+release gates remain pending. No new throughput results are claimed.
 
 Recommendation: keep Kelvo's Go coordinator, DuckDB execution, Arrow output,
 Parquet snapshots and NATS dispatch. Adopt the dataset lifecycle, resource
