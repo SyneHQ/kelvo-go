@@ -96,6 +96,28 @@ precision/scale. Those results fail as unsupported. An explicit SQL cast such as
 `CAST(SUM(amount) AS NUMERIC(38, 2))` supplies an intentional output contract.
 Negative or otherwise ambiguous decimal scales are currently rejected.
 
+## Custom DuckDB federation
+
+The optional `duckbridge` build can reuse the Go PostgreSQL and MySQL drivers
+for selected-table federation. Configure `federation.tables` on a source using
+the native DSN policy above; then use `mode: federated` with explicit source IDs.
+PostgreSQL registrations specify `schema` and `table`, while MySQL registrations
+specify `database` and `table`. Each also supplies the local table alias `name`.
+See [configuration and a three-source join](federation.md).
+
+Each scan has an independent read-only transaction, Arrow reader and scan budget.
+Projection and supported typed predicates run at the database; DuckDB performs
+joins, aggregates and ordering. The Go drivers convert rows into Arrow, so this
+does not turn PostgreSQL/MySQL wire protocols into Arrow transport. Matching
+widths, NULLs and native metadata are retained. A required predicate outside the
+supported semantic subset fails rather than being omitted. Other protocol-family
+products such as MariaDB and CockroachDB remain native-only through these routes.
+
+Without explicit table registrations, PostgreSQL/MySQL federation continues to
+use the existing signed DuckDB extensions and their connection-string format.
+Custom Go adapters keep DuckDB external access disabled and can retain exact
+object-range restrictions when joining an object snapshot.
+
 ## Resource and validation boundaries
 
 The adapters keep one database/sql connection per query, apply its deadline to
@@ -107,6 +129,15 @@ separately. The driver can allocate a wire packet before the row writer inspects
 its values. The MySQL connector caps its advertised packet budget at the smaller
 of 16 MiB and one quarter of the client memory budget. Container memory remains
 the process RSS boundary.
+
+MySQL sessions also set the operator-owned `max_execution_time` to the query
+timeout rounded up to milliseconds. Native SQL rejects executable optimizer
+hints, including attempts to override that limit. This bounds supported
+read-only SELECT execution at the server when closing a cancelled client socket
+does not promptly stop work. It is not immediate remote cancellation, a server
+memory limit, or a guarantee for stored programs; see the upstream
+[MySQL timeout semantics](https://dev.mysql.com/doc/refman/8.4/en/server-system-variables.html#sysvar_max_execution_time).
+The MySQL-only session setting is not applied to MariaDB or other native engines.
 
 Focused tests cover DSN isolation, signed/unsigned widths, timezone metadata,
 ambiguous NUMERIC typmod, zero dates, logical-type metadata, rollback-only

@@ -1,0 +1,39 @@
+# Kelvo by SYNEHQ. Requires a duckdb_arrow,duckbridge build and native TLS DSNs.
+# Supply the named tables and compatible integer account_id/region_id columns.
+# Example: SELECT r.region_id, count(*) FROM warehouse.events e
+# JOIN accounts.customers c ON e.account_id = c.account_id
+# JOIN regions.regions r ON c.region_id = r.region_id GROUP BY r.region_id
+# Use --threads 4 for this three-source example; threads also bounds active scans.
+sources:
+  - id: warehouse
+    type: clickhouse
+    url_env: KELVO_SOURCE_WAREHOUSE_URL
+    username_env: KELVO_SOURCE_WAREHOUSE_USER
+    password_env: KELVO_SOURCE_WAREHOUSE_PASSWORD
+    federation:
+      max_scan_rows: 30000000
+      max_scan_bytes: 1073741824
+      tables:
+        - name: events
+          database: analytics
+          table: events
+  - id: accounts
+    type: postgres
+    dsn_env: KELVO_SOURCE_ACCOUNTS_DSN
+    federation:
+      max_scan_rows: 2000000
+      max_scan_bytes: 268435456
+      tables:
+        - name: customers
+          schema: reporting
+          table: customers
+  - id: regions
+    type: mysql
+    dsn_env: KELVO_SOURCE_REGIONS_DSN
+    federation:
+      max_scan_rows: 1000000
+      max_scan_bytes: 67108864
+      tables:
+        - name: regions
+          database: reporting
+          table: regions

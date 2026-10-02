@@ -1,15 +1,16 @@
 # Native DuckDB federation
 
 Kelvo keeps DuckDB as its embedded federation engine. The optional native bridge
-connects DuckDB's Arrow scanner to the existing Go ClickHouse connector. DuckDB
+connects DuckDB's Arrow scanner to the existing Go ClickHouse, PostgreSQL and
+MySQL connectors. DuckDB
 plans joins and local computation; the connector fetches projected columns and
-applies supported filters at ClickHouse. There is no additional server process,
+applies supported filters at the source. There is no additional server process,
 Rust runtime, row-by-row JSON conversion or unsigned DuckDB extension.
 
 This is an opt-in Linux amd64 implementation, with explicit conformance and
 deployment limits. It does not make every native connector a federation adapter.
-PostgreSQL/MySQL continue to use their existing signed DuckDB extensions, and
-file/object snapshots retain their existing Parquet path.
+PostgreSQL/MySQL configurations without a `federation` section retain their
+existing signed DuckDB extension path. File/object snapshots retain Parquet.
 
 ## Configure selected tables
 
@@ -42,6 +43,18 @@ bin/kelvo query --config examples/federation.yml --sources warehouse \
   --out accounts.arrow
 ```
 
+For PostgreSQL, the DSN chooses the database and each table requires an explicit
+`schema`. For MySQL and ClickHouse, each table requires `database`. The other
+namespace field must be absent; Kelvo does not infer `search_path`. See
+[the three-source example](../examples/federation-relational.yml).
+
+PostgreSQL requires its native verified-TLS URL and MySQL its native verified-TLS
+DSN, both using system CA roots. The signed-extension connection-string format
+is not the native Go adapter format. Follow the [relational source guide](sources-relational.md).
+Use database-enforced
+read-only accounts; each relational scan also uses a rollback-only read-only
+transaction. Scans on different sources do not share a transaction snapshot.
+
 `max_scan_rows` and `max_scan_bytes` bound each source scan independently of the
 final result. If omitted, the query's corresponding limits apply. Exceeding a
 scan budget fails the query; Kelvo never silently truncates a relation before a
@@ -54,8 +67,8 @@ rather than waiting on a slot that another join input might hold.
 | Operation | Current execution |
 | --- | --- |
 | Requested columns | Selected in source SQL; Arrow batches keep the required order |
-| Integer/boolean comparisons | Exact typed constants applied at ClickHouse |
-| NULL checks and supported AND/OR combinations | Applied at ClickHouse when passed down by the optimizer; otherwise evaluated by DuckDB |
+| Integer/boolean comparisons | Exact typed constants applied using the selected source's dialect |
+| NULL checks and supported AND/OR combinations | Applied at the source when passed down by the optimizer; otherwise evaluated by DuckDB |
 | Required pushed predicates outside that subset | Explicit unsupported error |
 | Residual expressions retained by DuckDB | Evaluated by DuckDB |
 | Joins, aggregates, ordering and LIMIT | DuckDB; no general source pushdown for these operators |
@@ -67,7 +80,10 @@ used. String, floating-point and temporal comparison pushdown needs additional
 semantic conformance, including collation and timezone behavior. A required
 predicate cannot be discarded: DuckDB assumes the producer has applied it.
 
-The source connector owns Arrow decoding, source limits and HTTP cancellation.
+ClickHouse supplies ArrowStream directly. PostgreSQL/MySQL use their Go driver's
+row protocol and the existing exact row-to-Arrow conversion; these are not
+columnar source wire protocols. The source connector owns decoding, source limits
+and cancellation.
 Each scan hands off one retained batch and waits for the consumer to advance.
 The C interface pins exported Go buffers until DuckDB releases them. Different
 scans own independent readers, including when a query references the same table
@@ -77,7 +93,7 @@ not a claim that every type or complete query is zero-copy.
 
 Successful statistics include `federation` entries with source/table identity,
 scan count, fetched rows, batches and logical Arrow bytes. These measure data
-received by Kelvo, not rows examined inside ClickHouse. Provider query profiling
+received by Kelvo, not rows examined inside the source. Provider query profiling
 is needed to establish source CPU, disk reads and index effectiveness.
 
 [Live validation](validation.md#duckdb-custom-federation-adapter) demonstrates
@@ -85,7 +101,9 @@ is needed to establish source CPU, disk reads and index effectiveness.
 self-join scans and CSV joins. Three narrow million-row exports measured
 3.28–3.44 million rows/s with 151–158 MiB sampled worker RSS on the shared test
 VM. These are warm-cache, instrumented fixture results; they do not establish
-general production capacity or the memory requirements of large joins.
+general production capacity. The later [NYC Taxi capacity tests](federation-capacity.md)
+cover substantial join inputs, complete sorting, constrained memory, remote
+delivery and sustained tenant workloads.
 
 ## Build and update
 
@@ -131,9 +149,13 @@ DuckDB's pinned Go query path still materializes execution before Arrow result
 delivery. Bounded source handoff does not bound hash joins, sorting, native
 allocations or total process RSS. Source scan budgets apply per scan, not to the
 sum of all tenants. Enforce container CPU/memory/PID limits and account for
-DuckDB's spill files. Cancellation at the outer worker boundary can kill the
-process before a connector finishes its remote cleanup; source-side timeouts
-and read-only grants remain necessary.
+DuckDB's spill files. Linux worker cancellation allows up to 750 ms for source
+cleanup before forcibly killing the process group. PostgreSQL sends a bounded
+connection-keyed cancellation request. MySQL also applies a server-side SELECT
+timeout because socket closure need not stop upstream work immediately. Network
+failure and forced process death can still prevent cooperative cleanup;
+source-side resource policies and read-only grants remain necessary. See
+[relational cancellation limits](sources-relational.md#resource-and-validation-boundaries).
 
 There is no transaction shared across independently opened scans or databases.
 Concurrent writes can change results between inputs, even within one query.

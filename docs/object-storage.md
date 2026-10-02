@@ -214,8 +214,9 @@ access controls. A query must fail if a selected revision changes.
   relevant data through ranges; object storage does not make full scans free.
 - Object snapshots can join other object/local snapshots. Combining them with
   live PostgreSQL/MySQL DuckDB extensions is currently rejected because those
-  extensions require a broader external-access setting. Materialize those
-  sources first when they need to join object snapshots.
+  extensions require a broader external-access setting. Use the selected-table
+  [custom Go adapters](federation.md), which retain exact external-access
+  restrictions, or materialize those sources first.
 - There is **no automatic remote garbage collection** and no distributed reader
   lease. Prune never lists or deletes remote objects. Retired generations and
   orphaned uploads remain until an operator removes them after all possible

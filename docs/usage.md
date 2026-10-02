@@ -71,7 +71,12 @@ sources:
 
 Catalog entries contain environment-variable names, never credentials. Each database requires a dedicated read-only account with appropriate grants and source-side timeouts.
 
-Native PostgreSQL and MySQL use their DSN environment variables. DuckDB federation over PostgreSQL or MySQL instead requires the matching signed DuckDB extension at `extension_directory`; it does not reuse the native DSN connector. See [relational sources](sources-relational.md) for the supported native and federated paths.
+Native PostgreSQL and MySQL use their DSN environment variables. With the optional
+`duckbridge` build, an explicit `federation.tables` registration reuses that native
+Go connector for DuckDB queries. Without this section, PostgreSQL/MySQL federation
+uses the matching signed DuckDB extension at `extension_directory` and its separate
+connection-string format. See [relational sources](sources-relational.md) and
+[custom federation](federation.md) for the two paths.
 
 Provision version- and platform-matched signed extensions before runtime. For the validated Linux amd64 target:
 
