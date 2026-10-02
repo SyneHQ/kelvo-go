@@ -24,6 +24,7 @@ jobs:
       - run: cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o bin/kelvo-landlock
       - run: python3 -m pip install pyarrow==25.0.1
       - run: python3 scripts/acceptance.py
+      - run: python3 scripts/test_cluster_fixture.py
       - run: python3 scripts/cluster_fixture.py provision
       - run: python3 scripts/cluster_fixture.py test-store --go go
       - run: python3 scripts/cluster_acceptance.py

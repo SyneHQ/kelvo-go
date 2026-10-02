@@ -7,6 +7,7 @@ This host-process fixture tests the protocol; it is not a tenant deployment.
 """
 import argparse
 import hashlib
+import http.client
 import json
 import os
 from pathlib import Path
@@ -21,6 +22,167 @@ ROOT = Path(__file__).resolve().parents[1]
 DIR = ROOT / "artifacts/cluster-private"
 VERSION = "2.15.0"
 DIGEST = "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92"
+BROKER_NAMES = {f"nats-{i}": f"kelvo-test-{i}" for i in range(3)}
+READINESS_TIMEOUT = 30.0
+MONITOR_TIMEOUT = 1.0
+MONITOR_MAX_BYTES = 65536
+
+
+class FixtureReadinessError(RuntimeError):
+    pass
+
+
+class MonitorDeadline(Exception):
+    pass
+
+
+def broker_alive(item):
+    """A recorded PID must still be our exact broker, not a reused PID."""
+    try:
+        command = Path(f"/proc/{item['pid']}/cmdline").read_bytes().split(b"\0")
+    except OSError:
+        return False
+    expected = [str(DIR / "nats-server"), "-c", str(DIR / (item["name"] + ".conf"))]
+    return command == [part.encode() for part in expected] + [b""]
+
+
+def broker_monitor(port, path, timeout):
+    """Bound the entire localhost HTTP request, including headers and JSON."""
+    # This Linux fixture runs on the main thread. A socket timeout alone resets
+    # on each read, so it cannot enforce our total request/readiness deadline.
+    if any(signal.getitimer(signal.ITIMER_REAL)):
+        raise FixtureReadinessError("fixture monitor cannot replace an active alarm")
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    def expired(signum, frame):
+        raise MonitorDeadline()
+
+    timeout = min(MONITOR_TIMEOUT, timeout)
+    if timeout <= 0:
+        raise MonitorDeadline()
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
+    signal.signal(signal.SIGALRM, expired)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, timeout)
+        connection.request("GET", path)
+        response = connection.getresponse()
+        if response.status != 200:
+            raise ValueError("monitor HTTP status")
+        body = response.read(MONITOR_MAX_BYTES + 1)
+        if len(body) > MONITOR_MAX_BYTES:
+            raise ValueError("monitor response size")
+        data = json.loads(body)
+        if not isinstance(data, dict):
+            raise ValueError("monitor response shape")
+        return data
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        connection.close()
+
+
+def metadata_readiness(reports):
+    """Return a fixed, safe status for one complete metadata observation."""
+    names = set(BROKER_NAMES.values())
+    if set(reports) != names:
+        return "incomplete_observation"
+    leaders, server_ids = set(), set()
+    for name, report in reports.items():
+        server, health, jetstream = (report[key] for key in ("server", "health", "jetstream"))
+        server_id = server.get("server_id")
+        if (server.get("server_name") != name or not isinstance(server_id, str)
+                or not server_id or jetstream.get("server_id") != server_id):
+            return "monitor_identity"
+        server_ids.add(server_id)
+        if health.get("status") != "ok" or jetstream.get("disabled", False) is not False:
+            return "metadata_health"
+        meta = jetstream.get("meta_cluster")
+        if (not isinstance(meta, dict) or meta.get("name") != "kelvo-test"
+                or meta.get("cluster_size") != 3 or meta.get("quorum_needed") != 2
+                or meta.get("rescue", False) is not False):
+            return "metadata_membership"
+        leader = meta.get("leader")
+        if not isinstance(leader, str) or leader not in names:
+            return "metadata_leader"
+        leaders.add(leader)
+    if len(server_ids) != 3:
+        return "monitor_identity"
+    if len(leaders) != 1:
+        return "metadata_leader_disagreement"
+    leader = leaders.pop()
+    replicas = reports[leader]["jetstream"]["meta_cluster"].get("replicas")
+    if (not isinstance(replicas, list) or len(replicas) != 2
+            or not all(isinstance(peer, dict) and isinstance(peer.get("name"), str) for peer in replicas)
+            or {peer["name"] for peer in replicas} != names - {leader}
+            or not all(peer.get("current") is True and peer.get("offline", False) is False for peer in replicas)):
+        return "metadata_replicas"
+    # Followers can report other followers as non-current. Only the agreed
+    # leader's view establishes that both expected metadata replicas are ready.
+    return "ready"
+
+
+def wait_for_brokers(items, timeout=READINESS_TIMEOUT):
+    """Wait for the fixture's three owned brokers without retrying store work."""
+    deadline = time.monotonic() + min(READINESS_TIMEOUT, max(0.0, timeout))
+    if (not isinstance(items, list) or len(items) != 3
+            or not all(isinstance(item, dict) and isinstance(item.get("name"), str)
+                       and type(item.get("pid")) is int and item["pid"] > 0 for item in items)
+            or {item["name"] for item in items} != set(BROKER_NAMES)
+            or len({item["pid"] for item in items}) != 3):
+        raise FixtureReadinessError("fixture broker inventory is invalid")
+    ports = {}
+    for item in items:
+        try:
+            config = json.loads((DIR / (item["name"] + ".conf")).read_text())
+            host, port = config["http"].rsplit(":", 1)
+            if (host != "127.0.0.1" or not port.isdecimal() or not 1 <= int(port) <= 65535
+                    or config["server_name"] != BROKER_NAMES[item["name"]]
+                    or config["cluster"]["name"] != "kelvo-test"):
+                raise ValueError()
+            ports[item["name"]] = int(port)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            raise FixtureReadinessError("fixture broker monitor configuration is invalid") from None
+    if len(set(ports.values())) != 3:
+        raise FixtureReadinessError("fixture broker monitor ports are not distinct")
+
+    states = {item["name"]: "pending" for item in items}
+    reason = "not_observed"
+    while time.monotonic() < deadline:
+        reports = {}
+        for item in items:
+            if not broker_alive(item):
+                raise FixtureReadinessError("fixture broker process is dead or unowned: " + item["name"])
+            report = {}
+            for key, path in (("server", "/varz"), ("health", "/healthz?js-meta-only=true"), ("jetstream", "/jsz")):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    states[item["name"]] = "deadline"
+                    break
+                try:
+                    report[key] = broker_monitor(ports[item["name"]], path, min(MONITOR_TIMEOUT, remaining))
+                except (MonitorDeadline, TimeoutError):
+                    states[item["name"]] = key + "_timeout"
+                    break
+                except (OSError, ValueError, http.client.HTTPException):
+                    states[item["name"]] = key + "_unavailable"
+                    break
+            if len(report) == 3:
+                reports[BROKER_NAMES[item["name"]]] = report
+                meta = report["jetstream"].get("meta_cluster")
+                leader = meta.get("leader") if isinstance(meta, dict) else None
+                # Never emit response bodies, config, logs, IDs, or unexpected names.
+                states[item["name"]] = "observed_leader=" + (leader if leader in BROKER_NAMES.values() else "missing_or_unexpected")
+        reason = metadata_readiness(reports)
+        # A broker can exit while another member's monitor calls are in flight.
+        for item in items:
+            if not broker_alive(item):
+                raise FixtureReadinessError("fixture broker process is dead or unowned: " + item["name"])
+        if reason == "ready" and time.monotonic() < deadline:
+            return
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(0.1, remaining))
+    raise FixtureReadinessError("fixture metadata readiness timed out: " + reason + "; " + json.dumps(states, sort_keys=True))
 
 
 def write(path, data):
@@ -170,9 +332,12 @@ def provision():
     write(DIR / "pids.json", json.dumps(pids))
     write(DIR / "environment.json", json.dumps(env))
     write(DIR / "manifest.json", json.dumps({"nats_version": VERSION, "sha256": DIGEST, "nodes": nodes}))
-    time.sleep(3)
-    for item in pids:
-        os.kill(item["pid"], 0)
+    # Keep the process records and private state if readiness fails: the CI
+    # always-stop step must still be able to clean up these exact processes.
+    try:
+        wait_for_brokers(pids)
+    except FixtureReadinessError as error:
+        raise SystemExit(str(error)) from None
     print("Loopback fixture provisioned; private state is under artifacts/cluster-private")
 
 
