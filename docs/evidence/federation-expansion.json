@@ -1,0 +1,85 @@
+{
+  "status": "passed",
+  "date": "2026-10-02",
+  "host": "dedicated Azure Linux amd64 test VM",
+  "go": "go1.26.8",
+  "duckdb": "1.5.6",
+  "duckdb_go": "2.10506.0",
+  "arrow_go": "18.5.1",
+  "base_commit": "8bed511a6a5f73bdb66834f4c71ce27a3e96c172",
+  "binary_sha256": "de128c05d86bf3512786593b27e8a778684d696d439f3d7ff744e80d2b9cf126",
+  "source_sha256": {
+    "federation/federation.go": "094492ba882939c0c0083297e05b73151da6c83457f94cacbf8ccf0865b4982b",
+    "federation/registry.go": "639268ce2e9b88f6b216cd02fe94be71dadf34eb90ccaac31714d01c7a62bda3",
+    "internal/catalog/federation.go": "c98bb8de3e5fd810b2a4b5b5173fa537b2e4ab8606d1e65708f0e5f00232c101",
+    "internal/catalog/catalog.go": "6ea8fdda630d6a31475ae0ea55f545508a4f9ce5c0e490b19918e7ad12f06583",
+    "internal/federation/dialect.go": "d80b00c082259b0fca8b2394672abf5d57c29f990a2270dae73619dd06d54f6f",
+    "internal/federation/sql.go": "16089581ea76396345aa0500553230a6d6ddcb762fb836ba6fa4f1e35a12ceb2",
+    "internal/federation/table.go": "999717ec590f839128ac4beadde2e970605a32339554b5a8c384d8826b172fd8",
+    "internal/federation/reader.go": "27a482028395b27f772e6b068ca77e19d1161374932389dd3d42eded8b5a0157",
+    "internal/federation/custom.go": "f8ede4263ffee937c28aa06428ce7e8cef8b31452f40825365ae79687d2eb585",
+    "internal/federation/source_wire.go": "f52f626cc9ef31fbec4f30d9d660750d74ab26b8737ba8175e9eb5680d78ea1a",
+    "internal/duckbridge/shim.cpp": "6cd02c0ca87785840c21b52680902d32101d05b43809ee1feb446b98aed4dcd4",
+    "internal/duckbridge/types.go": "7f096b6830993f530b77798e35d74f479b1b08d844b7e81d5aa2deff56818781",
+    "internal/engine/duckdb/engine.go": "b9a2ed73550a4f817beb8b9666a5d7478d6f773af1bc02d602c41cc0ffaae14d",
+    "internal/worker/sandbox_linux.go": "a8fc2cb83fed9ee04edbb63a19a1e9c9f1e2ddee07996c1d93c44c8d9d1922fd"
+  },
+  "checks": [
+    {
+      "command": "go test -p 2 -tags duckdb_arrow ./...",
+      "status": "passed"
+    },
+    {
+      "command": "go test -p 2 -modfile artifacts/duckbridge/duckbridge.mod -tags duckdb_arrow,duckbridge ./...",
+      "status": "passed"
+    },
+    {
+      "command": "GOEXPERIMENT=cgocheck2 go test -p 2 -race -modfile artifacts/duckbridge/duckbridge.mod -tags duckdb_arrow,duckbridge ./federation ./internal/catalog ./internal/federation ./internal/duckbridge ./internal/engine/duckdb ./internal/worker",
+      "status": "passed"
+    },
+    {
+      "command": "go vet -p 2 -tags duckdb_arrow ./...",
+      "status": "passed"
+    },
+    {
+      "command": "go vet -p 2 -modfile artifacts/duckbridge/duckbridge.mod -tags duckdb_arrow,duckbridge ./...",
+      "status": "passed"
+    },
+    {
+      "command": "go build -p 2 -modfile artifacts/duckbridge/duckbridge.mod -tags duckdb_arrow,duckbridge -o bin/kelvo ./cmd/kelvo",
+      "status": "passed"
+    }
+  ],
+  "execution_environment": {
+    "GOMAXPROCS": "2",
+    "CGO_CXXFLAGS": "-I<checkout>/artifacts/duckbridge/headers"
+  },
+  "protocol_fixtures": [
+    "Snowflake verified HTTPS SQL API with exact decimal/boolean metadata, pagination, schema drift and cancellation",
+    "BigQuery verified HTTPS jobs/pages with exact integer/decimal/timestamp values",
+    "Databricks verified HTTPS statements/chunks with truncation rejection",
+    "BigQuery + Databricks + CSV joins, CTEs, aggregate and window checks in real DuckDB",
+    "String and decimal comparisons and NULL checks remain local with contrasting result rows",
+    "Unknown projections, namespaces, malformed constants, source limits and private pointer functions are rejected"
+  ],
+  "sdk_acceptance": "federation-adapter-example.json",
+  "limits": [
+    "Protocol fixtures do not certify hosted warehouse permissions, remote optimizer behavior or billed bytes.",
+    "Live Oracle TCPS federation acceptance is not performed.",
+    "No new general throughput claim or production HA certification."
+  ],
+  "live_acceptance": "federation-sqlserver.json",
+  "source_verification": {
+    "runtime_sources": "All 14 runtime hashes matched the tested VM and local tree.",
+    "test_sources": "All changed/new Go and C++ files matched the VM, except three test files changed only by gofmt; normalized output matched exactly.",
+    "formatted_test_files": [
+      "internal/duckbridge/factory_test.go",
+      "internal/federation/expanded_dialect_test.go",
+      "internal/worker/sandbox_federation_linux_test.go"
+    ]
+  },
+  "acceptance_script_sha256": {
+    "scripts/federation_sql_acceptance.py": "e0ca587677394d3d40e125b62d86d51317de8215bda411a0ef6d6deb27cb13fb",
+    "scripts/test_federation_adapter_example.py": "7ef9dc2b5c22b94fd994df3cbd87f8a126a7e03dc9f43199a15e469bc7505ba4"
+  }
+}

@@ -1,0 +1,367 @@
+{
+  "passed": true,
+  "scope": "Live SQL Server 2022 CU20, existing ClickHouse and local CSV through tagged Kelvo CLI/workers. Synthetic correctness fixtures; not a throughput benchmark or cloud/Oracle acceptance.",
+  "binary_sha256": "de128c05d86bf3512786593b27e8a778684d696d439f3d7ff744e80d2b9cf126",
+  "sqlserver_version": "16.0.4205.1",
+  "sqlserver_image_id": "sha256:7c29dfbac885ad7519e219c7fe4aee0e67283e21a10e9c252d13b0fbde1866f8",
+  "container_limits": {
+    "memory_bytes": 3221225472,
+    "cpus": 2,
+    "pids": 512
+  },
+  "tls_scope": "Force-encrypted SQL Server with generated server identity trusted only inside a private mount namespace. CLI/worker run as ordinary VM user; host trust store unchanged.",
+  "checks": [
+    {
+      "test": "unknown_ca_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true,
+      "expected_error": null
+    },
+    {
+      "test": "fixture_resource_limits_and_loopback",
+      "passed": true,
+      "memory_bytes": 3221225472,
+      "memory_and_swap_bytes": 3221225472,
+      "cpus": 2,
+      "pids": 512,
+      "host_ip": "127.0.0.1"
+    },
+    {
+      "test": "native_scalar_fidelity",
+      "passed": true,
+      "arrow_types": {
+        "row_id": "int32",
+        "i64": "int64",
+        "amount": "decimal128(30, 10)",
+        "enabled": "bool",
+        "tiny": "uint8",
+        "label": "string",
+        "day": "date32[day]",
+        "wall": "timestamp[ns]"
+      },
+      "rows": 4,
+      "backend": "sqlserver",
+      "federation": []
+    },
+    {
+      "test": "federated_scalar_fidelity",
+      "passed": true,
+      "arrow_types": {
+        "row_id": "int32",
+        "i64": "int64",
+        "amount": "decimal128(30, 10)",
+        "enabled": "bool",
+        "tiny": "uint8",
+        "label": "string",
+        "day": "date32[day]",
+        "wall": "timestamp[ns]"
+      },
+      "rows": 4,
+      "backend": "duckdb",
+      "federation": [
+        {
+          "source": "sql",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 230,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "int64_min_predicate",
+      "passed": true,
+      "rows": 1,
+      "backend": "duckdb",
+      "federation": [
+        {
+          "source": "sql",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 1,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "int64_max_predicate",
+      "passed": true,
+      "rows": 1,
+      "backend": "duckdb",
+      "federation": [
+        {
+          "source": "sql",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 1,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "bit_true_predicate",
+      "passed": true,
+      "rows": 2,
+      "backend": "duckdb",
+      "federation": [
+        {
+          "source": "sql",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 2,
+          "arrow_bytes_fetched": 17,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "bit_false_predicate",
+      "passed": true,
+      "rows": 1,
+      "backend": "duckdb",
+      "federation": [
+        {
+          "source": "sql",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 1,
+          "arrow_bytes_fetched": 13,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "null_predicate",
+      "passed": true,
+      "rows": 1,
+      "backend": "duckdb",
+      "federation": [
+        {
+          "source": "sql",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 56,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "range_predicate",
+      "passed": true,
+      "rows": 2,
+      "backend": "duckdb",
+      "federation": [
+        {
+          "source": "sql",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 2,
+          "arrow_bytes_fetched": 12,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "count_only_scan",
+      "passed": true,
+      "rows": 1,
+      "backend": "duckdb",
+      "federation": [
+        {
+          "source": "sql",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "independent_self_join_scans",
+      "passed": true,
+      "rows": 4,
+      "backend": "duckdb",
+      "federation": [
+        {
+          "source": "sql",
+          "table": "fact",
+          "scans": 2,
+          "rows_fetched": 8,
+          "arrow_bytes_fetched": 76,
+          "batches_fetched": 2
+        }
+      ]
+    },
+    {
+      "test": "sqlserver_clickhouse_csv_cte_join_window",
+      "passed": true,
+      "expected_rows": [
+        {
+          "region": "east",
+          "row_id": 1,
+          "weight": 10,
+          "state": "enabled",
+          "rn": 1,
+          "region_weight": 30
+        },
+        {
+          "region": "east",
+          "row_id": 2,
+          "weight": 20,
+          "state": "disabled",
+          "rn": 2,
+          "region_weight": 30
+        },
+        {
+          "region": "west",
+          "row_id": 3,
+          "weight": 30,
+          "state": "missing",
+          "rn": 1,
+          "region_weight": 30
+        }
+      ],
+      "rows": 3,
+      "backend": "duckdb",
+      "federation": [
+        {
+          "source": "sql",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 25,
+          "batches_fetched": 1
+        },
+        {
+          "source": "ch",
+          "table": "dimensions",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 32,
+          "batches_fetched": 1,
+          "source_wire_bytes": 400
+        }
+      ]
+    },
+    {
+      "test": "database_reader_write_denied",
+      "passed": true
+    },
+    {
+      "test": "unregistered_table_denied",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true,
+      "expected_error": null
+    },
+    {
+      "test": "unselected_source_denied",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true,
+      "expected_error": null
+    },
+    {
+      "test": "native_write_denied",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true,
+      "expected_error": null
+    },
+    {
+      "test": "native_multiple_statements_denied",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true,
+      "expected_error": null
+    },
+    {
+      "test": "unverified_tls_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true,
+      "expected_error": null
+    },
+    {
+      "test": "hostname_mismatch_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true,
+      "expected_error": null
+    },
+    {
+      "test": "source_row_budget_fails_closed",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true,
+      "expected_error": null
+    },
+    {
+      "test": "source_byte_budget_fails_closed",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true,
+      "expected_error": null
+    },
+    {
+      "test": "live_cancellation_verified_tls_selected_environment",
+      "passed": true,
+      "client_seconds": 0.006914691999554634,
+      "source_cleanup_seconds": 0.07420431499485858,
+      "source_encrypted": true,
+      "observed_source_wait_type": "LCK_M_IS",
+      "worker_environment_names": [
+        "GOMAXPROCS",
+        "HOME",
+        "KELVO_SOURCE_SQL_ACCEPTANCE_DSN",
+        "PATH",
+        "TMPDIR"
+      ],
+      "source_query_stopped": true,
+      "worker_stopped": true,
+      "nonzero_exit": true,
+      "no_export": true,
+      "expected_error": "Query cancelled"
+    },
+    {
+      "test": "source_deadline_cleanup",
+      "passed": true,
+      "blocked_source_observed": true,
+      "nonzero_exit": true,
+      "no_export": true,
+      "expected_error": "Query deadline exceeded"
+    },
+    {
+      "test": "post_cancellation_query_recovery",
+      "passed": true,
+      "rows": 1,
+      "backend": "duckdb",
+      "federation": [
+        {
+          "source": "sql",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    }
+  ],
+  "cleanup": {
+    "cleanup_complete": true,
+    "issues": [],
+    "owned_container_network_volumes_removed": true,
+    "owned_clickhouse_database_reader_removed": true,
+    "fixture_certificates_credentials_removed": true,
+    "host_trust_unchanged": true,
+    "existing_clickhouse_running_unchanged": true,
+    "existing_clickhouse_rows": 100000000
+  }
+}

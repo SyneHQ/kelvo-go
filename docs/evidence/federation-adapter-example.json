@@ -1,0 +1,410 @@
+{
+  "status": "passed",
+  "checked_at": "2026-10-02T06:21:22.395686+00:00",
+  "example_sha256": "4521623fbb6b32726f88f22720789393384a6b93d9a66d82305a955300869266",
+  "binary": "/home/syenuser/kelvo-federation-expansion/adapter-example/kelvo-adapter-acceptance",
+  "binary_sha256": "6cd7e981c7e417b79967ef9bf65b387e428da175d553d1eb1927f4185102409a",
+  "source_sha256": {
+    "federation/federation.go": "094492ba882939c0c0083297e05b73151da6c83457f94cacbf8ccf0865b4982b",
+    "federation/registry.go": "639268ce2e9b88f6b216cd02fe94be71dadf34eb90ccaac31714d01c7a62bda3",
+    "internal/federation/custom.go": "f8ede4263ffee937c28aa06428ce7e8cef8b31452f40825365ae79687d2eb585",
+    "internal/duckbridge/shim.cpp": "6cd02c0ca87785840c21b52680902d32101d05b43809ee1feb446b98aed4dcd4"
+  },
+  "public_import_boundary_verified": true,
+  "repository_imports": [
+    "github.com/SYNEHQ/kelvo-go/federation"
+  ],
+  "cases": [
+    {
+      "name": "documented_example",
+      "sql": "SELECT id FROM demo.sample",
+      "coordinator_pid": 212183,
+      "exit_code": 0,
+      "result": {
+        "fields": [
+          "id"
+        ],
+        "rows": [
+          [
+            1
+          ]
+        ]
+      },
+      "stats": {
+        "federation": [
+          {
+            "source": "demo",
+            "table": "sample",
+            "scans": 1,
+            "rows_fetched": 1,
+            "arrow_bytes_fetched": 12,
+            "batches_fetched": 1
+          }
+        ],
+        "rows": 1,
+        "batches": 1,
+        "arrow_bytes": 8,
+        "wire_bytes": 288,
+        "backend": "duckdb",
+        "prepare_ns": 6293970,
+        "duration_ns": 46216438,
+        "engine_streaming": false
+      }
+    },
+    {
+      "name": "documented_count",
+      "sql": "SELECT count(*) FROM demo.sample",
+      "coordinator_pid": 212216,
+      "exit_code": 0,
+      "result": {
+        "fields": [
+          "count_star()"
+        ],
+        "rows": [
+          [
+            1
+          ]
+        ]
+      },
+      "stats": {
+        "federation": [
+          {
+            "source": "demo",
+            "table": "sample",
+            "scans": 1,
+            "rows_fetched": 1,
+            "arrow_bytes_fetched": 12,
+            "batches_fetched": 1
+          }
+        ],
+        "rows": 1,
+        "batches": 1,
+        "arrow_bytes": 8,
+        "wire_bytes": 304,
+        "backend": "duckdb",
+        "prepare_ns": 16521673,
+        "duration_ns": 57840874,
+        "engine_streaming": false
+      }
+    },
+    {
+      "name": "documented_filter_rejection",
+      "sql": "SELECT id FROM demo.sample WHERE id=1",
+      "coordinator_pid": 212255,
+      "exit_code": 1,
+      "error": "Required custom federation behavior is unsupported"
+    },
+    {
+      "name": "csv_join",
+      "sql": "SELECT r.id,t.tag,r.label FROM custom.rows r JOIN tags t USING(id) WHERE r.id>=2 ORDER BY r.id",
+      "coordinator_pid": 212277,
+      "exit_code": 0,
+      "result": {
+        "fields": [
+          "id",
+          "tag",
+          "label"
+        ],
+        "rows": [
+          [
+            2,
+            "two",
+            "drop"
+          ],
+          [
+            3,
+            "three",
+            "keep"
+          ],
+          [
+            4,
+            "four",
+            null
+          ]
+        ]
+      },
+      "stats": {
+        "federation": [
+          {
+            "source": "custom",
+            "table": "rows",
+            "scans": 1,
+            "rows_fetched": 3,
+            "arrow_bytes_fetched": 53,
+            "batches_fetched": 1
+          }
+        ],
+        "rows": 3,
+        "batches": 1,
+        "arrow_bytes": 77,
+        "wire_bytes": 584,
+        "backend": "duckdb",
+        "prepare_ns": 16628191,
+        "duration_ns": 73967123,
+        "engine_streaming": false
+      }
+    },
+    {
+      "name": "integer_pushdown",
+      "sql": "SELECT id FROM custom.rows WHERE id>=3 ORDER BY id",
+      "coordinator_pid": 212328,
+      "exit_code": 0,
+      "result": {
+        "fields": [
+          "id"
+        ],
+        "rows": [
+          [
+            3
+          ],
+          [
+            4
+          ]
+        ]
+      },
+      "stats": {
+        "federation": [
+          {
+            "source": "custom",
+            "table": "rows",
+            "scans": 1,
+            "rows_fetched": 2,
+            "arrow_bytes_fetched": 20,
+            "batches_fetched": 1
+          }
+        ],
+        "rows": 2,
+        "batches": 1,
+        "arrow_bytes": 16,
+        "wire_bytes": 296,
+        "backend": "duckdb",
+        "prepare_ns": 17117876,
+        "duration_ns": 65589718,
+        "engine_streaming": false
+      }
+    },
+    {
+      "name": "local_string_filter",
+      "sql": "SELECT id FROM custom.rows WHERE label='keep' ORDER BY id",
+      "coordinator_pid": 212377,
+      "exit_code": 0,
+      "result": {
+        "fields": [
+          "id"
+        ],
+        "rows": [
+          [
+            1
+          ],
+          [
+            3
+          ]
+        ]
+      },
+      "stats": {
+        "federation": [
+          {
+            "source": "custom",
+            "table": "rows",
+            "scans": 1,
+            "rows_fetched": 4,
+            "arrow_bytes_fetched": 69,
+            "batches_fetched": 1
+          }
+        ],
+        "rows": 2,
+        "batches": 1,
+        "arrow_bytes": 16,
+        "wire_bytes": 296,
+        "backend": "duckdb",
+        "prepare_ns": 12118556,
+        "duration_ns": 60849815,
+        "engine_streaming": false
+      }
+    },
+    {
+      "name": "count_rows",
+      "sql": "SELECT count(*) FROM custom.rows",
+      "coordinator_pid": 212409,
+      "exit_code": 0,
+      "result": {
+        "fields": [
+          "count_star()"
+        ],
+        "rows": [
+          [
+            4
+          ]
+        ]
+      },
+      "stats": {
+        "federation": [
+          {
+            "source": "custom",
+            "table": "rows",
+            "scans": 1,
+            "rows_fetched": 4,
+            "arrow_bytes_fetched": 36,
+            "batches_fetched": 1
+          }
+        ],
+        "rows": 1,
+        "batches": 1,
+        "arrow_bytes": 8,
+        "wire_bytes": 304,
+        "backend": "duckdb",
+        "prepare_ns": 13168531,
+        "duration_ns": 55526922,
+        "engine_streaming": false
+      }
+    },
+    {
+      "name": "empty_count",
+      "sql": "SELECT count(*) FROM custom.rows WHERE id<0",
+      "coordinator_pid": 212437,
+      "exit_code": 0,
+      "result": {
+        "fields": [
+          "count_star()"
+        ],
+        "rows": [
+          [
+            0
+          ]
+        ]
+      },
+      "stats": {
+        "federation": [
+          {
+            "source": "custom",
+            "table": "rows",
+            "scans": 1,
+            "rows_fetched": 0,
+            "arrow_bytes_fetched": 0,
+            "batches_fetched": 0
+          }
+        ],
+        "rows": 1,
+        "batches": 1,
+        "arrow_bytes": 8,
+        "wire_bytes": 304,
+        "backend": "duckdb",
+        "prepare_ns": 17365800,
+        "duration_ns": 95642439,
+        "engine_streaming": false
+      }
+    },
+    {
+      "name": "reexec_worker",
+      "sql": "SELECT DISTINCT worker_pid FROM custom.rows",
+      "coordinator_pid": 212468,
+      "exit_code": 0,
+      "result": {
+        "fields": [
+          "worker_pid"
+        ],
+        "rows": [
+          [
+            212478
+          ]
+        ]
+      },
+      "stats": {
+        "federation": [
+          {
+            "source": "custom",
+            "table": "rows",
+            "scans": 1,
+            "rows_fetched": 4,
+            "arrow_bytes_fetched": 36,
+            "batches_fetched": 1
+          }
+        ],
+        "rows": 1,
+        "batches": 1,
+        "arrow_bytes": 8,
+        "wire_bytes": 296,
+        "backend": "duckdb",
+        "prepare_ns": 12748799,
+        "duration_ns": 76157453,
+        "engine_streaming": false
+      }
+    },
+    {
+      "name": "scan_limit",
+      "sql": "SELECT count(*) FROM custom.rows",
+      "coordinator_pid": 212498,
+      "exit_code": 1,
+      "error": "Federation scan exceeds its row or byte limit"
+    },
+    {
+      "name": "result_limit",
+      "sql": "SELECT id FROM custom.rows ORDER BY id",
+      "coordinator_pid": 212525,
+      "exit_code": 1,
+      "error": "Query result exceeds row limit"
+    },
+    {
+      "name": "worker_scan_limit",
+      "outcome": {
+        "stats": {
+          "federation": [
+            {
+              "source": "custom",
+              "table": "rows",
+              "scans": 1,
+              "rows_fetched": 0,
+              "arrow_bytes_fetched": 0,
+              "batches_fetched": 0
+            }
+          ],
+          "rows": 0,
+          "batches": 0,
+          "arrow_bytes": 0,
+          "wire_bytes": 0,
+          "backend": "duckdb",
+          "prepare_ns": 4898389,
+          "duration_ns": 26286142,
+          "engine_streaming": false
+        },
+        "error": {
+          "code": "RESOURCE_EXHAUSTED",
+          "message": "Federation scan exceeds its row or byte limit"
+        }
+      },
+      "output_bytes": 0
+    },
+    {
+      "name": "worker_documented_filter",
+      "outcome": {
+        "stats": {
+          "federation": [
+            {
+              "source": "demo",
+              "table": "sample",
+              "scans": 1,
+              "rows_fetched": 0,
+              "arrow_bytes_fetched": 0,
+              "batches_fetched": 0
+            }
+          ],
+          "rows": 0,
+          "batches": 0,
+          "arrow_bytes": 0,
+          "wire_bytes": 0,
+          "backend": "duckdb",
+          "prepare_ns": 7833444,
+          "duration_ns": 23067665,
+          "engine_streaming": false
+        },
+        "error": {
+          "code": "UNSUPPORTED",
+          "message": "Required custom federation behavior is unsupported"
+        }
+      },
+      "output_bytes": 0
+    }
+  ],
+  "scope": "Verbatim teaching example plus a separate four-row public-SDK acceptance fixture",
+  "not_a_live_database_test": true
+}
