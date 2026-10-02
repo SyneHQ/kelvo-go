@@ -357,6 +357,17 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(n.cfg.RuntimeResources.Snapshot())
 		return
 	}
+	if r.URL.Path == "/history" && n.cfg.RuntimeHistory != nil {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(n.cfg.RuntimeHistory.Entries())
+		return
+	}
 	if n.ctx.Err() != nil {
 		http.Error(w, "worker unavailable", http.StatusServiceUnavailable)
 		return
@@ -448,6 +459,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer func() { close(stopWrite); <-done; _ = controller.SetWriteDeadline(time.Time{}) }()
 	sink := &nodeSink{w: w, sink: worker.NewIPCSink(w, n.cfg.Policy.Limits)}
 	defer sink.sink.Abort()
+	executionStarted := time.Now()
 	stats, err := n.executor.Execute(ctx, request, sink)
 	if err == nil {
 		err = sink.sink.Finish()
@@ -461,6 +473,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		_ = n.finish(id, Failed, stats, err)
 	}
+	recordNodeHistory(n.cfg.RuntimeHistory, id, executionStarted, err)
 	if err != nil {
 		if sink.started {
 			panic(http.ErrAbortHandler)

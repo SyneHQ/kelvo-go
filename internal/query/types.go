@@ -11,16 +11,18 @@ import (
 	"strconv"
 	"time"
 
+	federationapi "github.com/SYNEHQ/kelvo-go/federation"
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
 type Request struct {
-	SQL          string        `json:"sql" yaml:"sql"`
-	Mode         string        `json:"mode,omitempty" yaml:"mode,omitempty"`
-	Sources      []string      `json:"sources,omitempty" yaml:"sources,omitempty"`
-	ConnectionID string        `json:"connection_id,omitempty" yaml:"connection_id,omitempty"`
-	Parameters   []Parameter   `json:"parameters,omitempty" yaml:"parameters,omitempty"`
-	Mongo        *MongoRequest `json:"mongo,omitempty" yaml:"mongo,omitempty"`
+	ScanDiagnostics bool          `json:"scan_diagnostics,omitempty" yaml:"scan_diagnostics,omitempty"`
+	SQL             string        `json:"sql" yaml:"sql"`
+	Mode            string        `json:"mode,omitempty" yaml:"mode,omitempty"`
+	Sources         []string      `json:"sources,omitempty" yaml:"sources,omitempty"`
+	ConnectionID    string        `json:"connection_id,omitempty" yaml:"connection_id,omitempty"`
+	Parameters      []Parameter   `json:"parameters,omitempty" yaml:"parameters,omitempty"`
+	Mongo           *MongoRequest `json:"mongo,omitempty" yaml:"mongo,omitempty"`
 }
 
 // MongoRequest carries native aggregation syntax. SQL and Mongo are mutually
@@ -118,17 +120,18 @@ type FederationScan struct {
 // Stats keeps encoded source response bytes separate from worker/client output.
 // Only adapters with source body accounting contribute to SourceWireBytes.
 type Stats struct {
-	Federation      []FederationScan      `json:"federation,omitempty"`
-	Rows            int64                 `json:"rows"`
-	Batches         int64                 `json:"batches"`
-	Bytes           int64                 `json:"arrow_bytes"`
-	WireBytes       int64                 `json:"wire_bytes"`
-	SourceWireBytes int64                 `json:"source_wire_bytes,omitempty"`
-	Backend         string                `json:"backend"`
-	PrepareNS       int64                 `json:"prepare_ns"`
-	DurationNS      int64                 `json:"duration_ns"`
-	EngineStreaming bool                  `json:"engine_streaming"`
-	Accelerations   []AccelerationVersion `json:"accelerations,omitempty"`
+	ScanDiagnostics *federationapi.ScanDiagnostics `json:"scan_diagnostics,omitempty"`
+	Federation      []FederationScan               `json:"federation,omitempty"`
+	Rows            int64                          `json:"rows"`
+	Batches         int64                          `json:"batches"`
+	Bytes           int64                          `json:"arrow_bytes"`
+	WireBytes       int64                          `json:"wire_bytes"`
+	SourceWireBytes int64                          `json:"source_wire_bytes,omitempty"`
+	Backend         string                         `json:"backend"`
+	PrepareNS       int64                          `json:"prepare_ns"`
+	DurationNS      int64                          `json:"duration_ns"`
+	EngineStreaming bool                           `json:"engine_streaming"`
+	Accelerations   []AccelerationVersion          `json:"accelerations,omitempty"`
 }
 
 type AccelerationVersion struct {

@@ -21,6 +21,7 @@ import (
 	duck "github.com/duckdb/duckdb-go/v2"
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
+	"github.com/SYNEHQ/kelvo-go/internal/federation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
@@ -87,6 +88,11 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	}
 	ctx, cancel := context.WithTimeout(parent, e.limits.Timeout)
 	defer cancel()
+	if req.ScanDiagnostics {
+		var diagnostics *federation.ScanDiagnosticCollector
+		ctx, diagnostics = federation.WithScanDiagnostics(ctx)
+		defer func() { snapshot := diagnostics.Snapshot(); stats.ScanDiagnostics = &snapshot }()
+	}
 
 	tempDir, tempErr := os.MkdirTemp("", "kelvo-duckdb-")
 	if tempErr != nil {

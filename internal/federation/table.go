@@ -107,7 +107,7 @@ func newTable(ctx context.Context, source catalog.Source, table catalog.Federati
 		return nil, err
 	}
 	lifetime, cancel := context.WithCancel(ctx)
-	t := &Table{ctx: lifetime, cancel: cancel, remoteName: remoteName, sourceID: source.ID, dialect: dialect, limits: limits, config: catalog.Config{Sources: []catalog.Source{source}}, factory: factory, active: make(map[*scanReader]struct{}), closeDone: make(chan struct{}), budget: budgetFromContext(ctx)}
+	t := &Table{ctx: lifetime, cancel: cancel, remoteName: remoteName, sourceID: source.ID, selected: table, dialect: dialect, limits: limits, config: catalog.Config{Sources: []catalog.Source{source}}, factory: factory, active: make(map[*scanReader]struct{}), closeDone: make(chan struct{}), budget: budgetFromContext(ctx)}
 	executor, err := factory(t.config, limits)
 	if err != nil {
 		cancel()
@@ -178,6 +178,19 @@ func (t *Table) Scan(ctx context.Context, plan duckbridge.ScanPlan) (array.Recor
 		return nil, err
 	}
 	reader := newScanReader(t, ctx, schema)
+	if collector := scanDiagnosticsFromContext(t.ctx); collector != nil {
+		diagnosticPlan := plan
+		projectionKind := "source_columns"
+		if len(diagnosticPlan.Columns) == 0 {
+			if t.customDriver == nil && t.dialect == dialectClickHouse {
+				projectionKind = "constant_row_count"
+			} else {
+				diagnosticPlan.Columns = []string{schema.Field(0).Name}
+			}
+		}
+		_, known := federationapi.InspectCapabilities(t.customDriver)
+		reader.diagnostic = collector.begin(t.sourceID, t.selected.Name, diagnosticPlan, known, projectionKind)
+	}
 	t.active[reader] = struct{}{}
 	t.scans.Add(1)
 	t.producers.Add(1)

@@ -17,19 +17,20 @@ type batchHandoff struct {
 	consumed chan struct{}
 }
 type scanReader struct {
-	refs      atomic.Int64
-	table     *Table
-	ctx       context.Context
-	cancel    context.CancelCauseFunc
-	stopTable func() bool
-	schema    *arrow.Schema
-	batches   chan *batchHandoff
-	done      chan struct{}
-	resultErr error // written once before done closes
-	mu        sync.Mutex
-	current   *batchHandoff
-	finished  bool
-	err       error
+	diagnostic *scanDiagnosticHandle
+	refs       atomic.Int64
+	table      *Table
+	ctx        context.Context
+	cancel     context.CancelCauseFunc
+	stopTable  func() bool
+	schema     *arrow.Schema
+	batches    chan *batchHandoff
+	done       chan struct{}
+	resultErr  error // written once before done closes
+	mu         sync.Mutex
+	current    *batchHandoff
+	finished   bool
+	err        error
 }
 
 func newScanReader(table *Table, parent context.Context, schema *arrow.Schema) *scanReader {
@@ -54,6 +55,14 @@ func (r *scanReader) produce(executor execution, request query.Request) {
 	if err == nil && !sink.schemaSeen {
 		err = query.NewError("QUERY_FAILED", "Federation scan returned no schema")
 	}
+	outcome := "success"
+	if err != nil {
+		outcome = "error"
+	}
+	if r.ctx.Err() != nil {
+		outcome = "canceled"
+	}
+	r.diagnostic.finish(outcome, sink.rows, sink.bytes, sink.batches, stats.SourceWireBytes)
 	r.resultErr = err
 	r.stopTable()
 	r.table.budget.release()
@@ -125,6 +134,7 @@ type scanSink struct {
 	reader      *scanReader
 	schemaSeen  bool
 	rows, bytes int64
+	batches     int64
 }
 
 func (s *scanSink) Schema(schema *arrow.Schema) error {
@@ -149,6 +159,7 @@ func (s *scanSink) Write(record arrow.RecordBatch) error {
 	if record.NumRows() > r.table.limits.MaxRows-s.rows || size > r.table.limits.MaxBytes-s.bytes {
 		return query.NewError("RESOURCE_EXHAUSTED", "Federation scan exceeds its row or byte limit")
 	}
+	s.batches++
 	s.rows += record.NumRows()
 	s.bytes += size
 	r.table.rows.Add(record.NumRows())
