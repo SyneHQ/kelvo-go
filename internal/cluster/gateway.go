@@ -42,6 +42,7 @@ type Gateway struct {
 	mu           sync.RWMutex
 	reconcileOK  map[string]bool
 	reconcileErr error
+	draining     bool
 	closed       bool
 	once         sync.Once
 }
@@ -103,6 +104,22 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 	}
 	return g, nil
 }
+
+// BeginDrain rejects new submissions without interrupting accepted handles.
+func (g *Gateway) BeginDrain() {
+	g.mu.Lock()
+	g.draining = true
+	g.mu.Unlock()
+}
+
+// Drain keeps status, cancellation and result retrieval available for the full
+// grace period: durable queued handles can outlive any current HTTP request.
+func (g *Gateway) Drain(ctx context.Context) error {
+	g.BeginDrain()
+	<-ctx.Done()
+	return ctx.Err()
+}
+
 func (g *Gateway) Close() error {
 	g.once.Do(func() {
 		g.mu.Lock()
@@ -158,20 +175,13 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	stopShutdown := context.AfterFunc(g.ctx, cancel)
 	defer stopShutdown()
 	r = r.WithContext(ctx)
-	select {
-	case g.permits <- struct{}{}:
-		defer func() { <-g.permits }()
-	default:
-		g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Request capacity unavailable")
-		return
-	}
 	if r.Method == http.MethodGet && r.URL.Path == "/health" {
 		g.json(w, 200, map[string]string{"status": "ok"})
 		return
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/ready" {
 		g.mu.RLock()
-		ready := len(g.reconcileOK) == len(g.tenants)
+		ready := !g.draining && len(g.reconcileOK) == len(g.tenants)
 		for tenant := range g.tenants {
 			ready = ready && g.reconcileOK[tenant]
 		}
@@ -181,6 +191,13 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			g.json(w, 200, map[string]string{"status": "ready"})
 		}
+		return
+	}
+	select {
+	case g.permits <- struct{}{}:
+		defer func() { <-g.permits }()
+	default:
+		g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Request capacity unavailable")
 		return
 	}
 	tenant, ok := g.tenant(r)
@@ -195,6 +212,13 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(p) == 2 && r.Method == "POST" {
+		g.mu.RLock()
+		draining := g.draining
+		g.mu.RUnlock()
+		if draining {
+			g.err(w, http.StatusServiceUnavailable, "UNAVAILABLE", "Service draining")
+			return
+		}
 		g.submit(w, r, g.tenants[tenant])
 		return
 	}

@@ -69,8 +69,12 @@ func LoadNode(path string) (NodeConfig, error) {
 	if err != nil {
 		return c, err
 	}
-	resolveTLS(base, &c.TLS)
-	resolveNATS(base, &c.NATS)
+	if c.Resources != nil {
+ if _, err := c.Resources.NewPool(); err != nil { return c, err }
+ if !c.Resources.Fits(c.Policy.Limits, false) { return c, errors.New("query reservation exceeds node resources") }
+ }
+ resolveTLS(base, &c.TLS)
+ resolveNATS(base, &c.NATS)
 	c.CatalogFile = relativePath(base, c.CatalogFile)
 	c.SandboxPath = relativePath(base, c.SandboxPath)
 	if err = ValidatePolicy(c.Policy); err != nil {

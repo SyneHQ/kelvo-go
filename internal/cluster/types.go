@@ -7,7 +7,9 @@ import (
 	"errors"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 )
 
 const (
@@ -127,11 +129,14 @@ type GatewayConfig struct {
 }
 
 type NodeConfig struct {
-	Listen      string     `yaml:"listen"`
-	TLS         TLSConfig  `yaml:"tls"`
-	NATS        NATSConfig `yaml:"nats"`
-	Policy      Policy     `yaml:"policy"`
-	WorkerID    string     `yaml:"worker_id"`
-	CatalogFile string     `yaml:"catalog_file"`
-	SandboxPath string     `yaml:"sandbox_path"`
+	RuntimeResources *admission.Pool     `yaml:"-"`
+	Resources        *ResourceConfig     `yaml:"resources,omitempty"`
+	RuntimeMetrics   *telemetry.Registry `yaml:"-"`
+	Listen           string              `yaml:"listen"`
+	TLS              TLSConfig           `yaml:"tls"`
+	NATS             NATSConfig          `yaml:"nats"`
+	Policy           Policy              `yaml:"policy"`
+	WorkerID         string              `yaml:"worker_id"`
+	CatalogFile      string              `yaml:"catalog_file"`
+	SandboxPath      string              `yaml:"sandbox_path"`
 }

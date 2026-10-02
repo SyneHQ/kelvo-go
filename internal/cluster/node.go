@@ -29,18 +29,22 @@ type reservation struct {
 }
 
 type Node struct {
-	cfg      NodeConfig
-	store    Store
-	executor query.Executor
-	owner    string
-	ctx      context.Context
-	cancel   context.CancelFunc
-	permits  chan struct{}
-	mu       sync.Mutex
-	jobs     map[string]*reservation
-	wg       sync.WaitGroup
-	streams  sync.WaitGroup
-	once     sync.Once
+	cfg            NodeConfig
+	store          Store
+	executor       query.Executor
+	owner          string
+	ctx            context.Context
+	cancel         context.CancelFunc
+	dispatchCtx    context.Context
+	dispatchCancel context.CancelFunc
+	dispatchDone   chan struct{}
+	draining       bool // guarded by mu
+	permits        chan struct{}
+	mu             sync.Mutex
+	jobs           map[string]*reservation
+	wg             sync.WaitGroup
+	streams        sync.WaitGroup
+	once           sync.Once
 }
 
 func randomToken() (string, error) {
@@ -76,6 +80,8 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	n := &Node{cfg: cfg, store: store, executor: executor, owner: owner, ctx: ctx, cancel: cancel, permits: make(chan struct{}, cfg.Policy.Workers[cfg.WorkerID]), jobs: map[string]*reservation{}}
+	n.dispatchCtx, n.dispatchCancel = context.WithCancel(ctx)
+	n.dispatchDone = make(chan struct{})
 	probe, stop := context.WithTimeout(ctx, 10*time.Second)
 	defer stop()
 	if _, err = executor.Execute(probe, query.Request{Mode: "federated", SQL: "SELECT 1"}, discardSink{}); err != nil {
@@ -99,21 +105,22 @@ func (discardSink) Write(arrow.RecordBatch) error { return nil }
 
 func (n *Node) dispatch() {
 	defer n.wg.Done()
+	defer close(n.dispatchDone)
 	for {
 		select {
-		case <-n.ctx.Done():
+		case <-n.dispatchCtx.Done():
 			return
 		case n.permits <- struct{}{}:
 		}
-		d, err := n.store.Next(n.ctx)
+		d, err := n.store.Next(n.dispatchCtx)
 		if err != nil {
 			<-n.permits
-			if n.ctx.Err() != nil {
+			if n.dispatchCtx.Err() != nil {
 				return
 			}
 			if !errors.Is(err, ErrNoJob) {
 				select {
-				case <-n.ctx.Done():
+				case <-n.dispatchCtx.Done():
 					return
 				case <-time.After(200 * time.Millisecond):
 				}
@@ -133,6 +140,13 @@ func (n *Node) dispatch() {
 		ctx, cancel := context.WithDeadline(n.ctx, s.Job.ExpiresAt)
 		r := &reservation{ctx: ctx, cancel: cancel, done: make(chan struct{})}
 		n.mu.Lock()
+		if n.draining {
+			n.mu.Unlock()
+			cancel()
+			_ = d.Retry(n.ctx)
+			<-n.permits
+			return
+		}
 		n.jobs[s.Job.ID] = r
 		n.mu.Unlock()
 		j := s.Job
@@ -273,8 +287,44 @@ func (n *Node) finish(id, state string, stats query.Stats, result error) error {
 	})
 }
 
+// BeginDrain stops new reservations while existing jobs retain their leases and
+// remain available through the result and cancellation endpoints.
+func (n *Node) BeginDrain() {
+	n.mu.Lock()
+	n.draining = true
+	n.dispatchCancel()
+	n.mu.Unlock()
+}
+
+// Drain waits for reservations, including unclaimed results, to finish. The
+// caller must invoke Close after the grace period to cancel remaining work.
+func (n *Node) Drain(ctx context.Context) error {
+	n.BeginDrain()
+	select {
+	case <-n.dispatchDone:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	tick := time.NewTicker(20 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		n.mu.Lock()
+		empty := len(n.jobs) == 0
+		n.mu.Unlock()
+		if empty {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-tick.C:
+		}
+	}
+}
+
 func (n *Node) Close() error {
 	n.once.Do(func() {
+		n.BeginDrain()
 		n.mu.Lock()
 		n.cancel()
 		n.mu.Unlock()
@@ -286,8 +336,25 @@ func (n *Node) Close() error {
 }
 
 func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || !hasURI(r.TLS.PeerCertificates[0], GatewayIdentity) {
+	if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 || r.TLS.PeerCertificates[0] == nil || !hasURI(r.TLS.PeerCertificates[0], GatewayIdentity) {
 		http.Error(w, "mutual TLS gateway identity required", http.StatusUnauthorized)
+		return
+	}
+	if r.URL.Path == "/metrics" && n.cfg.RuntimeMetrics != nil {
+		n.cfg.RuntimeMetrics.ServeHTTP(w, r)
+		return
+	}
+	if r.URL.Path == "/resources" && n.cfg.RuntimeResources != nil {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", "GET")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		// Export only aggregate configured reservations, never process secrets
+		// or tenant/query identifiers. Snapshot releases its lock before I/O.
+		_ = json.NewEncoder(w).Encode(n.cfg.RuntimeResources.Snapshot())
 		return
 	}
 	if n.ctx.Err() != nil {
@@ -296,6 +363,17 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/health" {
 		_, _ = w.Write([]byte("ok\n"))
+		return
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/ready" {
+		n.mu.Lock()
+		ready := !n.draining && n.ctx.Err() == nil
+		n.mu.Unlock()
+		if !ready {
+			http.Error(w, "worker unavailable", http.StatusServiceUnavailable)
+		} else {
+			_, _ = w.Write([]byte("ready\n"))
+		}
 		return
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
