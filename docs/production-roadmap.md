@@ -9,9 +9,13 @@ The first operational slice adds optional shared node query/refresh reservations
 bounded worker execution telemetry and protected resource diagnostics, independent
 probes and phased cluster drain. See [operations](operations.md) for configuration,
 semantics and limits. This is partial delivery of the operational foundation, not
-completion of the P0 roadmap. Class-specific budgets, distributed source quotas,
-full queue/stage timing, tracing/history, dataset readiness and measured mixed-load
-release gates remain pending. No new throughput results are claimed.
+completion of the P0 roadmap. A subsequent implementation slice adds strict cross-generation schema checks,
+verified local inventory/restore, durable classified refresh retries and operator
+reset, distributed source quotas, optional source credential files and bounded
+actual-scan diagnostics. Remote restore, schema evolution policies, source-driver
+conformance/rotation coverage and sustained fault/capacity gates remain pending.
+Class-specific budgets, full queue/stage timing, trace export and dataset readiness
+also remain pending. No new throughput results are claimed.
 
 Recommendation: keep Kelvo's Go coordinator, DuckDB execution, Arrow output,
 Parquet snapshots and NATS dispatch. Adopt the dataset lifecycle, resource

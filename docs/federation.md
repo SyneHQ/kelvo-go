@@ -209,3 +209,18 @@ is an alpha framework, while database coverage comes from
 Adding that stack would introduce another planner, connector layer and upgrade
 path. It remains a future option if matched workload measurements justify it.
 Neither implementation language nor a bridge alone establishes higher throughput.
+
+
+## Actual scan diagnostics
+
+Set `scan_diagnostics: true` on a federated query request, or pass
+`--scan-diagnostics` to `kelvo query`, to include bounded diagnostics in query
+statistics. Collection is off by default. It records the projected columns,
+required predicate operators/types (without their literal values), scan outcome
+and observed row/byte/batch counts at the native adapter boundary.
+
+Reports are capped at 8 KiB and explicitly identify truncation. Identifiers and
+nested filter shapes have additional bounds. `local_residuals: not_observed`
+means the Go scan boundary cannot report DuckDB's local predicates, joins or
+aggregates. These records are not a global execution plan or cost estimate, and
+diagnostics do not change pushdown or query results.

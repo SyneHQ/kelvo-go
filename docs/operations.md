@@ -83,3 +83,107 @@ new packages. A full production release still
 requires mixed export/join/refresh soaks, actual rolling-process fault tests,
 RSS/cgroup/scratch measurements, micro-VM remeasurement and telemetry overhead
 benchmarks. No new throughput or OOM-safety claim follows from unit tests.
+
+
+## Shared source quotas
+
+Optional `policy.source_quotas` maps configured source IDs to maximum concurrent
+Kelvo operations across a tenant's nodes. Every copy of the policy must match.
+These limits count whole admitted operations; one federated operation may open
+multiple source scans, so they are not a database connection limit.
+
+```yaml
+policy:
+  # Include the other required tenant scheduling fields.
+  source_quotas:
+    warehouse: 2
+    orders: 4
+```
+
+The parent acquires selected source slots in a stable order, rolls back partial
+acquisitions on contention, and renews ownership while work runs. Admission wait
+is included in the execution timeout. Lost renewal cancels execution; release
+follows subprocess cleanup. Accelerated reads do not consume their original
+source's slots. Broker TTL reclaims crashed owners independently of host clocks.
+A distributed lease cannot fence SQL already running at a remote database:
+remote cancellation is still best effort. Read-only source permissions and
+source-side workload limits remain required.
+
+Initialize `KV_KELVO_SOURCE_QUOTAS` with `cluster-init` when enabling quotas.
+Account stream capacity must allow six streams when acceleration status is also
+enabled. Workers additionally need publish permissions for
+`$JS.API.STREAM.MSG.GET.KV_KELVO_SOURCE_QUOTAS` and
+`$KV.KELVO_SOURCE_QUOTAS.>` in their own tenant account. Source quotas are limited
+to 64 configured source IDs and 64 slots each, with bounded KV storage. Policies
+are immutable during normal operation; coordinate drain and reprovisioning when
+changing them.
+
+## File-based source credential rotation
+
+Node YAML may map existing source environment references to private local files:
+
+```yaml
+secrets:
+  ttl: 30s
+  files:
+    KELVO_WAREHOUSE_PASSWORD: /run/kelvo-secrets/warehouse-password
+```
+
+The trusted parent resolves only references for selected sources and shares the
+provider with refresh executors. A newly started query receives current values
+within the configured cache TTL. Unmapped references use the process environment;
+a configured file failure never falls back to an older environment value. Source
+catalogs and child input retain reference names, not secret contents or provider
+paths. Values enter only the selected child's environment.
+
+Use private regular files owned by the service UID in trusted directories, and
+rotate by atomically replacing a file. Symlinks, hardlinks, unsafe permissions,
+nonregular files, embedded NULs and values over 16 KiB are rejected. Contents are
+exact: use `printf`, not a command adding an unwanted newline. At most 128 files
+and 2 MiB of retained bytes are supported; TTL is at most five minutes and zero
+disables retention. Close wipes retained byte buffers on a best-effort basis;
+Go strings and child environments cannot be guaranteed erased from memory.
+
+This rotates source-driver credentials for new query/refresh processes. It does
+not rotate credentials in existing queries, parent object-storage clients, NATS
+connections, gateway API tokens or TLS certificates, and is not a cloud secret
+manager integration.
+
+
+## Optional execution history
+
+```yaml
+history:
+  max_entries: 256
+  ttl: 1h
+```
+
+Without this block no history ring is allocated. `GET /history` on the worker
+requires gateway mTLS and returns at most 1,024 retained execution records with
+at most 24 hours of retention. Entries contain generated query IDs, fixed
+outcome/category, timestamps and duration; no query text, parameters, source
+identities or result previews. Expiry is enforced on reads/appends, without a
+background sweeper. Records disappear on restart.
+
+One record is captured after a node execution/transfer and its result-ready update.
+Node success does not prove the gateway committed success or the client received
+the complete result. This is bounded operational history, not an audit trail,
+queued-job history, trace export or durable replay catalog.
+
+
+## Dataset safety validation
+
+Runtime commit `ad25a3c` was validated on the dedicated Azure Linux VM with the
+full ordinary and pinned DuckDB bridge suites, focused race checks (including
+secret rotation, source quotas, history and diagnostics), and `cgocheck2` plus
+race checks for the bridge/federation/engine. Real NATS tests passed durable
+failure suppression, sequence-fenced reset, shared source capacity and recovery
+after broker TTL. The [16-check acceleration acceptance](evidence/dataset-safety-acceptance.json)
+passed typed round-trips, real schema drift rejection, restore freshness and stale
+precondition rejection, scheduled cluster refresh and tenant isolation.
+
+Two integration failures were found and fixed: the refresh status test requested
+a pull timeout above the consumer limit; quota KV values initially allowed too
+little space for NATS CAS headers. The corrected tests were rerun successfully.
+These are correctness checks, not sustained-load, provider-wide rotation, memory
+footprint or recovery-time benchmarks.

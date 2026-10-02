@@ -434,3 +434,18 @@ requires a suitable instance and verified TCPS setup. Snowflake, BigQuery and
 Databricks require operator-provisioned accounts, source read grants, execution
 permissions and explicit cost budgets. No live cloud credentials or acceptance
 are implied by the included YAML or protocol tests.
+
+
+## Optional capability declarations
+
+An adapter or wrapper may implement `federation.CapabilityProvider` with a v1
+`FederationCapabilities()` declaration. `InspectCapabilities` validates bounds
+and returns a detached declaration; absent, invalid, panicking or future-version
+providers are unknown. Wrappers must explicitly forward the method.
+
+These are advisory declarations, not conformance certification or planner
+negotiation. Every predicate passed in `ScanPlan.Filters` remains mandatory:
+apply it exactly or return `ErrUnsupported`. Never drop an unsupported filter on
+the assumption DuckDB will reapply it. The current declaration vocabulary is
+limited to the bridge's integer/Boolean comparisons, null predicates and logical
+combinations; it does not advertise aggregate/join pushdown.

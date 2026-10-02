@@ -126,15 +126,17 @@ Each catalog names one tenant. Cluster startup rejects an acceleration tenant th
 
 `authorization_version` is required. Increment it when source grants, credentials, permitted rows or other authorization policy changes. The stored fingerprint also covers the tenant, dataset query and registered source definitions. A changed fingerprint makes the old snapshot unavailable until refreshed. Copied data does not inherit later database revocations automatically. Revoke access first, update the version and refresh, and remove retired copies according to your retention policy. Tenant-wide source grants are not automatic per-user row-level authorization.
 
-Cluster refreshes use each tenant's existing authenticated NATS account. `cluster-init` provisions `KELVO_ACCEL_QUEUE` in addition to the three existing streams. Increase the account stream quota to at least 4. Running workers need these additional publish permissions:
+Cluster refreshes use each tenant's existing authenticated NATS account. `cluster-init` provisions `KELVO_ACCEL_QUEUE` and `KV_KELVO_ACCEL_STATUS` in addition to the three existing streams. Increase the account stream quota to at least 5 (6 with source quotas). Existing deployments must explicitly rerun `cluster-init` using provisioner credentials after updating account limits and permissions. Running workers need these additional publish permissions:
 
 ```text
 acceleration.refresh
 $JS.API.CONSUMER.INFO.KELVO_ACCEL_QUEUE.refresh
 $JS.API.CONSUMER.MSG.NEXT.KELVO_ACCEL_QUEUE.refresh
+$JS.API.STREAM.MSG.GET.KV_KELVO_ACCEL_STATUS
+$KV.KELVO_ACCEL_STATUS.>
 ```
 
-Existing stream-info, inbox and ACK permissions remain required. Only the provisioner may create broker resources. The queue contains dataset identifiers and configuration fingerprints, never source SQL, credentials or Arrow data. Delivery is at least once, with confirmed ACK after successful refresh, delayed retries, heartbeats and writer-lock freshness checks. Each node performs at most one refresh at a time, separately from its query admission capacity. Include refresh CPU/memory in node sizing.
+Existing stream-info, inbox and ACK permissions remain required. Only the provisioner may create broker resources. The queue contains dataset identifiers and configuration fingerprints, never source SQL, credentials or Arrow data. Delivery is at least once, with confirmed ACK after successful refresh, delayed retries, heartbeats and writer-lock freshness checks. Each node performs at most one refresh at a time. When node resource budgets are configured, refresh publication and queries share that reservation pool. Include native allocations, Arrow buffers and publication staging in node sizing.
 
 For the default local backend, all workers for a tenant must use matching catalogs and mount the **same tenant-specific snapshot directory** with the same absolute path and OS UID. The filesystem must provide working POSIX `flock`, atomic rename and `fsync`. A local volume shared by containers on one host works; multi-host filesystems need their own verification. The opt-in [object backend](object-storage.md) instead uses immutable remote objects and conditional manifest writes. Automatic SSD replication and locality-aware scheduling are not implemented. Never give one tenant access to another tenant's snapshot volume.
 
@@ -176,3 +178,57 @@ Trino is a distributed SQL engine, not another embedded accelerator. Kelvo conne
 - [Dynamic filtering](https://trino.io/docs/current/admin/dynamic-filtering.html): reduce data scanned and transferred before adding more execution engines.
 
 The current direction is Go orchestration, DuckDB execution, Arrow delivery and Parquet snapshots. Partitioned generations, incremental checkpoints, delete handling and compaction should precede additional storage engines unless measured workloads justify a different order.
+
+
+## Schema contracts and generation recovery
+
+Refresh now compares the complete original Arrow schema with the prior committed
+generation under the writer lock/lease. Field order, exact types, nullability and
+schema/field metadata must match. No automatic widening, dropping or coercion is
+performed. A mismatch returns `SCHEMA_MISMATCH` and leaves the previous generation
+intact. Original Arrow schema metadata is read from legacy Parquet snapshots;
+new manifests also persist its fingerprint. Object schema reads require bounded,
+version-pinned range support. An intentional incompatible redesign requires a
+separately managed dataset/migration, not an automatic schema policy switch.
+
+Local POSIX stores support operator-only inventory and restore:
+
+```sh
+kelvo accelerate inventory --config kelvo.yml --dataset sales_snapshot
+kelvo accelerate restore --config kelvo.yml --dataset sales_snapshot \
+  --generation PREVIOUS_GENERATION --expected-generation CURRENT_GENERATION
+```
+
+Restore verifies the target and current payload checksums, exact schemas and the
+current catalog's authorization fingerprint, then switches the manifest under the
+writer lock. It retains the original data timestamp; an old restore may correctly
+remain stale. The expected generation prevents overwriting a concurrent refresh.
+Reader leases continue protecting pinned payloads. Inventory is capped at 256
+retained generations and fails explicitly above that bound. New generation
+sidecars preserve recovery metadata; previously retired files without sidecars
+cannot safely be inventoried. Remote inventory/restore and repair of a corrupt
+current payload are not implemented. Keep verified backups of manifests, sidecars
+and referenced data together; this feature does not establish measured RTO/RPO.
+
+## Durable refresh failures
+
+Cluster retries have a five-failure budget across scheduled messages for an exact
+dataset/configuration fingerprint, with capped exponential jitter. Schema,
+configuration and access failures stop immediately. Unknown driver failures retry
+conservatively within the budget because upstream connectors may sanitize their
+original error classification. `RetryAfter()` hints are respected within the
+bounded policy. Successful refresh timestamps and sanitized failure categories
+are stored in a tenant-scoped KV bucket before terminal acknowledgement.
+
+```sh
+kelvo refresh-status --config worker.yml --dataset sales_snapshot
+kelvo refresh-reset --config worker.yml --dataset sales_snapshot \
+  --expected-fingerprint CURRENT_CATALOG_FINGERPRINT
+```
+
+Reset requires operator NATS authority and the catalog fingerprint. A broker
+sequence fence rejects old deliveries after reset. Status has a bounded 256 KiB
+store and does not expire permanent failures; exhaustion fails closed instead of
+evicting safety state. Operators must manage obsolete configuration records as
+part of a deliberate migration. Standalone `accelerate watch` retains its local
+scheduler; durable retry state is a cluster feature.
