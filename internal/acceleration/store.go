@@ -52,6 +52,7 @@ type Store struct {
 // Snapshot describes an immutable generation. Query code must hold an acquired
 // Lease for as long as an engine may open or read Path.
 type Snapshot struct {
+	SchemaHash    string    `yaml:"schema_hash,omitempty"`
 	Dataset       string    `yaml:"dataset"`
 	Generation    string    `yaml:"generation"`
 	Path          string    `yaml:"path"`
@@ -88,6 +89,7 @@ func (snapshot Snapshot) observeClock(reference time.Time) Snapshot {
 }
 
 type storeManifest struct {
+	SchemaHash  string    `yaml:"schema_hash,omitempty"`
 	Version     int       `yaml:"version"`
 	Dataset     string    `yaml:"dataset"`
 	Generation  string    `yaml:"generation"`
@@ -150,6 +152,7 @@ func (s *Store) openDataset(dataset string, create bool) (*os.File, error) {
 // Transaction holds the process-safe writer lock until Commit or Abort. The
 // producer must finish all writes to File before either method is called.
 type Transaction struct {
+	schemaHash string
 	mu         sync.Mutex
 	ctx        context.Context
 	dir        *os.File
@@ -266,14 +269,18 @@ func (tx *Transaction) Commit(fingerprint string, rows int64) (snapshot Snapshot
 		return Snapshot{}, err
 	}
 	published := false
+	sidecarPublished := false
 	manifestStage := ".manifest-" + tx.generation + ".yaml"
 	defer func() {
 		_ = storeRemove(tx.dir, manifestStage)
 		if !published {
+			if sidecarPublished {
+				_ = storeRemove(tx.dir, generationManifestName(tx.generation))
+			}
 			_ = storeRemove(tx.dir, payload)
 		}
 	}()
-	manifest := storeManifest{Version: 1, Dataset: tx.dataset, Generation: tx.generation,
+	manifest := storeManifest{SchemaHash: tx.schemaHash, Version: 1, Dataset: tx.dataset, Generation: tx.generation,
 		Fingerprint: fingerprint, SHA256: digest, Rows: rows, Bytes: info.Size(), RefreshedAt: time.Now().UTC()}
 	data, err := yaml.Marshal(manifest)
 	if err != nil {
@@ -282,6 +289,20 @@ func (tx *Transaction) Commit(fingerprint string, rows int64) (snapshot Snapshot
 	if len(data) > storeManifestLimit {
 		return Snapshot{}, errors.New("acceleration manifest exceeds size limit")
 	}
+	// Backfill the previous current metadata for pre-upgrade snapshots, then
+	// persist the new generation's immutable metadata before the pointer swap.
+	prior, readErr := storeReadManifest(tx.dir, tx.dataset)
+	if readErr == nil {
+		if err := storeSaveGeneration(tx.dir, prior); err != nil {
+			return Snapshot{}, err
+		}
+	} else if !errors.Is(readErr, ErrNotFound) {
+		return Snapshot{}, readErr
+	}
+	if err := storeSaveGeneration(tx.dir, manifest); err != nil {
+		return Snapshot{}, err
+	}
+	sidecarPublished = true
 	if err := storeWriteManifest(tx.dir, manifestStage, data); err != nil {
 		return Snapshot{}, err
 	}
@@ -530,6 +551,12 @@ func (s *Store) Prune(ctx context.Context, dataset string, keep int) error {
 		if err == nil && locked {
 			err = storeRemove(dir, candidate.name)
 			changed = err == nil || changed
+			if err == nil {
+				sidecar := generationManifestName(strings.TrimSuffix(candidate.name, ".parquet"))
+				if removeErr := storeRemove(dir, sidecar); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+					err = removeErr
+				}
+			}
 		}
 		_ = file.Close()
 		if err != nil {
@@ -543,8 +570,12 @@ func (s *Store) Prune(ctx context.Context, dataset string, keep int) error {
 }
 
 func storeReadManifest(dir *os.File, dataset string) (storeManifest, error) {
+	return storeReadManifestNamed(dir, dataset, storeManifestName)
+}
+
+func storeReadManifestNamed(dir *os.File, dataset, name string) (storeManifest, error) {
 	var manifest storeManifest
-	file, err := storeOpenFile(dir, storeManifestName, os.O_RDONLY, 0)
+	file, err := storeOpenFile(dir, name, os.O_RDONLY, 0)
 	if errors.Is(err, os.ErrNotExist) {
 		return manifest, ErrNotFound
 	}
@@ -571,7 +602,7 @@ func storeReadManifest(dir *os.File, dataset string) (storeManifest, error) {
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return manifest, fmt.Errorf("%w: snapshot manifest must contain one YAML document", ErrCorrupt)
 	}
-	if manifest.Version != 1 || manifest.Dataset != dataset || !storeGenerationID.MatchString(manifest.Generation) ||
+	if (manifest.SchemaHash != "" && !storeDigest.MatchString(manifest.SchemaHash)) || manifest.Version != 1 || manifest.Dataset != dataset || !storeGenerationID.MatchString(manifest.Generation) ||
 		!storeDigest.MatchString(manifest.SHA256) || manifest.Fingerprint == "" || len(manifest.Fingerprint) > storeFingerprintLimit ||
 		manifest.Rows < 0 || manifest.Bytes < 0 || manifest.RefreshedAt.IsZero() {
 		return manifest, fmt.Errorf("%w: invalid snapshot manifest fields", ErrCorrupt)
@@ -580,7 +611,7 @@ func storeReadManifest(dir *os.File, dataset string) (storeManifest, error) {
 }
 
 func (manifest storeManifest) snapshot(directory string) Snapshot {
-	return Snapshot{Dataset: manifest.Dataset, Generation: manifest.Generation,
+	return Snapshot{SchemaHash: manifest.SchemaHash, Dataset: manifest.Dataset, Generation: manifest.Generation,
 		Path: filepath.Join(directory, manifest.Generation+".parquet"), Fingerprint: manifest.Fingerprint,
 		SHA256: manifest.SHA256, Rows: manifest.Rows, Bytes: manifest.Bytes, RefreshedAt: manifest.RefreshedAt}
 }

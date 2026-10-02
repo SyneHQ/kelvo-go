@@ -68,6 +68,14 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snaps
 			return current, nil
 		}
 	}
+	schemaWriter, ok := tx.(SchemaWriter)
+	if !ok {
+		return Snapshot{}, errors.New("snapshot backend does not support schema contracts")
+	}
+	previous, err := schemaWriter.PreviousSchema()
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return Snapshot{}, err
+	}
 	c := m.config
 	c.Acceleration = nil
 	executor, err := m.factory(c, d.Limits)
@@ -75,6 +83,7 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snaps
 		return Snapshot{}, err
 	}
 	sink := NewParquetSink(tx.File(), d.Limits)
+	sink.expectedSchema = previous
 	defer sink.Abort()
 	if _, err = executor.Execute(ctx, d.Query, sink); err != nil {
 		return Snapshot{}, err
@@ -86,6 +95,9 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snaps
 		return Snapshot{}, err
 	}
 	if err = ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	if err = schemaWriter.SetSchema(sink.schema); err != nil {
 		return Snapshot{}, err
 	}
 	snapshot, err := tx.Commit(fingerprint, sink.Rows())

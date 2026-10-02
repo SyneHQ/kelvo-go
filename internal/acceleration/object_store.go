@@ -47,6 +47,7 @@ type objectManifest struct {
 }
 
 type objectCommitted struct {
+	SchemaHash    string    `yaml:"schema_hash,omitempty"`
 	Generation    string    `yaml:"generation"`
 	Fingerprint   string    `yaml:"fingerprint"`
 	SHA256        string    `yaml:"sha256"`
@@ -172,7 +173,7 @@ func validateObjectManifest(manifest objectManifest, dataset string) error {
 		return fmt.Errorf("%w: remote manifest identity mismatch", ErrCorrupt)
 	}
 	if snapshot := manifest.Committed; snapshot != nil {
-		if !storeGenerationID.MatchString(snapshot.Generation) || snapshot.Fingerprint == "" || len(snapshot.Fingerprint) > storeFingerprintLimit ||
+		if (snapshot.SchemaHash != "" && !storeDigest.MatchString(snapshot.SchemaHash)) || !storeGenerationID.MatchString(snapshot.Generation) || snapshot.Fingerprint == "" || len(snapshot.Fingerprint) > storeFingerprintLimit ||
 			!storeDigest.MatchString(snapshot.SHA256) || snapshot.Rows < 0 || snapshot.Bytes <= 0 || snapshot.Bytes > objectstore.MaxUploadBytes ||
 			snapshot.RefreshedAt.IsZero() || !validObjectVersion(snapshot.ObjectVersion) {
 			return fmt.Errorf("%w: invalid remote snapshot fields", ErrCorrupt)
@@ -222,7 +223,7 @@ func (backend *objectBackend) snapshot(dataset string, committed *objectCommitte
 	if err != nil {
 		return Snapshot{}, err
 	}
-	snapshot := Snapshot{Dataset: dataset, Generation: committed.Generation, Path: uri,
+	snapshot := Snapshot{SchemaHash: committed.SchemaHash, Dataset: dataset, Generation: committed.Generation, Path: uri,
 		Fingerprint: committed.Fingerprint, SHA256: committed.SHA256, Rows: committed.Rows,
 		Bytes: committed.Bytes, RefreshedAt: committed.RefreshedAt, ObjectKey: key, ObjectVersion: committed.ObjectVersion}
 	return snapshot.observeClock(reference), nil
@@ -334,6 +335,7 @@ func (backend *objectBackend) Prune(ctx context.Context, dataset string, keep in
 }
 
 type objectTransaction struct {
+	schemaHash  string
 	finishMu    sync.Mutex
 	stateMu     sync.Mutex
 	backend     *objectBackend
@@ -539,7 +541,7 @@ func (tx *objectTransaction) Commit(fingerprint string, rows int64) (snapshot Sn
 	if state.manifest.Writer == nil || state.manifest.Writer.Owner != tx.owner || !state.manifest.Writer.ExpiresAt.After(state.now()) {
 		return Snapshot{}, ErrLeaseLost
 	}
-	committed := &objectCommitted{Generation: tx.local.generation, Fingerprint: fingerprint, SHA256: digest,
+	committed := &objectCommitted{SchemaHash: tx.schemaHash, Generation: tx.local.generation, Fingerprint: fingerprint, SHA256: digest,
 		Rows: rows, Bytes: info.Size(), RefreshedAt: state.now(), ObjectVersion: uploaded.Version}
 	manifest := objectManifest{Version: 2, Dataset: tx.dataset, Committed: committed}
 	published, err := tx.backend.writeState(tx.ctx, tx.client, state, manifest)
@@ -564,7 +566,7 @@ func (tx *objectTransaction) Commit(fingerprint string, rows int64) (snapshot Sn
 
 func sameObjectCommit(left, right *objectCommitted) bool {
 	return left != nil && right != nil && left.Generation == right.Generation && left.Fingerprint == right.Fingerprint &&
-		left.SHA256 == right.SHA256 && left.Rows == right.Rows && left.Bytes == right.Bytes &&
+		left.SchemaHash == right.SchemaHash && left.SHA256 == right.SHA256 && left.Rows == right.Rows && left.Bytes == right.Bytes &&
 		left.RefreshedAt.Equal(right.RefreshedAt) && left.ObjectVersion == right.ObjectVersion
 }
 

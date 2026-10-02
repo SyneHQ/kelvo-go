@@ -26,16 +26,17 @@ const parquetRowGroupBytes int64 = 8 << 20
 // This does not bound the upstream engine's query memory. Each input batch and
 // the Parquet file's cumulative row-group metadata also consume memory.
 type ParquetSink struct {
-	out        *parquetCountingWriter
-	limits     query.Limits
-	schema     *arrow.Schema
-	writer     *pqarrow.FileWriter
-	rows       int64
-	groupBytes int64
-	groups     int64
-	maxGroups  int64
-	finished   bool
-	err        error
+	expectedSchema *arrow.Schema
+	out            *parquetCountingWriter
+	limits         query.Limits
+	schema         *arrow.Schema
+	writer         *pqarrow.FileWriter
+	rows           int64
+	groupBytes     int64
+	groups         int64
+	maxGroups      int64
+	finished       bool
+	err            error
 }
 
 var _ query.Sink = (*ParquetSink)(nil)
@@ -63,10 +64,13 @@ func (s *ParquetSink) Schema(schema *arrow.Schema) (err error) {
 		return s.fail(errors.New("Parquet sink requires a schema with 1 to 4096 columns"))
 	}
 	if s.schema != nil {
-		if s.schema.Equal(schema) {
+		if SchemaEqual(s.schema, schema) {
 			return nil
 		}
 		return s.fail(errors.New("Parquet schema changed"))
+	}
+	if s.expectedSchema != nil && !SchemaEqual(s.expectedSchema, schema) {
+		return s.fail(ErrSchemaMismatch)
 	}
 	names := make(map[string]bool, schema.NumFields())
 	groupMetadata := int64(schema.NumFields()+1) * 1024
@@ -84,6 +88,9 @@ func (s *ParquetSink) Schema(schema *arrow.Schema) (err error) {
 	}
 	if _, reserved := schema.Metadata().GetValue("ARROW:schema"); reserved {
 		return s.fail(errors.New("Parquet input schema contains reserved ARROW:schema metadata"))
+	}
+	if _, err := SchemaFingerprint(schema); err != nil {
+		return s.fail(err)
 	}
 	// Arrow retains footer metadata until Finish. Bound its growth as well as
 	// each group's payload. The 1 KiB/column estimate (with capped statistics)
@@ -129,7 +136,7 @@ func (s *ParquetSink) Write(record arrow.RecordBatch) error {
 	if s.finished {
 		return errors.New("Parquet sink is finished")
 	}
-	if s.schema == nil || record == nil || !s.schema.Equal(record.Schema()) {
+	if s.schema == nil || record == nil || !SchemaEqual(s.schema, record.Schema()) {
 		return s.fail(errors.New("Parquet record requires the declared schema"))
 	}
 	if record.NumRows() > s.limits.MaxRows-s.rows {
