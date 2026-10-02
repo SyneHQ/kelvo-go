@@ -1,0 +1,21 @@
+{
+  "checked_at_utc": "2026-10-02T02:24:17.269481+00:00",
+  "owned_postgres_mysql_containers_removed": true,
+  "owned_relational_network_removed": true,
+  "owned_four_row_clickhouse_fixture_database_removed": true,
+  "owned_clickhouse_reader_removed": true,
+  "main_clickhouse_running": true,
+  "preserved_clickhouse_rows": {
+    "trips": 22612607,
+    "taxi_sample": 1000000,
+    "zones": 265,
+    "fact_events": 100000000
+  },
+  "capacity_private_manifests_unchanged": true,
+  "capacity_dataset_files_unchanged": true,
+  "preserved_dataset_file_count": 6,
+  "relational_manifest_retained": true,
+  "temporary_fixture_ca_and_source_credentials_removed": true,
+  "host_ca_bundle_unchanged": true,
+  "passed": true
+}

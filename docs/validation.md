@@ -2,6 +2,73 @@
 
 Status: a tested developer preview. Cluster, sandbox, connector and failure-handling acceptance is described below. These checks do not certify a production multi-tenant service, establish capacity for every database, or replace deployment-specific security and recovery testing.
 
+## PostgreSQL/MySQL federation and NYC Taxi capacity
+
+The custom bridge now supports Go PostgreSQL and MySQL adapters alongside
+ClickHouse. The [final build record](evidence/federation-capacity-build.json)
+matches 187 committed source/build inputs to the VM and identifies the tested
+Linux amd64 image binary. Both ordinary and bridge CI passed for runtime commit
+[`6a2e94b`](https://github.com/SyneHQ/kelvo-go/actions/runs/36953244744).
+Focused worker/source/CLI [race checks](evidence/race-federation-cancellation.log)
+also passed on the VM.
+
+[Final-image container controls](evidence/federation-capacity-container.json)
+verified nonroot execution, read-only mounts/root, capability removal, CPU/PID/
+memory enforcement, Landlock file denial and tenant/external network denial with
+reachable controls. The contained query checks exact decimal/NULL values on a
+small synthetic dataset; the large taxi workloads below ran as host processes.
+
+[45 live relational checks](evidence/federation-relational.json) passed exact
+integer/decimal/NULL/timestamp preservation, pairwise and three-source INNER/LEFT joins,
+self-joins, verified TLS with unknown-CA/hostname negatives, read-only grants,
+selected-source/table restrictions, budgets, cancellation and Landlock execution.
+PostgreSQL/MySQL accept only explicit native TLS DSNs and operator-selected
+tables; the ClickHouse fixture uses HTTP. DuckDB
+external access remains disabled for these custom Go adapters.
+
+The [initial cancellation failure](evidence/federation-relational-pre-cancellation-fix.json)
+led to a bounded 750 ms cooperative worker shutdown, PostgreSQL's connection-keyed
+CancelRequest, and MySQL's operator-owned SELECT timeout. The final PostgreSQL
+query stopped upstream about **0.203 s** after cancellation. MySQL acknowledged
+client cancellation promptly but stopped upstream after **3.154 s from launch**
+with a verified three-second server timeout. It does not guarantee immediate
+remote cancellation. Native optimizer hints cannot override that timeout.
+
+[NYC Taxi capacity](federation-capacity.md) uses **22,612,607 real trips**, 265
+official zones and one-million-row relational projections. All 14 checks passed;
+13 completed result sets matched exact native references. The complete sort and
+export took **7.738–7.835 s**, or **2.886–2.922 million output rows/s**. Joins against
+million-row PostgreSQL/MySQL inputs took about **1.63 s** each; the three-adapter
+join took **3.14 s**. All fact scans fetched the full 22.6 million rows.
+
+The full-sort worker reached **717–834 MiB sampled RSS** despite 128/256 MiB
+DuckDB budgets; a separate coordinator used about 61 MiB. These host-process
+measurements do not prove the large sort fits inside the smaller engine budget
+or a 512 MiB container. The guide records allocated scratch peaks, paced-source
+and slow-consumer behavior, cancellation recovery, reference corrections and
+the exact limits of each measurement.
+
+[Actual remote exports](evidence/federation-wan.json) transferred one million
+rows in **5.364–8.496 s**, with identical complete Arrow hashes over SSH forwarding
+and strict inner TLS. The [fixture CA correction](evidence/federation-capacity-fixture-tls.json)
+fixed certificate key-usage metadata without disabling verification. This is a
+remote-client measurement including SSH and per-request TLS setup, not a direct
+HTTPS or engine-only throughput claim.
+
+[Sustained cluster load](evidence/federation-cluster-capacity.json) passed
+**224/224 exact-result jobs with zero errors**, across 1/2/4 clients for 120 s
+each. Every job fetched all 22.6 million fact rows and its selected relational
+join input. Completion rates were **0.475/0.650/0.683 queries/s**, and p95 latencies
+were **2.69/3.94/7.59 s**. All workers drained. Throughput nearly flattened beyond
+two clients on the shared four-core host; this is not a multi-machine scaling
+test. The guide records simultaneous worker RSS, per-service CPU, tenant and
+admission controls, and the limits of the short load windows.
+
+Owned [cluster](evidence/federation-capacity-cleanup.json) and
+[relational](evidence/federation-relational-cleanup.json) fixtures were stopped
+after validation. ClickHouse and both the real taxi data and original
+100-million-row dataset were preserved.
+
 ## DuckDB custom federation adapter
 
 The opt-in Linux amd64 bridge connects the Go ClickHouse reader to DuckDB through
@@ -67,8 +134,10 @@ cache memory. Do not sum the peaks or treat the engine budget as total RSS.
 This workload is narrower and smaller than the earlier ten-million-row native
 export. It does not establish a speedup over that path, Spice, or a production
 workload. DuckDB still materializes execution before Arrow delivery; joins,
-aggregates, ordering and LIMIT are not generally pushed to the source. Sustained
-concurrency, slow consumers, WAN transfer and production recovery remain untested.
+aggregates, ordering and LIMIT are not generally pushed to the source. At this
+earlier baseline, sustained concurrency, slow consumers and WAN transfer had not
+been tested; the later NYC Taxi results above extend that scope. Production
+recovery still requires deployment-specific testing.
 The [adapter guide](federation.md) documents the supported predicates and build
 contract. Other native connectors do not automatically gain federation support.
 

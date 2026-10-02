@@ -1,0 +1,71 @@
+{
+  "checked_at": "2026-10-02T02:24:29.899446+00:00",
+  "scope": "Owned capacity gateways, nodes, brokers and temporary container controls only; relational source cleanup is separately owned.",
+  "passed": true,
+  "fixture_state": "stopped",
+  "recorded_processes": [
+    {
+      "name": "nats-0",
+      "pid": 166300,
+      "owned_identity_alive": false
+    },
+    {
+      "name": "nats-1",
+      "pid": 166301,
+      "owned_identity_alive": false
+    },
+    {
+      "name": "nats-2",
+      "pid": 166306,
+      "owned_identity_alive": false
+    },
+    {
+      "name": "a1-launcher",
+      "pid": 180477,
+      "owned_identity_alive": false
+    },
+    {
+      "name": "a1",
+      "pid": 180480,
+      "owned_identity_alive": false
+    },
+    {
+      "name": "a2-launcher",
+      "pid": 180499,
+      "owned_identity_alive": false
+    },
+    {
+      "name": "a2",
+      "pid": 180502,
+      "owned_identity_alive": false
+    },
+    {
+      "name": "b1-launcher",
+      "pid": 180522,
+      "owned_identity_alive": false
+    },
+    {
+      "name": "b1",
+      "pid": 180525,
+      "owned_identity_alive": false
+    },
+    {
+      "name": "gateway1",
+      "pid": 180544,
+      "owned_identity_alive": false
+    },
+    {
+      "name": "gateway2",
+      "pid": 180551,
+      "owned_identity_alive": false
+    }
+  ],
+  "all_owned_recorded_processes_stopped": true,
+  "control_containers": [],
+  "control_networks": [],
+  "existing_clickhouse_server_running": true,
+  "fixture_data_and_private_manifests_preserved": true,
+  "preserved_file_checks": 8,
+  "dataset_or_file_deletion_performed": false,
+  "identity_check": "PID, process start time and command-line SHA256 matched before signaling; helper also stopped observed descendants."
+}
