@@ -121,7 +121,7 @@ go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
 
 Explore the [architecture](docs/architecture.md), [security model](SECURITY.md), [dependency rationale](docs/dependencies.md), and [DuckDB upgrade process](docs/upgrading-duckdb.md).
 
-The [production roadmap](docs/production-roadmap.md) compares Kelvo with Spice OSS source and prioritizes resource control, observability, recovery and efficient acceleration. Proposed features are separate from the implemented capabilities above.
+The [production roadmap](docs/production-roadmap.md) follows industry standards for resource control, observability, recovery and efficient acceleration. Proposed features are separate from the implemented capabilities above.
 
 Kelvo is [Apache-2.0 licensed](LICENSE). DuckDB and its Go client are MIT licensed; Arrow is Apache-2.0 licensed. See [NOTICE](NOTICE).
 

@@ -52,4 +52,4 @@ Source references:
 - [Driver query execution](https://github.com/duckdb/duckdb-go/blob/v2.10506.0/statement.go#L778-L803)
 - [DuckDB streaming flag](https://github.com/duckdb/duckdb/blob/v1.5.6/src/main/capi/pending-c.cpp#L17-L44)
 - [Arrow IPC](https://arrow.apache.org/docs/format/Columnar.html#serialization-and-interprocess-communication-ipc)
-- [Spice OSS](https://github.com/spiceai/spiceai), architectural reference
+- [Parquet format](https://parquet.apache.org/docs/file-format/)

@@ -249,7 +249,7 @@ separately per process; it excludes ClickHouse, proxy, kernel and filesystem
 cache memory. Do not sum the peaks or treat the engine budget as total RSS.
 
 This workload is narrower and smaller than the earlier ten-million-row native
-export. It does not establish a speedup over that path, Spice, or a production
+export. It does not establish a speedup over that path, other engines, or a production
 workload. DuckDB still materializes execution before Arrow delivery; joins,
 aggregates, ordering and LIMIT are not generally pushed to the source. At this
 earlier baseline, sustained concurrency, slow consumers and WAN transfer had not

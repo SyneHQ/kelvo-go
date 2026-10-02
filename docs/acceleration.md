@@ -148,26 +148,22 @@ Second/millisecond timestamps may promote to microseconds without changing their
 
 Row groups are bounded by row count and payload, with a separate conservative cap on cumulative footer metadata. Very small input batches or extremely wide schemas can reach that cap before the row limit. The source query, Arrow decoding, Parquet encoding, and DuckDB reading all consume memory; these budgets are not a process-RSS guarantee. DuckDB still materializes execution before Arrow delivery with the pinned driver. Apply process/container resource limits and persistent-volume quotas.
 
-## Scope compared with Spice
+## Current scope and industry standards
 
 This release provides persistent full-refresh snapshots, explicit freshness, isolated alias reads, manual/local scheduling and NATS cluster refresh dispatch. Incremental append, CDC, query-result caching, automatic source fallback, and splitting one query across nodes remain separate work. There is no global transactional snapshot across independent datasets.
 
-Spice supplies a larger dataset lifecycle around DataFusion and multiple accelerator engines, including DuckDB. Bare DataFusion is not a database gateway: its extra live database coverage comes from community table providers and application connectors. Kelvo's materialized aliases extend joins without adding a Rust runtime dependency. Neither language nor connector count establishes a performance advantage; compare matching workloads and freshness policies.
+Kelvo uses industry standards for its data boundaries: [Arrow's columnar format](https://arrow.apache.org/docs/format/Columnar.html) for typed batches and [Parquet](https://parquet.apache.org/docs/file-format/) for persistent snapshots. DuckDB executes analytical queries over those snapshots. These format choices support interoperability; they do not establish a performance advantage. Compare matching workloads, resource budgets and freshness policies.
 
-### Accelerator engines upstream
+### Lifecycle priorities
 
-Spice's [accelerator catalog](https://spiceai.org/docs/components/data-accelerators) describes these choices. Availability depends on the edition and build features; this is an upstream inventory, not a Kelvo support matrix.
+The [production roadmap](production-roadmap.md) separates implemented behavior from proposed reliability work. The next acceleration capabilities should make dataset state and recovery explicit:
 
-| Engine | Storage role | Documented maturity |
-| --- | --- | --- |
-| Arrow | In-memory columnar batches; rebuilt after restart | Stable |
-| DuckDB | Embedded analytical database, in memory or on disk | Stable |
-| SQLite | Embedded SQL store with memory/file modes | Release Candidate |
-| PostgreSQL | Attached PostgreSQL server holding the accelerated data | Release Candidate; documented as Enterprise-only |
-| Cayenne | Vortex columnar files with SQLite/Turso metadata | Stable |
-| Turso | Embedded SQLite-compatible database, in memory or on disk | Beta |
+- Schema contracts and verified restore, so operators can detect incompatible changes and recover a usable generation.
+- Partitioned generations and incremental checkpoints, so a refresh can replace affected data without rewriting the entire dataset.
+- Delete handling, retention and compaction, with reader leases and recovery rules that prevent premature removal.
+- Shared resource admission for refreshes and interactive queries, with source quotas and classified retries.
 
-PostgreSQL accelerator code is public behind a feature flag despite the documentation's edition label. Turso is included in the current upstream default feature list. Check the [runtime manifest](https://github.com/spiceai/spiceai/blob/trunk/bin/spiced/Cargo.toml) when selecting a particular build. [Cayenne](https://github.com/spiceai/spiceai/blob/trunk/crates/cayenne/README.md) uses Vortex rather than Parquet; its write-ahead log, recovery, deletion and compaction design is useful reference material, not functionality supplied by Kelvo's snapshot store.
+These are planned capabilities, not features of the current snapshot store. Additional storage engines should follow measured workload needs rather than connector count.
 
 ### Lessons from Trino
 
@@ -180,5 +176,3 @@ Trino is a distributed SQL engine, not another embedded accelerator. Kelvo conne
 - [Dynamic filtering](https://trino.io/docs/current/admin/dynamic-filtering.html): reduce data scanned and transferred before adding more execution engines.
 
 The current direction is Go orchestration, DuckDB execution, Arrow delivery and Parquet snapshots. Partitioned generations, incremental checkpoints, delete handling and compaction should precede additional storage engines unless measured workloads justify a different order.
-
-Further references: [Spice refresh modes](https://spiceai.org/docs/features/data-acceleration/data-refresh), [DataFusion sources](https://datafusion.apache.org/user-guide/features.html#data-sources), [community table providers](https://github.com/datafusion-contrib/datafusion-table-providers#table-providers).
