@@ -12,9 +12,11 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/cluster"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 	"go.yaml.in/yaml/v3"
 )
@@ -96,7 +98,7 @@ func runAcceleration(args []string) error {
 // Cluster dispatch uses a tenant's existing authenticated JetStream account.
 // Messages contain dataset identity and definition fingerprint only. Every node
 // must mount the same tenant snapshot store with working POSIX flock semantics.
-func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue) error {
+func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate) error {
 	m, err := acceleration.NewManager(c, refreshFactory(sandbox))
 	if err != nil {
 		return err
@@ -107,6 +109,12 @@ func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, qu
 	consumerDone := make(chan error, 1)
 	go func() {
 		consumerDone <- queue.Consume(ctx, func(ctx context.Context, job cluster.RefreshJob) error {
+			release, err := gate.Enter()
+			if err != nil {
+				metrics.Reject(telemetry.KindRefresh, telemetry.RejectionDraining)
+				return err
+			}
+			defer release()
 			d, ok := c.Dataset(job.Dataset)
 			if !ok || d.RefreshInterval == 0 {
 				return nil
@@ -118,14 +126,21 @@ func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, qu
 			if job.Fingerprint != fingerprint {
 				return query.NewError("CONFIGURATION_ERROR", "Refresh workers have incompatible dataset definitions")
 			}
-			_, err = m.Refresh(ctx, job.Dataset, true)
-			return err
+			// Hold the reservation through snapshot publication and pruning.
+			return withRefreshReservation(ctx, pool, overhead, d.Limits, metrics, func(ctx context.Context) error {
+				_, err := m.Refresh(ctx, job.Dataset, true)
+				return err
+			})
 		}, func(err error) { fmt.Fprintln(os.Stderr, "Acceleration refresh: "+query.PublicError(err).Message) })
 	}()
 	defer func() { cancel(); <-consumerDone }()
 	tick := time.NewTicker(5 * time.Second)
 	defer tick.Stop()
 	for {
+		if gate.IsDraining() {
+			<-ctx.Done()
+			return ctx.Err()
+		}
 		for _, d := range c.Acceleration.Datasets {
 			if d.RefreshInterval == 0 {
 				continue

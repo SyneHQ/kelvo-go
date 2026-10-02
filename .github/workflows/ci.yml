@@ -20,7 +20,7 @@ jobs:
       - name: Verify analytical evidence reconciliation
         run: python3 scripts/test_analytics_evidence.py --campaign docs/evidence/analytics-azure-snapshot.json --validation docs/evidence/analytics-validation-measured.json
       - run: go test -tags duckdb_arrow ./...
-      - run: go test -race ./internal/transport/httpapi ./internal/sources/... ./internal/cluster ./internal/worker ./internal/acceleration ./internal/catalog ./internal/objectstore
+      - run: go test -race ./internal/admission ./internal/telemetry ./cmd/kelvo ./internal/transport/httpapi ./internal/sources/... ./internal/cluster ./internal/worker ./internal/acceleration ./internal/catalog ./internal/objectstore
       - run: go vet -tags duckdb_arrow ./...
       - run: go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
       - run: cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o bin/kelvo-landlock

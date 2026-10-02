@@ -288,6 +288,7 @@ def provision():
             write(data, "id,label\n1," + tenant + "\n2," + tenant + "\n")
             write(catalog, yaml({"sources": [{"id": "sample", "type": "csv", "path": str(data)}]}))
             node = {"listen": endpoint["url"].split("//")[1], "tls": workers[name], "nats": nats(name), "policy": policy, "worker_id": name, "catalog_file": str(catalog), "sandbox_path": str(ROOT / "bin/kelvo-landlock")}
+            node["resources"] = {"max_concurrent": 2, "memory_mb": 2048, "baseline_mb": 256, "overhead_mb": 128, "scratch_mb": 2048}
             write(DIR / (name + ".yml"), yaml(node))
             nodes.append(name)
     # Store integration tests use their own account. It has only an administrator

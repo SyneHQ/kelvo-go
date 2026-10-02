@@ -14,20 +14,26 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/cluster"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
 
 func runCluster(args []string) error {
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	file := f.String("config", "kelvo.yml", "Cluster configuration (YAML)")
+	drainTimeout := f.Duration("drain-timeout", 30*time.Second, "Grace period for accepted queries before cancellation")
 	if err := f.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
+	}
+	if *drainTimeout < 0 || *drainTimeout > 24*time.Hour {
+		return query.NewError("INVALID_ARGUMENT", "Drain timeout must be between zero and 24 hours")
 	}
 	if f.NArg() != 0 {
 		return query.NewError("INVALID_ARGUMENT", "Unexpected positional arguments")
@@ -35,7 +41,7 @@ func runCluster(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if args[0] == "node" {
-		return runNode(ctx, *file)
+		return runNode(ctx, *file, *drainTimeout)
 	}
 	cfg, err := cluster.LoadGateway(*file)
 	if err != nil {
@@ -76,10 +82,10 @@ func runCluster(args []string) error {
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
-	return serveCluster(ctx, ln, tc, gateway, func() { _ = gateway.Close() })
+	return serveCluster(ctx, ln, tc, gateway, func() { _ = gateway.Close() }, *drainTimeout)
 }
 
-func runNode(ctx context.Context, file string) error {
+func runNode(ctx context.Context, file string, drainTimeout time.Duration) error {
 	cfg, err := cluster.LoadNode(file)
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
@@ -100,6 +106,26 @@ func runNode(ctx context.Context, file string) error {
 		return err
 	}
 	executor.SandboxPath = cfg.SandboxPath
+	cfg.RuntimeMetrics = telemetry.New()
+	executor.Metrics = cfg.RuntimeMetrics
+	var pool *admission.Pool
+	var overhead int64
+	if cfg.Resources != nil {
+		pool, err = cfg.Resources.NewPool()
+		if err != nil {
+			return err
+		}
+		cfg.RuntimeResources = pool
+		overhead = cfg.Resources.OverheadMB << 20
+		executor.ResourcePool, executor.ResourceOverheadBytes = pool, overhead
+		if catalogue.Acceleration != nil {
+			for _, d := range catalogue.Acceleration.Datasets {
+				if !cfg.Resources.Fits(d.Limits, true) {
+					return errors.New("refresh reservation exceeds node resources")
+				}
+			}
+		}
+	}
 	store, err := cluster.OpenStore(ctx, cfg.NATS, cfg.Policy, false)
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
@@ -123,24 +149,49 @@ func runNode(ctx context.Context, file string) error {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
 	runCtx, stop := context.WithCancel(ctx)
+	refreshCtx, stopRefresh := context.WithCancel(context.Background())
+	defer stopRefresh()
 	defer stop()
+	refreshGate := newRefreshGate()
 	var refreshDone chan error
 	if refreshQueue != nil {
 		refreshDone = make(chan error, 1)
-		go func() { refreshDone <- runClusterRefresh(runCtx, catalogue, cfg.SandboxPath, refreshQueue); stop() }()
+		go func() {
+			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate)
+			stop()
+		}()
 	}
-	result := serveCluster(runCtx, ln, tc, node, func() { _ = node.Close() })
+	lifecycle := &nodeLifecycle{Node: node, pool: pool, refresh: refreshGate, stopRefresh: stopRefresh}
+	cleanupDone := make(chan struct{})
+	var refreshErr error // read only after cleanupDone closes
+	result := serveCluster(runCtx, ln, tc, lifecycle, func() {
+		defer close(cleanupDone)
+		stopRefresh()
+		nodeDone := make(chan struct{})
+		go func() { _ = node.Close(); close(nodeDone) }()
+		if refreshDone != nil {
+			refreshErr = <-refreshDone
+		}
+		<-nodeDone
+	}, drainTimeout)
 	stop()
-	if refreshDone != nil {
-		if err := <-refreshDone; err != nil && !errors.Is(err, context.Canceled) && result == nil {
-			result = err
+	// serveCluster bounds both joins; never wait again after its deadline.
+	select {
+	case <-cleanupDone:
+		if refreshErr != nil && !errors.Is(refreshErr, context.Canceled) && result == nil {
+			result = refreshErr
+		}
+	default:
+		if result == nil {
+			result = errors.New("cluster shutdown deadline exceeded")
 		}
 	}
 	return result
 }
 
-func serveCluster(ctx context.Context, ln net.Listener, tc *tls.Config, handler http.Handler, closeHandler func()) error {
-	requests, cancel := context.WithCancel(ctx)
+func serveCluster(ctx context.Context, ln net.Listener, tc *tls.Config, handler http.Handler, closeHandler func(), drainTimeout time.Duration) error {
+	// Signal cancellation starts drain; it must not cancel active HTTP requests.
+	requests, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	s := &http.Server{Handler: handler, TLSConfig: tc, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10, BaseContext: func(net.Listener) context.Context { return requests }}
 	done := make(chan error, 1)
@@ -150,6 +201,11 @@ func serveCluster(ctx context.Context, ln net.Listener, tc *tls.Config, handler 
 	select {
 	case result = <-done:
 	case <-ctx.Done():
+		if drainer, ok := handler.(interface{ Drain(context.Context) error }); ok {
+			grace, stopGrace := context.WithTimeout(context.Background(), drainTimeout)
+			_ = drainer.Drain(grace)
+			stopGrace()
+		}
 	}
 	cancel()
 	closed := make(chan struct{})
@@ -173,4 +229,36 @@ func serveCluster(ctx context.Context, ln net.Listener, tc *tls.Config, handler 
 		return nil
 	}
 	return result
+}
+
+// Accepted node reservations may not have entered Execute yet. Keep the shared
+// pool open until Node.Drain finishes, while a separate gate stops new refreshes.
+type drainingNode interface {
+	http.Handler
+	BeginDrain()
+	Drain(context.Context) error
+}
+type nodeLifecycle struct {
+	Node        drainingNode
+	pool        *admission.Pool
+	refresh     *refreshGate
+	stopRefresh context.CancelFunc
+}
+
+func (n *nodeLifecycle) ServeHTTP(w http.ResponseWriter, r *http.Request) { n.Node.ServeHTTP(w, r) }
+func (n *nodeLifecycle) Drain(ctx context.Context) error {
+	n.Node.BeginDrain()
+	n.refresh.Drain()
+	err := n.Node.Drain(ctx)
+	if e := n.refresh.Wait(ctx); err == nil {
+		err = e
+	}
+	if n.pool != nil {
+		n.pool.Drain()
+		if e := n.pool.Wait(ctx); err == nil {
+			err = e
+		}
+	}
+	n.stopRefresh()
+	return err
 }
