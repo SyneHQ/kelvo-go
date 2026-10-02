@@ -2,6 +2,36 @@
 
 Status: a tested developer preview. Cluster, sandbox, connector and failure-handling acceptance is described below. These checks do not certify a production multi-tenant service, establish capacity for every database, or replace deployment-specific security and recovery testing.
 
+## Real CTE analytics, DuckDB and Polars
+
+The [analytical workflow report](analytics-workflow-benchmarks.md) records four
+full-quarter NYC Taxi analyses: daily rolling KPIs, hourly borough hotspots,
+route joins with distance bands, and monthly zone momentum. The input contains
+22,612,607 real trips and 265 lookup zones; 22,611,807 trips meet the common
+quarter cohort. Every output matches both direct ClickHouse references and
+independent raw-data aggregates with Python window/ranking checks.
+
+All **84 measured attempts** passed: 36 same-Parquet Azure runs across Kelvo,
+DuckDB and Polars, 24 Azure live-source runs and 24 Oracle micro live-source
+runs. All **28 separate preflights** passed too. The
+[reconciled summary](evidence/analytics-workflow-summary.json) binds every
+scheduled trial to its decoded artifact hash; [five regression checks](evidence/analytics-evidence-regression.json)
+cover tampered hashes, missing attempts, failed resource observations and
+conflicting validation evidence.
+
+Same-file Kelvo medians range from 0.484–1.497 s; Polars is fastest on the route
+workflow. These fresh-command measurements include Python imports, setup and
+output persistence. They do not isolate SQL-kernel speed. Oracle native medians
+range from 1.480–3.727 s with SQL executed in Azure ClickHouse; Oracle federation
+medians range from 33.490–62.275 s with local DuckDB computation and source
+transfer. All live runs used a 640 MiB service cap. The Azure federated hotspot
+case reached that cap and spilled; completed trials do not establish capacity
+headroom or sustained/concurrent production service.
+
+This campaign reuses the validated result-compression binary; it changes
+benchmark tooling and documentation, not the engine. [Runtime fingerprints](evidence/analytics-workflow-runtime.json)
+record the binary, scripts and installed native-library versions/hashes.
+
 ## Oracle micro VM and opt-in result compression
 
 The [Oracle micro VM capacity record](oracle-micro-capacity.md) covers actual

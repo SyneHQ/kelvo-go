@@ -63,6 +63,34 @@ Configuration references environment-variable names, never credentials. Sources 
 
 `serve` is a single-trust-domain mode. Cluster mode uses tenant-bound worker pools, NATS JetStream admission and mTLS result delivery; it does not create automatic per-user data policies or split a SQL plan across machines. See [cluster lifecycle](docs/cluster.md) and the [tenant deployment example](deploy/README.md).
 
+## Real analytics, measured
+
+Four ride-hailing-style workflows analyze **22,612,607 real NYC Taxi trips** using CTEs, joins, rolling windows and deterministic rankings. **All 84 measured runs passed exact-result validation**, following 28 separately validated preflights.
+
+Times below are **median seconds across three sequential trials**, from fresh process startup through Arrow output persistence and exit. Python imports are included. The [full report](docs/analytics-workflow-benchmarks.md) includes every trial, timing ranges, source bytes, memory, SQL and reproduction commands.
+
+**Identical local Parquet on Azure:** two execution threads, a 1536 MiB service cap, LZ4 Arrow output, DuckDB 1.5.6 and Polars 1.44.2.
+
+| Workflow | Kelvo / DuckDB | DuckDB / Python | Polars / Python |
+| --- | ---: | ---: | ---: |
+| Daily KPIs + 7-day windows | 0.484 | 0.634 | 0.636 |
+| Hourly borough hotspots | 1.035 | 1.052 | 1.464 |
+| Route joins + distance mix | 1.497 | 1.816 | 1.064 |
+| Monthly zone momentum | 0.606 | 0.691 | 0.749 |
+
+Kelvo and direct DuckDB use the same engine version; process startup and binding costs contribute to their differences. Polars uses equivalent native LazyFrame expressions and is fastest on the route workflow. These results support comparison of the tested complete commands, including their overhead.
+
+**Live ClickHouse source on Azure:** both native paths execute SQL in ClickHouse. Federation fetches source rows and computes in DuckDB on the named Kelvo host. Oracle is an Always Free `VM.Standard.E2.1.Micro` with 951 MiB RAM and a burstable 1/8 OCPU entitlement; its source connection uses SSH forwarding.
+
+| Workflow | Azure native | Oracle native | Azure federation | Oracle federation |
+| --- | ---: | ---: | ---: | ---: |
+| Daily KPIs + 7-day windows | 0.627 | 1.480 | 1.508 | 33.490 |
+| Hourly borough hotspots | 2.171 | 3.727 | 4.096 | 42.922 |
+| Route joins + distance mix | 1.822 | 2.358 | 3.180 | 62.275 |
+| Monthly zone momentum | 0.911 | 1.630 | 1.861 | 40.274 |
+
+All **24 Oracle runs** completed under a **640 MiB service cap**. Across these runs, peak sampled combined process RSS was **379.3 MiB** and peak charged cgroup memory was **347.4 MiB**. Source database and SSH memory are outside that cap. Azure's federated hotspot query reached its 640 MiB charged-memory cap and spilled to disk, so that profile has no demonstrated memory headroom. The report explains shared-page accounting, warm caches, returned versus fetched rows, and the limits of short trials on a burstable VM.
+
 ## Evidence and limits
 
 The [validation record](docs/validation.md) separates executed checks from protocol fixtures and unvalidated live-provider paths. It includes the exact scope of the local 10-million-row ClickHouse export measurement: **1.18–1.48 million rows/s**, including file persistence, on one native VM workload. It is not a general throughput or memory guarantee.

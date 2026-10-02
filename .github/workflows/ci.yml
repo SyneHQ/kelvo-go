@@ -17,6 +17,8 @@ jobs:
         with:
           go-version: '1.26.8'
           cache: true
+      - name: Verify analytical evidence reconciliation
+        run: python3 scripts/test_analytics_evidence.py --campaign docs/evidence/analytics-azure-snapshot.json --validation docs/evidence/analytics-validation-measured.json
       - run: go test -tags duckdb_arrow ./...
       - run: go test -race ./internal/transport/httpapi ./internal/sources/... ./internal/cluster ./internal/worker ./internal/acceleration ./internal/catalog ./internal/objectstore
       - run: go vet -tags duckdb_arrow ./...
