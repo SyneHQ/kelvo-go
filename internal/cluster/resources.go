@@ -11,6 +11,10 @@ import (
 // MemoryMB includes baseline headroom. OverheadMB covers allocations outside
 // DuckDB for each job. Operators must size both using workload measurements.
 type ResourceConfig struct {
+	QueryReserveSlots     int   `yaml:"query_reserve_slots,omitempty"`
+	QueryReserveMemoryMB  int64 `yaml:"query_reserve_memory_mb,omitempty"`
+	QueryReserveScratchMB int64 `yaml:"query_reserve_scratch_mb,omitempty"`
+
 	MaxConcurrent int   `yaml:"max_concurrent"`
 	MemoryMB      int64 `yaml:"memory_mb"`
 	BaselineMB    int64 `yaml:"baseline_mb"`
@@ -19,10 +23,10 @@ type ResourceConfig struct {
 }
 
 func (c ResourceConfig) NewPool() (*admission.Pool, error) {
-	if c.MemoryMB <= 0 || c.MemoryMB > 1<<30 || c.BaselineMB <= 0 || c.BaselineMB >= c.MemoryMB || c.OverheadMB <= 0 || c.OverheadMB > c.MemoryMB-c.BaselineMB || c.ScratchMB < 1 || c.ScratchMB > 1<<30 || c.MaxConcurrent < 1 || c.MaxConcurrent > 64 {
+	if c.QueryReserveMemoryMB < 0 || c.QueryReserveMemoryMB > 1<<30 || c.QueryReserveScratchMB < 0 || c.QueryReserveScratchMB > 1<<30 || c.MemoryMB <= 0 || c.MemoryMB > 1<<30 || c.BaselineMB <= 0 || c.BaselineMB >= c.MemoryMB || c.OverheadMB <= 0 || c.OverheadMB > c.MemoryMB-c.BaselineMB || c.ScratchMB < 1 || c.ScratchMB > 1<<30 || c.MaxConcurrent < 1 || c.MaxConcurrent > 64 {
 		return nil, errors.New("invalid node resource budgets")
 	}
-	return admission.New(admission.Limits{MaxConcurrent: c.MaxConcurrent, MemoryBytes: (c.MemoryMB - c.BaselineMB) << 20, ScratchBytes: c.ScratchMB << 20})
+	return admission.New(admission.Limits{ReservedSlots: c.QueryReserveSlots, ReservedMemoryBytes: c.QueryReserveMemoryMB << 20, ReservedScratchBytes: c.QueryReserveScratchMB << 20, MaxConcurrent: c.MaxConcurrent, MemoryBytes: (c.MemoryMB - c.BaselineMB) << 20, ScratchBytes: c.ScratchMB << 20})
 }
 
 // Fits fails closed for invalid limits. Node startup checks every dataset in
@@ -38,5 +42,11 @@ func (c ResourceConfig) Fits(l query.Limits, refresh bool) bool {
 	if refresh {
 		scratch += l.MaxBytes
 	}
-	return (int64(l.MemoryMB)+c.OverheadMB)<<20 <= (c.MemoryMB-c.BaselineMB)<<20 && scratch <= c.ScratchMB<<20
+	memoryCapacity := (c.MemoryMB - c.BaselineMB) << 20
+	scratchCapacity := c.ScratchMB << 20
+	if refresh {
+		memoryCapacity -= c.QueryReserveMemoryMB << 20
+		scratchCapacity -= c.QueryReserveScratchMB << 20
+	}
+	return (int64(l.MemoryMB)+c.OverheadMB)<<20 <= memoryCapacity && scratch <= scratchCapacity
 }

@@ -25,35 +25,45 @@ type Limits struct {
 	MaxConcurrent int
 	MemoryBytes   int64
 	ScratchBytes  int64
+	// Protected capacity is unavailable to background work. Interactive work
+	// may use all idle capacity; these are not separate preallocated pools.
+	ReservedSlots        int
+	ReservedMemoryBytes  int64
+	ReservedScratchBytes int64
 }
 
 type Request struct {
+	Background   bool
 	MemoryBytes  int64
 	ScratchBytes int64
 }
 
 // Snapshot contains aggregate accounting only; no query or tenant identifiers.
 type Snapshot struct {
-	Limits   Limits
-	Used     Request
-	Active   int
-	Waiting  int
-	Draining bool
+	BackgroundActive int
+	BackgroundUsed   Request
+	Limits           Limits
+	Used             Request
+	Active           int
+	Waiting          int
+	Draining         bool
 }
 
 type Pool struct {
-	mu       sync.Mutex
-	limits   Limits
-	used     Request
-	active   int
-	waiting  int
-	draining bool
-	changed  chan struct{}
+	backgroundActive int
+	backgroundUsed   Request
+	mu               sync.Mutex
+	limits           Limits
+	used             Request
+	active           int
+	waiting          int
+	draining         bool
+	changed          chan struct{}
 }
 
 // New rejects invalid capacity instead of silently permitting unlimited work.
 func New(limits Limits) (*Pool, error) {
-	if limits.MaxConcurrent < 1 || limits.MemoryBytes <= 0 || limits.ScratchBytes < 0 {
+	if limits.MaxConcurrent < 1 || limits.MemoryBytes <= 0 || limits.ScratchBytes < 0 || limits.ReservedSlots < 0 || limits.ReservedSlots >= limits.MaxConcurrent || limits.ReservedMemoryBytes < 0 || limits.ReservedMemoryBytes > limits.MemoryBytes || limits.ReservedScratchBytes < 0 || limits.ReservedScratchBytes > limits.ScratchBytes {
 		return nil, ErrInvalid
 	}
 	return &Pool{limits: limits, changed: make(chan struct{})}, nil
@@ -72,18 +82,32 @@ func (p *Pool) validate(r Request) error {
 	if r.MemoryBytes > p.limits.MemoryBytes || r.ScratchBytes > p.limits.ScratchBytes {
 		return ErrOversize
 	}
+	if r.Background && (r.MemoryBytes > p.limits.MemoryBytes-p.limits.ReservedMemoryBytes || r.ScratchBytes > p.limits.ScratchBytes-p.limits.ReservedScratchBytes) {
+		return ErrOversize
+	}
 	return nil
 }
 
 func (p *Pool) fits(r Request) bool {
 	// Subtraction avoids signed overflow for capacities near MaxInt64.
-	return p.active < p.limits.MaxConcurrent && r.MemoryBytes <= p.limits.MemoryBytes-p.used.MemoryBytes && r.ScratchBytes <= p.limits.ScratchBytes-p.used.ScratchBytes
+	if p.active >= p.limits.MaxConcurrent || r.MemoryBytes > p.limits.MemoryBytes-p.used.MemoryBytes || r.ScratchBytes > p.limits.ScratchBytes-p.used.ScratchBytes {
+		return false
+	}
+	if !r.Background {
+		return true
+	}
+	return p.backgroundActive < p.limits.MaxConcurrent-p.limits.ReservedSlots && r.MemoryBytes <= p.limits.MemoryBytes-p.limits.ReservedMemoryBytes-p.backgroundUsed.MemoryBytes && r.ScratchBytes <= p.limits.ScratchBytes-p.limits.ReservedScratchBytes-p.backgroundUsed.ScratchBytes
 }
 
 func (p *Pool) reserve(r Request) *Reservation {
 	p.active++
 	p.used.MemoryBytes += r.MemoryBytes
 	p.used.ScratchBytes += r.ScratchBytes
+	if r.Background {
+		p.backgroundActive++
+		p.backgroundUsed.MemoryBytes += r.MemoryBytes
+		p.backgroundUsed.ScratchBytes += r.ScratchBytes
+	}
 	return &Reservation{pool: p, request: r}
 }
 
@@ -156,6 +180,11 @@ func (r *Reservation) Release() {
 		p.active--
 		p.used.MemoryBytes -= r.request.MemoryBytes
 		p.used.ScratchBytes -= r.request.ScratchBytes
+		if r.request.Background {
+			p.backgroundActive--
+			p.backgroundUsed.MemoryBytes -= r.request.MemoryBytes
+			p.backgroundUsed.ScratchBytes -= r.request.ScratchBytes
+		}
 		p.notify()
 	})
 }
@@ -195,5 +224,5 @@ func (p *Pool) Wait(ctx context.Context) error {
 func (p *Pool) Snapshot() Snapshot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return Snapshot{Limits: p.limits, Used: p.used, Active: p.active, Waiting: p.waiting, Draining: p.draining}
+	return Snapshot{BackgroundActive: p.backgroundActive, BackgroundUsed: p.backgroundUsed, Limits: p.limits, Used: p.used, Active: p.active, Waiting: p.waiting, Draining: p.draining}
 }
