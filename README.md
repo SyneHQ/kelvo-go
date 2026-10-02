@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a> · <a href="docs/usage.md">Documentation</a> · <a href="#execution-and-sources">Sources</a> · <a href="docs/validation.md">Benchmarks</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="brand/README.md">Brand</a>
+  <a href="#quick-start">Quick start</a> · <a href="#how-kelvo-fits">Architecture</a> · <a href="docs/usage.md">Documentation</a> · <a href="#execution-and-sources">Sources</a> · <a href="docs/validation.md">Benchmarks</a> · <a href="CONTRIBUTING.md">Contributing</a> · <a href="brand/README.md">Brand</a>
 </p>
 
 # Kelvo
@@ -29,6 +29,14 @@ bin/kelvo query --config examples/kelvo.yml --sources sales \
 ```
 
 The result is Arrow IPC, not JSON. Read the full [usage guide](docs/usage.md) for HTTP lifecycle, configuration, parameters, limits, and cluster commands.
+
+## How Kelvo fits
+
+Put Kelvo between your data sources and your software. Keep source-native execution where it fits, join supported inputs with DuckDB, and deliver typed Arrow results to notebooks, agents, dashboards and workflows you build. Optional Parquet snapshots reduce repeated source reads; tenant-bound worker pools distribute independent queries.
+
+[![Kelvo architecture: apps, notebooks and jobs submit requests to a Go coordinator. Disposable processes run native queries or DuckDB federation and return Arrow results. Optional Parquet acceleration and NATS cluster dispatch extend the workflow.](brand/kelvo-architecture.png)](brand/kelvo-architecture.svg)
+
+[Read the workflow and execution boundaries](docs/architecture.md) · [Open the full-size diagram](brand/kelvo-architecture.svg)
 
 ## Execution and sources
 
