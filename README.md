@@ -43,11 +43,13 @@ Put Kelvo between your data sources and your software. Keep source-native execut
 | Path | Sources | Scope |
 | --- | --- | --- |
 | DuckDB federation | CSV, Parquet, DuckDB, SQLite, PostgreSQL, MySQL | Join selected sources with DuckDB SQL. Execution materializes before Arrow delivery. |
-| Optional native federation | ClickHouse, PostgreSQL and MySQL tables through the pinned Go/C++ Arrow bridge | Source column/filter pushdown; joins and aggregates in DuckDB. [Build and limits](docs/federation.md). |
+| Optional native federation | ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and Databricks through the pinned Go/C++ Arrow bridge | Column and supported integer/boolean filter pushdown; other scalar filters, joins and aggregates in DuckDB. [Build and limits](docs/federation.md). |
 | Native connectors | ClickHouse, PostgreSQL/MySQL families, SQL Server, Oracle, MongoDB, Snowflake, Databricks, BigQuery, D1, Trino/Presto, Elasticsearch, Exasol, Spanner, Ignite 2, Athena, DynamoDB, Cosmos DB, Flight SQL | Query one configured connection using its supported SQL or protocol. |
 | External adapters | Additional engines through an explicitly configured service | Connect a separately operated `dbapi` or Flight SQL adapter. Drivers are not bundled. |
 
 The [44-engine routing matrix](docs/source-coverage.md) distinguishes native connectors, protocol families, and external adapters. It is a coverage checklist, not 44 live-validated databases. Find provider setup, supported types, and query examples in the [source guides](docs/usage.md#source-guides).
+
+Need another federation source? Implement the public Go [`federation.Driver`](federation/federation.go) interface and link your adapter into Kelvo. The [adapter guide](docs/federation-adapters.md) covers configuration, typed scan plans, Arrow ownership, a working example, and validation requirements.
 
 ## Dataset acceleration
 

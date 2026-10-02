@@ -2,6 +2,60 @@
 
 Status: a tested developer preview. Cluster, sandbox, connector and failure-handling acceptance is described below. These checks do not certify a production multi-tenant service, establish capacity for every database, or replace deployment-specific security and recovery testing.
 
+## Expanded federation and public adapter SDK
+
+The optional Go/C++ Arrow bridge now supports **eight built-in adapters**:
+ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and
+Databricks. The [adapter guide](federation-adapters.md) explains exact namespaces,
+supported scalar types, provider limits and how to implement another source
+through the public `github.com/SYNEHQ/kelvo-go/federation` package.
+
+The [build record](evidence/federation-expansion.json) identifies the tested
+Linux amd64 binary and source hashes. Both ordinary and bridge configurations
+passed all-package tests and vet on the Azure VM. The public SDK, catalog,
+federation, bridge, DuckDB and worker packages also passed race tests with
+`GOEXPERIMENT=cgocheck2`. The pinned versions are Go 1.26.8, DuckDB 1.5.6,
+duckdb-go 2.10506.0 and Arrow Go 18.5.1.
+
+[Live SQL Server 2022 acceptance](evidence/federation-sqlserver.json) passed all
+25 checks and verifies
+exact Arrow types and values, including integer extrema, decimal, BIT, NULL and
+100 ns timestamps; source projection and integer/Boolean filters; self-joins;
+and a SQL Server + ClickHouse + CSV CTE, join and window query. Checks also cover
+verified TLS with unknown-CA/hostname negatives, SELECT-only grants, selected
+namespaces, scan row/byte limits, observed blocked-query cancellation, deadlines
+and recovery. Owned fixtures were removed and the existing ClickHouse service
+and its 100-million-row benchmark dataset were preserved. This is functional
+acceptance on a dedicated test VM, not a new throughput measurement.
+The [live acceptance harness](../scripts/federation_sql_acceptance.py) records
+fixture ownership and removes its resources after a successful run.
+
+Verified HTTPS protocol fixtures cover Snowflake, BigQuery and Databricks
+schema/value fidelity, result pages, failure handling and cancellation. A real
+DuckDB execution joins BigQuery and Databricks fixture results with CSV data and
+checks CTEs, aggregates and windows. These fixtures do **not** validate live
+warehouse grants, remote query plans or billing. Live Oracle TCPS, Snowflake,
+BigQuery and Databricks federation acceptance remains pending.
+
+The bridge now advertises source filter support only for integer/Boolean
+columns. String, decimal, floating-point and temporal predicates, including
+their NULL checks, stay in DuckDB. Tests use contrasting rows to verify local
+filtering rather than silent predicate loss. Unsupported required predicates
+still fail explicitly, and user SQL cannot call the private pointer-based
+scanner functions.
+
+[Public SDK acceptance](evidence/federation-adapter-example.json) compiles the
+guide's exact example as an external module importing only the public package.
+All 13 CLI/direct-worker cases passed, including a custom adapter's CSV join,
+integer pushdown, local string filtering, counts, separate worker execution,
+and source/result limits without publishing partial exports. The core checks
+table selection, schema and metadata, scan admission and borrowed-batch
+ownership. Adapters remain trusted compiled-in code and must implement their
+own source authorization, verified transport and cleanup; this API is not a
+security sandbox for untrusted plugins.
+The [SDK acceptance harness](../scripts/test_federation_adapter_example.py)
+reproduces the external-module and worker checks in a scratch checkout.
+
 ## Real CTE analytics, DuckDB and Polars
 
 The [analytical workflow report](analytics-workflow-benchmarks.md) records four

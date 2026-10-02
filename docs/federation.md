@@ -1,11 +1,13 @@
 # Native DuckDB federation
 
 Kelvo keeps DuckDB as its embedded federation engine. The optional native bridge
-connects DuckDB's Arrow scanner to the existing Go ClickHouse, PostgreSQL and
-MySQL connectors. DuckDB
+connects DuckDB's Arrow scanner to the existing Go ClickHouse, PostgreSQL,
+MySQL, SQL Server, Oracle, Snowflake, BigQuery and Databricks connectors. DuckDB
 plans joins and local computation; the connector fetches projected columns and
 applies supported filters at the source. There is no additional server process,
-Rust runtime, row-by-row JSON conversion or unsigned DuckDB extension.
+Rust runtime or unsigned DuckDB extension. Source decoding follows each native
+connector's protocol; cloud SQL APIs currently decode their JSON result pages
+into typed Arrow batches.
 
 This is an opt-in Linux amd64 implementation, with explicit conformance and
 deployment limits. It does not make every native connector a federation adapter.
@@ -48,12 +50,19 @@ For PostgreSQL, the DSN chooses the database and each table requires an explicit
 namespace field must be absent; Kelvo does not infer `search_path`. See
 [the three-source example](../examples/federation-relational.yml).
 
+For SQL Server, Snowflake and Databricks, specify both `database` and `schema`.
+Oracle requires `schema` and omits `database`. BigQuery uses `database` for the
+data project and `schema` for the dataset. Use exact remote case and names.
+See [the five additional adapter configurations](federation-adapters.md#configure-exact-remote-names),
+including separate BigQuery job/billing project settings and cloud API limits.
+
 PostgreSQL requires its native verified-TLS URL and MySQL its native verified-TLS
 DSN, both using system CA roots. The signed-extension connection-string format
 is not the native Go adapter format. Follow the [relational source guide](sources-relational.md).
-Use database-enforced
-read-only accounts; each relational scan also uses a rollback-only read-only
-transaction. Scans on different sources do not share a transaction snapshot.
+Use database-enforced read-only accounts. PostgreSQL, MySQL and Oracle scans
+also use rollback-only read-only transactions. SQL Server uses rollback-only
+transactions and relies on database grants for read-only enforcement. Scans on
+different sources do not share a transaction snapshot.
 
 `max_scan_rows` and `max_scan_bytes` bound each source scan independently of the
 final result. If omitted, the query's corresponding limits apply. Exceeding a
@@ -68,7 +77,8 @@ rather than waiting on a slot that another join input might hold.
 | --- | --- |
 | Requested columns | Selected in source SQL; Arrow batches keep the required order |
 | Integer/boolean comparisons | Exact typed constants applied using the selected source's dialect |
-| NULL checks and supported AND/OR combinations | Applied at the source when passed down by the optimizer; otherwise evaluated by DuckDB |
+| NULL checks and supported AND/OR combinations on integer/boolean columns | Applied at the source when passed down by the optimizer; otherwise evaluated by DuckDB |
+| String, decimal, floating-point, temporal and other column predicates | Retained in DuckDB, including NULL checks; these columns do not advertise source filter pushdown |
 | Required pushed predicates outside that subset | Explicit unsupported error |
 | Residual expressions retained by DuckDB | Evaluated by DuckDB |
 | Joins, aggregates, ordering and LIMIT | DuckDB; no general source pushdown for these operators |
@@ -76,13 +86,16 @@ rather than waiting on a slot that another join input might hold.
 The bridge receives typed optimizer predicates rather than rewriting the user's
 SQL. It validates every requested column against the acquired schema. Integer
 constants retain their width and signedness; no floating-point conversion is
-used. String, floating-point and temporal comparison pushdown needs additional
-semantic conformance, including collation and timezone behavior. A required
+used. A private copy of the pinned Arrow scanner advertises integer/boolean
+filter support only. String, decimal, floating-point and temporal predicates stay
+in DuckDB so source collation, rounding and timezone rules cannot silently change
+them. This may fetch more rows and reach a scan limit sooner. A required
 predicate cannot be discarded: DuckDB assumes the producer has applied it.
 
-ClickHouse supplies ArrowStream directly. PostgreSQL/MySQL use their Go driver's
-row protocol and the existing exact row-to-Arrow conversion; these are not
-columnar source wire protocols. The source connector owns decoding, source limits
+ClickHouse supplies ArrowStream directly. PostgreSQL, MySQL, SQL Server and Oracle
+use their Go driver's row protocol and exact row-to-Arrow conversion. Snowflake,
+BigQuery and Databricks use their existing paginated JSON SQL APIs. These paths are
+not columnar source wire protocols. The source connector owns decoding, source limits
 and cancellation.
 Each scan hands off one retained batch and waits for the consumer to advance.
 The C interface pins exported Go buffers until DuckDB releases them. Different
@@ -95,6 +108,23 @@ Successful statistics include `federation` entries with source/table identity,
 scan count, fetched rows, batches and logical Arrow bytes. These measure data
 received by Kelvo, not rows examined inside the source. Provider query profiling
 is needed to establish source CPU, disk reads and index effectiveness.
+
+## Add an adapter
+
+The public [`github.com/SYNEHQ/kelvo-go/federation`](../federation/federation.go)
+package defines `Driver`, `Relation`, typed scan plans and synchronous Arrow
+sinks. Trusted adapters register an exact custom source type during initialization;
+they cannot replace built-ins or load code from a query. Core code keeps table
+allowlists, schema checks, scan admission, delivery limits and batch ownership.
+The [contributor guide](federation-adapters.md) includes a complete example and
+the required correctness, cancellation and security checks.
+
+## Validation
+
+The [expanded federation record](validation.md#expanded-federation-and-public-adapter-sdk)
+covers live SQL Server joins, warehouse protocol fixtures, both build
+configurations and the public adapter SDK. It distinguishes those results from
+the four new adapters still awaiting live provider acceptance.
 
 [Live validation](validation.md#duckdb-custom-federation-adapter) demonstrates
 10-row source filtering from a million-row table, exact values, independent

@@ -1,7 +1,8 @@
 # Pinned native Arrow scan bridge
 
-This optional C++ shim connects DuckDB 1.5.6's built-in `arrow_scan` planning
-callbacks to a Go `array.RecordReader` producer. It does not install or load an
+This optional C++ shim copies DuckDB 1.5.6's built-in `arrow_scan` into a private,
+per-factory table function with Kelvo's type-pushdown capabilities. Its planning
+callbacks connect to a Go `array.RecordReader` producer. It does not install or load an
 unsigned DuckDB extension and does not create a separate execution service.
 Baseline builds select the unavailable stub.
 
@@ -39,9 +40,11 @@ DuckDB planning callback ABI stable.
 
 The producer receives ordered columns and a typed predicate tree. DuckDB removes
 pushed filters from its own scan, so every required filter must be executed
-exactly or the query fails. Initial predicates support integer/boolean
-comparisons, null checks, and conjunctions. Unsupported required filters fail
-before producing a source stream. Only explicitly optional filter wrappers may
+exactly or the query fails. Predicates on integer/boolean columns support
+comparisons, null checks, and conjunctions. Other column types do not advertise
+filter pushdown: DuckDB retains their expressions and NULL checks locally.
+Unsupported required filters still fail before producing a source stream.
+Only explicitly optional filter wrappers may
 be omitted. Ordinary residual expressions left above the Arrow scan remain
 DuckDB's responsibility. The pinned optimizer normally requests one physical
 column for `count(*)`; if it requests none, the producer supplies a private
@@ -56,7 +59,8 @@ Reader errors, cancellation, and callback panics are reported as failures;
 diagnostic panic values never enter public errors. The adapter must still enforce
 source scan, byte, row, memory, and concurrency budgets.
 
-Direct user calls to `arrow_scan` and `arrow_scan_dumb` must remain denied. Only
+Direct user calls to `arrow_scan`, `arrow_scan_dumb` and every private
+`kelvo_arrow_scan_` function must remain denied before source setup. Only
 trusted setup registers pointer-bearing views. Source identity, credential
 selection, and read-only SQL generation belong to the enclosing executor and
 native adapter, not to arbitrary table-function arguments.

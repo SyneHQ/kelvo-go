@@ -158,7 +158,7 @@ def render(serif, sans, database_marks, architecture_marks):
     b.text('Joins, CTEs, windows and aggregates.', 480, 939, 22, MUTED, width=640)
     b.rect(480, 962, 304, 73, BG)
     b.text('Opt-in bridge + files', 500, 991, 21, width=266)
-    b.text('ClickHouse / Postgres / MySQL', 500, 1018, 17, MUTED, width=266)
+    b.text('8 native adapters + file sources', 500, 1018, 17, MUTED, width=266)
     b.rect(808, 962, 312, 73, SOFT, '#F1CDBB')
     b.text('Parquet snapshots', 830, 991, 21, width=270)
     b.text('Pinned dataset generations', 830, 1018, 16, MUTED, width=270)

@@ -19,10 +19,10 @@ bundled driver or evidence that the backend has been tested.
 | `sqlite` | SQL driver/file | DuckDB SQLite extension, read-only file |
 | `duckdb` | Embedded SQL/file | DuckDB federation |
 | `cockroachdb` | PostgreSQL driver | Native protocol-family |
-| `sqlserver` | SQL driver | Native |
+| `sqlserver` | SQL driver | Native; opt-in DuckDB bridge federation |
 | `clickhouse` | Dedicated client | Native ArrowStream; opt-in DuckDB bridge federation |
 | `cosmosdb` | SQL driver | Native NoSQL query REST API; bounded JSON documents |
-| `oracle` | SQL driver | Native |
+| `oracle` | SQL driver | Native; opt-in DuckDB bridge federation |
 | `dynamodb` | SQL driver | Native read-only PartiQL; lossless AttributeValue documents |
 | `trino` | SQL driver | Native HTTPS statement protocol |
 | `clickhouse_lambda` | Lambda SQL driver | External adapter |
@@ -42,9 +42,9 @@ bundled driver or evidence that the backend has been tested.
 | `facebook_ads` | API adapter | External adapter |
 | `spark` | External JDBC bridge | External adapter |
 | `d1` | HTTP/SQL driver | Native HTTPS API |
-| `snowflake` | Warehouse adapter | Native SQL API |
-| `bigquery` | Warehouse adapter | Native jobs API |
-| `databricks` | Warehouse adapter | Native Statement Execution API |
+| `snowflake` | Warehouse adapter | Native SQL API; opt-in DuckDB bridge federation |
+| `bigquery` | Warehouse adapter | Native jobs API; opt-in DuckDB bridge federation |
+| `databricks` | Warehouse adapter | Native Statement Execution API; opt-in DuckDB bridge federation |
 | `redshift` | Warehouse adapter | Native PostgreSQL protocol-family |
 | `mongodb` | Document adapter | Native aggregation and restricted SQL |
 | `cassandra` | Wide-column adapter | External adapter |
@@ -59,7 +59,7 @@ bundled driver or evidence that the backend has been tested.
 | `google_sheets` | API snapshot into DuckDB | External adapter |
 
 The native expansion is configured in [sources-native.yml](../deploy/examples/sources-native.yml).
-The [native bridge](federation.md) adds selected-table DuckDB federation for ClickHouse, PostgreSQL and MySQL. The other native routes execute at one configured source; they do not add DuckDB federation,
+The [native bridge](federation.md) adds selected-table DuckDB federation for ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and Databricks. [Additional compiled-in adapters](federation-adapters.md) can implement the public Go contract. The other native routes execute at one configured source; they do not add DuckDB federation,
 metadata browsing, write APIs, or CDC. Athena retains query results in the configured
 S3 location. DynamoDB and Cosmos DB preserve document payloads in Arrow Binary;
 they do not infer a tabular schema. Consult the [source guides](usage.md#source-guides)
@@ -85,8 +85,9 @@ Use these indicators independently:
 | PostgreSQL, MySQL | Eligible | Yes; signed extensions or [custom Go adapters](federation.md) | Live acceleration acceptance pending; native/federation tests are separate |
 | MariaDB, CockroachDB, AlloyDB, Redshift | Eligible; protocol-family compatibility | Not through these native routes | Product-specific acceleration acceptance pending |
 | ClickHouse | Eligible | [Opt-in native bridge](federation.md); supported column/filter pushdown | Verified: [10-million-row snapshot and exact aggregates](evidence/acceleration-clickhouse.json) |
-| SQL Server, Oracle, Exasol, Ignite 2 | Eligible | No | Live acceleration acceptance pending |
-| Snowflake, Databricks, BigQuery, Spanner, Athena, Elasticsearch | Eligible | No | Live acceleration acceptance pending |
+| SQL Server, Oracle | Eligible | [Opt-in native bridge](federation-adapters.md); selected tables and supported scalar types | Live acceleration acceptance pending; federation validation is separate |
+| Snowflake, Databricks, BigQuery | Eligible | [Opt-in native bridge](federation-adapters.md); native API transfer/type limits apply | Live acceleration acceptance pending; federation validation is separate |
+| Exasol, Ignite 2, Spanner, Athena, Elasticsearch | Eligible | No | Live acceleration acceptance pending |
 | Trino, Presto, Flight SQL | Eligible | No; the remote engine may itself federate | Live acceleration acceptance pending |
 | Cloudflare D1 | Conditional: value-inferred schema | No | Live acceleration acceptance pending |
 | MongoDB | Eligible through restricted SQL or read-only aggregation pipeline; BSON documents stay binary | No | [Live MongoDB 8.0.32 refresh, exact values and rejected writes](evidence/mongodb-acceleration.json) |
