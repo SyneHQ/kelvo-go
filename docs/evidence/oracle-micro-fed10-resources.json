@@ -1,0 +1,303 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-02T03:34:16.618078+00:00",
+  "state": "failed",
+  "unit": "kelvo-micro-http-fed10.service",
+  "binary_sha256": "51ab67046f31debe0a9358c24d5ab732380796ddcb2eb0bd352c4c9220e61fff",
+  "launcher_sha256": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1",
+  "listen_host": "127.0.0.1",
+  "port": 18626,
+  "errors": [
+    "service_cgroup_unavailable_or_changed",
+    "service_oom_observed"
+  ],
+  "control_observation": {
+    "status_timeouts": 0,
+    "successful_status_observations": 54,
+    "last_timeout_elapsed_seconds": null,
+    "initial_limits_verified": true,
+    "final_status_available": true
+  },
+  "limits": {
+    "memory_max_mib": 640,
+    "memory_swap_max_bytes": 0,
+    "tasks_max": 256,
+    "cpu_weight": 20,
+    "concurrency": 10,
+    "max_queries": 32,
+    "query_memory_mib": 128,
+    "threads": 2,
+    "query_temp_mib": 64,
+    "query_max_rows": 1000000,
+    "query_max_bytes": 33554432,
+    "query_timeout_seconds": 180,
+    "query_handle_ttl_seconds": 300,
+    "monitor_seconds": 450,
+    "service_runtime_seconds": 600
+  },
+  "scratch_name": "http-fed10",
+  "effective_cli_options": {
+    "sandbox": true,
+    "listen": "127.0.0.1:18626",
+    "concurrency": 10,
+    "max-queries": 32,
+    "memory-mb": 128,
+    "threads": 2,
+    "temp-mb": 64,
+    "max-rows": 1000000,
+    "max-bytes": 33554432,
+    "timeout": "180s",
+    "result-ttl": "5m"
+  },
+  "admission": {
+    "submission": "POST creates a retained handle without acquiring an execution permit",
+    "execution": "GET results acquires a permit without waiting; full capacity returns HTTP 429 and leaves the handle unclaimed",
+    "permit_release": "After response completion or failure and worker teardown",
+    "automatic_execution_queue": false
+  },
+  "limitations": [
+    "Resources cover the whole HTTP service interval, including idle time and readiness probes.",
+    "Process RSS and CPU are sampled every 100 ms and may miss brief peaks or workers.",
+    "Cgroup memory includes charged page cache and is separate from RSS.",
+    "Source SSH forwarding and client SSH transport processes run outside this service cgroup; their CPU and memory are excluded.",
+    "The sampled simultaneous-worker count may miss workers between samples; admitted HTTP requests can hold a permit before worker startup or after worker exit.",
+    "TasksMax counts runtime threads as well as processes; pids.events is separate evidence from memory exhaustion.",
+    "Systemd status-read timeouts are counted and retried inside the monitor deadline; they do not establish service failure or OOM.",
+    "Final counters precede forced service teardown; disappeared cgroups retain only last sampled counters.",
+    "NoNewPrivs and Seccomp flags alone do not prove the full Landlock policy."
+  ],
+  "ready_at": "2026-10-02T03:34:16.907176+00:00",
+  "metrics": {
+    "samples": 587,
+    "interval_seconds": 0.1,
+    "maximum_sample_gap_seconds": 0.7004891209944617,
+    "sampling_errors": [],
+    "processes": [
+      {
+        "pid": 30613,
+        "role": "coordinator",
+        "rss_bytes_peak": 61345792,
+        "no_new_privs_observed": false,
+        "seccomp_mode_observed": 0,
+        "seccomp_filters_observed": 0,
+        "sampled_user_seconds": 0.19,
+        "sampled_system_seconds": 0.35
+      },
+      {
+        "pid": 30711,
+        "role": "worker",
+        "rss_bytes_peak": 113008640,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.5,
+        "sampled_system_seconds": 0.35
+      },
+      {
+        "pid": 30712,
+        "role": "worker",
+        "rss_bytes_peak": 113205248,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.77,
+        "sampled_system_seconds": 0.42
+      },
+      {
+        "pid": 30713,
+        "role": "worker",
+        "rss_bytes_peak": 112979968,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.53,
+        "sampled_system_seconds": 0.52
+      },
+      {
+        "pid": 30714,
+        "role": "worker",
+        "rss_bytes_peak": 112885760,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.46,
+        "sampled_system_seconds": 0.32
+      },
+      {
+        "pid": 30715,
+        "role": "worker",
+        "rss_bytes_peak": 112758784,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.41,
+        "sampled_system_seconds": 0.41
+      },
+      {
+        "pid": 30716,
+        "role": "worker",
+        "rss_bytes_peak": 115240960,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.51,
+        "sampled_system_seconds": 0.41
+      },
+      {
+        "pid": 30717,
+        "role": "worker",
+        "rss_bytes_peak": 119635968,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 1.39,
+        "sampled_system_seconds": 0.67
+      },
+      {
+        "pid": 30718,
+        "role": "worker",
+        "rss_bytes_peak": 114270208,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.71,
+        "sampled_system_seconds": 0.39
+      },
+      {
+        "pid": 30719,
+        "role": "worker",
+        "rss_bytes_peak": 114827264,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.61,
+        "sampled_system_seconds": 0.45
+      },
+      {
+        "pid": 30720,
+        "role": "worker",
+        "rss_bytes_peak": 115494912,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.29,
+        "sampled_system_seconds": 0.28
+      }
+    ],
+    "observed_process_counts": {
+      "coordinator": 1,
+      "worker": 10
+    },
+    "sampled_cpu_seconds_by_role": {
+      "coordinator": {
+        "user": 0.19,
+        "system": 0.35
+      },
+      "worker": {
+        "user": 6.18,
+        "system": 4.22
+      }
+    },
+    "sampled_rss_bytes_peak": {
+      "coordinator": 61345792,
+      "worker": 1141161984,
+      "combined": 1201852416
+    },
+    "cgroup_path": "/sys/fs/cgroup/system.slice/kelvo-micro-http-fed10.service",
+    "cgroup_last_observed": {
+      "memory.current": 369414144,
+      "memory.peak": 671088640,
+      "memory.swap.current": 0,
+      "pids.peak": 107,
+      "memory.events": {
+        "low": 0,
+        "high": 0,
+        "max": 700,
+        "oom": 12,
+        "oom_kill": 7,
+        "oom_group_kill": 1,
+        "sock_throttled": 10
+      },
+      "memory.events.local": {
+        "low": 0,
+        "high": 0,
+        "max": 700,
+        "oom": 12,
+        "oom_kill": 7,
+        "oom_group_kill": 1,
+        "sock_throttled": 10
+      },
+      "cpu.stat": {
+        "usage_usec": 11463509,
+        "user_usec": 6308015,
+        "system_usec": 5155494,
+        "nice_usec": 0,
+        "core_sched.force_idle_usec": 0,
+        "nr_periods": 0,
+        "nr_throttled": 0,
+        "throttled_usec": 0,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "pids.events": {
+        "max": 0
+      }
+    },
+    "cgroup_exists_at_final_sample": false,
+    "cgroup_memory_current_bytes_sampled_peak": 671088640,
+    "cgroup_memory_peak_bytes": 671088640,
+    "host_memavailable_bytes_baseline": 720957440,
+    "host_memavailable_bytes_minimum": 52097024,
+    "host_cpu_delta": {
+      "total_ticks": 12236,
+      "steal_ticks": 2920,
+      "clock_ticks_per_second": 100,
+      "steal_seconds": 29.2,
+      "steal_fraction": 0.2386400784570121
+    },
+    "run_files_bytes_peak": {
+      "logical_bytes": 2738,
+      "allocated_bytes": 16384
+    },
+    "scratch_files_bytes_peak": {
+      "logical_bytes": 0,
+      "allocated_bytes": 0
+    },
+    "filesystem_available_bytes_baseline": 1901629440,
+    "filesystem_available_bytes_minimum": 1901539328,
+    "cgroup_cpu_delta_from_first_sample": {
+      "usage_usec": 11387462,
+      "user_usec": 6258584,
+      "system_usec": 5128878,
+      "nice_usec": 0,
+      "core_sched.force_idle_usec": 0,
+      "nr_periods": 0,
+      "nr_throttled": 0,
+      "throttled_usec": 0,
+      "nr_bursts": 0,
+      "burst_usec": 0
+    },
+    "coordinator_role": "kelvo serve",
+    "sampled_simultaneous_workers_peak": 10
+  },
+  "unit_before_stop": {
+    "ActiveState": "failed",
+    "SubState": "failed",
+    "Result": "oom-kill",
+    "ExecMainCode": "2",
+    "ExecMainStatus": "9"
+  },
+  "systemd_accounting_before_stop": {
+    "MemoryPeak": 671088640,
+    "CPUUsageNSec": 11465441000
+  },
+  "oom_observed": true,
+  "cleanup": {
+    "stop_exit_status": 0,
+    "reset-failed_exit_status": 0,
+    "cgroup_empty": true,
+    "remaining_process_count": 0
+  },
+  "finished_at": "2026-10-02T03:35:17.903213+00:00",
+  "monitored_seconds": 61.36089066599379
+}

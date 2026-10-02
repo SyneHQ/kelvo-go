@@ -1,0 +1,7 @@
+{
+  "report": "oracle-micro-limit-retry.json",
+  "stderr_bytes": 24,
+  "stderr_sha256": "fd08f84874b53667fcb552e1f1f6867cac3658533725048d6313270281228da0",
+  "matches_public_query_deadline_message": true,
+  "public_error_code": "DEADLINE_EXCEEDED"
+}

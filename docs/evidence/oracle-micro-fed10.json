@@ -1,0 +1,520 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-02T03:34:28.965609+00:00",
+  "state": "failed",
+  "cohorts": [
+    {
+      "round": 1,
+      "started_at": "2026-10-02T03:34:30.543033+00:00",
+      "finished_at": "2026-10-02T03:35:16.477357+00:00",
+      "cohort_wall_seconds_including_verification_and_cleanup": 45.93482533300994,
+      "clients": 10,
+      "accepted_query_handles": 10,
+      "result_http_200": 0,
+      "http_429_count": 0,
+      "transport_disconnect_count": 10,
+      "failed_after_http_200": 0,
+      "reference_matched_exports": 0,
+      "failed_exports": 10,
+      "total_reference_matched_rows": 0,
+      "total_reference_matched_bytes": 0,
+      "total_bytes_read_including_failed_exports": 0,
+      "aggregate_reference_rows_per_second": 0.0,
+      "aggregate_reference_bytes_per_second": 0.0,
+      "successful_export_latency_seconds": {
+        "count": 0,
+        "p50": null,
+        "p95": null,
+        "minimum": null,
+        "maximum": null
+      },
+      "maximum_inflight_client_http_requests": 10,
+      "maximum_inflight_client_http_requests_by_phase": {
+        "submit": 10,
+        "results": 10,
+        "status": 0,
+        "cancel": 6
+      },
+      "cohort_deadline_exceeded": false,
+      "interrupted": false,
+      "synchronization_failed": false,
+      "oom_status": "unverified_by_client_requires_server_cgroup_evidence",
+      "results": [
+        {
+          "client": 1,
+          "round": 1,
+          "case": "federated_ordered_million",
+          "mode": "federated",
+          "state": "failed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": null,
+          "start_offset_seconds": 0.00015204100054688752,
+          "submission_seconds": 0.08349870902020484,
+          "results_start_offset_seconds": 0.08369654099806212,
+          "error": "connection_closed_reset_or_http_failure",
+          "transport_disconnected": true,
+          "connection_closed_by_controller": false,
+          "attempt_seconds_before_cleanup": 45.82586337500834,
+          "first_64k_seconds": null,
+          "wire_bytes_read": 0,
+          "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "arrow_eos_present": false,
+          "cancel": {
+            "error": "cancel_request_failed"
+          },
+          "finished_offset_seconds": 45.934132082998985,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0010205410071648657,
+              "end_offset_seconds": 0.08364941601757891
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.08425170800182968,
+              "end_offset_seconds": 45.8260052910191
+            },
+            {
+              "phase": "cancel",
+              "start_offset_seconds": 45.826841958012665,
+              "end_offset_seconds": 45.934106541011715
+            }
+          ]
+        },
+        {
+          "client": 2,
+          "round": 1,
+          "case": "federated_ordered_million",
+          "mode": "federated",
+          "state": "failed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": null,
+          "start_offset_seconds": 0.0002024160057771951,
+          "submission_seconds": 0.08275691699236631,
+          "results_start_offset_seconds": 0.08396962500410154,
+          "error": "connection_closed_reset_or_http_failure",
+          "transport_disconnected": true,
+          "connection_closed_by_controller": false,
+          "attempt_seconds_before_cleanup": 45.618441875005374,
+          "first_64k_seconds": null,
+          "wire_bytes_read": 0,
+          "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "arrow_eos_present": false,
+          "cancel": {
+            "error": "cancel_request_failed"
+          },
+          "finished_offset_seconds": 45.82643433302292,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.00179462501546368,
+              "end_offset_seconds": 0.08295775001170114
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.08448187500471249,
+              "end_offset_seconds": 45.61863729101606
+            },
+            {
+              "phase": "cancel",
+              "start_offset_seconds": 45.61909370799549,
+              "end_offset_seconds": 45.82639675002429
+            }
+          ]
+        },
+        {
+          "client": 3,
+          "round": 1,
+          "case": "federated_ordered_million",
+          "mode": "federated",
+          "state": "failed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": null,
+          "start_offset_seconds": 0.00038966600550338626,
+          "submission_seconds": 0.0829879590019118,
+          "results_start_offset_seconds": 0.08383166600833647,
+          "error": "connection_closed_reset_or_http_failure",
+          "transport_disconnected": true,
+          "connection_closed_by_controller": false,
+          "attempt_seconds_before_cleanup": 45.82527245901292,
+          "first_64k_seconds": null,
+          "wire_bytes_read": 0,
+          "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "arrow_eos_present": false,
+          "cancel": {
+            "error": "cancel_request_failed"
+          },
+          "finished_offset_seconds": 45.934326250018785,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0008210000232793391,
+              "end_offset_seconds": 0.08337566599948332
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.08439304100465961,
+              "end_offset_seconds": 45.82563900001696
+            },
+            {
+              "phase": "cancel",
+              "start_offset_seconds": 45.827378832997056,
+              "end_offset_seconds": 45.93431954100379
+            }
+          ]
+        },
+        {
+          "client": 4,
+          "round": 1,
+          "case": "federated_ordered_million",
+          "mode": "federated",
+          "state": "failed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": null,
+          "start_offset_seconds": 0.0003690830199047923,
+          "submission_seconds": 0.08326229199883528,
+          "results_start_offset_seconds": 0.08373045801999979,
+          "error": "connection_closed_reset_or_http_failure",
+          "transport_disconnected": true,
+          "connection_closed_by_controller": false,
+          "attempt_seconds_before_cleanup": 45.61836704198504,
+          "first_64k_seconds": null,
+          "wire_bytes_read": 0,
+          "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "arrow_eos_present": false,
+          "cancel": {
+            "error": "cancel_request_failed"
+          },
+          "finished_offset_seconds": 45.82587166602025,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.001221915998030454,
+              "end_offset_seconds": 0.08363020801334642
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.08492625001235865,
+              "end_offset_seconds": 45.61872333299834
+            },
+            {
+              "phase": "cancel",
+              "start_offset_seconds": 45.61895587501931,
+              "end_offset_seconds": 45.825854000024265
+            }
+          ]
+        },
+        {
+          "client": 5,
+          "round": 1,
+          "case": "federated_ordered_million",
+          "mode": "federated",
+          "state": "failed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": null,
+          "start_offset_seconds": 0.0003549579996615648,
+          "submission_seconds": 0.08321004200843163,
+          "results_start_offset_seconds": 0.08405291600502096,
+          "error": "connection_closed_reset_or_http_failure",
+          "transport_disconnected": true,
+          "connection_closed_by_controller": false,
+          "attempt_seconds_before_cleanup": 45.61814783301088,
+          "first_64k_seconds": null,
+          "wire_bytes_read": 0,
+          "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "arrow_eos_present": false,
+          "cancel": {
+            "error": "cancel_request_failed"
+          },
+          "finished_offset_seconds": 45.82671983301407,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0011001250240951777,
+              "end_offset_seconds": 0.0835634579998441
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.08480404102010652,
+              "end_offset_seconds": 45.61849408299895
+            },
+            {
+              "phase": "cancel",
+              "start_offset_seconds": 45.61937970801955,
+              "end_offset_seconds": 45.82671133300755
+            }
+          ]
+        },
+        {
+          "client": 6,
+          "round": 1,
+          "case": "federated_ordered_million",
+          "mode": "federated",
+          "state": "failed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": null,
+          "start_offset_seconds": 0.00022495799930766225,
+          "submission_seconds": 0.08199379200232215,
+          "results_start_offset_seconds": 0.08413254100014456,
+          "error": "connection_closed_reset_or_http_failure",
+          "transport_disconnected": true,
+          "connection_closed_by_controller": false,
+          "attempt_seconds_before_cleanup": 45.61794441699749,
+          "first_64k_seconds": null,
+          "wire_bytes_read": 0,
+          "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "arrow_eos_present": false,
+          "cancel": {
+            "error": "cancel_request_failed"
+          },
+          "finished_offset_seconds": 45.826553833001526,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0014730410184711218,
+              "end_offset_seconds": 0.08220537501620129
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.08461449999595061,
+              "end_offset_seconds": 45.61811870802194
+            },
+            {
+              "phase": "cancel",
+              "start_offset_seconds": 45.61962579100509,
+              "end_offset_seconds": 45.82654325000476
+            }
+          ]
+        },
+        {
+          "client": 7,
+          "round": 1,
+          "case": "federated_ordered_million",
+          "mode": "federated",
+          "state": "failed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": null,
+          "start_offset_seconds": 0.00033254100708290935,
+          "submission_seconds": 0.08259858400560915,
+          "results_start_offset_seconds": 0.08376733300974593,
+          "error": "connection_closed_reset_or_http_failure",
+          "transport_disconnected": true,
+          "connection_closed_by_controller": false,
+          "attempt_seconds_before_cleanup": 45.82583508398966,
+          "first_64k_seconds": null,
+          "wire_bytes_read": 0,
+          "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "arrow_eos_present": false,
+          "cancel": {
+            "error": "cancel_request_failed"
+          },
+          "finished_offset_seconds": 45.934229416016024,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0014432500174734741,
+              "end_offset_seconds": 0.0829279160243459
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.08447358300327323,
+              "end_offset_seconds": 45.826146083010826
+            },
+            {
+              "phase": "cancel",
+              "start_offset_seconds": 45.82713945800788,
+              "end_offset_seconds": 45.93422058300348
+            }
+          ]
+        },
+        {
+          "client": 8,
+          "round": 1,
+          "case": "federated_ordered_million",
+          "mode": "federated",
+          "state": "failed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": null,
+          "start_offset_seconds": 0.00030662500648759305,
+          "submission_seconds": 0.08309274999191985,
+          "results_start_offset_seconds": 0.0840205000131391,
+          "error": "connection_closed_reset_or_http_failure",
+          "transport_disconnected": true,
+          "connection_closed_by_controller": false,
+          "attempt_seconds_before_cleanup": 45.61808016599389,
+          "first_64k_seconds": null,
+          "wire_bytes_read": 0,
+          "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "arrow_eos_present": false,
+          "cancel": {
+            "error": "cancel_request_failed"
+          },
+          "finished_offset_seconds": 45.82709608299774,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0014066250005271286,
+              "end_offset_seconds": 0.08339833302306943
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.08488695800770074,
+              "end_offset_seconds": 45.61837195800035
+            },
+            {
+              "phase": "cancel",
+              "start_offset_seconds": 45.61924591602292,
+              "end_offset_seconds": 45.82707341600326
+            }
+          ]
+        },
+        {
+          "client": 9,
+          "round": 1,
+          "case": "federated_ordered_million",
+          "mode": "federated",
+          "state": "failed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": null,
+          "start_offset_seconds": 0.0002563330053817481,
+          "submission_seconds": 0.0831665419973433,
+          "results_start_offset_seconds": 0.08395125000970438,
+          "error": "connection_closed_reset_or_http_failure",
+          "transport_disconnected": true,
+          "connection_closed_by_controller": false,
+          "attempt_seconds_before_cleanup": 45.61830795800779,
+          "first_64k_seconds": null,
+          "wire_bytes_read": 0,
+          "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "arrow_eos_present": false,
+          "cancel": {
+            "error": "cancel_request_failed"
+          },
+          "finished_offset_seconds": 45.82632083300268,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0013376660062931478,
+              "end_offset_seconds": 0.08342070801882073
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.08528441601083614,
+              "end_offset_seconds": 45.618555374996504
+            },
+            {
+              "phase": "cancel",
+              "start_offset_seconds": 45.61949216600624,
+              "end_offset_seconds": 45.82630783302011
+            }
+          ]
+        },
+        {
+          "client": 10,
+          "round": 1,
+          "case": "federated_ordered_million",
+          "mode": "federated",
+          "state": "failed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": null,
+          "start_offset_seconds": 0.00027766599669121206,
+          "submission_seconds": 0.08286841702647507,
+          "results_start_offset_seconds": 0.08387191602378152,
+          "error": "connection_closed_reset_or_http_failure",
+          "transport_disconnected": true,
+          "connection_closed_by_controller": false,
+          "attempt_seconds_before_cleanup": 45.82633762501064,
+          "first_64k_seconds": null,
+          "wire_bytes_read": 0,
+          "wire_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "arrow_eos_present": false,
+          "cancel": {
+            "error": "cancel_request_failed"
+          },
+          "finished_offset_seconds": 45.93428345801658,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0015941660094540566,
+              "end_offset_seconds": 0.08314337499905378
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.08443012501811609,
+              "end_offset_seconds": 45.826605125010246
+            },
+            {
+              "phase": "cancel",
+              "start_offset_seconds": 45.82759695799905,
+              "end_offset_seconds": 45.93427670802339
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "client_script_sha256": "40a4c69816c9179114faf549120eb258eb5ba18a7887a1a8c99e78c83095abb3",
+  "transport_helper_sha256": "5affaf34b24f1ac297375e9b08b75e229fe194090e9735f57d99680673e370c0",
+  "clients_per_cohort": 10,
+  "planned_rounds": 1,
+  "operation_deadline_seconds": 180,
+  "cohort_deadline_seconds": 210,
+  "body_read_idle_timeout_seconds": 5,
+  "transport": "HTTP on loopback through a dedicated SSH tunnel; no HTTP TLS",
+  "limitations": [
+    "In-flight client HTTP requests do not establish actual server worker overlap; correlate server process/cgroup evidence.",
+    "POST 201 creates a query handle. GET 200 starts an Arrow response and does not establish successful completion.",
+    "OOM cannot be diagnosed from a client disconnect alone; correlate failures with server memory.events and systemd Result.",
+    "Throughput includes only exports matching reference bytes/EOS and final API state/rows; its denominator includes the whole cohort and cleanup.",
+    "Export latency includes submission, the results barrier and full body hashing; final API status checks are recorded separately.",
+    "P50/P95 use linear interpolation over successful export durations only. Failed attempts and 429 responses remain in individual results.",
+    "The provisioner attests that reference Arrow outputs were independently decoded and use the same binary as the server.",
+    "Client result bodies are hashed and discarded. No Arrow values are decoded locally, and no response file is saved.",
+    "There are no retries during the measured cohort. Server health is checked between cohorts, outside throughput timing.",
+    "SSH encryption and buffering are included; these measurements are not direct public HTTP/HTTPS capacity."
+  ],
+  "binary_sha256": "51ab67046f31debe0a9358c24d5ab732380796ddcb2eb0bd352c4c9220e61fff",
+  "cases": [
+    {
+      "name": "federated_ordered_million",
+      "expected_wire_sha256": "3a1edcec5e73b2b317075874cf80dbb76b42bae41626a2f19b38e62ccc73863b",
+      "expected_wire_bytes": 20117616,
+      "expected_rows": 1000000,
+      "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "mode": "federated"
+    }
+  ],
+  "bearer_authentication_probe_http_status": {
+    "unauthenticated": 401,
+    "authenticated": 404
+  },
+  "error": "stopped_after_unconfirmed_cancellation",
+  "owned_ssh_process_exit_status": 0,
+  "finished_at": "2026-10-02T03:35:16.481745+00:00",
+  "summary": {
+    "attempted_jobs": 10,
+    "reference_matched_exports": 0,
+    "failed_exports": 10,
+    "total_reference_matched_rows": 0,
+    "total_reference_matched_bytes": 0,
+    "sum_cohort_wall_seconds": 45.93482533300994,
+    "aggregate_reference_rows_per_second": 0.0,
+    "aggregate_reference_bytes_per_second": 0.0,
+    "successful_export_latency_p50_seconds": null,
+    "successful_export_latency_p95_seconds": null,
+    "http_429_count": 0,
+    "transport_disconnect_count": 10,
+    "maximum_inflight_client_http_requests": 10
+  },
+  "all_exports_matched_reference": false
+}
