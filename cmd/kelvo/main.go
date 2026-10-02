@@ -188,7 +188,9 @@ func runWorker() error {
 	if err := query.ValidateRequest(in.Request); err != nil {
 		return emit(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), in.Limits.Timeout)
+	parent, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ctx, cancel := context.WithTimeout(parent, in.Limits.Timeout)
 	defer cancel()
 	var executor query.Executor
 	if in.Request.Mode == "native" {

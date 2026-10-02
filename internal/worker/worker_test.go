@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -25,14 +27,27 @@ func TestMain(m *testing.M) {
 		case "--group-child":
 			time.Sleep(time.Hour)
 			os.Exit(0)
-		case "--group-parent", "--group-orphan-parent":
+		case "--group-parent", "--group-orphan-parent", "--group-cooperative-parent", "--group-ignores-term-parent":
+			ctx := context.Background()
+			if os.Args[1] == "--group-cooperative-parent" {
+				var stop context.CancelFunc
+				ctx, stop = signal.NotifyContext(ctx, syscall.SIGTERM)
+				defer stop()
+			}
+			if os.Args[1] == "--group-ignores-term-parent" {
+				signal.Ignore(syscall.SIGTERM)
+			}
 			child := exec.Command(os.Args[0], "--group-child")
 			if err := child.Start(); err != nil {
 				os.Exit(2)
 			}
 			fmt.Fprintln(os.Stdout, child.Process.Pid)
-			if os.Args[1] == "--group-parent" {
+			if os.Args[1] == "--group-parent" || os.Args[1] == "--group-ignores-term-parent" {
 				time.Sleep(time.Hour)
+			} else if os.Args[1] == "--group-cooperative-parent" {
+				<-ctx.Done()
+				time.Sleep(75 * time.Millisecond)
+				fmt.Fprintln(os.Stderr, "cooperative-cleanup-complete")
 			}
 			os.Exit(0)
 		}
@@ -69,6 +84,14 @@ func testWorkerMain() int {
 	}
 	if in.Request.SQL == "SELECT wait" {
 		time.Sleep(time.Hour)
+		return 0
+	}
+	if in.Request.SQL == "SELECT cooperative_wait" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+		defer stop()
+		<-ctx.Done()
+		time.Sleep(75 * time.Millisecond)
+		_ = json.NewEncoder(os.Stderr).Encode(Outcome{Stats: query.Stats{Backend: "cooperative-cleanup-complete"}})
 		return 0
 	}
 	schema := arrow.NewSchema([]arrow.Field{{Name: "value", Type: arrow.PrimitiveTypes.Int64}}, nil)

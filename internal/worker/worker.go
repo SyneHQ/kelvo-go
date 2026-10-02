@@ -150,7 +150,7 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	// On Linux the process-group ID stays pinned by the unreaped child. Kill
 	// any descendants before Wait reaps it, including children that closed the
 	// output pipe and would otherwise survive a successful leader exit.
-	cleanupErr := cleanupProcess(cmd)
+	cleanupErr := finishProcess(cmd, ctx.Err() != nil)
 	waitErr := cmd.Wait()
 	var outcome Outcome
 	decodeErr := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &outcome)

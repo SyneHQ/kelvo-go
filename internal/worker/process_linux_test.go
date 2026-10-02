@@ -4,6 +4,7 @@ package worker
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -13,6 +14,9 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/SYNEHQ/kelvo-go/internal/catalog"
+	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
 func startProcessTree(t *testing.T, ctx context.Context, mode string) (*exec.Cmd, int) {
@@ -23,6 +27,7 @@ func startProcessTree(t *testing.T, ctx context.Context, mode string) (*exec.Cmd
 	}
 	cmd := exec.CommandContext(ctx, exe, mode)
 	configureProcess(cmd)
+	cmd.Stderr = &bytes.Buffer{}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -85,10 +90,66 @@ func TestCancellationKillsWorkerProcessGroup(t *testing.T) {
 	defer cancel()
 	cmd, child := startProcessTree(t, ctx, "--group-parent")
 	cancel()
+	if err := finishProcess(cmd, true); err != nil {
+		t.Fatal(err)
+	}
 	if err := cmd.Wait(); err == nil {
 		t.Fatal("cancelled leader succeeded")
 	}
 	requireProcessTerminated(t, child)
+}
+
+func TestCancellationAllowsCooperativeCleanupAndKillsDescendants(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd, child := startProcessTree(t, ctx, "--group-cooperative-parent")
+	cancel()
+	if err := finishProcess(cmd, true); err != nil {
+		t.Fatal(err)
+	}
+	_ = cmd.Wait()
+	if !strings.Contains(cmd.Stderr.(*bytes.Buffer).String(), "cooperative-cleanup-complete") {
+		t.Fatal("worker was killed before cooperative cleanup")
+	}
+	requireProcessTerminated(t, child)
+}
+
+func TestCancellationForcesUncooperativeLeaderAndDescendants(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd, child := startProcessTree(t, ctx, "--group-ignores-term-parent")
+	started := time.Now()
+	cancel()
+	if err := finishProcess(cmd, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Wait(); err == nil {
+		t.Fatal("uncooperative leader survived")
+	}
+	if elapsed := time.Since(started); elapsed < cancellationGrace || elapsed > 2*time.Second {
+		t.Fatalf("cancellation grace was not bounded: %s", elapsed)
+	}
+	requireProcessTerminated(t, child)
+}
+
+func TestExecutorCancellationAllowsSourceCleanup(t *testing.T) {
+	e, err := New(catalog.Config{}, query.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	started := time.Now()
+	stats, err := e.Execute(ctx, query.Request{SQL: "SELECT cooperative_wait"}, &workerTestSink{})
+	if err == nil || query.PublicError(err).Code != "DEADLINE_EXCEEDED" {
+		t.Fatalf("cancellation: %v", err)
+	}
+	if stats.Backend != "cooperative-cleanup-complete" {
+		t.Fatal("executor skipped source cleanup grace")
+	}
+	if time.Since(started) > 3*time.Second {
+		t.Fatal("cooperative cancellation exceeded bound")
+	}
 }
 
 func TestSuccessfulLeaderCannotLeaveBackgroundDescendant(t *testing.T) {
