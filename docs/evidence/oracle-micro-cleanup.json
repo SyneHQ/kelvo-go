@@ -1,0 +1,47 @@
+{
+  "preflight": {
+    "oracle": {
+      "owned_processes_stopped": true,
+      "scratch_ownership_verified": true,
+      "tailscaled_active": true
+    },
+    "source": {
+      "owned_processes_stopped": true,
+      "source_counts_preserved": {
+        "zones": 265,
+        "trips": 22612607,
+        "taxi_sample": 1000000,
+        "fact_events": 100000000
+      }
+    }
+  },
+  "oracle_before_cleanup": {
+    "test_processes_running": 0,
+    "source_forward_stopped": true
+  },
+  "source_cleanup": {
+    "owned_authorized_key_removed": true,
+    "test_reader_dropped": true,
+    "source_counts_preserved": {
+      "taxi_sample": 1000000,
+      "trips": 22612607,
+      "fact_events": 100000000,
+      "zones": 265
+    },
+    "private_fixture_processes_stopped": true,
+    "private_fixture_removed": true,
+    "source_credentials_removed": true
+  },
+  "oracle_cleanup": {
+    "scratch_unmounted": true,
+    "scratch_loop_detached": true,
+    "scratch_image_removed": true,
+    "tailscaled_active": true,
+    "host_memory_bytes": {
+      "MemTotal": 997474304,
+      "MemAvailable": 731783168
+    },
+    "private_credentials_removed": true
+  },
+  "note": "Compiled binaries, harnesses, public reports and external source datasets retained; test services stopped; temporary credentials and scratch allocation removed."
+}
