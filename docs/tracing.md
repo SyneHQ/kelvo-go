@@ -42,8 +42,18 @@ This is best-effort observability, not a durable audit or billing ledger.
   confirmation; success is not proof that a client received the entire result.
 - `kelvo.refresh`: one refresh attempt through snapshot publication and resource
   cleanup. Nested extraction workers do not create duplicate refresh traces.
-- `kelvo.admission`: a child span when the parent measured node resource admission
-  wait. This is not full distributed queue latency or source quota wait.
+- `kelvo.admission`: for queries, the combined measured time acquiring node
+  resources and source quotas. For refreshes, only the outer node resource
+  acquisition is measured here; source quota acquisition remains inside the
+  refresh execution duration. Neither includes distributed dispatch queue time.
+
+The parent span covers the complete local call, including its admission time.
+The admission child represents the accumulated acquisition duration positioned
+at the start of that call; its boundaries do not identify the exact start and end
+of separate resource and source quota acquisitions. It must not be interpreted
+as a detailed execution-stage timeline. The duration passed to the tracing
+recorder excludes the corresponding measured admission time, which the recorder
+adds back when setting the parent span's end timestamp.
 
 Spans contain only fixed `kelvo.kind` and `kelvo.outcome` attributes and a fixed
 `service.name=kelvo` resource. Outcomes are `success`, `error` and `canceled`.

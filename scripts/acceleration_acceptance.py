@@ -439,14 +439,30 @@ class Acceptance:
             refresh = dataset("orders_fast", "SELECT CAST(id AS BIGINT) AS id, CAST(label AS VARCHAR) AS label FROM sample",
                               max_age="1m", interval="5s")
             refresh["query"]["sources"] = ["sample"]
+            diagnostic_datasets = []
+            if tenant == "a":
+                for probe_id in ("required_probe", "optional_probe"):
+                    probe_dataset = dataset(probe_id, refresh["query"]["sql"])
+                    probe_dataset["query"]["sources"] = ["sample"]
+                    diagnostic_datasets.append(probe_dataset)
             config = {"sources": [{"id": "sample", "type": "csv", "path": str(source)}],
-                      "acceleration": {"directory": str(shared), "tenant_id": tenant, "datasets": [refresh]}}
+                      "acceleration": {"directory": str(shared), "tenant_id": tenant,
+                                       "datasets": [refresh] + diagnostic_datasets}}
             for name in (("a1", "a2") if tenant == "a" else ("b1",)):
                 path = fixture / (name + "-catalog.yml")
                 require(path.is_file() and not path.is_symlink(), "fixture catalog is unavailable")
                 self.catalog_backups[path] = (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
                 write_config(path, config)
                 catalogs[name] = path
+        # Fixture node files are YAML. Add one top-level field without requiring
+        # a YAML dependency, and restore the exact original bytes during cleanup.
+        required_node = fixture / "a1.yml"
+        require(required_node.is_file() and not required_node.is_symlink(), "fixture node config unavailable")
+        original_node = required_node.read_bytes()
+        require(re.search(rb"^required_datasets\s*:", original_node, re.MULTILINE) is None,
+                "fixture already defines required datasets; existing configuration left untouched")
+        self.catalog_backups[required_node] = (original_node, stat.S_IMODE(required_node.stat().st_mode))
+        write_private(required_node, original_node.rstrip() + b'\nrequired_datasets: ["required_probe"]\n')
         self.cli(["cluster-init", "--config", fixture / "init.yml"])
         # A prior acceptance run may have ended before its five-second worker
         # lease expired. Waiting does not alter or stop any fixture process.
@@ -463,6 +479,40 @@ class Acceptance:
         for name, port in (("a1", 14443), ("b1", 14445)):
             self.start(name, [BIN, "node", "--config", fixture / (name + ".yml")])
             node_ready(name, port)
+        def worker_call(path):
+            try:
+                with urllib.request.urlopen("https://127.0.0.1:14443" + path,
+                                            context=worker_tls, timeout=8) as response:
+                    return response.status, response.read()
+            except urllib.error.HTTPError as error:
+                return error.code, error.read()
+
+        self.stage = "cluster_required_dataset_readiness"
+        require(worker_call("/health")[0] == 200, "missing dataset affected liveness")
+        require(worker_call("/ready")[0] == 503, "missing required dataset did not gate readiness")
+        code, payload = worker_call("/datasets")
+        require(code == 200, "authenticated dataset diagnostics unavailable")
+        missing = {entry["id"]: entry for entry in json.loads(payload)}
+        require(missing["required_probe"]["state"] == "missing", "required missing state not reported")
+        require(missing["optional_probe"]["state"] == "missing", "optional missing state not reported")
+        self.record("cluster_required_missing_snapshot_gates_readiness_not_liveness")
+        self.status(catalogs["a1"], "required_probe", command="refresh")
+        self.wait(lambda: worker_call("/ready")[0] == 200)
+        code, payload = worker_call("/datasets")
+        require(code == 200, "dataset diagnostics unavailable after refresh")
+        entries = json.loads(payload)
+        by_id = {entry["id"]: entry for entry in entries}
+        require(by_id["required_probe"]["state"] == "ready", "required refresh did not become ready")
+        require(by_id["optional_probe"]["state"] == "missing", "optional probe unexpectedly refreshed")
+        allowed = {"id", "state", "generation", "refreshed_at", "age_ns", "schema_hash"}
+        require(all(set(entry).issubset(allowed) for entry in entries), "diagnostics exposed unapproved fields")
+        require(str(shared).encode() not in payload and b"fingerprint" not in payload
+                and b"SELECT" not in payload and b"tenant-a.csv" not in payload,
+                "diagnostics exposed private storage or source configuration")
+        require(worker_call("/health")[0] == 200, "dataset probes affected liveness")
+        self.record("cluster_required_refresh_restores_readiness_optional_missing_ignored")
+        self.record("cluster_dataset_diagnostics_sanitized", allowed_fields=len(allowed))
+
         self.start("gateway", [BIN, "gateway", "--config", fixture / "gateway1.yml"])
         self.wait(lambda: self.cluster_call("/ready")[0] == 200)
 

@@ -9,13 +9,35 @@ The first operational slice adds optional shared node query/refresh reservations
 bounded worker execution telemetry and protected resource diagnostics, independent
 probes and phased cluster drain. See [operations](operations.md) for configuration,
 semantics and limits. This is partial delivery of the operational foundation, not
-completion of the P0 roadmap. A subsequent implementation slice adds strict cross-generation schema checks,
-verified local inventory/restore, durable classified refresh retries and operator
-reset, distributed source quotas, optional source credential files and bounded
-actual-scan diagnostics. Remote restore, schema evolution policies, source-driver
-conformance/rotation coverage and sustained fault/capacity gates remain pending.
-Class-specific budgets, full queue/stage timing, trace export and dataset readiness
-also remain pending. No new throughput results are claimed.
+completion of the P0 roadmap.
+
+The second slice adds strict cross-generation schema checks, verified local
+inventory/restore, durable classified refresh retries and operator reset,
+distributed source quotas, optional source credential files, bounded execution
+history and actual-scan diagnostics.
+
+The third slice adds protected interactive slot/memory/scratch reserves against
+background refreshes; authenticated dataset metadata diagnostics and opt-in
+required-dataset readiness; and verified remote restore using a bounded retained
+manifest catalog. Remote history retains at most 16 previous generations plus
+current, subject to the manifest byte limit. It does not list or delete objects.
+Remote writes upgrade manifests from v2 to v3 at the first writer action, requiring
+coordinated readers/writers and preventing rollback to older binaries afterward.
+Required readiness checks cached metadata, not payload integrity or source health.
+
+Optional [lifecycle tracing](tracing.md) is also available, disabled by default,
+with sampled local query/refresh spans, bounded export queues and fixed attributes
+that exclude SQL, parameters, source/tenant identities and raw errors. It does not
+provide distributed trace continuity or full queue/stage timings. Focused tracing,
+credential-rotation and protocol-fixture checks are development correctness gates,
+not capacity measurements or provider-wide validation.
+
+Schema evolution policies, provider-wide conformance/rotation coverage, full
+queue/stage timing, export-specific admission, safe remote GC,
+backup recovery and sustained fault/capacity gates remain pending. The validation
+records in [operations](operations.md) identify their tested runtime commits;
+implementation status does not extend those results to later unvalidated changes.
+No new throughput results are claimed.
 
 Recommendation: keep Kelvo's Go coordinator, DuckDB execution, Arrow output,
 Parquet snapshots and NATS dispatch. Adopt the dataset lifecycle, resource
@@ -61,9 +83,12 @@ Preserve these mechanisms while extending the system:
 - Real cross-source correctness tests, micro-VM measurements and fault-handling
   evidence. The recent additions still have live Oracle/warehouse validation gaps.
 
-The important current limits are visible in the implementation:
+The table below records the **reviewed baseline at `90ade2e`**, before the
+implementation slices listed in [Delivery status](#delivery-status). It is not a
+statement of current feature availability; consult [operations](operations.md)
+for the implemented behavior and remaining limits.
 
-| Area | Current boundary | Consequence |
+| Area | Reviewed baseline boundary | Consequence at review |
 | --- | --- | --- |
 | Resource admission | [Node dispatch](../internal/cluster/node.go) counts jobs; [query limits](../internal/query/types.go) apply individually | Several individually permitted queries plus refresh work can exceed a node's actual memory or scratch capacity. |
 | Health | [Gateway routes](../internal/cluster/gateway.go) take an HTTP permit before `/health` and `/ready`; readiness checks tenant reconciliation | Saturation can return 429 to probes. Source health, usable snapshots and sufficient worker capacity are separate, currently incomplete signals. |
@@ -74,8 +99,8 @@ The important current limits are visible in the implementation:
 | Delivery | Cluster results are tied to a single consumer; no persistent result catalog/cache | A client disconnect can waste expensive work. Repeated dashboards still execute the same analysis. |
 | Federation | Eight adapters expose projected scans and integer/Boolean predicates | Other predicates and all joins/aggregates remain local; warehouse paths currently decode JSON pages. |
 
-These are source-observed boundaries, not claims that every listed failure has
-been reproduced. DuckDB still completes execution before Arrow delivery through
+These are source-observed boundaries at the reviewed revision, not claims that
+every listed failure was reproduced. DuckDB still completes execution before Arrow delivery through
 the pinned Go driver; changing the transport alone does not remove that memory
 boundary.
 
