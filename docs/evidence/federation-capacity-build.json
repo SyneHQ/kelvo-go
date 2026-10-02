@@ -208,5 +208,20 @@
   },
   "go_version": "go version go1.26.8 linux/amd64",
   "build_command": "sudo docker build --build-arg DUCKBRIDGE=1 --build-arg VERSION=federation-capacity-final -t kelvo-federation:capacity-final .",
-  "scope": "Same final image binary used for capacity and live acceptance; source hashes compare committed checkout and VM build inputs. No dataset files or credentials are included."
+  "scope": "Same final image binary used for capacity and live acceptance; source hashes compare committed checkout and VM build inputs. No dataset files or credentials are included.",
+  "validation_script_sha256": {
+    "scripts/federation_relational_acceptance.py": "397e9482b02b695c71a47eb848d5334e82ea20c8dc3c84bdacea21a263d40ee4",
+    "scripts/federation_capacity.py": "cd7e542c62151fecfaf38b5918a6c99238b34e62ab11e29576fdb66f0a196396",
+    "scripts/federation_capacity_cluster.py": "21c692dad3720b8dd01b70baf58b90fd59517cbc34f7b27073a025fa28ac0ccc",
+    "scripts/federation_cluster_load.py": "b9dea3392f686ed394fa56809482c63441922248f3eb832f43a84325a5d03041",
+    "scripts/federation_wan_client.py": "ab23cfb9bfd713374da6b1d5d4e6e682eb28400c0aa7fe5261190c88c15c0613",
+    "scripts/cluster_fixture.py": "f758ac301d6323bc3c271b18b3f0a6643877f8f3db86f754f31f08095b29fe39",
+    "scripts/container_acceptance.py": "a16025a50a11e6bb1120955bdf169929411b47bc070bac90172af352c44a222b",
+    "scripts/container_network_acceptance.py": "caca5b6a0f912515a786426455bb4936b99f5c589d2234a8769f97332183928d"
+  },
+  "ci_runtime": {
+    "head_sha": "6a2e94b0d1d7cb4d1ccfb372abde4458178295d5",
+    "url": "https://github.com/SyneHQ/kelvo-go/actions/runs/36953244744",
+    "conclusion": "success"
+  }
 }
