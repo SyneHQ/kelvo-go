@@ -1,0 +1,11 @@
+Scoped cancellation regression test transcript (captured from the VM command output).
+VM checkout: /home/syenuser/kelvo-federation
+Command:
+GOMAXPROCS=2 CGO_ENABLED=1 CGO_CXXFLAGS=-I/home/syenuser/kelvo-federation/artifacts/duckbridge/headers /home/syenuser/kelvo-go-tools/go/bin/go test -race -p 1 -modfile=/home/syenuser/kelvo-federation/artifacts/duckbridge/duckbridge.mod -tags duckdb_arrow,duckbridge ./internal/worker ./internal/sources/postgres ./internal/sources/mysql ./internal/sources/sqlguard ./cmd/kelvo
+
+ok  	github.com/SYNEHQ/kelvo-go/internal/worker	14.795s
+ok  	github.com/SYNEHQ/kelvo-go/internal/sources/postgres	1.098s
+ok  	github.com/SYNEHQ/kelvo-go/internal/sources/mysql	1.013s
+ok  	github.com/SYNEHQ/kelvo-go/internal/sources/sqlguard	1.010s
+ok  	github.com/SYNEHQ/kelvo-go/cmd/kelvo	1.040s
+Exit status: 0

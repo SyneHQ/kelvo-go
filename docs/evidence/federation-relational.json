@@ -1,0 +1,580 @@
+{
+  "passed": true,
+  "failure": null,
+  "checked_at_utc": "2026-10-02T01:56:43.243437+00:00",
+  "binary_sha256": "7c8839f50bd8a6d777bb460f118a2189e71825da3b288d441e51bf1b68858c84",
+  "checks": [
+    {
+      "test": "postgres_unknown_ca_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "mysql_unknown_ca_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "postgres_verified_tls_native_scan",
+      "passed": true,
+      "cipher": "TLS_AES_256_GCM_SHA384",
+      "rows": 1,
+      "federation": [
+        {
+          "source": "pg",
+          "table": "transport",
+          "scans": 1,
+          "rows_fetched": 1,
+          "arrow_bytes_fetched": 63,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "postgres_hostname_mismatch_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "mysql_verified_tls_native_scan",
+      "passed": true,
+      "cipher": "TLS_AES_128_GCM_SHA256",
+      "rows": 1,
+      "federation": [
+        {
+          "source": "my",
+          "table": "transport",
+          "scans": 1,
+          "rows_fetched": 1,
+          "arrow_bytes_fetched": 31,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "mysql_hostname_mismatch_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "clickhouse_exact_arrow_values",
+      "passed": true,
+      "arrow_types": {
+        "row_id": "int32",
+        "i16": "int16",
+        "i64": "int64",
+        "u64": "uint64",
+        "amount": "decimal128(30, 10)",
+        "day": "date32[day]",
+        "wall": "timestamp[us, tz=Etc/UTC]",
+        "instant": "timestamp[us, tz=Etc/UTC]",
+        "label": "string"
+      },
+      "rows": 3,
+      "federation": [
+        {
+          "source": "ch",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 3,
+          "arrow_bytes_fetched": 209,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "postgres_exact_arrow_values",
+      "passed": true,
+      "arrow_types": {
+        "row_id": "int32",
+        "i16": "int16",
+        "i64": "int64",
+        "u64": "decimal128(20, 0)",
+        "amount": "decimal128(30, 10)",
+        "day": "date32[day]",
+        "wall": "timestamp[us]",
+        "instant": "timestamp[us, tz=Etc/UTC]",
+        "label": "string"
+      },
+      "rows": 3,
+      "federation": [
+        {
+          "source": "pg",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 3,
+          "arrow_bytes_fetched": 258,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "mysql_exact_arrow_values",
+      "passed": true,
+      "arrow_types": {
+        "row_id": "int32",
+        "i16": "int16",
+        "i64": "int64",
+        "u64": "uint64",
+        "amount": "decimal128(30, 10)",
+        "day": "date32[day]",
+        "wall": "timestamp[us]",
+        "instant": "timestamp[us, tz=Etc/UTC]",
+        "label": "string"
+      },
+      "rows": 3,
+      "federation": [
+        {
+          "source": "my",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 3,
+          "arrow_bytes_fetched": 234,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "postgres_reader_principal_write_denied",
+      "passed": true
+    },
+    {
+      "test": "mysql_verified_tls_reader_principal_write_denied",
+      "passed": true
+    },
+    {
+      "test": "ch_pg_inner_join",
+      "passed": true,
+      "rows": 3,
+      "federation": [
+        {
+          "source": "ch",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 16,
+          "batches_fetched": 1
+        },
+        {
+          "source": "pg",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "ch_pg_left_join",
+      "passed": true,
+      "rows": 4,
+      "federation": [
+        {
+          "source": "ch",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 16,
+          "batches_fetched": 1
+        },
+        {
+          "source": "pg",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "ch_my_inner_join",
+      "passed": true,
+      "rows": 3,
+      "federation": [
+        {
+          "source": "ch",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 16,
+          "batches_fetched": 1
+        },
+        {
+          "source": "my",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "ch_my_left_join",
+      "passed": true,
+      "rows": 4,
+      "federation": [
+        {
+          "source": "ch",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 16,
+          "batches_fetched": 1
+        },
+        {
+          "source": "my",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "pg_my_inner_join",
+      "passed": true,
+      "rows": 3,
+      "federation": [
+        {
+          "source": "pg",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        },
+        {
+          "source": "my",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "pg_my_left_join",
+      "passed": true,
+      "rows": 4,
+      "federation": [
+        {
+          "source": "pg",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        },
+        {
+          "source": "my",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "ch_independent_self_join",
+      "passed": true,
+      "rows": 4,
+      "federation": [
+        {
+          "source": "ch",
+          "table": "fact",
+          "scans": 2,
+          "rows_fetched": 8,
+          "arrow_bytes_fetched": 32,
+          "batches_fetched": 2
+        }
+      ]
+    },
+    {
+      "test": "pg_independent_self_join",
+      "passed": true,
+      "rows": 4,
+      "federation": [
+        {
+          "source": "pg",
+          "table": "fact",
+          "scans": 2,
+          "rows_fetched": 8,
+          "arrow_bytes_fetched": 40,
+          "batches_fetched": 2
+        }
+      ]
+    },
+    {
+      "test": "my_independent_self_join",
+      "passed": true,
+      "rows": 4,
+      "federation": [
+        {
+          "source": "my",
+          "table": "fact",
+          "scans": 2,
+          "rows_fetched": 8,
+          "arrow_bytes_fetched": 40,
+          "batches_fetched": 2
+        }
+      ]
+    },
+    {
+      "test": "three_source_inner_join",
+      "passed": true,
+      "rows": 3,
+      "federation": [
+        {
+          "source": "ch",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 16,
+          "batches_fetched": 1
+        },
+        {
+          "source": "pg",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        },
+        {
+          "source": "my",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "three_source_left_join",
+      "passed": true,
+      "rows": 4,
+      "federation": [
+        {
+          "source": "ch",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 16,
+          "batches_fetched": 1
+        },
+        {
+          "source": "pg",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        },
+        {
+          "source": "my",
+          "table": "fact",
+          "scans": 1,
+          "rows_fetched": 4,
+          "arrow_bytes_fetched": 20,
+          "batches_fetched": 1
+        }
+      ]
+    },
+    {
+      "test": "ch_unselected_source_denied",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "ch_unregistered_table_denied",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "ch_row_scan_budget_fails_closed",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "ch_byte_scan_budget_fails_closed",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "pg_unselected_source_denied",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "pg_unregistered_table_denied",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "pg_row_scan_budget_fails_closed",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "pg_byte_scan_budget_fails_closed",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "my_unselected_source_denied",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "my_unregistered_table_denied",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "my_row_scan_budget_fails_closed",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "my_byte_scan_budget_fails_closed",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "postgres_unsafe_option_0_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "postgres_unsafe_option_1_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "postgres_unsafe_option_2_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "mysql_unsafe_option_0_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "mysql_unsafe_option_1_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "mysql_unsafe_option_2_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "postgres_live_cancellation_and_selected_environment",
+      "passed": true,
+      "worker_environment_names": [
+        "GOMAXPROCS",
+        "HOME",
+        "KELVO_SOURCE_REL_PG_DSN",
+        "PATH",
+        "TMPDIR"
+      ],
+      "upstream_stopped": true,
+      "worker_stopped": true,
+      "client_cancellation_seconds": 0.11604301099578151,
+      "upstream_cancellation_seconds": 0.2029948740018881,
+      "query_elapsed_seconds": 0.2954413139959797,
+      "upstream_stop_mechanism": "PostgreSQL CancelRequest",
+      "server_timeout_ms": null,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "mysql_source_select_deadline_control",
+      "passed": true,
+      "timeout_ms": 3000,
+      "rows": 1,
+      "backend": "mysql"
+    },
+    {
+      "test": "mysql_source_deadline_hint_override_rejected",
+      "passed": true,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "mysql_live_cancellation_and_selected_environment",
+      "passed": true,
+      "worker_environment_names": [
+        "GOMAXPROCS",
+        "HOME",
+        "KELVO_SOURCE_REL_MY_DSN",
+        "PATH",
+        "TMPDIR"
+      ],
+      "upstream_stopped": true,
+      "worker_stopped": true,
+      "client_cancellation_seconds": 0.007884377002483234,
+      "upstream_cancellation_seconds": 3.0723446300034993,
+      "query_elapsed_seconds": 3.153996995999478,
+      "upstream_stop_mechanism": "source SELECT execution timer",
+      "server_timeout_ms": 3000,
+      "nonzero_exit": true,
+      "no_export": true
+    },
+    {
+      "test": "three_source_real_landlock",
+      "passed": true,
+      "rows": 3,
+      "launcher_sha256": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1",
+      "scope": "Actual unprivileged worker under Landlock in the private fixture trust namespace"
+    }
+  ],
+  "images": {
+    "postgres": {
+      "tag": "postgres:17.6",
+      "id": "sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929"
+    },
+    "mysql": {
+      "tag": "mysql:8.4",
+      "id": "sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242"
+    },
+    "clickhouse": {
+      "id": "sha256:77475011e36a9cbc6f107c59b7a925f0e810d9d7416df35083b5c9382466ff2d"
+    }
+  },
+  "fixture_retained_for_capacity_trials": true,
+  "ca_signing_keys_removed": true,
+  "trust_scope": "PostgreSQL/MySQL verify certificates and hostnames using a temporary CA bundle inside a private mount namespace, with CLI/workers running as the ordinary VM user. Host trust and production source configuration are unchanged. Existing ClickHouse uses its dedicated HTTP endpoint.",
+  "scope": "Real CLI, Arrow and Landlock correctness/security acceptance on synthetic fixture rows. Capacity trials are recorded separately."
+}
