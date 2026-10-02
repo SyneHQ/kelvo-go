@@ -1,0 +1,1 @@
+{"state": "passed", "fixture_attempts": 36, "checks": ["recorded_36_attempt_baseline", "artifact_sha_tampering_rejected", "scheduled_missing_attempt_retained", "failed_resource_peak_retained_without_headline", "conflicting_duplicate_validation_rejected"], "scope": "JSON regression checks only; no benchmarks or Arrow validation executed"}

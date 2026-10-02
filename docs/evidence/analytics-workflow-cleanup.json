@@ -1,0 +1,48 @@
+{
+  "artifact_preservation": {
+    "azure_attempt_artifacts_retained": 80,
+    "oracle_attempt_artifacts_retained": 32,
+    "artifact_hashes_verified": true
+  },
+  "fixture": "8d3bb8bc",
+  "preflight": {
+    "azure": {
+      "validated_attempts": 84,
+      "source_counts": {
+        "fact_events": 100000000,
+        "zones": 265,
+        "taxi_sample": 1000000,
+        "trips": 22612607
+      },
+      "owned_processes_idle": true
+    },
+    "oracle": {
+      "tailscaled_active": true,
+      "owned_processes_idle": true
+    }
+  },
+  "azure": {
+    "test_reader_dropped": true,
+    "temporary_key_removed": true,
+    "source_counts": {
+      "zones": 265,
+      "taxi_sample": 1000000,
+      "trips": 22612607,
+      "fact_events": 100000000
+    },
+    "scratch_unmounted": true,
+    "loop_detached": true,
+    "scratch_image_removed": true,
+    "temporary_credentials_removed": true,
+    "datasets_retained": true
+  },
+  "oracle": {
+    "source_tunnel_stopped": true,
+    "scratch_unmounted": true,
+    "loop_detached": true,
+    "scratch_image_removed": true,
+    "temporary_credentials_removed": true,
+    "tailscaled_active": true
+  },
+  "scope": "Removed only temporary test source access, private manifests/credentials and owned loop scratch. Binaries, public reports, source tables and normalized snapshots retained."
+}
