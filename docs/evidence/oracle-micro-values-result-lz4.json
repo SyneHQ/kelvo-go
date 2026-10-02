@@ -1,0 +1,221 @@
+{
+  "all_passed": true,
+  "results": [
+    {
+      "query": "native_ordered_million",
+      "trial": 1,
+      "sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+      "bytes": 8759064,
+      "rows": 1000000,
+      "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "integer_sums": {
+        "trip_id": 100499999500000,
+        "pickup_zone_id": 162903877,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 8759064,
+      "arrow_ipc_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+      "expected_canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "passed": true
+    },
+    {
+      "query": "native_ordered_million",
+      "trial": 2,
+      "sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+      "bytes": 8759064,
+      "rows": 1000000,
+      "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "integer_sums": {
+        "trip_id": 100499999500000,
+        "pickup_zone_id": 162903877,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 8759064,
+      "arrow_ipc_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+      "expected_canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "passed": true
+    },
+    {
+      "query": "native_ordered_million",
+      "trial": 3,
+      "sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+      "bytes": 8759064,
+      "rows": 1000000,
+      "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "integer_sums": {
+        "trip_id": 100499999500000,
+        "pickup_zone_id": 162903877,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 8759064,
+      "arrow_ipc_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+      "expected_canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "passed": true
+    },
+    {
+      "query": "federated_ordered_million",
+      "trial": 1,
+      "sha256": "2112bb8f22ead9740a7adb8b8b4bb224c04531f432ad017c30bd13c628279aed",
+      "bytes": 9289424,
+      "rows": 1000000,
+      "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "integer_sums": {
+        "trip_id": 100499999500000,
+        "pickup_zone_id": 162903877,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 9289424,
+      "arrow_ipc_sha256": "2112bb8f22ead9740a7adb8b8b4bb224c04531f432ad017c30bd13c628279aed",
+      "expected_canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "passed": true
+    },
+    {
+      "query": "federated_ordered_million",
+      "trial": 2,
+      "sha256": "2112bb8f22ead9740a7adb8b8b4bb224c04531f432ad017c30bd13c628279aed",
+      "bytes": 9289424,
+      "rows": 1000000,
+      "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "integer_sums": {
+        "trip_id": 100499999500000,
+        "pickup_zone_id": 162903877,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 9289424,
+      "arrow_ipc_sha256": "2112bb8f22ead9740a7adb8b8b4bb224c04531f432ad017c30bd13c628279aed",
+      "expected_canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "passed": true
+    },
+    {
+      "query": "federated_ordered_million",
+      "trial": 3,
+      "sha256": "2112bb8f22ead9740a7adb8b8b4bb224c04531f432ad017c30bd13c628279aed",
+      "bytes": 9289424,
+      "rows": 1000000,
+      "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "integer_sums": {
+        "trip_id": 100499999500000,
+        "pickup_zone_id": 162903877,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 9289424,
+      "arrow_ipc_sha256": "2112bb8f22ead9740a7adb8b8b4bb224c04531f432ad017c30bd13c628279aed",
+      "expected_canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "passed": true
+    }
+  ]
+}

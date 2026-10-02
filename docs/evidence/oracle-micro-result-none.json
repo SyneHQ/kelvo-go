@@ -1,0 +1,1255 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-02T04:02:13.299006+00:00",
+  "state": "completed",
+  "harness_sha256": "82a8e82e952263633c1ebfa8ab21d68db8dcfbb9e767b64e88142c8ce60f9fb0",
+  "binary_sha256": "fefdba4eaa4b2ac99eaf2878d30cfe80ddeacaf1df4fac1c52182f9ca944d6ac",
+  "launcher_sha256": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1",
+  "config_sha256": "e2386b473eb3bd0b91c5ef0fa0cabd2ca7be564d954299976539cafc89a6315e",
+  "queries_sha256": "9a434a7503096d60ce500e711ce968fd1495b57b02df37f9b16bc62e26dc85f5",
+  "host": {
+    "machine": "x86_64",
+    "kernel": "7.0.0-1009-oracle",
+    "logical_cpus": 2
+  },
+  "limits": {
+    "memory_max_mib": 640,
+    "memory_swap_max_bytes": 0,
+    "tasks_max": 96,
+    "cpu_weight": 20,
+    "cpu_quota_configured": false,
+    "temporary_disk_mib": 512,
+    "disk_reserve_bytes": 67108864,
+    "trials": 3,
+    "sample_seconds": 0.1,
+    "status_poll_seconds": 0.5
+  },
+  "headline_time_metric": "cli_process_seconds_including_wrapper_and_fsync",
+  "scratch_filesystem": "ext4",
+  "queries": [
+    {
+      "name": "native_ordered_million",
+      "mode": "native",
+      "sources": "taxi",
+      "memory_mb": 128,
+      "threads": 2,
+      "max_rows": 1000000,
+      "max_bytes": 33554432,
+      "timeout_seconds": 180,
+      "result_compression": "none",
+      "result_compression_explicit": true,
+      "sql_sha256": "9a84814906441079d2f0dbe5129dd21de2d68768cff78c8f42f9228087c47530"
+    },
+    {
+      "name": "federated_ordered_million",
+      "mode": "federated",
+      "sources": "taxi",
+      "memory_mb": 128,
+      "threads": 2,
+      "max_rows": 1000000,
+      "max_bytes": 33554432,
+      "timeout_seconds": 180,
+      "result_compression": "none",
+      "result_compression_explicit": true,
+      "sql_sha256": "3cb738430c60ffa9ca0500a5e104ab1d89a055326c155d285ad73c313881d6c3"
+    }
+  ],
+  "results": [
+    {
+      "query": "native_ordered_million",
+      "trial": 1,
+      "unit": "kelvo-micro-a38c7753ee980faa26037329.service",
+      "started_at": "2026-10-02T04:02:13.716118+00:00",
+      "result_compression": "none",
+      "result_compression_explicit": true,
+      "state": "completed",
+      "private_run_directory": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-1",
+      "private_logs": {
+        "service": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-1/stderr.log",
+        "systemd": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-1/systemd.log",
+        "stdout": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-1/stdout.log"
+      },
+      "configured_sandbox_launcher": "/home/ubuntu/kelvo-micro-5f1bf173/bin/kelvo-landlock",
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ]
+      },
+      "errors": [],
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "systemd_run_exit_status": 0,
+      "last_status_observed_at": "2026-10-02T04:02:17.673038+00:00",
+      "last_status_elapsed_seconds": 3.956101715011755,
+      "wall_seconds_including_service_start_and_cli_fsync": 3.9326808790210634,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 40,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.1648373000207357,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 36504,
+            "role": "coordinator",
+            "rss_bytes_peak": 52592640,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.14,
+            "sampled_system_seconds": 0.11
+          },
+          {
+            "pid": 36515,
+            "role": "worker",
+            "rss_bytes_peak": 75038720,
+            "no_new_privs_observed": true,
+            "seccomp_mode_observed": 2,
+            "seccomp_filters_observed": 1,
+            "sampled_user_seconds": 0.13,
+            "sampled_system_seconds": 0.1
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.14,
+            "system": 0.11
+          },
+          "worker": {
+            "user": 0.13,
+            "system": 0.1
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 52592640,
+          "worker": 75038720,
+          "combined": 127279104
+        },
+        "cgroup_path": "/sys/fs/cgroup/system.slice/kelvo-micro-a38c7753ee980faa26037329.service",
+        "cgroup_last_observed": {
+          "memory.current": 34181120,
+          "memory.peak": 69242880,
+          "memory.swap.current": 0,
+          "pids.peak": 16,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 522963,
+            "user_usec": 288652,
+            "system_usec": 234310,
+            "nice_usec": 0,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 0,
+            "nr_throttled": 0,
+            "throttled_usec": 0,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 67239936,
+        "cgroup_memory_peak_bytes": 69242880,
+        "host_memavailable_bytes_baseline": 723730432,
+        "host_memavailable_bytes_minimum": 679989248,
+        "host_cpu_delta": {
+          "total_ticks": 797,
+          "steal_ticks": 51,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.51,
+          "steal_fraction": 0.06398996235884567
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 20008547,
+          "allocated_bytes": 20021248
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1660129280,
+        "filesystem_available_bytes_minimum": 1640112128
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": "1",
+        "ExecMainStatus": "0"
+      },
+      "systemd_accounting": {
+        "MemoryPeak": 69242880,
+        "CPUUsageNSec": 527142000
+      },
+      "oom_observed": false,
+      "query_exit_status_verified": true,
+      "cli_process_seconds_including_wrapper_and_fsync": 3.538526,
+      "output_published_with_unverified_exit_status": false,
+      "failed_query_published_output": false,
+      "artifact": {
+        "path": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-1/result.arrow",
+        "bytes": 20006992,
+        "sha256": "a3631143a531fd414779cec9da4ef56ee8548340c2cfd0229cbab8a98dedf3b6",
+        "arrow_eos_present": true
+      },
+      "artifact_hash_seconds_outside_query_timing": 0.035127025010297075,
+      "query_stats": {
+        "rows": 1000000,
+        "batches": 28,
+        "arrow_bytes": 20000000,
+        "wire_bytes": 20006992,
+        "source_wire_bytes": 8738872,
+        "prepare_ns": 620725673,
+        "duration_ns": 2924575076,
+        "engine_streaming": true,
+        "backend": "clickhouse",
+        "federation": []
+      },
+      "finished_at": "2026-10-02T04:02:17.816844+00:00"
+    },
+    {
+      "query": "native_ordered_million",
+      "trial": 2,
+      "unit": "kelvo-micro-8745916c48bdba7ba964ac9d.service",
+      "started_at": "2026-10-02T04:02:17.885535+00:00",
+      "result_compression": "none",
+      "result_compression_explicit": true,
+      "state": "completed",
+      "private_run_directory": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-2",
+      "private_logs": {
+        "service": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-2/stderr.log",
+        "systemd": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-2/systemd.log",
+        "stdout": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-2/stdout.log"
+      },
+      "configured_sandbox_launcher": "/home/ubuntu/kelvo-micro-5f1bf173/bin/kelvo-landlock",
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ]
+      },
+      "errors": [],
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "systemd_run_exit_status": 0,
+      "last_status_observed_at": "2026-10-02T04:02:20.938024+00:00",
+      "last_status_elapsed_seconds": 3.051767822005786,
+      "wall_seconds_including_service_start_and_cli_fsync": 3.019113476999337,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 32,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10029764199862257,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 36560,
+            "role": "coordinator",
+            "rss_bytes_peak": 51126272,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.13,
+            "sampled_system_seconds": 0.13
+          },
+          {
+            "pid": 36571,
+            "role": "worker",
+            "rss_bytes_peak": 70524928,
+            "no_new_privs_observed": true,
+            "seccomp_mode_observed": 2,
+            "seccomp_filters_observed": 1,
+            "sampled_user_seconds": 0.06,
+            "sampled_system_seconds": 0.05
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.13,
+            "system": 0.13
+          },
+          "worker": {
+            "user": 0.06,
+            "system": 0.05
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 51126272,
+          "worker": 70524928,
+          "combined": 121389056
+        },
+        "cgroup_path": "/sys/fs/cgroup/system.slice/kelvo-micro-8745916c48bdba7ba964ac9d.service",
+        "cgroup_last_observed": {
+          "memory.current": 34603008,
+          "memory.peak": 66682880,
+          "memory.swap.current": 0,
+          "pids.peak": 16,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 401750,
+            "user_usec": 202915,
+            "system_usec": 198834,
+            "nice_usec": 0,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 0,
+            "nr_throttled": 0,
+            "throttled_usec": 0,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 63066112,
+        "cgroup_memory_peak_bytes": 66682880,
+        "host_memavailable_bytes_baseline": 723906560,
+        "host_memavailable_bytes_minimum": 683765760,
+        "host_cpu_delta": {
+          "total_ticks": 628,
+          "steal_ticks": 64,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.64,
+          "steal_fraction": 0.10191082802547771
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 20008547,
+          "allocated_bytes": 20021248
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1640091648,
+        "filesystem_available_bytes_minimum": 1620074496
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": "1",
+        "ExecMainStatus": "0"
+      },
+      "systemd_accounting": {
+        "MemoryPeak": 66682880,
+        "CPUUsageNSec": 406114000
+      },
+      "oom_observed": false,
+      "query_exit_status_verified": true,
+      "cli_process_seconds_including_wrapper_and_fsync": 2.839674,
+      "output_published_with_unverified_exit_status": false,
+      "failed_query_published_output": false,
+      "artifact": {
+        "path": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-2/result.arrow",
+        "bytes": 20006992,
+        "sha256": "a3631143a531fd414779cec9da4ef56ee8548340c2cfd0229cbab8a98dedf3b6",
+        "arrow_eos_present": true
+      },
+      "artifact_hash_seconds_outside_query_timing": 0.09393974798149429,
+      "query_stats": {
+        "rows": 1000000,
+        "batches": 28,
+        "arrow_bytes": 20000000,
+        "wire_bytes": 20006992,
+        "source_wire_bytes": 8738872,
+        "prepare_ns": 423654736,
+        "duration_ns": 2127560279,
+        "engine_streaming": true,
+        "backend": "clickhouse",
+        "federation": []
+      },
+      "finished_at": "2026-10-02T04:02:21.113390+00:00"
+    },
+    {
+      "query": "native_ordered_million",
+      "trial": 3,
+      "unit": "kelvo-micro-6dc282085b2802c12da284d6.service",
+      "started_at": "2026-10-02T04:02:21.180323+00:00",
+      "result_compression": "none",
+      "result_compression_explicit": true,
+      "state": "completed",
+      "private_run_directory": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-3",
+      "private_logs": {
+        "service": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-3/stderr.log",
+        "systemd": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-3/systemd.log",
+        "stdout": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-3/stdout.log"
+      },
+      "configured_sandbox_launcher": "/home/ubuntu/kelvo-micro-5f1bf173/bin/kelvo-landlock",
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ]
+      },
+      "errors": [],
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "systemd_run_exit_status": 0,
+      "last_status_observed_at": "2026-10-02T04:02:23.981399+00:00",
+      "last_status_elapsed_seconds": 2.800482479011407,
+      "wall_seconds_including_service_start_and_cli_fsync": 2.7755314180103596,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 29,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10081533101038076,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 36608,
+            "role": "coordinator",
+            "rss_bytes_peak": 52260864,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.1,
+            "sampled_system_seconds": 0.1
+          },
+          {
+            "pid": 36619,
+            "role": "worker",
+            "rss_bytes_peak": 70008832,
+            "no_new_privs_observed": true,
+            "seccomp_mode_observed": 2,
+            "seccomp_filters_observed": 1,
+            "sampled_user_seconds": 0.07,
+            "sampled_system_seconds": 0.07
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.1,
+            "system": 0.1
+          },
+          "worker": {
+            "user": 0.07,
+            "system": 0.07
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 52260864,
+          "worker": 70008832,
+          "combined": 122269696
+        },
+        "cgroup_path": "/sys/fs/cgroup/system.slice/kelvo-micro-6dc282085b2802c12da284d6.service",
+        "cgroup_last_observed": {
+          "memory.current": 33185792,
+          "memory.peak": 60538880,
+          "memory.swap.current": 0,
+          "pids.peak": 16,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 380245,
+            "user_usec": 185985,
+            "system_usec": 194259,
+            "nice_usec": 0,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 0,
+            "nr_throttled": 0,
+            "throttled_usec": 0,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 59973632,
+        "cgroup_memory_peak_bytes": 60538880,
+        "host_memavailable_bytes_baseline": 722063360,
+        "host_memavailable_bytes_minimum": 686133248,
+        "host_cpu_delta": {
+          "total_ticks": 564,
+          "steal_ticks": 40,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.4,
+          "steal_fraction": 0.07092198581560284
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 20008547,
+          "allocated_bytes": 20021248
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1620054016,
+        "filesystem_available_bytes_minimum": 1600036864
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": "1",
+        "ExecMainStatus": "0"
+      },
+      "systemd_accounting": {
+        "MemoryPeak": 60538880,
+        "CPUUsageNSec": 384614000
+      },
+      "oom_observed": false,
+      "query_exit_status_verified": true,
+      "cli_process_seconds_including_wrapper_and_fsync": 2.346382,
+      "output_published_with_unverified_exit_status": false,
+      "failed_query_published_output": false,
+      "artifact": {
+        "path": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/native_ordered_million-3/result.arrow",
+        "bytes": 20006992,
+        "sha256": "a3631143a531fd414779cec9da4ef56ee8548340c2cfd0229cbab8a98dedf3b6",
+        "arrow_eos_present": true
+      },
+      "artifact_hash_seconds_outside_query_timing": 0.03410847799386829,
+      "query_stats": {
+        "rows": 1000000,
+        "batches": 28,
+        "arrow_bytes": 20000000,
+        "wire_bytes": 20006992,
+        "source_wire_bytes": 8738872,
+        "prepare_ns": 422389844,
+        "duration_ns": 1720880014,
+        "engine_streaming": true,
+        "backend": "clickhouse",
+        "federation": []
+      },
+      "finished_at": "2026-10-02T04:02:24.115484+00:00"
+    },
+    {
+      "query": "federated_ordered_million",
+      "trial": 1,
+      "unit": "kelvo-micro-e75d8f301123d2c1cb7c8df6.service",
+      "started_at": "2026-10-02T04:02:24.188032+00:00",
+      "result_compression": "none",
+      "result_compression_explicit": true,
+      "state": "completed",
+      "private_run_directory": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-1",
+      "private_logs": {
+        "service": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-1/stderr.log",
+        "systemd": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-1/systemd.log",
+        "stdout": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-1/stdout.log"
+      },
+      "configured_sandbox_launcher": "/home/ubuntu/kelvo-micro-5f1bf173/bin/kelvo-landlock",
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ]
+      },
+      "errors": [],
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "systemd_run_exit_status": 0,
+      "last_status_observed_at": "2026-10-02T04:02:30.269251+00:00",
+      "last_status_elapsed_seconds": 6.0806265359860845,
+      "wall_seconds_including_service_start_and_cli_fsync": 6.059185036981944,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 62,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10387776998686604,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 36656,
+            "role": "coordinator",
+            "rss_bytes_peak": 50413568,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.28,
+            "sampled_system_seconds": 0.22
+          },
+          {
+            "pid": 36667,
+            "role": "worker",
+            "rss_bytes_peak": 156897280,
+            "no_new_privs_observed": true,
+            "seccomp_mode_observed": 2,
+            "seccomp_filters_observed": 1,
+            "sampled_user_seconds": 0.45,
+            "sampled_system_seconds": 0.25
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.28,
+            "system": 0.22
+          },
+          "worker": {
+            "user": 0.45,
+            "system": 0.25
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 50413568,
+          "worker": 156897280,
+          "combined": 207179776
+        },
+        "cgroup_path": "/sys/fs/cgroup/system.slice/kelvo-micro-e75d8f301123d2c1cb7c8df6.service",
+        "cgroup_last_observed": {
+          "memory.current": 37482496,
+          "memory.peak": 135434240,
+          "memory.swap.current": 0,
+          "pids.peak": 18,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 1242513,
+            "user_usec": 737987,
+            "system_usec": 504526,
+            "nice_usec": 0,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 0,
+            "nr_throttled": 0,
+            "throttled_usec": 0,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 132386816,
+        "cgroup_memory_peak_bytes": 135434240,
+        "host_memavailable_bytes_baseline": 722448384,
+        "host_memavailable_bytes_minimum": 615038976,
+        "host_cpu_delta": {
+          "total_ticks": 1232,
+          "steal_ticks": 117,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 1.17,
+          "steal_fraction": 0.09496753246753246
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 20119534,
+          "allocated_bytes": 20131840
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1600016384,
+        "filesystem_available_bytes_minimum": 1579888640
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": "1",
+        "ExecMainStatus": "0"
+      },
+      "systemd_accounting": {
+        "MemoryPeak": 135434240,
+        "CPUUsageNSec": 1246626000
+      },
+      "oom_observed": false,
+      "query_exit_status_verified": true,
+      "cli_process_seconds_including_wrapper_and_fsync": 5.63243,
+      "output_published_with_unverified_exit_status": false,
+      "failed_query_published_output": false,
+      "artifact": {
+        "path": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-1/result.arrow",
+        "bytes": 20117616,
+        "sha256": "3a1edcec5e73b2b317075874cf80dbb76b42bae41626a2f19b38e62ccc73863b",
+        "arrow_eos_present": true
+      },
+      "artifact_hash_seconds_outside_query_timing": 0.09107091699843295,
+      "query_stats": {
+        "rows": 1000000,
+        "batches": 489,
+        "arrow_bytes": 20000000,
+        "wire_bytes": 20117616,
+        "source_wire_bytes": 8734712,
+        "prepare_ns": 2298557214,
+        "duration_ns": 4997379511,
+        "engine_streaming": false,
+        "backend": "duckdb",
+        "federation": [
+          {
+            "scans": 0,
+            "rows_fetched": 0,
+            "arrow_bytes_fetched": 0,
+            "batches_fetched": 0,
+            "source": "taxi",
+            "table": "trips"
+          },
+          {
+            "scans": 0,
+            "rows_fetched": 0,
+            "arrow_bytes_fetched": 0,
+            "batches_fetched": 0,
+            "source": "taxi",
+            "table": "zones"
+          },
+          {
+            "scans": 1,
+            "rows_fetched": 1000000,
+            "arrow_bytes_fetched": 20000000,
+            "batches_fetched": 26,
+            "source_wire_bytes": 8734712,
+            "source": "taxi",
+            "table": "taxi_sample"
+          }
+        ]
+      },
+      "finished_at": "2026-10-02T04:02:30.411854+00:00"
+    },
+    {
+      "query": "federated_ordered_million",
+      "trial": 2,
+      "unit": "kelvo-micro-b92c9513c1729464b3026669.service",
+      "started_at": "2026-10-02T04:02:30.432936+00:00",
+      "result_compression": "none",
+      "result_compression_explicit": true,
+      "state": "completed",
+      "private_run_directory": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-2",
+      "private_logs": {
+        "service": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-2/stderr.log",
+        "systemd": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-2/systemd.log",
+        "stdout": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-2/stdout.log"
+      },
+      "configured_sandbox_launcher": "/home/ubuntu/kelvo-micro-5f1bf173/bin/kelvo-landlock",
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ]
+      },
+      "errors": [],
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "systemd_run_exit_status": 0,
+      "last_status_observed_at": "2026-10-02T04:02:36.699012+00:00",
+      "last_status_elapsed_seconds": 6.265496292995522,
+      "wall_seconds_including_service_start_and_cli_fsync": 6.156274917011615,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 64,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.14658606998273171,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 36724,
+            "role": "coordinator",
+            "rss_bytes_peak": 50716672,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.21,
+            "sampled_system_seconds": 0.16
+          },
+          {
+            "pid": 36735,
+            "role": "worker",
+            "rss_bytes_peak": 162263040,
+            "no_new_privs_observed": true,
+            "seccomp_mode_observed": 2,
+            "seccomp_filters_observed": 1,
+            "sampled_user_seconds": 0.54,
+            "sampled_system_seconds": 0.32
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.21,
+            "system": 0.16
+          },
+          "worker": {
+            "user": 0.54,
+            "system": 0.32
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 50716672,
+          "worker": 162263040,
+          "combined": 212979712
+        },
+        "cgroup_path": "/sys/fs/cgroup/system.slice/kelvo-micro-b92c9513c1729464b3026669.service",
+        "cgroup_last_observed": {
+          "memory.current": 32866304,
+          "memory.peak": 138526720,
+          "memory.swap.current": 0,
+          "pids.peak": 18,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 1348369,
+            "user_usec": 797753,
+            "system_usec": 550616,
+            "nice_usec": 0,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 0,
+            "nr_throttled": 0,
+            "throttled_usec": 0,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 137306112,
+        "cgroup_memory_peak_bytes": 138526720,
+        "host_memavailable_bytes_baseline": 717926400,
+        "host_memavailable_bytes_minimum": 609357824,
+        "host_cpu_delta": {
+          "total_ticks": 1253,
+          "steal_ticks": 153,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 1.53,
+          "steal_fraction": 0.12210694333599362
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 20119534,
+          "allocated_bytes": 20131840
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1579868160,
+        "filesystem_available_bytes_minimum": 1559740416
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": "1",
+        "ExecMainStatus": "0"
+      },
+      "systemd_accounting": {
+        "MemoryPeak": 138526720,
+        "CPUUsageNSec": 1352291000
+      },
+      "oom_observed": false,
+      "query_exit_status_verified": true,
+      "cli_process_seconds_including_wrapper_and_fsync": 5.920982,
+      "output_published_with_unverified_exit_status": false,
+      "failed_query_published_output": false,
+      "artifact": {
+        "path": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-2/result.arrow",
+        "bytes": 20117616,
+        "sha256": "3a1edcec5e73b2b317075874cf80dbb76b42bae41626a2f19b38e62ccc73863b",
+        "arrow_eos_present": true
+      },
+      "artifact_hash_seconds_outside_query_timing": 0.1844062629970722,
+      "query_stats": {
+        "rows": 1000000,
+        "batches": 489,
+        "arrow_bytes": 20000000,
+        "wire_bytes": 20117616,
+        "source_wire_bytes": 8734712,
+        "prepare_ns": 2397278665,
+        "duration_ns": 5274587860,
+        "engine_streaming": false,
+        "backend": "duckdb",
+        "federation": [
+          {
+            "scans": 0,
+            "rows_fetched": 0,
+            "arrow_bytes_fetched": 0,
+            "batches_fetched": 0,
+            "source": "taxi",
+            "table": "trips"
+          },
+          {
+            "scans": 0,
+            "rows_fetched": 0,
+            "arrow_bytes_fetched": 0,
+            "batches_fetched": 0,
+            "source": "taxi",
+            "table": "zones"
+          },
+          {
+            "scans": 1,
+            "rows_fetched": 1000000,
+            "arrow_bytes_fetched": 20000000,
+            "batches_fetched": 26,
+            "source_wire_bytes": 8734712,
+            "source": "taxi",
+            "table": "taxi_sample"
+          }
+        ]
+      },
+      "finished_at": "2026-10-02T04:02:37.080739+00:00"
+    },
+    {
+      "query": "federated_ordered_million",
+      "trial": 3,
+      "unit": "kelvo-micro-5318e380182dfd86e5ee915a.service",
+      "started_at": "2026-10-02T04:02:37.101829+00:00",
+      "result_compression": "none",
+      "result_compression_explicit": true,
+      "state": "completed",
+      "private_run_directory": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-3",
+      "private_logs": {
+        "service": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-3/stderr.log",
+        "systemd": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-3/systemd.log",
+        "stdout": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-3/stdout.log"
+      },
+      "configured_sandbox_launcher": "/home/ubuntu/kelvo-micro-5f1bf173/bin/kelvo-landlock",
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ]
+      },
+      "errors": [],
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "systemd_run_exit_status": 0,
+      "last_status_observed_at": "2026-10-02T04:02:44.069449+00:00",
+      "last_status_elapsed_seconds": 6.966489862999879,
+      "wall_seconds_including_service_start_and_cli_fsync": 6.945007606991567,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 70,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.1745911920152139,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 36794,
+            "role": "coordinator",
+            "rss_bytes_peak": 50671616,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.33,
+            "sampled_system_seconds": 0.2
+          },
+          {
+            "pid": 36805,
+            "role": "worker",
+            "rss_bytes_peak": 155119616,
+            "no_new_privs_observed": true,
+            "seccomp_mode_observed": 2,
+            "seccomp_filters_observed": 1,
+            "sampled_user_seconds": 0.93,
+            "sampled_system_seconds": 0.38
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.33,
+            "system": 0.2
+          },
+          "worker": {
+            "user": 0.93,
+            "system": 0.38
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 50671616,
+          "worker": 155119616,
+          "combined": 205791232
+        },
+        "cgroup_path": "/sys/fs/cgroup/system.slice/kelvo-micro-5318e380182dfd86e5ee915a.service",
+        "cgroup_last_observed": {
+          "memory.current": 31584256,
+          "memory.peak": 128352256,
+          "memory.swap.current": 0,
+          "pids.peak": 18,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0,
+            "sock_throttled": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 1956389,
+            "user_usec": 1296966,
+            "system_usec": 659423,
+            "nice_usec": 0,
+            "core_sched.force_idle_usec": 0,
+            "nr_periods": 0,
+            "nr_throttled": 0,
+            "throttled_usec": 0,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 127528960,
+        "cgroup_memory_peak_bytes": 128352256,
+        "host_memavailable_bytes_baseline": 723886080,
+        "host_memavailable_bytes_minimum": 609992704,
+        "host_cpu_delta": {
+          "total_ticks": 1411,
+          "steal_ticks": 250,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 2.5,
+          "steal_fraction": 0.1771793054571226
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 20119534,
+          "allocated_bytes": 20131840
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1559719936,
+        "filesystem_available_bytes_minimum": 1539592192
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": "1",
+        "ExecMainStatus": "0"
+      },
+      "systemd_accounting": {
+        "MemoryPeak": 128352256,
+        "CPUUsageNSec": 1960422000
+      },
+      "oom_observed": false,
+      "query_exit_status_verified": true,
+      "cli_process_seconds_including_wrapper_and_fsync": 6.350278,
+      "output_published_with_unverified_exit_status": false,
+      "failed_query_published_output": false,
+      "artifact": {
+        "path": "/home/ubuntu/kelvo-micro-5f1bf173/runs/benchmark-20261002T040213Z-e4c029620dc5/federated_ordered_million-3/result.arrow",
+        "bytes": 20117616,
+        "sha256": "3a1edcec5e73b2b317075874cf80dbb76b42bae41626a2f19b38e62ccc73863b",
+        "arrow_eos_present": true
+      },
+      "artifact_hash_seconds_outside_query_timing": 0.03498055800446309,
+      "query_stats": {
+        "rows": 1000000,
+        "batches": 489,
+        "arrow_bytes": 20000000,
+        "wire_bytes": 20117616,
+        "source_wire_bytes": 8734712,
+        "prepare_ns": 2291307682,
+        "duration_ns": 5582175008,
+        "engine_streaming": false,
+        "backend": "duckdb",
+        "federation": [
+          {
+            "scans": 0,
+            "rows_fetched": 0,
+            "arrow_bytes_fetched": 0,
+            "batches_fetched": 0,
+            "source": "taxi",
+            "table": "trips"
+          },
+          {
+            "scans": 0,
+            "rows_fetched": 0,
+            "arrow_bytes_fetched": 0,
+            "batches_fetched": 0,
+            "source": "taxi",
+            "table": "zones"
+          },
+          {
+            "scans": 1,
+            "rows_fetched": 1000000,
+            "arrow_bytes_fetched": 20000000,
+            "batches_fetched": 26,
+            "source_wire_bytes": 8734712,
+            "source": "taxi",
+            "table": "taxi_sample"
+          }
+        ]
+      },
+      "finished_at": "2026-10-02T04:02:44.215625+00:00"
+    }
+  ],
+  "limitations": [
+    "Byte SHA256 and Arrow EOS do not prove decoded schema, rows or value correctness; validate retained outputs independently.",
+    "Process RSS/CPU and scratch peaks are sampled every 100 ms and can miss brief peaks or short-lived processes.",
+    "Process CPU counters stop at the last observed sample; cgroup cpu.stat includes all service processes, including the wrapper and launcher.",
+    "Cgroup memory includes charged page cache; it is not process RSS. memory.peak availability depends on the kernel.",
+    "Failed services may lose their cgroup before the final sample; retained counters are the last observation and systemd accounting is reported separately.",
+    "Counters and wall times for forced-stop failures end before unit teardown; cleanup is outside these measurements.",
+    "Host steal time, MemAvailable and filesystem free space include unrelated host activity.",
+    "Service wall time includes scheduling, the environment wrapper and CLI fsync; hashing runs after the query timing.",
+    "Service status is polled every 500 ms; wall time includes polling delay. The headline CLI time uses systemd process start/exit timestamps.",
+    "Status-command timeouts are recorded and retried only inside the original query observation deadline; they do not establish query failure or OOM.",
+    "If the final status read is unavailable, the report flags uncertainty and retains the last observed state; a previously verified exit remains valid.",
+    "Exact-unit cleanup retries a timed-out control command once; cleanup remains outside query timings.",
+    "The CLI is explicitly configured with --sandbox; NoNewPrivs and Seccomp observations alone do not verify the complete Landlock policy.",
+    "Federation rows/bytes are fetched Arrow data, not remote database storage rows/bytes scanned.",
+    "Source wire bytes count supported adapters' encoded response body bytes consumed; federation excludes discovery, and HTTP/TLS framing is excluded.",
+    "No caches are dropped. Trials execute sequentially in query order and retain all completed and failed artifacts."
+  ],
+  "finished_at": "2026-10-02T04:02:44.231436+00:00",
+  "all_queries_completed": true
+}

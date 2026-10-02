@@ -1,0 +1,37 @@
+{
+  "runtime_source_revision": "b1a36c0",
+  "binary_sha256": "fefdba4eaa4b2ac99eaf2878d30cfe80ddeacaf1df4fac1c52182f9ca944d6ac",
+  "build_flags": [
+    "-p",
+    "2",
+    "-modfile",
+    "artifacts/duckbridge/duckbridge.mod",
+    "-tags",
+    "duckdb_arrow,duckbridge",
+    "-trimpath",
+    "-ldflags=-s -w"
+  ],
+  "validation": {
+    "all_packages_go_test": true,
+    "focused_race": [
+      "internal/transport/httpapi",
+      "internal/worker"
+    ],
+    "focused_vet": [
+      "cmd/kelvo",
+      "internal/query",
+      "internal/worker",
+      "internal/transport/httpapi",
+      "internal/cluster"
+    ],
+    "cluster_relay_regression": true,
+    "real_cluster_lz4_acceptance": true,
+    "fixture_readiness_regressions": 22
+  },
+  "test_host_role": "Azure build VM; timed Oracle queries stopped during tests/build",
+  "data_limits": "max-bytes separately bounds decoded Arrow buffers and encoded public output with the same configured value; row/RAM/spill/cgroup limits remain independent",
+  "compression": "Source LZ4 enabled in both forthcoming result A/B profiles; only public Arrow result codec differs; child pipes uncompressed",
+  "source_files_verified": 184,
+  "source_files_match_checkout": true,
+  "verified_checkout_revision": "8df16c01e4e4cc3826d1e2518be2b0da7626a401"
+}

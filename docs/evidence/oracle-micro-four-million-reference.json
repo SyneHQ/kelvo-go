@@ -1,0 +1,33 @@
+{
+  "rows": 4000000,
+  "canonical_value_sha256": "102e696898cbc65de7c3dfbeab7d5aabd171bc4704b0d2f1fc6e3b2a9f9a20ca",
+  "integer_sums": {
+    "trip_id": 407999998000000,
+    "pickup_zone_id": 661140402,
+    "fare_cents": 6313640780
+  },
+  "null_counts": {
+    "trip_id": 0,
+    "pickup_zone_id": 0,
+    "fare_cents": 0
+  },
+  "physical_arrow_schema": [
+    [
+      "trip_id",
+      "int64"
+    ],
+    [
+      "pickup_zone_id",
+      "int32"
+    ],
+    [
+      "fare_cents",
+      "int64"
+    ]
+  ],
+  "arrow_ipc_bytes": 35033336,
+  "arrow_ipc_sha256": "ef67a9e95f0d6c52fd6be1c2c35c9e266480a9af3fbfb6b336ba1d0780420eff",
+  "query": "SELECT trip_id,pickup_zone_id,fare_cents FROM kelvo_capacity_104a5b278487.trips WHERE source_month=201901 AND source_row < 4000000 ORDER BY source_month,source_row",
+  "source_dataset": "NYC TLC January 2019, first 4 million physical rows ordered by source month and row",
+  "role": "independent direct ClickHouse reference; timing is not a Kelvo benchmark"
+}

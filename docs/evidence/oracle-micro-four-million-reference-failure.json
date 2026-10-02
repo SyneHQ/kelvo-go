@@ -1,0 +1,8 @@
+{
+  "scope": "direct ClickHouse reference preparation, not a Kelvo throughput trial",
+  "query": "SELECT trip_id,pickup_zone_id,fare_cents FROM kelvo_capacity_104a5b278487.trips ORDER BY trip_id LIMIT 4000000",
+  "source_max_memory_bytes": 536870912,
+  "source_max_threads": 2,
+  "result": "ClickHouse MEMORY_LIMIT_EXCEEDED (code 241)",
+  "correction": "Select the first four million January rows and order by the existing (source_month,source_row) storage key, avoiding the global trip_id sort."
+}

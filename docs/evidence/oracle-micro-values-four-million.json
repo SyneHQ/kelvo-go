@@ -1,0 +1,113 @@
+{
+  "all_passed": true,
+  "results": [
+    {
+      "query": "native_four_million",
+      "trial": 1,
+      "sha256": "f664f9174d345fe676d11c294a183b2672cd6b1989d40e9f16ce58e8ad303df2",
+      "bytes": 35065408,
+      "rows": 4000000,
+      "canonical_value_sha256": "102e696898cbc65de7c3dfbeab7d5aabd171bc4704b0d2f1fc6e3b2a9f9a20ca",
+      "integer_sums": {
+        "trip_id": 407999998000000,
+        "pickup_zone_id": 661140402,
+        "fare_cents": 6313640780
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 35065408,
+      "arrow_ipc_sha256": "f664f9174d345fe676d11c294a183b2672cd6b1989d40e9f16ce58e8ad303df2",
+      "expected_canonical_value_sha256": "102e696898cbc65de7c3dfbeab7d5aabd171bc4704b0d2f1fc6e3b2a9f9a20ca",
+      "passed": true
+    },
+    {
+      "query": "native_four_million",
+      "trial": 2,
+      "sha256": "f664f9174d345fe676d11c294a183b2672cd6b1989d40e9f16ce58e8ad303df2",
+      "bytes": 35065408,
+      "rows": 4000000,
+      "canonical_value_sha256": "102e696898cbc65de7c3dfbeab7d5aabd171bc4704b0d2f1fc6e3b2a9f9a20ca",
+      "integer_sums": {
+        "trip_id": 407999998000000,
+        "pickup_zone_id": 661140402,
+        "fare_cents": 6313640780
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 35065408,
+      "arrow_ipc_sha256": "f664f9174d345fe676d11c294a183b2672cd6b1989d40e9f16ce58e8ad303df2",
+      "expected_canonical_value_sha256": "102e696898cbc65de7c3dfbeab7d5aabd171bc4704b0d2f1fc6e3b2a9f9a20ca",
+      "passed": true
+    },
+    {
+      "query": "native_four_million",
+      "trial": 3,
+      "sha256": "f664f9174d345fe676d11c294a183b2672cd6b1989d40e9f16ce58e8ad303df2",
+      "bytes": 35065408,
+      "rows": 4000000,
+      "canonical_value_sha256": "102e696898cbc65de7c3dfbeab7d5aabd171bc4704b0d2f1fc6e3b2a9f9a20ca",
+      "integer_sums": {
+        "trip_id": 407999998000000,
+        "pickup_zone_id": 661140402,
+        "fare_cents": 6313640780
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 35065408,
+      "arrow_ipc_sha256": "f664f9174d345fe676d11c294a183b2672cd6b1989d40e9f16ce58e8ad303df2",
+      "expected_canonical_value_sha256": "102e696898cbc65de7c3dfbeab7d5aabd171bc4704b0d2f1fc6e3b2a9f9a20ca",
+      "passed": true
+    }
+  ]
+}
