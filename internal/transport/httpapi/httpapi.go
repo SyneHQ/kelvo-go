@@ -18,6 +18,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
+	arrowutil "github.com/apache/arrow-go/v18/arrow/util"
 )
 
 const maxRequestBytes = 1 << 20
@@ -81,6 +82,9 @@ func New(executor query.Executor, opts Options) (*Server, error) {
 	}
 	if opts.Limits.MaxRows <= 0 || opts.Limits.MaxBytes <= 0 || opts.Limits.Timeout <= 0 {
 		return nil, errors.New("httpapi: positive query limits are required")
+	}
+	if _, err := query.ResultIPCOptions(opts.Limits.ResultCompression); err != nil {
+		return nil, err
 	}
 	s := &Server{executor: executor, opts: opts, queries: make(map[string]*entry), permits: make(chan struct{}, opts.MaxConcurrent), stop: make(chan struct{}), done: make(chan struct{})}
 	go s.sweep()
@@ -305,7 +309,7 @@ func (s *Server) results(w http.ResponseWriter, r *http.Request, id string) {
 		<-s.permits
 	}()
 
-	sink := &arrowSink{w: w, maxRows: s.opts.Limits.MaxRows, maxBytes: s.opts.Limits.MaxBytes, onStart: func() {
+	sink := &arrowSink{w: w, maxRows: s.opts.Limits.MaxRows, maxBytes: s.opts.Limits.MaxBytes, compression: s.opts.Limits.ResultCompression, onStart: func() {
 		s.mu.Lock()
 		if current, present := s.queries[id]; present && current.state == running {
 			current.state = streaming
@@ -325,6 +329,9 @@ func (s *Server) results(w http.ResponseWriter, r *http.Request, id string) {
 		} else if closeErr := sink.writer.Close(); closeErr != nil {
 			err = closeErr
 		}
+	}
+	if err != nil {
+		sink.abort()
 	}
 	public := query.PublicError(err)
 	s.mu.Lock()
@@ -349,25 +356,36 @@ func (s *Server) results(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 type arrowSink struct {
-	w        http.ResponseWriter
-	writer   *ipc.Writer
-	started  bool
-	rows     int64
-	batches  int64
-	bytes    int64
-	maxRows  int64
-	maxBytes int64
-	onStart  func()
-	err      error
+	w            http.ResponseWriter
+	writer       *ipc.Writer
+	output       *limitWriter
+	started      bool
+	rows         int64
+	batches      int64
+	bytes        int64
+	decodedBytes int64
+	maxRows      int64
+	maxBytes     int64
+	compression  string
+	onStart      func()
+	err          error
 }
 
 func (s *arrowSink) Schema(schema *arrow.Schema) error {
+	if s.err != nil {
+		return s.err
+	}
 	if s.writer != nil {
-		return query.NewError("QUERY_FAILED", "Query emitted more than one schema")
+		return s.fail(query.NewError("QUERY_FAILED", "Query emitted more than one schema"))
 	}
 	if schema == nil {
-		return query.NewError("QUERY_FAILED", "Query emitted a nil schema")
+		return s.fail(query.NewError("QUERY_FAILED", "Query emitted a nil schema"))
 	}
+	options, err := query.ResultIPCOptions(s.compression)
+	if err != nil {
+		return s.fail(err)
+	}
+	options = append(options, ipc.WithSchema(schema))
 	s.w.Header().Set("Content-Type", "application/vnd.apache.arrow.stream")
 	s.w.Header().Set("Cache-Control", "no-store")
 	s.w.WriteHeader(http.StatusOK)
@@ -375,36 +393,68 @@ func (s *arrowSink) Schema(schema *arrow.Schema) error {
 	if s.onStart != nil {
 		s.onStart()
 	}
-	s.writer = ipc.NewWriter(&limitWriter{w: s.w, used: &s.bytes, max: s.maxBytes}, ipc.WithSchema(schema))
+	s.output = &limitWriter{w: s.w, used: &s.bytes, max: s.maxBytes}
+	s.writer = ipc.NewWriter(s.output, options...)
 	return nil
 }
 
 func (s *arrowSink) Write(batch arrow.RecordBatch) error {
+	if s.err != nil {
+		return s.err
+	}
 	if s.writer == nil {
-		return query.NewError("QUERY_FAILED", "Query emitted batches before its schema")
+		return s.fail(query.NewError("QUERY_FAILED", "Query emitted batches before its schema"))
 	}
 	if batch == nil {
-		return query.NewError("QUERY_FAILED", "Query emitted a nil batch")
+		return s.fail(query.NewError("QUERY_FAILED", "Query emitted a nil batch"))
 	}
 	if batch.NumRows() > s.maxRows-s.rows {
-		return query.NewError("RESOURCE_EXHAUSTED", "Query row limit exceeded")
+		return s.fail(query.NewError("RESOURCE_EXHAUSTED", "Query row limit exceeded"))
+	}
+	// The encoded limit alone would let a highly compressible result bypass
+	// its original Arrow buffer budget. Bound both representations separately.
+	size := arrowutil.TotalRecordSize(batch)
+	if size < 0 || size > s.maxBytes-s.decodedBytes {
+		return s.fail(query.NewError("RESOURCE_EXHAUSTED", "Query result byte limit exceeded"))
 	}
 	if err := s.writer.Write(batch); err != nil {
-		s.err = err
-		return err
+		return s.fail(err)
 	}
 	s.rows += batch.NumRows()
 	s.batches++
+	s.decodedBytes += size
 	return nil
 }
 
+func (s *arrowSink) fail(err error) error {
+	if s.err == nil {
+		s.err = err
+		s.abort()
+	}
+	return s.err
+}
+
+// Close releases retained Arrow dictionaries and compression state, but the
+// failed stream must never receive EOS. Discard cleanup writes without counting
+// them as client bytes, including when execution fails after valid batches.
+func (s *arrowSink) abort() {
+	if s.writer != nil && s.output != nil && !s.output.discard {
+		s.output.discard = true
+		_ = s.writer.Close()
+	}
+}
+
 type limitWriter struct {
-	w    http.ResponseWriter
-	used *int64
-	max  int64
+	w       http.ResponseWriter
+	used    *int64
+	max     int64
+	discard bool
 }
 
 func (w *limitWriter) Write(p []byte) (int, error) {
+	if w.discard {
+		return len(p), nil
+	}
 	if int64(len(p)) > w.max-*w.used {
 		return 0, query.NewError("RESOURCE_EXHAUSTED", "Query result byte limit exceeded")
 	}

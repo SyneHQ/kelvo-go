@@ -140,6 +140,30 @@ Defaults allow one million rows and 256 MiB of encoded output. Limit failures re
 
 For federated DuckDB work, `--memory-mb` configures DuckDB memory. For native ClickHouse it configures ClickHouse `max_memory_usage` and Kelvo's local Arrow decoding allocator. Neither is a hard worker-process RSS cap; enforce process or container limits in deployment.
 
+## Opt-in result compression
+
+`query` and `serve` accept `--result-compression lz4_frame` to compress Arrow IPC record buffers. It applies to every result path, including native connectors, federated queries, and queries over accelerated datasets. Compression defaults to `none` for client compatibility. Clients must support LZ4-compressed Arrow IPC; some browser Arrow readers need additional codec support. The stream metadata identifies the codec, without an HTTP `Content-Encoding` header.
+
+```sh
+kelvo query --config kelvo.yml --mode native --connection analytics \
+  --sql 'SELECT * FROM events' --out events.arrow --result-compression lz4_frame
+kelvo serve --config kelvo.yml --result-compression lz4_frame
+```
+
+Cluster operators set the same option inside each tenant's `policy.limits` in the bootstrap, gateway, and node configuration. The remaining required policy limits still apply:
+
+```yaml
+policy:
+  limits:
+    result_compression: lz4_frame
+```
+
+Compression is part of the provisioned tenant policy, so gateway and node settings must match the stored policy. The per-query request cannot override it. Supported values are `none` and `lz4_frame`; an omitted or empty value means `none`. Unsupported codecs fail configuration validation before execution.
+
+This compresses the public Arrow result once. In cluster mode, the node compresses the result and the gateway relays those bytes; the local worker pipe remains uncompressed. Row limits, decoded Arrow buffer limits, and encoded result byte limits remain enforced independently. Compression uses one codec worker per output stream, but its scratch space is not a whole-process memory limit. Keep operating-system memory limits in place.
+
+Source transport remains a separate setting. For example, a ClickHouse source can opt in with `options.arrow_compression: lz4_frame` independently of result compression. Other connectors keep their source-native protocols; enabling result compression does not force LZ4 onto databases that do not support it. Benchmark the workload and network before enabling either option: reduced transfer bytes can cost CPU on a small host.
+
 ## Cluster
 
 Cluster mode distributes independent tenant-bound queries to worker pools through NATS JetStream. It does not split one SQL plan across machines. See [cluster lifecycle and failure semantics](cluster.md) and the [tenant deployment example](../deploy/README.md).

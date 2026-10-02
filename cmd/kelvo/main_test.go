@@ -106,3 +106,24 @@ func TestCLIRejectsInvalidSandboxBeforeStartingQueryOrServer(t *testing.T) {
 		})
 	}
 }
+
+func TestCLIResultCompressionValidatedBeforeConfiguration(t *testing.T) {
+	missingConfig := filepath.Join(t.TempDir(), "missing.yml")
+	for _, command := range []string{"query", "serve"} {
+		for _, codec := range []string{"", "none", "lz4_frame", "lz4", "zstd", "LZ4_FRAME"} {
+			t.Run(command+"/"+codec, func(t *testing.T) {
+				err := run([]string{command, "--config", missingConfig, "--result-compression", codec})
+				if err == nil {
+					t.Fatal("missing configuration was accepted")
+				}
+				want := "INVALID_ARGUMENT"
+				if codec == "" || codec == "none" || codec == "lz4_frame" {
+					want = "CONFIGURATION_ERROR"
+				}
+				if got := query.PublicError(err).Code; got != want {
+					t.Fatalf("compression %q: code=%s want=%s error=%v", codec, got, want, err)
+				}
+			})
+		}
+	}
+}

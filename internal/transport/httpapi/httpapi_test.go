@@ -2,6 +2,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/ipc"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
@@ -244,5 +246,224 @@ func TestCloseRejectsHealthAndQueryRoutes(t *testing.T) {
 	}
 	if got := request(t, s, http.MethodPost, "/v1/queries", `{"sql":"SELECT 1","mode":"federated"}`, true).Code; got != http.StatusServiceUnavailable {
 		t.Fatalf("query after close=%d", got)
+	}
+}
+
+// Result compression is independent of the connector: these borrowed batches
+// have already crossed the worker's validated, uncompressed local pipe.
+type repeatedBatchExecutor struct{ batches, rows int }
+
+func (e repeatedBatchExecutor) Execute(_ context.Context, _ query.Request, sink query.Sink) (query.Stats, error) {
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "id", Type: arrow.PrimitiveTypes.Int64},
+		{Name: "text", Type: arrow.BinaryTypes.String, Nullable: true},
+	}, nil)
+	if err := sink.Schema(schema); err != nil {
+		return query.Stats{}, err
+	}
+	builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
+	defer builder.Release()
+	for batch := 0; batch < e.batches; batch++ {
+		for row := 0; row < e.rows; row++ {
+			builder.Field(0).(*array.Int64Builder).Append(int64(batch*e.rows + row))
+			if row%7 == 0 {
+				builder.Field(1).(*array.StringBuilder).AppendNull()
+			} else {
+				builder.Field(1).(*array.StringBuilder).Append(strings.Repeat("Kelvo α", 16))
+			}
+		}
+		record := builder.NewRecordBatch()
+		err := sink.Write(record)
+		record.Release()
+		if err != nil {
+			return query.Stats{}, err
+		}
+	}
+	return query.Stats{Backend: "fixture"}, nil
+}
+
+func TestResultCompressionPreservesMultiBatchHTTPValues(t *testing.T) {
+	const batches, rows = 3, 1024
+	encoded := make(map[string][]byte)
+	for _, codec := range []string{"", "none", "lz4_frame"} {
+		t.Run(codec, func(t *testing.T) {
+			limits := testLimits()
+			limits.MaxRows = batches * rows
+			limits.ResultCompression = codec
+			s := newTestServer(t, repeatedBatchExecutor{batches: batches, rows: rows}, time.Second, limits)
+			id := create(t, s)
+			response := request(t, s, http.MethodGet, "/v1/queries/"+id+"/results", "", true)
+			if response.Code != http.StatusOK || response.Header().Get("Content-Encoding") != "" {
+				t.Fatalf("Arrow body compression is not HTTP Content-Encoding: status=%d headers=%v", response.Code, response.Header())
+			}
+			encoded[codec] = bytes.Clone(response.Body.Bytes())
+			if !bytes.HasSuffix(encoded[codec], []byte{255, 255, 255, 255, 0, 0, 0, 0}) {
+				t.Fatal("completed stream has no Arrow EOS")
+			}
+			reader, err := ipc.NewReader(bytes.NewReader(encoded[codec]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reader.Release()
+			batch := 0
+			for reader.Next() {
+				record := reader.RecordBatch()
+				if record.NumRows() != rows || record.NumCols() != 2 {
+					t.Fatalf("unexpected record shape: %d rows, %d columns", record.NumRows(), record.NumCols())
+				}
+				ids := record.Column(0).(*array.Int64)
+				texts := record.Column(1).(*array.String)
+				for row := 0; row < rows; row++ {
+					if ids.Value(row) != int64(batch*rows+row) || texts.IsNull(row) != (row%7 == 0) {
+						t.Fatalf("batch=%d row=%d changed integer or NULL", batch, row)
+					}
+					if !texts.IsNull(row) && texts.Value(row) != strings.Repeat("Kelvo α", 16) {
+						t.Fatalf("batch=%d row=%d changed string", batch, row)
+					}
+				}
+				batch++
+			}
+			if reader.Err() != nil || batch != batches {
+				t.Fatalf("decoded %d batches: %v", batch, reader.Err())
+			}
+			status := request(t, s, http.MethodGet, "/v1/queries/"+id, "", true)
+			var result struct {
+				State string      `json:"state"`
+				Stats query.Stats `json:"stats"`
+			}
+			if err := json.Unmarshal(status.Body.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.State != "succeeded" || result.Stats.Rows != batches*rows || result.Stats.Batches != batches || result.Stats.WireBytes != int64(len(encoded[codec])) {
+				t.Fatalf("incorrect terminal accounting: %+v", result)
+			}
+		})
+	}
+	if !bytes.Equal(encoded[""], encoded["none"]) {
+		t.Fatal("explicit none changed the default Arrow wire format")
+	}
+	if len(encoded["lz4_frame"])*2 >= len(encoded["none"]) {
+		t.Fatalf("repeated fixture was not compressed: lz4=%d none=%d", len(encoded["lz4_frame"]), len(encoded["none"]))
+	}
+}
+
+func TestCompressedHTTPResultKeepsRowAndByteLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		executor query.Executor
+		maxRows  int64
+		maxBytes int64
+	}{
+		{name: "rows", executor: repeatedBatchExecutor{batches: 2, rows: 1024}, maxRows: 1024, maxBytes: 1 << 20},
+		{name: "decoded bytes", executor: repeatedBatchExecutor{batches: 2, rows: 1024}, maxRows: 2048, maxBytes: 150000},
+		{name: "encoded bytes", executor: &fakeExecutor{rows: 1}, maxRows: 1, maxBytes: 64},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := testLimits()
+			limits.ResultCompression = "lz4_frame"
+			limits.MaxRows, limits.MaxBytes = tc.maxRows, tc.maxBytes
+			s := newTestServer(t, tc.executor, time.Second, limits)
+			id := create(t, s)
+			response := request(t, s, http.MethodGet, "/v1/queries/"+id+"/results", "", true)
+			status := request(t, s, http.MethodGet, "/v1/queries/"+id, "", true)
+			if !strings.Contains(status.Body.String(), `"state":"failed"`) || !strings.Contains(status.Body.String(), `"code":"RESOURCE_EXHAUSTED"`) {
+				t.Fatalf("limit was not terminal: %s", status.Body.String())
+			}
+			if bytes.HasSuffix(response.Body.Bytes(), []byte{255, 255, 255, 255, 0, 0, 0, 0}) {
+				t.Fatal("failed compressed stream included successful EOS")
+			}
+		})
+	}
+}
+
+func TestHTTPRejectsUnknownResultCompressionBeforeExecution(t *testing.T) {
+	for _, codec := range []string{"lz4", "zstd", "LZ4_FRAME"} {
+		executor := &fakeExecutor{}
+		limits := testLimits()
+		limits.ResultCompression = codec
+		s, err := New(executor, Options{Token: "test-token", TTL: time.Second, MaxQueries: 1, MaxConcurrent: 1, Limits: limits})
+		if err == nil {
+			s.Close()
+			t.Fatalf("unsupported codec %q accepted", codec)
+		}
+		if executor.calls.Load() != 0 {
+			t.Fatal("invalid configuration executed a query")
+		}
+	}
+	s := newTestServer(t, &fakeExecutor{}, time.Second, testLimits())
+	response := request(t, s, http.MethodPost, "/v1/queries", `{"sql":"SELECT 1","mode":"federated","result_compression":"lz4_frame"}`, true)
+	if response.Code != http.StatusBadRequest {
+		t.Fatal("request overrode operator result compression")
+	}
+}
+
+type dictionaryFailureExecutor struct {
+	allocator       memory.Allocator
+	ignoreSinkError bool
+}
+
+func (e dictionaryFailureExecutor) Execute(_ context.Context, _ query.Request, sink query.Sink) (query.Stats, error) {
+	dictionaryType := &arrow.DictionaryType{IndexType: arrow.PrimitiveTypes.Int8, ValueType: arrow.BinaryTypes.String}
+	schema := arrow.NewSchema([]arrow.Field{{Name: "label", Type: dictionaryType}}, nil)
+	if err := sink.Schema(schema); err != nil {
+		return query.Stats{}, err
+	}
+	indicesBuilder := array.NewInt8Builder(e.allocator)
+	indicesBuilder.AppendValues([]int8{0, 1}, nil)
+	indices := indicesBuilder.NewArray()
+	indicesBuilder.Release()
+	defer indices.Release()
+	labelsBuilder := array.NewStringBuilder(e.allocator)
+	labelsBuilder.AppendValues([]string{"north", "south"}, nil)
+	labels := labelsBuilder.NewArray()
+	labelsBuilder.Release()
+	defer labels.Release()
+	column := array.NewDictionaryArray(dictionaryType, indices, labels)
+	defer column.Release()
+	record := array.NewRecordBatch(schema, []arrow.Array{column}, 2)
+	defer record.Release()
+	if err := sink.Write(record); err != nil {
+		return query.Stats{}, err
+	}
+	if e.ignoreSinkError {
+		_ = sink.Write(record)
+		return query.Stats{}, nil
+	}
+	return query.Stats{}, query.NewError("QUERY_FAILED", "fixture failed after a valid batch")
+}
+
+func TestFailedHTTPResultReleasesDictionariesWithoutEOS(t *testing.T) {
+	for _, codec := range []string{"none", "lz4_frame"} {
+		for _, ignoreSinkError := range []bool{false, true} {
+			name := codec + "/execution-error"
+			if ignoreSinkError {
+				name = codec + "/ignored-sink-error"
+			}
+			t.Run(name, func(t *testing.T) {
+				allocator := memory.NewCheckedAllocator(memory.DefaultAllocator)
+				limits := testLimits()
+				limits.ResultCompression = codec
+				limits.MaxRows = 2
+				executor := dictionaryFailureExecutor{allocator: allocator, ignoreSinkError: ignoreSinkError}
+				s := newTestServer(t, executor, time.Second, limits)
+				id := create(t, s)
+				response := request(t, s, http.MethodGet, "/v1/queries/"+id+"/results", "", true)
+				allocator.AssertSize(t, 0)
+				if bytes.HasSuffix(response.Body.Bytes(), []byte{255, 255, 255, 255, 0, 0, 0, 0}) {
+					t.Fatal("failed result cleanup emitted EOS")
+				}
+				status := request(t, s, http.MethodGet, "/v1/queries/"+id, "", true)
+				var result struct {
+					State string      `json:"state"`
+					Stats query.Stats `json:"stats"`
+				}
+				if err := json.Unmarshal(status.Body.Bytes(), &result); err != nil {
+					t.Fatal(err)
+				}
+				if result.State != "failed" || result.Stats.WireBytes != int64(response.Body.Len()) {
+					t.Fatalf("cleanup changed failure state or wire accounting: %+v", result)
+				}
+			})
+		}
 	}
 }

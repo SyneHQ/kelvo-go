@@ -369,6 +369,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 	defer func() { close(stopWrite); <-done; _ = controller.SetWriteDeadline(time.Time{}) }()
 	sink := &nodeSink{w: w, sink: worker.NewIPCSink(w, n.cfg.Policy.Limits)}
+	defer sink.sink.Abort()
 	stats, err := n.executor.Execute(ctx, request, sink)
 	if err == nil {
 		err = sink.sink.Finish()

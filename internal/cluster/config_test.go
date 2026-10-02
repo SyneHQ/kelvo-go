@@ -2,6 +2,8 @@
 package cluster
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,5 +69,41 @@ func TestEndpointAuthorityOnly(t *testing.T) {
 		if validEndpoint(s) {
 			t.Errorf("accepted %q", s)
 		}
+	}
+}
+
+func TestResultCompressionIsValidatedAndBoundToClusterPolicy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gateway.yml")
+	policies := make(map[string][]byte)
+	for _, codec := range []string{"none", "lz4_frame", "lz4", "zstd", "LZ4_FRAME"} {
+		text := strings.Replace(gatewayYAML, "limits: {", "limits: {result_compression: "+codec+", ", 1)
+		if err := os.WriteFile(path, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+		config, err := LoadGateway(path)
+		if codec != "none" && codec != "lz4_frame" {
+			if err == nil {
+				t.Fatalf("unsupported policy compression %q accepted", codec)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		policy := config.Tenants[0].Policy
+		if policy.Limits.ResultCompression != codec {
+			t.Fatalf("policy compression changed to %q", policy.Limits.ResultCompression)
+		}
+		policies[codec], err = json.Marshal(policy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var restored Policy
+		if err := json.Unmarshal(policies[codec], &restored); err != nil || restored.Limits.ResultCompression != codec {
+			t.Fatalf("provisioned JSON policy lost compression: %q %v", restored.Limits.ResultCompression, err)
+		}
+	}
+	if bytes.Equal(policies["none"], policies["lz4_frame"]) {
+		t.Fatal("different compression settings share provisioned policy bytes")
 	}
 }

@@ -77,6 +77,7 @@ func run(args []string) error {
 	limits := query.DefaultLimits()
 	f.Int64Var(&limits.MaxRows, "max-rows", limits.MaxRows, "Maximum returned rows")
 	f.Int64Var(&limits.MaxBytes, "max-bytes", limits.MaxBytes, "Maximum result bytes")
+	f.StringVar(&limits.ResultCompression, "result-compression", limits.ResultCompression, "Arrow result compression: none or lz4_frame (default none)")
 	f.DurationVar(&limits.Timeout, "timeout", limits.Timeout, "Per-query deadline")
 	f.IntVar(&limits.MemoryMB, "memory-mb", limits.MemoryMB, "Engine/client memory budget (source-specific; not process RSS)")
 	f.IntVar(&limits.Threads, "threads", limits.Threads, "Threads per DuckDB or ClickHouse query")
@@ -121,6 +122,7 @@ func run(args []string) error {
 		}
 		defer os.Remove(tmp)
 		sink := worker.NewIPCSink(file, limits)
+		defer sink.Abort()
 		stats, e := exec.Execute(ctx, r, sink)
 		if e == nil {
 			e = sink.Finish()
@@ -235,7 +237,12 @@ func runWorker() error {
 		}
 		executor = e
 	}
-	sink := worker.NewIPCSink(os.Stdout, in.Limits)
+	// The parent applies public result compression after validating this local
+	// pipe. Compressing both boundaries adds CPU work without saving network IO.
+	pipeLimits := in.Limits
+	pipeLimits.ResultCompression = ""
+	sink := worker.NewIPCSink(os.Stdout, pipeLimits)
+	defer sink.Abort()
 	stats, err := executor.Execute(ctx, in.Request, sink)
 	outcome.Stats = stats
 	if err == nil {
