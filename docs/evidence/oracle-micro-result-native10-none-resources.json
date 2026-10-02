@@ -1,0 +1,504 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-02T04:08:54.710071+00:00",
+  "state": "completed",
+  "unit": "kelvo-micro-result-native10-none.service",
+  "binary_sha256": "fefdba4eaa4b2ac99eaf2878d30cfe80ddeacaf1df4fac1c52182f9ca944d6ac",
+  "launcher_sha256": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1",
+  "listen_host": "127.0.0.1",
+  "port": 18626,
+  "errors": [],
+  "control_observation": {
+    "status_timeouts": 0,
+    "successful_status_observations": 115,
+    "last_timeout_elapsed_seconds": null,
+    "initial_limits_verified": true,
+    "final_status_available": true
+  },
+  "limits": {
+    "memory_max_mib": 640,
+    "memory_swap_max_bytes": 0,
+    "tasks_max": 256,
+    "cpu_weight": 20,
+    "concurrency": 10,
+    "max_queries": 32,
+    "query_memory_mib": 128,
+    "threads": 2,
+    "query_temp_mib": 64,
+    "query_max_rows": 1000000,
+    "query_max_bytes": 33554432,
+    "result_compression": "none",
+    "query_timeout_seconds": 180,
+    "query_handle_ttl_seconds": 300,
+    "monitor_seconds": 900,
+    "service_runtime_seconds": 1050
+  },
+  "scratch_name": "result-native10-none",
+  "effective_cli_options": {
+    "sandbox": true,
+    "listen": "127.0.0.1:18626",
+    "concurrency": 10,
+    "max-queries": 32,
+    "memory-mb": 128,
+    "threads": 2,
+    "temp-mb": 64,
+    "max-rows": 1000000,
+    "max-bytes": 33554432,
+    "result-compression": "none",
+    "timeout": "180s",
+    "result-ttl": "5m"
+  },
+  "admission": {
+    "submission": "POST creates a retained handle without acquiring an execution permit",
+    "execution": "GET results acquires a permit without waiting; full capacity returns HTTP 429 and leaves the handle unclaimed",
+    "permit_release": "After response completion or failure and worker teardown",
+    "automatic_execution_queue": false
+  },
+  "limitations": [
+    "Resources cover the whole HTTP service interval, including idle time and readiness probes.",
+    "Process RSS and CPU are sampled every 100 ms and may miss brief peaks or workers.",
+    "Cgroup memory includes charged page cache and is separate from RSS.",
+    "Source SSH forwarding and client SSH transport processes run outside this service cgroup; their CPU and memory are excluded.",
+    "The sampled simultaneous-worker count may miss workers between samples; admitted HTTP requests can hold a permit before worker startup or after worker exit.",
+    "TasksMax counts runtime threads as well as processes; pids.events is separate evidence from memory exhaustion.",
+    "Systemd status-read timeouts are counted and retried inside the monitor deadline; they do not establish service failure or OOM.",
+    "Final counters precede forced service teardown; disappeared cgroups retain only last sampled counters.",
+    "NoNewPrivs and Seccomp flags alone do not prove the full Landlock policy."
+  ],
+  "ready_at": "2026-10-02T04:08:55.195341+00:00",
+  "stop_reason": "stop_file",
+  "metrics": {
+    "samples": 1246,
+    "interval_seconds": 0.1,
+    "maximum_sample_gap_seconds": 0.29396727099083364,
+    "sampling_errors": [],
+    "processes": [
+      {
+        "pid": 38018,
+        "role": "coordinator",
+        "rss_bytes_peak": 66441216,
+        "no_new_privs_observed": false,
+        "seccomp_mode_observed": 0,
+        "seccomp_filters_observed": 0,
+        "sampled_user_seconds": 1.59,
+        "sampled_system_seconds": 2.34
+      },
+      {
+        "pid": 38082,
+        "role": "worker",
+        "rss_bytes_peak": 67080192,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.21,
+        "sampled_system_seconds": 0.16
+      },
+      {
+        "pid": 38083,
+        "role": "worker",
+        "rss_bytes_peak": 64024576,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.25,
+        "sampled_system_seconds": 0.28
+      },
+      {
+        "pid": 38084,
+        "role": "worker",
+        "rss_bytes_peak": 68296704,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.19,
+        "sampled_system_seconds": 0.15
+      },
+      {
+        "pid": 38086,
+        "role": "worker",
+        "rss_bytes_peak": 68333568,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.24,
+        "sampled_system_seconds": 0.18
+      },
+      {
+        "pid": 38087,
+        "role": "worker",
+        "rss_bytes_peak": 65654784,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.15,
+        "sampled_system_seconds": 0.14
+      },
+      {
+        "pid": 38088,
+        "role": "worker",
+        "rss_bytes_peak": 68259840,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.26,
+        "sampled_system_seconds": 0.22
+      },
+      {
+        "pid": 38089,
+        "role": "worker",
+        "rss_bytes_peak": 63692800,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.09,
+        "sampled_system_seconds": 0.09
+      },
+      {
+        "pid": 38090,
+        "role": "worker",
+        "rss_bytes_peak": 65474560,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.28,
+        "sampled_system_seconds": 0.25
+      },
+      {
+        "pid": 38091,
+        "role": "worker",
+        "rss_bytes_peak": 64720896,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.17,
+        "sampled_system_seconds": 0.1
+      },
+      {
+        "pid": 38092,
+        "role": "worker",
+        "rss_bytes_peak": 62849024,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.27,
+        "sampled_system_seconds": 0.17
+      },
+      {
+        "pid": 38280,
+        "role": "worker",
+        "rss_bytes_peak": 69050368,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.13,
+        "sampled_system_seconds": 0.13
+      },
+      {
+        "pid": 38281,
+        "role": "worker",
+        "rss_bytes_peak": 68300800,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.11,
+        "sampled_system_seconds": 0.14
+      },
+      {
+        "pid": 38282,
+        "role": "worker",
+        "rss_bytes_peak": 67072000,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.14,
+        "sampled_system_seconds": 0.16
+      },
+      {
+        "pid": 38283,
+        "role": "worker",
+        "rss_bytes_peak": 69857280,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.17,
+        "sampled_system_seconds": 0.19
+      },
+      {
+        "pid": 38284,
+        "role": "worker",
+        "rss_bytes_peak": 67485696,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.08,
+        "sampled_system_seconds": 0.05
+      },
+      {
+        "pid": 38285,
+        "role": "worker",
+        "rss_bytes_peak": 70152192,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.29,
+        "sampled_system_seconds": 0.26
+      },
+      {
+        "pid": 38286,
+        "role": "worker",
+        "rss_bytes_peak": 65380352,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.14,
+        "sampled_system_seconds": 0.17
+      },
+      {
+        "pid": 38287,
+        "role": "worker",
+        "rss_bytes_peak": 67559424,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.17,
+        "sampled_system_seconds": 0.12
+      },
+      {
+        "pid": 38288,
+        "role": "worker",
+        "rss_bytes_peak": 73117696,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.1,
+        "sampled_system_seconds": 0.08
+      },
+      {
+        "pid": 38289,
+        "role": "worker",
+        "rss_bytes_peak": 67121152,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.12,
+        "sampled_system_seconds": 0.11
+      },
+      {
+        "pid": 38479,
+        "role": "worker",
+        "rss_bytes_peak": 70299648,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.35,
+        "sampled_system_seconds": 0.39
+      },
+      {
+        "pid": 38480,
+        "role": "worker",
+        "rss_bytes_peak": 70397952,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.22,
+        "sampled_system_seconds": 0.29
+      },
+      {
+        "pid": 38481,
+        "role": "worker",
+        "rss_bytes_peak": 70529024,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.12,
+        "sampled_system_seconds": 0.09
+      },
+      {
+        "pid": 38482,
+        "role": "worker",
+        "rss_bytes_peak": 66592768,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.19,
+        "sampled_system_seconds": 0.21
+      },
+      {
+        "pid": 38483,
+        "role": "worker",
+        "rss_bytes_peak": 65245184,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.18,
+        "sampled_system_seconds": 0.17
+      },
+      {
+        "pid": 38484,
+        "role": "worker",
+        "rss_bytes_peak": 72269824,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.18,
+        "sampled_system_seconds": 0.12
+      },
+      {
+        "pid": 38485,
+        "role": "worker",
+        "rss_bytes_peak": 68308992,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.3,
+        "sampled_system_seconds": 0.25
+      },
+      {
+        "pid": 38486,
+        "role": "worker",
+        "rss_bytes_peak": 67047424,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.25,
+        "sampled_system_seconds": 0.26
+      },
+      {
+        "pid": 38487,
+        "role": "worker",
+        "rss_bytes_peak": 67891200,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.13,
+        "sampled_system_seconds": 0.08
+      },
+      {
+        "pid": 38488,
+        "role": "worker",
+        "rss_bytes_peak": 71299072,
+        "no_new_privs_observed": true,
+        "seccomp_mode_observed": 2,
+        "seccomp_filters_observed": 1,
+        "sampled_user_seconds": 0.15,
+        "sampled_system_seconds": 0.14
+      }
+    ],
+    "observed_process_counts": {
+      "coordinator": 1,
+      "worker": 30
+    },
+    "sampled_cpu_seconds_by_role": {
+      "coordinator": {
+        "user": 1.59,
+        "system": 2.34
+      },
+      "worker": {
+        "user": 5.63,
+        "system": 5.15
+      }
+    },
+    "sampled_rss_bytes_peak": {
+      "coordinator": 66441216,
+      "worker": 676618240,
+      "combined": 724566016
+    },
+    "cgroup_path": "/sys/fs/cgroup/system.slice/kelvo-micro-result-native10-none.service",
+    "cgroup_last_observed": {
+      "memory.current": 66834432,
+      "memory.peak": 395599872,
+      "memory.swap.current": 0,
+      "pids.peak": 92,
+      "memory.events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "memory.events.local": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0,
+        "sock_throttled": 0
+      },
+      "cpu.stat": {
+        "usage_usec": 15446876,
+        "user_usec": 7360755,
+        "system_usec": 8086121,
+        "nice_usec": 0,
+        "core_sched.force_idle_usec": 0,
+        "nr_periods": 0,
+        "nr_throttled": 0,
+        "throttled_usec": 0,
+        "nr_bursts": 0,
+        "burst_usec": 0
+      },
+      "pids.events": {
+        "max": 0
+      }
+    },
+    "cgroup_exists_at_final_sample": true,
+    "cgroup_memory_current_bytes_sampled_peak": 394715136,
+    "cgroup_memory_peak_bytes": 395599872,
+    "host_memavailable_bytes_baseline": 723726336,
+    "host_memavailable_bytes_minimum": 298184704,
+    "host_cpu_delta": {
+      "total_ticks": 25815,
+      "steal_ticks": 6755,
+      "clock_ticks_per_second": 100,
+      "steal_seconds": 67.55,
+      "steal_fraction": 0.26166957195429014
+    },
+    "run_files_bytes_peak": {
+      "logical_bytes": 2767,
+      "allocated_bytes": 16384
+    },
+    "scratch_files_bytes_peak": {
+      "logical_bytes": 0,
+      "allocated_bytes": 0
+    },
+    "filesystem_available_bytes_baseline": 1379942400,
+    "filesystem_available_bytes_minimum": 1379893248,
+    "cgroup_cpu_delta_from_first_sample": {
+      "usage_usec": 15377643,
+      "user_usec": 7331084,
+      "system_usec": 8046560,
+      "nice_usec": 0,
+      "core_sched.force_idle_usec": 0,
+      "nr_periods": 0,
+      "nr_throttled": 0,
+      "throttled_usec": 0,
+      "nr_bursts": 0,
+      "burst_usec": 0
+    },
+    "coordinator_role": "kelvo serve",
+    "sampled_simultaneous_workers_peak": 10
+  },
+  "unit_before_stop": {
+    "ActiveState": "active",
+    "SubState": "running",
+    "Result": "success",
+    "ExecMainCode": "0",
+    "ExecMainStatus": "0"
+  },
+  "systemd_accounting_before_stop": {
+    "MemoryPeak": 395599872,
+    "MemoryCurrent": 66834432,
+    "CPUUsageNSec": 15446876000
+  },
+  "oom_observed": false,
+  "cleanup": {
+    "stop_exit_status": 0,
+    "reset-failed_exit_status": 1,
+    "cgroup_empty": true,
+    "remaining_process_count": 0
+  },
+  "finished_at": "2026-10-02T04:11:01.787581+00:00",
+  "monitored_seconds": 127.07892355902004
+}

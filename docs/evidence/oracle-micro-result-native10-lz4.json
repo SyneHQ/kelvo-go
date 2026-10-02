@@ -1,0 +1,1500 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-02T04:11:44.226714+00:00",
+  "state": "completed",
+  "cohorts": [
+    {
+      "round": 1,
+      "started_at": "2026-10-02T04:11:45.604777+00:00",
+      "finished_at": "2026-10-02T04:12:10.816769+00:00",
+      "cohort_wall_seconds_including_verification_and_cleanup": 25.212019875005353,
+      "clients": 10,
+      "accepted_query_handles": 10,
+      "result_http_200": 10,
+      "http_429_count": 0,
+      "transport_disconnect_count": 0,
+      "failed_after_http_200": 0,
+      "reference_matched_exports": 10,
+      "failed_exports": 0,
+      "total_reference_matched_rows": 10000000,
+      "total_reference_matched_bytes": 87590640,
+      "total_bytes_read_including_failed_exports": 87590640,
+      "aggregate_reference_rows_per_second": 396636.2096165798,
+      "aggregate_reference_bytes_per_second": 3474161.944749038,
+      "successful_export_latency_seconds": {
+        "count": 10,
+        "p50": 25.069926583513734,
+        "p95": 25.134038771352788,
+        "minimum": 21.930307167000137,
+        "maximum": 25.147178958985023
+      },
+      "maximum_inflight_client_http_requests": 10,
+      "maximum_inflight_client_http_requests_by_phase": {
+        "submit": 10,
+        "results": 10,
+        "status": 8,
+        "cancel": 0
+      },
+      "cohort_deadline_exceeded": false,
+      "interrupted": false,
+      "synchronization_failed": false,
+      "oom_status": "unverified_by_client_requires_server_cgroup_evidence",
+      "results": [
+        {
+          "client": 1,
+          "round": 1,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0001721670269034803,
+          "submission_seconds": 0.06710879097227007,
+          "results_start_offset_seconds": 0.09954279201338068,
+          "export_seconds": 24.988043332996313,
+          "complete_offset_seconds": 24.98821612499887,
+          "results_seconds": 24.8886740829912,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.19387145899236202,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 25.181939082976896,
+          "first_64k_seconds": 4.007991708000191,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 25.182126833009534,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.001331292005488649,
+              "end_offset_seconds": 0.06727650001994334
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.10021058301208541,
+              "end_offset_seconds": 24.988202708016615
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 24.98871833301382,
+              "end_offset_seconds": 25.182089583016932
+            }
+          ]
+        },
+        {
+          "client": 2,
+          "round": 1,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.00024395802756771445,
+          "submission_seconds": 0.06637579199741594,
+          "results_start_offset_seconds": 0.09913720801705495,
+          "export_seconds": 25.147178958985023,
+          "complete_offset_seconds": 25.14742400002433,
+          "results_seconds": 25.04828733400791,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.06379383301828057,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 25.210990791994845,
+          "first_64k_seconds": 4.102143583993893,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 25.21125691701309,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0011171250080224127,
+              "end_offset_seconds": 0.06660058299894445
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.10038745802012272,
+              "end_offset_seconds": 25.147334542009048
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 25.1476979170111,
+              "end_offset_seconds": 25.211219583026832
+            }
+          ]
+        },
+        {
+          "client": 3,
+          "round": 1,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0005807080015074462,
+          "submission_seconds": 0.09834525000769645,
+          "results_start_offset_seconds": 0.09967079202760942,
+          "export_seconds": 23.990887042018585,
+          "complete_offset_seconds": 23.991468792024534,
+          "results_seconds": 23.891799165983684,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.7992380840005353,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 24.79014225001447,
+          "first_64k_seconds": 2.695609209011309,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 24.790734375012107,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0013583750114776194,
+              "end_offset_seconds": 0.09892170800594613
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.10007120802765712,
+              "end_offset_seconds": 23.991454917006195
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 23.991812874999596,
+              "end_offset_seconds": 24.79071462500724
+            }
+          ]
+        },
+        {
+          "client": 4,
+          "round": 1,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.00029850000282749534,
+          "submission_seconds": 0.09816304201376624,
+          "results_start_offset_seconds": 0.09976170799927786,
+          "export_seconds": 25.117430292011704,
+          "complete_offset_seconds": 25.117729375022464,
+          "results_seconds": 25.017968167026993,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.06483725001453422,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 25.18228087501484,
+          "first_64k_seconds": 4.136794625024777,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 25.18258400002378,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.001550958026200533,
+              "end_offset_seconds": 0.09845562500413507
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.10080312500940636,
+              "end_offset_seconds": 25.117718125024112
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 25.118455083022127,
+              "end_offset_seconds": 25.182571917015593
+            }
+          ]
+        },
+        {
+          "client": 5,
+          "round": 1,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0006512080144602805,
+          "submission_seconds": 0.09822616699966602,
+          "results_start_offset_seconds": 0.09945016700658016,
+          "export_seconds": 25.117609042004915,
+          "complete_offset_seconds": 25.118260750023182,
+          "results_seconds": 25.018810790992575,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.06490604198188521,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 25.182521792012267,
+          "first_64k_seconds": 4.096899041993311,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 25.18317562501761,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0016876250156201422,
+              "end_offset_seconds": 0.09887016701395623
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.10074133300804533,
+              "end_offset_seconds": 25.11825612501707
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 25.118518375005806,
+              "end_offset_seconds": 25.183167708019027
+            }
+          ]
+        },
+        {
+          "client": 6,
+          "round": 1,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0005091670027468354,
+          "submission_seconds": 0.06703400000697002,
+          "results_start_offset_seconds": 0.09960325001156889,
+          "export_seconds": 25.01745679101441,
+          "complete_offset_seconds": 25.01796683302382,
+          "results_seconds": 24.918364292010665,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.16501887500635348,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 25.182490375009365,
+          "first_64k_seconds": 4.007538458012277,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 25.18300304200966,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0015111670072656125,
+              "end_offset_seconds": 0.06753708299947903
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.10026770801050588,
+              "end_offset_seconds": 25.017953542002942
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 25.018302167009097,
+              "end_offset_seconds": 25.18299308299902
+            }
+          ]
+        },
+        {
+          "client": 7,
+          "round": 1,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.00047087500570341945,
+          "submission_seconds": 0.09771270799683407,
+          "results_start_offset_seconds": 0.09940375000587665,
+          "export_seconds": 25.11736225002096,
+          "complete_offset_seconds": 25.1178336670273,
+          "results_seconds": 25.01843016699422,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.06453799997689202,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 25.181908458005637,
+          "first_64k_seconds": 3.990724750008667,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 25.18238687500707,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0018966670031659305,
+              "end_offset_seconds": 0.09817358301370405
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.1006649170012679,
+              "end_offset_seconds": 25.117827792011667
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 25.118161917023826,
+              "end_offset_seconds": 25.18236958302441
+            }
+          ]
+        },
+        {
+          "client": 8,
+          "round": 1,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0004125830018892884,
+          "submission_seconds": 0.09855166700435802,
+          "results_start_offset_seconds": 0.09903150002355687,
+          "export_seconds": 25.117978542024503,
+          "complete_offset_seconds": 25.118391791998874,
+          "results_seconds": 25.019360624981346,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.06443699999363162,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 25.1824225000164,
+          "first_64k_seconds": 4.1286198340239935,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 25.18284066702472,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.002044125023530796,
+              "end_offset_seconds": 0.0989606250077486
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.10102729202480987,
+              "end_offset_seconds": 25.118387042020913
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 25.118636083003366,
+              "end_offset_seconds": 25.182827667013044
+            }
+          ]
+        },
+        {
+          "client": 9,
+          "round": 1,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0003751250042114407,
+          "submission_seconds": 0.0671088749950286,
+          "results_start_offset_seconds": 0.09930829200311564,
+          "export_seconds": 25.022490917006508,
+          "complete_offset_seconds": 25.022866875020554,
+          "results_seconds": 24.92355887501617,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.16015762501046993,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 25.18266858300194,
+          "first_64k_seconds": 3.947500250011217,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 25.183046542020747,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0019480420160107315,
+              "end_offset_seconds": 0.06747820801683702
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.1001907919999212,
+              "end_offset_seconds": 25.022801000013715
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 25.023186792008346,
+              "end_offset_seconds": 25.18303837502026
+            }
+          ]
+        },
+        {
+          "client": 10,
+          "round": 1,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.00034787500044330955,
+          "submission_seconds": 0.06657458300469443,
+          "results_start_offset_seconds": 0.09919200002332218,
+          "export_seconds": 21.930307167000137,
+          "complete_offset_seconds": 21.930657750024693,
+          "results_seconds": 21.831466499977978,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.9285267500090413,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 22.858885417022975,
+          "first_64k_seconds": 2.0272848330205306,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 22.859251333022257,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0014633329992648214,
+              "end_offset_seconds": 0.06691362502169795
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.10058604201185517,
+              "end_offset_seconds": 21.930631625000387
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 21.93104479199974,
+              "end_offset_seconds": 22.8591911670228
+            }
+          ]
+        }
+      ],
+      "server_healthy_after_cohort": true
+    },
+    {
+      "round": 2,
+      "started_at": "2026-10-02T04:12:10.948236+00:00",
+      "finished_at": "2026-10-02T04:12:29.071180+00:00",
+      "cohort_wall_seconds_including_verification_and_cleanup": 18.122908332996303,
+      "clients": 10,
+      "accepted_query_handles": 10,
+      "result_http_200": 10,
+      "http_429_count": 0,
+      "transport_disconnect_count": 0,
+      "failed_after_http_200": 0,
+      "reference_matched_exports": 10,
+      "failed_exports": 0,
+      "total_reference_matched_rows": 10000000,
+      "total_reference_matched_bytes": 87590640,
+      "total_bytes_read_including_failed_exports": 87590640,
+      "aggregate_reference_rows_per_second": 551787.815523684,
+      "aggregate_reference_bytes_per_second": 4833144.790592141,
+      "successful_export_latency_seconds": {
+        "count": 10,
+        "p50": 17.652117208519485,
+        "p95": 18.055255491855497,
+        "minimum": 13.466465041972697,
+        "maximum": 18.055730541993398
+      },
+      "maximum_inflight_client_http_requests": 10,
+      "maximum_inflight_client_http_requests_by_phase": {
+        "submit": 10,
+        "results": 10,
+        "status": 6,
+        "cancel": 0
+      },
+      "cohort_deadline_exceeded": false,
+      "interrupted": false,
+      "synchronization_failed": false,
+      "oom_status": "unverified_by_client_requires_server_cgroup_evidence",
+      "results": [
+        {
+          "client": 1,
+          "round": 2,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.00015995799913071096,
+          "submission_seconds": 0.13791795799625106,
+          "results_start_offset_seconds": 0.1396875829959754,
+          "export_seconds": 17.65241758301272,
+          "complete_offset_seconds": 17.65257816601661,
+          "results_seconds": 17.512891000020318,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.4350554159900639,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 18.087481416994706,
+          "first_64k_seconds": 2.4153915000206325,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 18.087646833009785,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0015652080182917416,
+              "end_offset_seconds": 0.13806925000972115
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.14051204101997428,
+              "end_offset_seconds": 17.652562166011194
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 17.652933083008975,
+              "end_offset_seconds": 18.08763295802055
+            }
+          ]
+        },
+        {
+          "client": 2,
+          "round": 2,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0002278330211993307,
+          "submission_seconds": 0.13929304198245518,
+          "results_start_offset_seconds": 0.13955725001869723,
+          "export_seconds": 13.466465041972697,
+          "complete_offset_seconds": 13.466693333000876,
+          "results_seconds": 13.327136249979958,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.11856245799572207,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 13.585038624994922,
+          "first_64k_seconds": 1.1469305829959922,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 13.585275290999562,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0021102910104673356,
+              "end_offset_seconds": 0.13951766601530835
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.14069841601303779,
+              "end_offset_seconds": 13.466686583007686
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 13.466936375014484,
+              "end_offset_seconds": 13.585258000006434
+            }
+          ]
+        },
+        {
+          "client": 3,
+          "round": 2,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0004920000210404396,
+          "submission_seconds": 0.13827483297791332,
+          "results_start_offset_seconds": 0.13984341599280015,
+          "export_seconds": 17.683593499998096,
+          "complete_offset_seconds": 17.68408629100304,
+          "results_seconds": 17.544243459007703,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.4032439590082504,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 18.086850665975362,
+          "first_64k_seconds": 2.72475379097159,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 18.087346250016708,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0019874999998137355,
+              "end_offset_seconds": 0.13876200001686811
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.14083712501451373,
+              "end_offset_seconds": 17.684074541000882
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 17.68436600000132,
+              "end_offset_seconds": 18.087335000018356
+            }
+          ]
+        },
+        {
+          "client": 4,
+          "round": 2,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.00029579101828858256,
+          "submission_seconds": 0.13892491700244136,
+          "results_start_offset_seconds": 0.13973587501095608,
+          "export_seconds": 17.553281959000742,
+          "complete_offset_seconds": 17.55357845799881,
+          "results_seconds": 17.413842915993882,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.5019491249986459,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 18.05524424999021,
+          "first_64k_seconds": 2.45125799998641,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 18.055547333002323,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0015490410150960088,
+              "end_offset_seconds": 0.13921575000858866
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.14042258300469257,
+              "end_offset_seconds": 17.553569665993564
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 17.553821790992515,
+              "end_offset_seconds": 18.055529166013002
+            }
+          ]
+        },
+        {
+          "client": 5,
+          "round": 2,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0008493330096825957,
+          "submission_seconds": 0.138139582995791,
+          "results_start_offset_seconds": 0.13994645801722072,
+          "export_seconds": 17.95900554198306,
+          "complete_offset_seconds": 17.95985570800258,
+          "results_seconds": 17.81990999999107,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.12729920900892466,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 18.0863266249944,
+          "first_64k_seconds": 2.847845124982996,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 18.087195583007997,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0012069579970557243,
+              "end_offset_seconds": 0.13898499999777414
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.14053154099383391,
+              "end_offset_seconds": 17.95984187501017
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 17.960400041018147,
+              "end_offset_seconds": 18.087157708010636
+            }
+          ]
+        },
+        {
+          "client": 6,
+          "round": 2,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0005410409939941019,
+          "submission_seconds": 0.13608825000119396,
+          "results_start_offset_seconds": 0.13961750001180917,
+          "export_seconds": 16.61761633399874,
+          "complete_offset_seconds": 16.61816149999504,
+          "results_seconds": 16.478544665995287,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.06490975001361221,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 16.682559584005503,
+          "first_64k_seconds": 1.7699035000114236,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 16.68312375000096,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.001670458004809916,
+              "end_offset_seconds": 0.1366177500167396
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.14118808301282115,
+              "end_offset_seconds": 16.61813804099802
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 16.618614458013326,
+              "end_offset_seconds": 16.683076625020476
+            }
+          ]
+        },
+        {
+          "client": 7,
+          "round": 2,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.00034266599686816335,
+          "submission_seconds": 0.13914108401513658,
+          "results_start_offset_seconds": 0.14003187499474734,
+          "export_seconds": 17.550502042024164,
+          "complete_offset_seconds": 17.550845207995735,
+          "results_seconds": 17.410813833004795,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.504018375009764,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 18.054543417005334,
+          "first_64k_seconds": 2.5813136670039967,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 18.054909833008423,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0021931660012342036,
+              "end_offset_seconds": 0.13947941601509228
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.14067741599865258,
+              "end_offset_seconds": 17.55083341599675
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 17.55113545799395,
+              "end_offset_seconds": 18.054859708005097
+            }
+          ]
+        },
+        {
+          "client": 8,
+          "round": 2,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0006072079995647073,
+          "submission_seconds": 0.13856137500260957,
+          "results_start_offset_seconds": 0.13999133300967515,
+          "export_seconds": 18.054674875020282,
+          "complete_offset_seconds": 18.055283166002482,
+          "results_seconds": 17.91529208299471,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.06656795900198631,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 18.121286000008695,
+          "first_64k_seconds": 2.613441666995641,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 18.12191170800361,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0018497499986551702,
+              "end_offset_seconds": 0.1391636659973301
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.14111512500676326,
+              "end_offset_seconds": 18.05527524999343
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 18.056223916006275,
+              "end_offset_seconds": 18.121869499998866
+            }
+          ]
+        },
+        {
+          "client": 9,
+          "round": 2,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0004454159934539348,
+          "submission_seconds": 0.13659975002519786,
+          "results_start_offset_seconds": 0.1398913330049254,
+          "export_seconds": 17.65181683402625,
+          "complete_offset_seconds": 17.65226283299853,
+          "results_seconds": 17.512372124998365,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.43538900002022274,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 18.08725870901253,
+          "first_64k_seconds": 2.349003042007098,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 18.087708208011463,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0013524999958463013,
+              "end_offset_seconds": 0.13703641601023264
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.14090349999605678,
+              "end_offset_seconds": 17.652250165992882
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 17.653057500021532,
+              "end_offset_seconds": 18.087696708011208
+            }
+          ]
+        },
+        {
+          "client": 10,
+          "round": 2,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0003859160060528666,
+          "submission_seconds": 0.1388757090026047,
+          "results_start_offset_seconds": 0.13978191601927392,
+          "export_seconds": 18.055730541993398,
+          "complete_offset_seconds": 18.05611725000199,
+          "results_seconds": 17.9163360419916,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.06588012498104945,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 18.12162058398826,
+          "first_64k_seconds": 2.9506881670095026,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 18.12201154101058,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0010005829972214997,
+              "end_offset_seconds": 0.13925833301618695
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.14126383300754242,
+              "end_offset_seconds": 18.056108707998646
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 18.056521416001488,
+              "end_offset_seconds": 18.121997333015315
+            }
+          ]
+        }
+      ],
+      "server_healthy_after_cohort": true
+    },
+    {
+      "round": 3,
+      "started_at": "2026-10-02T04:12:29.207795+00:00",
+      "finished_at": "2026-10-02T04:12:49.729870+00:00",
+      "cohort_wall_seconds_including_verification_and_cleanup": 20.522085750009865,
+      "clients": 10,
+      "accepted_query_handles": 10,
+      "result_http_200": 10,
+      "http_429_count": 0,
+      "transport_disconnect_count": 0,
+      "failed_after_http_200": 0,
+      "reference_matched_exports": 10,
+      "failed_exports": 0,
+      "total_reference_matched_rows": 10000000,
+      "total_reference_matched_bytes": 87590640,
+      "total_bytes_read_including_failed_exports": 87590640,
+      "aggregate_reference_rows_per_second": 487279.9052598829,
+      "aggregate_reference_bytes_per_second": 4268115.876085251,
+      "successful_export_latency_seconds": {
+        "count": 10,
+        "p50": 20.334544124503736,
+        "p95": 20.435945279490262,
+        "minimum": 16.49106795800617,
+        "maximum": 20.44987379197846
+      },
+      "maximum_inflight_client_http_requests": 10,
+      "maximum_inflight_client_http_requests_by_phase": {
+        "submit": 10,
+        "results": 10,
+        "status": 8,
+        "cancel": 0
+      },
+      "cohort_deadline_exceeded": false,
+      "interrupted": false,
+      "synchronization_failed": false,
+      "oom_status": "unverified_by_client_requires_server_cgroup_evidence",
+      "results": [
+        {
+          "client": 1,
+          "round": 3,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0004979590012226254,
+          "submission_seconds": 0.06554637500084937,
+          "results_start_offset_seconds": 0.06609591699088924,
+          "export_seconds": 16.49106795800617,
+          "complete_offset_seconds": 16.491566959011834,
+          "results_seconds": 16.425471875001676,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 1.2004076250013895,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 17.691511124983663,
+          "first_64k_seconds": 0.9970644580025692,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 17.69202287500957,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0014161249855533242,
+              "end_offset_seconds": 0.06604291699477471
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.06767679200856946,
+              "end_offset_seconds": 16.49145795899676
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 16.492549334012438,
+              "end_offset_seconds": 17.691991166997468
+            }
+          ]
+        },
+        {
+          "client": 2,
+          "round": 3,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0002094999945256859,
+          "submission_seconds": 0.06570029200520366,
+          "results_start_offset_seconds": 0.06621170899597928,
+          "export_seconds": 20.255166209011804,
+          "complete_offset_seconds": 20.255375917011406,
+          "results_seconds": 20.18916454099235,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.23402633299701847,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 20.48920337500749,
+          "first_64k_seconds": 2.169098167010816,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 20.48941645899322,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0022903339995536953,
+              "end_offset_seconds": 0.06590774998767301
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.0675167920126114,
+              "end_offset_seconds": 20.255367917008698
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 20.25570254199556,
+              "end_offset_seconds": 20.489406584005337
+            }
+          ]
+        },
+        {
+          "client": 3,
+          "round": 3,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0002857919898815453,
+          "submission_seconds": 0.06518054200569168,
+          "results_start_offset_seconds": 0.06646429200191051,
+          "export_seconds": 19.487112041999353,
+          "complete_offset_seconds": 19.487398249999387,
+          "results_seconds": 19.42093408299843,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.9617734579951502,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 20.44890133300214,
+          "first_64k_seconds": 1.801837458013324,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 20.449192333995597,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.001703084009932354,
+              "end_offset_seconds": 0.06546395900659263
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.06781375000718981,
+              "end_offset_seconds": 19.487391834001755
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 19.487650625000242,
+              "end_offset_seconds": 20.449180625000736
+            }
+          ]
+        },
+        {
+          "client": 4,
+          "round": 3,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0005621250020340085,
+          "submission_seconds": 0.06516170900431462,
+          "results_start_offset_seconds": 0.06632470901240595,
+          "export_seconds": 20.418921542004682,
+          "complete_offset_seconds": 20.41948404200957,
+          "results_seconds": 20.35315958299907,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.0702180830121506,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 20.489146874984726,
+          "first_64k_seconds": 3.3413143749930896,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 20.489710958994692,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.002141667006071657,
+              "end_offset_seconds": 0.06572212500032037
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.06725150000420399,
+              "end_offset_seconds": 20.419477291987278
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 20.419757583993487,
+              "end_offset_seconds": 20.489706416992703
+            }
+          ]
+        },
+        {
+          "client": 5,
+          "round": 3,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0003402919974178076,
+          "submission_seconds": 0.06568158301524818,
+          "results_start_offset_seconds": 0.06624362501315773,
+          "export_seconds": 20.22181966700009,
+          "complete_offset_seconds": 20.22216124998522,
+          "results_seconds": 20.155918624979677,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.2668953750107903,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 20.488741292007035,
+          "first_64k_seconds": 2.432129291992169,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 20.489089334005257,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0013885840016882867,
+              "end_offset_seconds": 0.06602037500124425
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.067460124992067,
+              "end_offset_seconds": 20.222136083990335
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 20.22284933400806,
+              "end_offset_seconds": 20.489073834003648
+            }
+          ]
+        },
+        {
+          "client": 6,
+          "round": 3,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.00012166699161753058,
+          "submission_seconds": 0.06454350001877174,
+          "results_start_offset_seconds": 0.06628241698490456,
+          "export_seconds": 20.386911750014406,
+          "complete_offset_seconds": 20.38703375001205,
+          "results_seconds": 20.320751542021753,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.10260808301973157,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 20.489527625002665,
+          "first_64k_seconds": 3.189463207992958,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 20.4896524999931,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0011758749897126108,
+              "end_offset_seconds": 0.06465966699761339
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.06758154201088473,
+              "end_offset_seconds": 20.387028083991027
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 20.387311083992245,
+              "end_offset_seconds": 20.48964379201061
+            }
+          ]
+        },
+        {
+          "client": 7,
+          "round": 3,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.00037783398875035346,
+          "submission_seconds": 0.06531500001437962,
+          "results_start_offset_seconds": 0.06639170899870805,
+          "export_seconds": 20.386547583009815,
+          "complete_offset_seconds": 20.38692566700047,
+          "results_seconds": 20.320534166006837,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.1027505419915542,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 20.48930341601954,
+          "first_64k_seconds": 2.813491208013147,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 20.489683041989338,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0015854999946895987,
+              "end_offset_seconds": 0.06568900001002476
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.06697529199300334,
+              "end_offset_seconds": 20.38692049999372
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 20.387226416991325,
+              "end_offset_seconds": 20.4896780840063
+            }
+          ]
+        },
+        {
+          "client": 8,
+          "round": 3,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.00045008398592472076,
+          "submission_seconds": 0.0651976250228472,
+          "results_start_offset_seconds": 0.06673074999707751,
+          "export_seconds": 20.353230333013926,
+          "complete_offset_seconds": 20.353680792002706,
+          "results_seconds": 20.286950209003408,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.1358446670055855,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 20.48908300002222,
+          "first_64k_seconds": 2.3986271250178106,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 20.489536084001884,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0024948749924078584,
+              "end_offset_seconds": 0.06564129199250601
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.06787229201290756,
+              "end_offset_seconds": 20.35367400001269
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 20.354011249990435,
+              "end_offset_seconds": 20.489528709003935
+            }
+          ]
+        },
+        {
+          "client": 9,
+          "round": 3,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0006203750090207905,
+          "submission_seconds": 0.06525633399724029,
+          "results_start_offset_seconds": 0.06654395899386145,
+          "export_seconds": 20.44987379197846,
+          "complete_offset_seconds": 20.450494458986213,
+          "results_seconds": 20.383950582996476,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.07105324999429286,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 20.52093362499727,
+          "first_64k_seconds": 3.060949584003538,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 20.521566250012256,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.001890916988486424,
+              "end_offset_seconds": 0.06587312498595566
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.06733849999727681,
+              "end_offset_seconds": 20.450490833987715
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 20.450726667011622,
+              "end_offset_seconds": 20.521547167008976
+            }
+          ]
+        },
+        {
+          "client": 10,
+          "round": 3,
+          "case": "native_ordered_million",
+          "mode": "native",
+          "state": "completed",
+          "accepted": true,
+          "submit_http_status": 201,
+          "results_http_status": 200,
+          "start_offset_seconds": 0.0010322089947294444,
+          "submission_seconds": 0.06438254099339247,
+          "results_start_offset_seconds": 0.06614683399675414,
+          "export_seconds": 20.315857915993547,
+          "complete_offset_seconds": 20.316890499991132,
+          "results_seconds": 20.25074379099533,
+          "wire_matches_reference": true,
+          "final_state_check_seconds": 0.17284650000510737,
+          "api_final_state": "succeeded",
+          "api_reported_rows": 1000000,
+          "reference_matched_rows": 1000000,
+          "attempt_seconds_before_cleanup": 20.48871741601033,
+          "first_64k_seconds": 2.3227816250000615,
+          "wire_bytes_read": 8759064,
+          "wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+          "arrow_eos_present": true,
+          "finished_offset_seconds": 20.489754500013078,
+          "request_intervals": [
+            {
+              "phase": "submit",
+              "start_offset_seconds": 0.0020383750088512897,
+              "end_offset_seconds": 0.06540991700603627
+            },
+            {
+              "phase": "results",
+              "start_offset_seconds": 0.06662024999968708,
+              "end_offset_seconds": 20.31688483399921
+            },
+            {
+              "phase": "status",
+              "start_offset_seconds": 20.317211916990345,
+              "end_offset_seconds": 20.48974662501132
+            }
+          ]
+        }
+      ],
+      "server_healthy_after_cohort": true
+    }
+  ],
+  "client_script_sha256": "40a4c69816c9179114faf549120eb258eb5ba18a7887a1a8c99e78c83095abb3",
+  "transport_helper_sha256": "5affaf34b24f1ac297375e9b08b75e229fe194090e9735f57d99680673e370c0",
+  "clients_per_cohort": 10,
+  "planned_rounds": 3,
+  "operation_deadline_seconds": 180,
+  "cohort_deadline_seconds": 210,
+  "body_read_idle_timeout_seconds": 5,
+  "transport": "HTTP on loopback through a dedicated SSH tunnel; no HTTP TLS",
+  "limitations": [
+    "In-flight client HTTP requests do not establish actual server worker overlap; correlate server process/cgroup evidence.",
+    "POST 201 creates a query handle. GET 200 starts an Arrow response and does not establish successful completion.",
+    "OOM cannot be diagnosed from a client disconnect alone; correlate failures with server memory.events and systemd Result.",
+    "Throughput includes only exports matching reference bytes/EOS and final API state/rows; its denominator includes the whole cohort and cleanup.",
+    "Export latency includes submission, the results barrier and full body hashing; final API status checks are recorded separately.",
+    "P50/P95 use linear interpolation over successful export durations only. Failed attempts and 429 responses remain in individual results.",
+    "The provisioner attests that reference Arrow outputs were independently decoded and use the same binary as the server.",
+    "Client result bodies are hashed and discarded. No Arrow values are decoded locally, and no response file is saved.",
+    "There are no retries during the measured cohort. Server health is checked between cohorts, outside throughput timing.",
+    "SSH encryption and buffering are included; these measurements are not direct public HTTP/HTTPS capacity."
+  ],
+  "binary_sha256": "fefdba4eaa4b2ac99eaf2878d30cfe80ddeacaf1df4fac1c52182f9ca944d6ac",
+  "cases": [
+    {
+      "name": "native_ordered_million",
+      "expected_wire_sha256": "bf15b4051b5826978d48cd5bf67416438a75b79714e91073037c25da4889a809",
+      "expected_wire_bytes": 8759064,
+      "expected_rows": 1000000,
+      "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "mode": "native"
+    }
+  ],
+  "bearer_authentication_probe_http_status": {
+    "unauthenticated": 401,
+    "authenticated": 404
+  },
+  "owned_ssh_process_exit_status": 0,
+  "finished_at": "2026-10-02T04:12:49.883766+00:00",
+  "summary": {
+    "attempted_jobs": 30,
+    "reference_matched_exports": 30,
+    "failed_exports": 0,
+    "total_reference_matched_rows": 30000000,
+    "total_reference_matched_bytes": 262771920,
+    "sum_cohort_wall_seconds": 63.85701395801152,
+    "aggregate_reference_rows_per_second": 469799.60603429045,
+    "aggregate_reference_bytes_per_second": 4115004.8164291363,
+    "successful_export_latency_p50_seconds": 20.334544124503736,
+    "successful_export_latency_p95_seconds": 25.117812267015687,
+    "http_429_count": 0,
+    "transport_disconnect_count": 0,
+    "maximum_inflight_client_http_requests": 10
+  },
+  "all_exports_matched_reference": true
+}
