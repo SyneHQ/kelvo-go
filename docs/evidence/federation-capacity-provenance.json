@@ -1,0 +1,67 @@
+{
+  "dataset": "NYC TLC yellow taxi trip records, January through March 2019",
+  "prepared_at": "2026-10-02T01:36:46.104165+00:00",
+  "rows": 22612607,
+  "source_files": [
+    {
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2019-01.parquet",
+      "bytes": 110439634,
+      "sha256": "3ad95f39714bfc9864219e69e577f119925c6ba32d384ac68d40bdad1dc7726d",
+      "source_month": 201901,
+      "rows": 7696617
+    },
+    {
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2019-02.parquet",
+      "bytes": 103356025,
+      "sha256": "d20a9e3edf838017ae641e664da085564341c729aed2ee05c7631c74dccf761a",
+      "source_month": 201902,
+      "rows": 7049370
+    },
+    {
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2019-03.parquet",
+      "bytes": 116017372,
+      "sha256": "6883b45b3c1a8908346334b6143804f9dab4a223a72b3b9e3140ef0239920978",
+      "source_month": 201903,
+      "rows": 7866620
+    }
+  ],
+  "zone_lookup": {
+    "url": "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv",
+    "bytes": 12331,
+    "sha256": "1a99e105092230f8620f301edcca7f80d3080642ff404d28ed957d3fa222c8ed",
+    "rows": 265
+  },
+  "official_documentation": [
+    "https://clickhouse.com/docs/getting-started/example-datasets/nyc-taxi",
+    "https://clickhouse.com/docs/integrations/data-formats/parquet",
+    "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page"
+  ],
+  "selection": "All physical rows in three original TLC Parquet files. Retained columns are listed in imported_schema; no synthetic fact rows were generated and no anomalous rows were dropped.",
+  "imported_schema": "trip_id: int64 not null\nsource_month: int32 not null\nsource_row: int32 not null\npickup_unix_us: int64\npickup_zone_id: int32\ndropoff_zone_id: int32\npassenger_count: double\ntrip_distance: double\ntotal_amount: double\nfare_cents: int64",
+  "derived_fields": {
+    "trip_id": "(source_month - 201900) * 100000000 + zero-based physical Parquet row ordinal; unique only within this explicitly selected three-month fixture",
+    "source_month": "Original source file month as YYYYMM, irrespective of anomalous timestamps in its records",
+    "source_row": "Zero-based physical Parquet row ordinal within the original monthly file",
+    "pickup_unix_us": "Original microsecond timestamp represented as signed Int64, preserving nulls",
+    "fare_cents": "Round original Float64 total_amount * 100 to nearest integer with half-to-even rounding, then safe cast Int64; null/non-finite original amounts become null. The original Float64 total_amount is retained unchanged. This is a derived metric, not a claim of exact original monetary decimal precision."
+  },
+  "large_join_projection": {
+    "selection": "First 1000000 physical rows of the January file, projected to trip_id,pickup_zone_id,fare_cents",
+    "rows": 1000000,
+    "csv_sha256": "bb2756a08c0ed02a09208a618e7617d8b174a751a66f002b92c870278fcfc6fe",
+    "parquet_sha256": "891ac3c7bd2eeea39af9fb591ee06d4a7e49863ca9985b8babf9e20ae3cc99ad",
+    "reference_aggregates": {
+      "rows": 1000000,
+      "trip_id_sum": 100499999500000,
+      "pickup_zone_sum": 162903877,
+      "fare_cents_sum": 1582868084,
+      "fare_cents_nulls": 0
+    }
+  },
+  "import_limits": {
+    "arrow_batch_rows": 65536,
+    "clickhouse_threads": 2,
+    "clickhouse_query_memory_bytes": 2147483648
+  },
+  "existing_100m_benchmark_rows_preserved": 100000000
+}

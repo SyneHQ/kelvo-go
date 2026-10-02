@@ -1,0 +1,171 @@
+{
+  "dataset_provenance_sha256": "9f7d1bb351b847ff53a845250e0392d06630d48b7139248895b84696ab168344",
+  "queries": {
+    "zone_join": {
+      "scope": "22.6M real fact rows joined to a 265-row real taxi-zone dimension; physical hash-build choice was not captured",
+      "native_sql": "SELECT z.borough, toInt64(count()) AS trips, toInt64(sum(t.fare_cents)) AS fare_cents FROM capacity_fixture.trips t INNER JOIN capacity_fixture.zones z ON t.pickup_zone_id=z.zone_id GROUP BY z.borough ORDER BY z.borough",
+      "duckdb_sql": "SELECT z.borough, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN taxi.zones z ON t.pickup_zone_id=z.zone_id GROUP BY z.borough ORDER BY z.borough",
+      "rows": 8,
+      "canonical_value_sha256": "cce94e65a86564f8429b7de36f7886d70bbb53ce570276c42811a276448ea0c2",
+      "integer_sums": {
+        "trips": 22612607,
+        "fare_cents": 40534901730
+      },
+      "null_counts": {
+        "borough": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "borough",
+          "string"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 792,
+      "arrow_ipc_sha256": "a4b49c2a1398cfb72f72ad7ded433b6aa414252c966fcaa2d8a1fa14670c6a11"
+    },
+    "large_hash_join": {
+      "scope": "22.6M real fact relation with a deterministic 1M-row joined relation projected from original records; physical hash-build choice was not captured",
+      "native_sql": "SELECT s.pickup_zone_id AS pickup_zone_id, toInt64(count()) AS trips, toInt64(sum(t.fare_cents)) AS fare_cents FROM capacity_fixture.trips t INNER JOIN capacity_fixture.taxi_sample s ON t.trip_id=s.trip_id GROUP BY s.pickup_zone_id ORDER BY s.pickup_zone_id NULLS FIRST",
+      "duckdb_sql": "SELECT s.pickup_zone_id AS pickup_zone_id, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN taxi.taxi_sample s ON t.trip_id=s.trip_id GROUP BY s.pickup_zone_id ORDER BY s.pickup_zone_id NULLS FIRST",
+      "rows": 253,
+      "canonical_value_sha256": "78b6a5fce545e59ffc219e2cc98c88c201842b336f8c2ba15659142257f3040c",
+      "integer_sums": {
+        "pickup_zone_id": 33648,
+        "trips": 1000000,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "pickup_zone_id": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 4080,
+      "arrow_ipc_sha256": "c0190166a120e8cbba67a78793265dd92bf3604f8c8775618e84942454a2acd3"
+    },
+    "ordered_million": {
+      "scope": "Ordered export of the 1M-row real January projection",
+      "native_sql": "SELECT trip_id,pickup_zone_id,fare_cents FROM capacity_fixture.taxi_sample ORDER BY trip_id",
+      "duckdb_sql": "SELECT trip_id,pickup_zone_id,fare_cents FROM taxi.taxi_sample ORDER BY trip_id",
+      "rows": 1000000,
+      "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "integer_sums": {
+        "trip_id": 100499999500000,
+        "pickup_zone_id": 162903877,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 8738872,
+      "arrow_ipc_sha256": "0f437cc2926fd2f27a5e8f45aff4a6b0de33ae2be48a53f55624e6ead8aa9d78"
+    },
+    "three_adapter_join": {
+      "scope": "ClickHouse22.6M real fact, PostgreSQL1M real projection and MySQL265 real taxi zones; same copied relations in native reference",
+      "native_sql": "SELECT z.borough, toInt64(count()) AS trips, toInt64(sum(t.fare_cents)) AS fare_cents FROM capacity_fixture.trips t INNER JOIN capacity_fixture.taxi_sample s ON t.trip_id=s.trip_id INNER JOIN capacity_fixture.zones z ON s.pickup_zone_id=z.zone_id GROUP BY z.borough ORDER BY z.borough",
+      "duckdb_sql": "SELECT z.borough, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN pg.taxi_sample s ON t.trip_id=s.trip_id INNER JOIN my.zones z ON s.pickup_zone_id=z.zone_id GROUP BY z.borough ORDER BY z.borough",
+      "rows": 8,
+      "canonical_value_sha256": "c15efa835332a96c6998622f13dadeb95d3d8f7ae09c8bead38140e80a85aa21",
+      "integer_sums": {
+        "trips": 1000000,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "borough": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "borough",
+          "string"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 792,
+      "arrow_ipc_sha256": "dd85a15bcd02f8add48604b5749330cd7755126533dd01225ab6b0377ff94382"
+    },
+    "full_external_sort": {
+      "scope": "Full 22.6M-row ORDER BY and Arrow export; no top-N shortcut",
+      "native_sql": "SELECT trip_id,pickup_zone_id,fare_cents FROM capacity_fixture.trips ORDER BY pickup_zone_id NULLS FIRST,fare_cents NULLS FIRST,trip_id",
+      "duckdb_sql": "SELECT trip_id,pickup_zone_id,fare_cents FROM taxi.trips ORDER BY pickup_zone_id NULLS FIRST,fare_cents NULLS FIRST,trip_id",
+      "rows": 22612607,
+      "canonical_value_sha256": "9d2ea5298fa243072d4c5bd1411f203980a9d716298472d228ece64df5e2bdeb",
+      "integer_sums": {
+        "trip_id": 4624929309126691,
+        "pickup_zone_id": 3698364934,
+        "fare_cents": 40534901730
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 118174760,
+      "arrow_ipc_sha256": "7873d6e3317f9afc95428ff95d9c39505b12f5717cc9ba981c39b1c7d4fa7dcd"
+    }
+  },
+  "canonical_digest": "Per column, concatenate little-endian Int64 values (nulls zero-filled), per-row UInt8 validity, and UTF-8 strings with UInt64 byte lengths; hash each stream, then hash ordered column descriptors and row count. Integers of differing signed physical Arrow widths compare by exact value. No Float64 aggregate is compared as an exact integer.",
+  "native_reference_scope": "Direct ClickHouse query over the same imported real records and identical copied dimensions. Reference computation/validation is outside all Kelvo timings.",
+  "descriptive_revision_note": "Scope descriptions name the actual input relation sizes; physical hash-build sides were not captured. This descriptive-only revision changes no SQL, source data, ordered result values, canonical hashes or measurements."
+}

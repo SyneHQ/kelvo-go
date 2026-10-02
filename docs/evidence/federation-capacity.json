@@ -1,0 +1,1971 @@
+{
+  "binary_sha256": "7c8839f50bd8a6d777bb460f118a2189e71825da3b288d441e51bf1b68858c84",
+  "measurement_script_sha256": "cd7e542c62151fecfaf38b5918a6c99238b34e62ab11e29576fdb66f0a196396",
+  "started_at": "2026-10-02T02:01:25.969900+00:00",
+  "suite_complete": true,
+  "host": {
+    "logical_cpus": 4,
+    "cpu_model": "INTEL(R) XEON(R) PLATINUM 8573C",
+    "physical_memory_kib": 32868576,
+    "kernel_release": "6.12.95+deb12-cloud-amd64"
+  },
+  "fixture_integrity": {
+    "before": {
+      "trips": 22612607,
+      "taxi_sample": 1000000,
+      "zones": 265,
+      "existing_fact_events": 100000000
+    },
+    "after": {
+      "trips": 22612607,
+      "taxi_sample": 1000000,
+      "zones": 265,
+      "existing_fact_events": 100000000
+    }
+  },
+  "dataset_rows": 22612607,
+  "projection_rows": 1000000,
+  "dataset_provenance_sha256": "9f7d1bb351b847ff53a845250e0392d06630d48b7139248895b84696ab168344",
+  "runs": [
+    {
+      "query": "zone_join",
+      "sql": "SELECT z.borough, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN taxi.zones z ON t.pickup_zone_id=z.zone_id GROUP BY z.borough ORDER BY z.borough",
+      "source_ids": [
+        "taxi"
+      ],
+      "memory_mb": 128,
+      "threads": 2,
+      "scope": "22.6M real fact rows joined to a 265-row real taxi-zone dimension; physical hash-build choice was not captured",
+      "completed_at": "2026-10-02T02:01:29.190338+00:00",
+      "elapsed_seconds": 2.751261395998881,
+      "success": true,
+      "coordinator_peak_rss_kib": 55844,
+      "worker_peak_rss_kib_max": 271388,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 3.41,
+      "temporary_logical_bytes_peak": 250642432,
+      "temporary_allocated_bytes_peak": 250642432,
+      "sample_interval_seconds": 0.05,
+      "samples": 54,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "source_observations": [
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`trips` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 600,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "source_month",
+            "source_row",
+            "pickup_unix_us",
+            "pickup_zone_id",
+            "dropoff_zone_id",
+            "passenger_count",
+            "trip_distance",
+            "total_amount",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`zones` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 248,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough",
+            "zone",
+            "service_zone"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`taxi_sample` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 240,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `pickup_zone_id`, `fare_cents` FROM `capacity_fixture`.`trips`",
+          "describe": false,
+          "wire_bytes": 277100216,
+          "arrow_rows": 22612607,
+          "arrow_buffer_bytes": 271351284,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `zone_id`, `borough` FROM `capacity_fixture`.`zones`",
+          "describe": false,
+          "wire_bytes": 4520,
+          "arrow_rows": 265,
+          "arrow_buffer_bytes": 4135,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough"
+          ]
+        }
+      ],
+      "emulator": {
+        "round_trip_delay_ms": 0,
+        "shared_response_body_bytes_per_second": 0,
+        "applies_to_source_ids": [
+          "taxi"
+        ],
+        "unpaced_source_ids": [],
+        "kind": "Isolated loopback application relay; not a geographic WAN or packet-level emulator"
+      },
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 1,
+          "rows_fetched": 22612607,
+          "arrow_bytes_fetched": 271351284,
+          "batches_fetched": 460
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 1,
+          "rows_fetched": 265,
+          "arrow_bytes_fetched": 4135,
+          "batches_fetched": 1
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        }
+      ],
+      "rows": 8,
+      "canonical_value_sha256": "cce94e65a86564f8429b7de36f7886d70bbb53ce570276c42811a276448ea0c2",
+      "integer_sums": {
+        "trips": 22612607,
+        "fare_cents": 40534901730
+      },
+      "null_counts": {
+        "borough": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "borough",
+          "string"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 728,
+      "arrow_ipc_sha256": "17b1017f8ba561266ff912607863c06a4117ab850627997c2d673e5bc2c263c4",
+      "reference_match": true,
+      "output_rows_per_second": 2.907757151550297
+    },
+    {
+      "query": "large_hash_join",
+      "sql": "SELECT s.pickup_zone_id AS pickup_zone_id, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN taxi.taxi_sample s ON t.trip_id=s.trip_id GROUP BY s.pickup_zone_id ORDER BY s.pickup_zone_id NULLS FIRST",
+      "source_ids": [
+        "taxi"
+      ],
+      "memory_mb": 128,
+      "threads": 2,
+      "scope": "22.6M real fact relation with a deterministic 1M-row joined relation projected from original records; physical hash-build choice was not captured",
+      "completed_at": "2026-10-02T02:01:30.141308+00:00",
+      "elapsed_seconds": 0.8438146539992886,
+      "success": true,
+      "coordinator_peak_rss_kib": 54488,
+      "worker_peak_rss_kib_max": 150164,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 0.95,
+      "temporary_logical_bytes_peak": 0,
+      "temporary_allocated_bytes_peak": 0,
+      "sample_interval_seconds": 0.05,
+      "samples": 17,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "source_observations": [
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`trips` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 600,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "source_month",
+            "source_row",
+            "pickup_unix_us",
+            "pickup_zone_id",
+            "dropoff_zone_id",
+            "passenger_count",
+            "trip_distance",
+            "total_amount",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`zones` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 248,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough",
+            "zone",
+            "service_zone"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`taxi_sample` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 240,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `trip_id`, `pickup_zone_id` FROM `capacity_fixture`.`taxi_sample`",
+          "describe": false,
+          "wire_bytes": 12128264,
+          "arrow_rows": 1000000,
+          "arrow_buffer_bytes": 12000000,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id"
+          ]
+        },
+        {
+          "sql": "SELECT `trip_id`, `fare_cents` FROM `capacity_fixture`.`trips`",
+          "describe": false,
+          "wire_bytes": 364717384,
+          "arrow_rows": 22612607,
+          "arrow_buffer_bytes": 361801712,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "fare_cents"
+          ]
+        }
+      ],
+      "emulator": {
+        "round_trip_delay_ms": 0,
+        "shared_response_body_bytes_per_second": 0,
+        "applies_to_source_ids": [
+          "taxi"
+        ],
+        "unpaced_source_ids": [],
+        "kind": "Isolated loopback application relay; not a geographic WAN or packet-level emulator"
+      },
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 1,
+          "rows_fetched": 22612607,
+          "arrow_bytes_fetched": 361801712,
+          "batches_fetched": 463
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 1,
+          "rows_fetched": 1000000,
+          "arrow_bytes_fetched": 12000000,
+          "batches_fetched": 16
+        }
+      ],
+      "rows": 253,
+      "canonical_value_sha256": "78b6a5fce545e59ffc219e2cc98c88c201842b336f8c2ba15659142257f3040c",
+      "integer_sums": {
+        "pickup_zone_id": 33648,
+        "trips": 1000000,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "pickup_zone_id": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 5560,
+      "arrow_ipc_sha256": "3da8ce24ea30a8940b3055d82d877c24edc164a245a792b0e7c716879eb98ebd",
+      "reference_match": true,
+      "output_rows_per_second": 299.82887687586106
+    },
+    {
+      "query": "full_external_sort",
+      "sql": "SELECT trip_id,pickup_zone_id,fare_cents FROM taxi.trips ORDER BY pickup_zone_id NULLS FIRST,fare_cents NULLS FIRST,trip_id",
+      "source_ids": [
+        "taxi"
+      ],
+      "memory_mb": 128,
+      "threads": 2,
+      "scope": "Full 22.6M-row ORDER BY and Arrow export; no top-N shortcut",
+      "completed_at": "2026-10-02T02:01:38.080391+00:00",
+      "elapsed_seconds": 7.834528838000551,
+      "success": true,
+      "coordinator_peak_rss_kib": 62060,
+      "worker_peak_rss_kib_max": 734420,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 9.02,
+      "temporary_logical_bytes_peak": 243269632,
+      "temporary_allocated_bytes_peak": 243269632,
+      "sample_interval_seconds": 0.05,
+      "samples": 154,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "source_observations": [
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`trips` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 600,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "source_month",
+            "source_row",
+            "pickup_unix_us",
+            "pickup_zone_id",
+            "dropoff_zone_id",
+            "passenger_count",
+            "trip_distance",
+            "total_amount",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`zones` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 248,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough",
+            "zone",
+            "service_zone"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`taxi_sample` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 240,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `trip_id`, `pickup_zone_id`, `fare_cents` FROM `capacity_fixture`.`trips`",
+          "describe": false,
+          "wire_bytes": 458044512,
+          "arrow_rows": 22612607,
+          "arrow_buffer_bytes": 452252140,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        }
+      ],
+      "emulator": {
+        "round_trip_delay_ms": 0,
+        "shared_response_body_bytes_per_second": 0,
+        "applies_to_source_ids": [
+          "taxi"
+        ],
+        "unpaced_source_ids": [],
+        "kind": "Isolated loopback application relay; not a geographic WAN or packet-level emulator"
+      },
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 1,
+          "rows_fetched": 22612607,
+          "arrow_bytes_fetched": 452252140,
+          "batches_fetched": 579
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        }
+      ],
+      "rows": 22612607,
+      "canonical_value_sha256": "9d2ea5298fa243072d4c5bd1411f203980a9d716298472d228ece64df5e2bdeb",
+      "integer_sums": {
+        "trip_id": 4624929309126691,
+        "pickup_zone_id": 3698364934,
+        "fare_cents": 40534901730
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 454902480,
+      "arrow_ipc_sha256": "d8ce9d8ae79986329e6705800078cd2b5928c423f501009e174e5946c0c844d7",
+      "reference_match": true,
+      "output_rows_per_second": 2886275.2907768935
+    },
+    {
+      "query": "zone_join",
+      "sql": "SELECT z.borough, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN taxi.zones z ON t.pickup_zone_id=z.zone_id GROUP BY z.borough ORDER BY z.borough",
+      "source_ids": [
+        "taxi"
+      ],
+      "memory_mb": 256,
+      "threads": 2,
+      "scope": "22.6M real fact rows joined to a 265-row real taxi-zone dimension; physical hash-build choice was not captured",
+      "completed_at": "2026-10-02T02:01:42.770123+00:00",
+      "elapsed_seconds": 2.4713201020058477,
+      "success": true,
+      "coordinator_peak_rss_kib": 56216,
+      "worker_peak_rss_kib_max": 456648,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 4.42,
+      "temporary_logical_bytes_peak": 173604864,
+      "temporary_allocated_bytes_peak": 173604864,
+      "sample_interval_seconds": 0.05,
+      "samples": 49,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "source_observations": [
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`trips` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 600,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "source_month",
+            "source_row",
+            "pickup_unix_us",
+            "pickup_zone_id",
+            "dropoff_zone_id",
+            "passenger_count",
+            "trip_distance",
+            "total_amount",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`zones` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 248,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough",
+            "zone",
+            "service_zone"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`taxi_sample` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 240,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `pickup_zone_id`, `fare_cents` FROM `capacity_fixture`.`trips`",
+          "describe": false,
+          "wire_bytes": 277100216,
+          "arrow_rows": 22612607,
+          "arrow_buffer_bytes": 271351284,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `zone_id`, `borough` FROM `capacity_fixture`.`zones`",
+          "describe": false,
+          "wire_bytes": 4520,
+          "arrow_rows": 265,
+          "arrow_buffer_bytes": 4135,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough"
+          ]
+        }
+      ],
+      "emulator": {
+        "round_trip_delay_ms": 0,
+        "shared_response_body_bytes_per_second": 0,
+        "applies_to_source_ids": [
+          "taxi"
+        ],
+        "unpaced_source_ids": [],
+        "kind": "Isolated loopback application relay; not a geographic WAN or packet-level emulator"
+      },
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 1,
+          "rows_fetched": 22612607,
+          "arrow_bytes_fetched": 271351284,
+          "batches_fetched": 460
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 1,
+          "rows_fetched": 265,
+          "arrow_bytes_fetched": 4135,
+          "batches_fetched": 1
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        }
+      ],
+      "rows": 8,
+      "canonical_value_sha256": "cce94e65a86564f8429b7de36f7886d70bbb53ce570276c42811a276448ea0c2",
+      "integer_sums": {
+        "trips": 22612607,
+        "fare_cents": 40534901730
+      },
+      "null_counts": {
+        "borough": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "borough",
+          "string"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 728,
+      "arrow_ipc_sha256": "17b1017f8ba561266ff912607863c06a4117ab850627997c2d673e5bc2c263c4",
+      "reference_match": true,
+      "output_rows_per_second": 3.2371362954992344
+    },
+    {
+      "query": "large_hash_join",
+      "sql": "SELECT s.pickup_zone_id AS pickup_zone_id, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN taxi.taxi_sample s ON t.trip_id=s.trip_id GROUP BY s.pickup_zone_id ORDER BY s.pickup_zone_id NULLS FIRST",
+      "source_ids": [
+        "taxi"
+      ],
+      "memory_mb": 256,
+      "threads": 2,
+      "scope": "22.6M real fact relation with a deterministic 1M-row joined relation projected from original records; physical hash-build choice was not captured",
+      "completed_at": "2026-10-02T02:01:43.634408+00:00",
+      "elapsed_seconds": 0.758824797005218,
+      "success": true,
+      "coordinator_peak_rss_kib": 56232,
+      "worker_peak_rss_kib_max": 153052,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 0.99,
+      "temporary_logical_bytes_peak": 0,
+      "temporary_allocated_bytes_peak": 0,
+      "sample_interval_seconds": 0.05,
+      "samples": 15,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "source_observations": [
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`trips` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 600,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "source_month",
+            "source_row",
+            "pickup_unix_us",
+            "pickup_zone_id",
+            "dropoff_zone_id",
+            "passenger_count",
+            "trip_distance",
+            "total_amount",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`zones` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 248,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough",
+            "zone",
+            "service_zone"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`taxi_sample` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 240,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `trip_id`, `pickup_zone_id` FROM `capacity_fixture`.`taxi_sample`",
+          "describe": false,
+          "wire_bytes": 12128264,
+          "arrow_rows": 1000000,
+          "arrow_buffer_bytes": 12000000,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id"
+          ]
+        },
+        {
+          "sql": "SELECT `trip_id`, `fare_cents` FROM `capacity_fixture`.`trips`",
+          "describe": false,
+          "wire_bytes": 364717384,
+          "arrow_rows": 22612607,
+          "arrow_buffer_bytes": 361801712,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "fare_cents"
+          ]
+        }
+      ],
+      "emulator": {
+        "round_trip_delay_ms": 0,
+        "shared_response_body_bytes_per_second": 0,
+        "applies_to_source_ids": [
+          "taxi"
+        ],
+        "unpaced_source_ids": [],
+        "kind": "Isolated loopback application relay; not a geographic WAN or packet-level emulator"
+      },
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 1,
+          "rows_fetched": 22612607,
+          "arrow_bytes_fetched": 361801712,
+          "batches_fetched": 463
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 1,
+          "rows_fetched": 1000000,
+          "arrow_bytes_fetched": 12000000,
+          "batches_fetched": 16
+        }
+      ],
+      "rows": 253,
+      "canonical_value_sha256": "78b6a5fce545e59ffc219e2cc98c88c201842b336f8c2ba15659142257f3040c",
+      "integer_sums": {
+        "pickup_zone_id": 33648,
+        "trips": 1000000,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "pickup_zone_id": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 5560,
+      "arrow_ipc_sha256": "3da8ce24ea30a8940b3055d82d877c24edc164a245a792b0e7c716879eb98ebd",
+      "reference_match": true,
+      "output_rows_per_second": 333.41029576061715
+    },
+    {
+      "query": "full_external_sort",
+      "sql": "SELECT trip_id,pickup_zone_id,fare_cents FROM taxi.trips ORDER BY pickup_zone_id NULLS FIRST,fare_cents NULLS FIRST,trip_id",
+      "source_ids": [
+        "taxi"
+      ],
+      "memory_mb": 256,
+      "threads": 2,
+      "scope": "Full 22.6M-row ORDER BY and Arrow export; no top-N shortcut",
+      "completed_at": "2026-10-02T02:01:51.478115+00:00",
+      "elapsed_seconds": 7.738113783998415,
+      "success": true,
+      "coordinator_peak_rss_kib": 62360,
+      "worker_peak_rss_kib_max": 854248,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 9.89,
+      "temporary_logical_bytes_peak": 169738240,
+      "temporary_allocated_bytes_peak": 169738240,
+      "sample_interval_seconds": 0.05,
+      "samples": 152,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "source_observations": [
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`trips` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 600,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "source_month",
+            "source_row",
+            "pickup_unix_us",
+            "pickup_zone_id",
+            "dropoff_zone_id",
+            "passenger_count",
+            "trip_distance",
+            "total_amount",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`zones` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 248,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough",
+            "zone",
+            "service_zone"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`taxi_sample` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 240,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `trip_id`, `pickup_zone_id`, `fare_cents` FROM `capacity_fixture`.`trips`",
+          "describe": false,
+          "wire_bytes": 458044512,
+          "arrow_rows": 22612607,
+          "arrow_buffer_bytes": 452252140,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        }
+      ],
+      "emulator": {
+        "round_trip_delay_ms": 0,
+        "shared_response_body_bytes_per_second": 0,
+        "applies_to_source_ids": [
+          "taxi"
+        ],
+        "unpaced_source_ids": [],
+        "kind": "Isolated loopback application relay; not a geographic WAN or packet-level emulator"
+      },
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 1,
+          "rows_fetched": 22612607,
+          "arrow_bytes_fetched": 452252140,
+          "batches_fetched": 579
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        }
+      ],
+      "rows": 22612607,
+      "canonical_value_sha256": "9d2ea5298fa243072d4c5bd1411f203980a9d716298472d228ece64df5e2bdeb",
+      "integer_sums": {
+        "trip_id": 4624929309126691,
+        "pickup_zone_id": 3698364934,
+        "fare_cents": 40534901730
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 454902480,
+      "arrow_ipc_sha256": "d8ce9d8ae79986329e6705800078cd2b5928c423f501009e174e5946c0c844d7",
+      "reference_match": true,
+      "output_rows_per_second": 2922237.5931923403
+    },
+    {
+      "query": "large_hash_join_pg",
+      "sql": "SELECT s.pickup_zone_id AS pickup_zone_id, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN pg.taxi_sample s ON t.trip_id=s.trip_id GROUP BY s.pickup_zone_id ORDER BY s.pickup_zone_id NULLS FIRST",
+      "source_ids": [
+        "taxi",
+        "pg"
+      ],
+      "memory_mb": 256,
+      "threads": 2,
+      "scope": "22.6M real fact relation with a deterministic 1M-row joined relation projected from original records; physical hash-build choice was not captured",
+      "completed_at": "2026-10-02T02:01:55.375949+00:00",
+      "elapsed_seconds": 1.6310956230008742,
+      "success": true,
+      "coordinator_peak_rss_kib": 54604,
+      "worker_peak_rss_kib_max": 157580,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 2.05,
+      "temporary_logical_bytes_peak": 0,
+      "temporary_allocated_bytes_peak": 0,
+      "sample_interval_seconds": 0.05,
+      "samples": 32,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "source_observations": [
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`trips` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 600,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "source_month",
+            "source_row",
+            "pickup_unix_us",
+            "pickup_zone_id",
+            "dropoff_zone_id",
+            "passenger_count",
+            "trip_distance",
+            "total_amount",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`zones` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 248,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough",
+            "zone",
+            "service_zone"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`taxi_sample` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 240,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `trip_id`, `fare_cents` FROM `capacity_fixture`.`trips`",
+          "describe": false,
+          "wire_bytes": 364717384,
+          "arrow_rows": 22612607,
+          "arrow_buffer_bytes": 361801712,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "fare_cents"
+          ]
+        }
+      ],
+      "emulator": {
+        "round_trip_delay_ms": 0,
+        "shared_response_body_bytes_per_second": 0,
+        "applies_to_source_ids": [
+          "taxi"
+        ],
+        "unpaced_source_ids": [
+          "pg"
+        ],
+        "kind": "Isolated loopback application relay; not a geographic WAN or packet-level emulator"
+      },
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 1,
+          "rows_fetched": 22612607,
+          "arrow_bytes_fetched": 361801712,
+          "batches_fetched": 463
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "pg",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "pg",
+          "table": "taxi_sample",
+          "scans": 1,
+          "rows_fetched": 1000000,
+          "arrow_bytes_fetched": 12250112,
+          "batches_fetched": 977
+        }
+      ],
+      "rows": 253,
+      "canonical_value_sha256": "78b6a5fce545e59ffc219e2cc98c88c201842b336f8c2ba15659142257f3040c",
+      "integer_sums": {
+        "pickup_zone_id": 33648,
+        "trips": 1000000,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "pickup_zone_id": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 5560,
+      "arrow_ipc_sha256": "3da8ce24ea30a8940b3055d82d877c24edc164a245a792b0e7c716879eb98ebd",
+      "reference_match": true,
+      "output_rows_per_second": 155.11046466701507
+    },
+    {
+      "query": "large_hash_join_my",
+      "sql": "SELECT s.pickup_zone_id AS pickup_zone_id, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN my.taxi_sample s ON t.trip_id=s.trip_id GROUP BY s.pickup_zone_id ORDER BY s.pickup_zone_id NULLS FIRST",
+      "source_ids": [
+        "taxi",
+        "my"
+      ],
+      "memory_mb": 256,
+      "threads": 2,
+      "scope": "22.6M real fact relation with a deterministic 1M-row joined relation projected from original records; physical hash-build choice was not captured",
+      "completed_at": "2026-10-02T02:01:57.119235+00:00",
+      "elapsed_seconds": 1.6378316569971503,
+      "success": true,
+      "coordinator_peak_rss_kib": 56620,
+      "worker_peak_rss_kib_max": 158096,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 2.04,
+      "temporary_logical_bytes_peak": 0,
+      "temporary_allocated_bytes_peak": 0,
+      "sample_interval_seconds": 0.05,
+      "samples": 32,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "source_observations": [
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`trips` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 600,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "source_month",
+            "source_row",
+            "pickup_unix_us",
+            "pickup_zone_id",
+            "dropoff_zone_id",
+            "passenger_count",
+            "trip_distance",
+            "total_amount",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`zones` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 248,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough",
+            "zone",
+            "service_zone"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`taxi_sample` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 240,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `trip_id`, `fare_cents` FROM `capacity_fixture`.`trips`",
+          "describe": false,
+          "wire_bytes": 364717384,
+          "arrow_rows": 22612607,
+          "arrow_buffer_bytes": 361801712,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "fare_cents"
+          ]
+        }
+      ],
+      "emulator": {
+        "round_trip_delay_ms": 0,
+        "shared_response_body_bytes_per_second": 0,
+        "applies_to_source_ids": [
+          "taxi"
+        ],
+        "unpaced_source_ids": [
+          "my"
+        ],
+        "kind": "Isolated loopback application relay; not a geographic WAN or packet-level emulator"
+      },
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 1,
+          "rows_fetched": 22612607,
+          "arrow_bytes_fetched": 361801712,
+          "batches_fetched": 463
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "my",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "my",
+          "table": "taxi_sample",
+          "scans": 1,
+          "rows_fetched": 1000000,
+          "arrow_bytes_fetched": 12250112,
+          "batches_fetched": 977
+        }
+      ],
+      "rows": 253,
+      "canonical_value_sha256": "78b6a5fce545e59ffc219e2cc98c88c201842b336f8c2ba15659142257f3040c",
+      "integer_sums": {
+        "pickup_zone_id": 33648,
+        "trips": 1000000,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "pickup_zone_id": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 5560,
+      "arrow_ipc_sha256": "3da8ce24ea30a8940b3055d82d877c24edc164a245a792b0e7c716879eb98ebd",
+      "reference_match": true,
+      "output_rows_per_second": 154.4725301401597
+    },
+    {
+      "query": "three_adapter_join",
+      "sql": "SELECT z.borough, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN pg.taxi_sample s ON t.trip_id=s.trip_id INNER JOIN my.zones z ON s.pickup_zone_id=z.zone_id GROUP BY z.borough ORDER BY z.borough",
+      "source_ids": [
+        "taxi",
+        "pg",
+        "my"
+      ],
+      "memory_mb": 256,
+      "threads": 4,
+      "scope": "ClickHouse22.6M real fact, PostgreSQL1M real projection and MySQL265 real taxi zones; same copied relations in native reference",
+      "completed_at": "2026-10-02T02:02:00.371463+00:00",
+      "elapsed_seconds": 3.141498409000633,
+      "success": true,
+      "coordinator_peak_rss_kib": 56632,
+      "worker_peak_rss_kib_max": 465920,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 5.64,
+      "temporary_logical_bytes_peak": 353304576,
+      "temporary_allocated_bytes_peak": 353304576,
+      "sample_interval_seconds": 0.05,
+      "samples": 60,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "source_observations": [
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`trips` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 600,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "source_month",
+            "source_row",
+            "pickup_unix_us",
+            "pickup_zone_id",
+            "dropoff_zone_id",
+            "passenger_count",
+            "trip_distance",
+            "total_amount",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`zones` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 248,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough",
+            "zone",
+            "service_zone"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`taxi_sample` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 240,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `trip_id`, `fare_cents` FROM `capacity_fixture`.`trips`",
+          "describe": false,
+          "wire_bytes": 364717384,
+          "arrow_rows": 22612607,
+          "arrow_buffer_bytes": 361801712,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "fare_cents"
+          ]
+        }
+      ],
+      "emulator": {
+        "round_trip_delay_ms": 0,
+        "shared_response_body_bytes_per_second": 0,
+        "applies_to_source_ids": [
+          "taxi"
+        ],
+        "unpaced_source_ids": [
+          "pg",
+          "my"
+        ],
+        "kind": "Isolated loopback application relay; not a geographic WAN or packet-level emulator"
+      },
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 1,
+          "rows_fetched": 22612607,
+          "arrow_bytes_fetched": 361801712,
+          "batches_fetched": 463
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "pg",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "pg",
+          "table": "taxi_sample",
+          "scans": 1,
+          "rows_fetched": 1000000,
+          "arrow_bytes_fetched": 12250112,
+          "batches_fetched": 977
+        },
+        {
+          "source": "my",
+          "table": "zones",
+          "scans": 1,
+          "rows_fetched": 265,
+          "arrow_bytes_fetched": 4263,
+          "batches_fetched": 1
+        },
+        {
+          "source": "my",
+          "table": "taxi_sample",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        }
+      ],
+      "rows": 8,
+      "canonical_value_sha256": "c15efa835332a96c6998622f13dadeb95d3d8f7ae09c8bead38140e80a85aa21",
+      "integer_sums": {
+        "trips": 1000000,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "borough": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "borough",
+          "string"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 728,
+      "arrow_ipc_sha256": "e93f5465269e26173a8a54c147b0780a9677ae3407dd61ad0c9e0f9270853bb2",
+      "reference_match": true,
+      "output_rows_per_second": 2.546555483548675
+    },
+    {
+      "query": "zone_join",
+      "sql": "SELECT z.borough, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN taxi.zones z ON t.pickup_zone_id=z.zone_id GROUP BY z.borough ORDER BY z.borough",
+      "source_ids": [
+        "taxi"
+      ],
+      "memory_mb": 256,
+      "threads": 2,
+      "scope": "22.6M real fact rows joined to a 265-row real taxi-zone dimension; physical hash-build choice was not captured",
+      "completed_at": "2026-10-02T02:02:29.497897+00:00",
+      "elapsed_seconds": 28.635244003999105,
+      "success": true,
+      "coordinator_peak_rss_kib": 54848,
+      "worker_peak_rss_kib_max": 434716,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 4.87,
+      "temporary_logical_bytes_peak": 170065920,
+      "temporary_allocated_bytes_peak": 170065920,
+      "sample_interval_seconds": 0.05,
+      "samples": 563,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "source_observations": [
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`trips` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 600,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "source_month",
+            "source_row",
+            "pickup_unix_us",
+            "pickup_zone_id",
+            "dropoff_zone_id",
+            "passenger_count",
+            "trip_distance",
+            "total_amount",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`zones` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 248,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough",
+            "zone",
+            "service_zone"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`taxi_sample` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 240,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `pickup_zone_id`, `fare_cents` FROM `capacity_fixture`.`trips`",
+          "describe": false,
+          "wire_bytes": 277100216,
+          "arrow_rows": 22612607,
+          "arrow_buffer_bytes": 271351284,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `zone_id`, `borough` FROM `capacity_fixture`.`zones`",
+          "describe": false,
+          "wire_bytes": 4520,
+          "arrow_rows": 265,
+          "arrow_buffer_bytes": 4135,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough"
+          ]
+        }
+      ],
+      "emulator": {
+        "round_trip_delay_ms": 50,
+        "shared_response_body_bytes_per_second": 10485760,
+        "applies_to_source_ids": [
+          "taxi"
+        ],
+        "unpaced_source_ids": [],
+        "kind": "Isolated loopback application relay; not a geographic WAN or packet-level emulator"
+      },
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 1,
+          "rows_fetched": 22612607,
+          "arrow_bytes_fetched": 271351284,
+          "batches_fetched": 460
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 1,
+          "rows_fetched": 265,
+          "arrow_bytes_fetched": 4135,
+          "batches_fetched": 1
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        }
+      ],
+      "rows": 8,
+      "canonical_value_sha256": "cce94e65a86564f8429b7de36f7886d70bbb53ce570276c42811a276448ea0c2",
+      "integer_sums": {
+        "trips": 22612607,
+        "fare_cents": 40534901730
+      },
+      "null_counts": {
+        "borough": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "borough",
+          "string"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 728,
+      "arrow_ipc_sha256": "17b1017f8ba561266ff912607863c06a4117ab850627997c2d673e5bc2c263c4",
+      "reference_match": true,
+      "output_rows_per_second": 0.27937600248430733
+    },
+    {
+      "query": "large_hash_join_pg",
+      "sql": "SELECT s.pickup_zone_id AS pickup_zone_id, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN pg.taxi_sample s ON t.trip_id=s.trip_id GROUP BY s.pickup_zone_id ORDER BY s.pickup_zone_id NULLS FIRST",
+      "source_ids": [
+        "taxi",
+        "pg"
+      ],
+      "memory_mb": 256,
+      "threads": 2,
+      "scope": "22.6M real fact relation with a deterministic 1M-row joined relation projected from original records; physical hash-build choice was not captured",
+      "completed_at": "2026-10-02T02:03:05.878124+00:00",
+      "elapsed_seconds": 36.27450224199856,
+      "success": true,
+      "coordinator_peak_rss_kib": 56088,
+      "worker_peak_rss_kib_max": 156680,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 2.77,
+      "temporary_logical_bytes_peak": 0,
+      "temporary_allocated_bytes_peak": 0,
+      "sample_interval_seconds": 0.05,
+      "samples": 710,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "source_observations": [
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`trips` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 600,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "source_month",
+            "source_row",
+            "pickup_unix_us",
+            "pickup_zone_id",
+            "dropoff_zone_id",
+            "passenger_count",
+            "trip_distance",
+            "total_amount",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`zones` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 248,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "zone_id",
+            "borough",
+            "zone",
+            "service_zone"
+          ]
+        },
+        {
+          "sql": "SELECT * FROM `capacity_fixture`.`taxi_sample` LIMIT 0",
+          "describe": true,
+          "wire_bytes": 240,
+          "arrow_rows": 0,
+          "arrow_buffer_bytes": 0,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "pickup_zone_id",
+            "fare_cents"
+          ]
+        },
+        {
+          "sql": "SELECT `trip_id`, `fare_cents` FROM `capacity_fixture`.`trips`",
+          "describe": false,
+          "wire_bytes": 364717384,
+          "arrow_rows": 22612607,
+          "arrow_buffer_bytes": 361801712,
+          "complete": true,
+          "status": 200,
+          "arrow_columns": [
+            "trip_id",
+            "fare_cents"
+          ]
+        }
+      ],
+      "emulator": {
+        "round_trip_delay_ms": 50,
+        "shared_response_body_bytes_per_second": 10485760,
+        "applies_to_source_ids": [
+          "taxi"
+        ],
+        "unpaced_source_ids": [
+          "pg"
+        ],
+        "kind": "Isolated loopback application relay; not a geographic WAN or packet-level emulator"
+      },
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 1,
+          "rows_fetched": 22612607,
+          "arrow_bytes_fetched": 361801712,
+          "batches_fetched": 463
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "pg",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "pg",
+          "table": "taxi_sample",
+          "scans": 1,
+          "rows_fetched": 1000000,
+          "arrow_bytes_fetched": 12250112,
+          "batches_fetched": 977
+        }
+      ],
+      "rows": 253,
+      "canonical_value_sha256": "78b6a5fce545e59ffc219e2cc98c88c201842b336f8c2ba15659142257f3040c",
+      "integer_sums": {
+        "pickup_zone_id": 33648,
+        "trips": 1000000,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "pickup_zone_id": 0,
+        "trips": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 5560,
+      "arrow_ipc_sha256": "3da8ce24ea30a8940b3055d82d877c24edc164a245a792b0e7c716879eb98ebd",
+      "reference_match": true,
+      "output_rows_per_second": 6.974596048545553
+    },
+    {
+      "query": "ordered_million_http",
+      "success": true,
+      "elapsed_seconds": 0.24673221100238152,
+      "download_rate_bytes_per_second": 0,
+      "scope": "Real authenticated HTTP result consumption with optional client-side read pacing; includes submit, query, transfer and file fsync. This is not geographic WAN latency.",
+      "coordinator_peak_rss_kib": 59848,
+      "worker_peak_rss_kib_max": 159244,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 0.23,
+      "temporary_logical_bytes_peak": 0,
+      "temporary_allocated_bytes_peak": 0,
+      "sample_interval_seconds": 0.05,
+      "samples": 5,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "rows": 1000000,
+      "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "integer_sums": {
+        "trip_id": 100499999500000,
+        "pickup_zone_id": 162903877,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 20117616,
+      "arrow_ipc_sha256": "3a1edcec5e73b2b317075874cf80dbb76b42bae41626a2f19b38e62ccc73863b"
+    },
+    {
+      "query": "ordered_million_http",
+      "success": true,
+      "elapsed_seconds": 19.288040642997657,
+      "download_rate_bytes_per_second": 1048576,
+      "scope": "Real authenticated HTTP result consumption with optional client-side read pacing; includes submit, query, transfer and file fsync. This is not geographic WAN latency.",
+      "coordinator_peak_rss_kib": 60584,
+      "worker_peak_rss_kib_max": 165116,
+      "observed_worker_processes": 1,
+      "sampled_cpu_core_seconds": 0.22,
+      "temporary_logical_bytes_peak": 0,
+      "temporary_allocated_bytes_peak": 0,
+      "sample_interval_seconds": 0.05,
+      "samples": 380,
+      "sampling_limit": "Sampled process RSS and scratch file peaks are lower bounds; memory_mb is not a hard whole-process RSS cap. Scratch excludes final Arrow exports and original dataset files.",
+      "rows": 1000000,
+      "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+      "integer_sums": {
+        "trip_id": 100499999500000,
+        "pickup_zone_id": 162903877,
+        "fare_cents": 1582868084
+      },
+      "null_counts": {
+        "trip_id": 0,
+        "pickup_zone_id": 0,
+        "fare_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "trip_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_id",
+          "int32"
+        ],
+        [
+          "fare_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 20117616,
+      "arrow_ipc_sha256": "3a1edcec5e73b2b317075874cf80dbb76b42bae41626a2f19b38e62ccc73863b"
+    },
+    {
+      "query": "slow_http_cancel_slot_recovery",
+      "success": true,
+      "elapsed_seconds": 0.09302779900463065,
+      "real_bytes_observed_before_cancel": true,
+      "state_before_cancel": "streaming",
+      "transient_admission_rejections_during_teardown": 1,
+      "single_slot_recovered_with_real_zone_query": true
+    }
+  ],
+  "scope": "Complete CLI coordinator, disposable worker, source scans, DuckDB query, durable Arrow export. Original source/reference loading and canonical value validation are outside timed intervals. Source observer decoding and configured application emulation are inside the path when enabled.",
+  "limitations": [
+    "Warm/uncontrolled caches; no production throughput claim.",
+    "Sampled RSS differs from configured engine memory and excludes remote database/proxy memory.",
+    "Application delay/bandwidth emulation does not establish geographic WAN performance, TCP loss or jitter behavior."
+  ],
+  "measurement_script_sha256_history": [
+    "c1c20e45938f1216e6ec2a4f17f1c6157779ac929b25693dd5ee0efac84a91db",
+    "eec237d6fd1f719652e88be07d348e8410b652d8fcb7ffeda68e0d0a03e76756",
+    "cd7e542c62151fecfaf38b5918a6c99238b34e62ab11e29576fdb66f0a196396"
+  ],
+  "harness_resume_note": "Thirteen successful trials were preserved. Only cancellation was retried after recognizing active streaming state and asynchronous admission release; same final binary and dataset.",
+  "reference_artifact_sha256": "caa8e61f291c7170e2d77cd0f37fe4c5c4126121cc3fa24846f98f7d25f71700",
+  "descriptive_revision_note": "Scope descriptions now name the actual input relation sizes; physical hash-build sides were not captured. This descriptive-only source/reference/report revision changes no SQL, source data, ordered result values, canonical hashes or measurements. Earlier measured script hashes remain in history."
+}
