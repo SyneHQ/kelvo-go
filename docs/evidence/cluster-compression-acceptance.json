@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "test": "startup",
+      "passed": true,
+      "landlock_abi": 6,
+      "gateways": 2,
+      "workers": 3,
+      "tenants": 2,
+      "broker_replicas": 3
+    },
+    {
+      "test": "cluster_lz4_multi_batch_values_and_completion",
+      "passed": true,
+      "result_compression": "lz4_frame",
+      "backend": "duckdb",
+      "rows": 16384,
+      "batches": 8,
+      "node_wire_bytes": 136768,
+      "received_bytes": 136768,
+      "received_sha256": "9d8a7c994b01c870126e66fc0898cfa607b330af26c84132e882982f5931a6be",
+      "arrow_eos": true,
+      "pyarrow_uncompressed_bytes": 1998072,
+      "note": "Real DuckDB range query; exact decoded integers, Unicode and NULLs; node/client byte counts agree. Byte identity through the gateway is covered separately by the Go relay regression."
+    }
+  ],
+  "result_compression": "lz4_frame"
+}

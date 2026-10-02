@@ -3,17 +3,24 @@
 
 Requires Linux Landlock ABI >=3, built binaries and pyarrow. Never writes private
 configuration into evidence. On failure, logs stay in the ignored fixture dir.
+
+--result-compression lz4_frame runs a separate, small compression acceptance on
+an idle, freshly provisioned fixture. It preserves original configuration files.
 """
+import argparse
 import concurrent.futures
 import ctypes
+import hashlib
 import http.client
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import socket
 import ssl
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -22,6 +29,7 @@ import pyarrow as pa
 
 ROOT = Path(__file__).resolve().parents[1]
 DIR = ROOT / "artifacts/cluster-private"
+RUN_DIR = DIR
 ENV = dict(os.environ, **json.loads((DIR / "environment.json").read_text()))
 BIN = ROOT / "bin/kelvo"
 CTX = ssl.create_default_context(cafile=str(DIR / "ca.pem"))
@@ -36,7 +44,7 @@ def record(name, **data):
 
 
 def start(name, command):
-    with open(DIR / (name + ".log"), "ab") as log:
+    with open(RUN_DIR / (name + ".log"), "ab") as log:
         proc = subprocess.Popen(command, env=ENV, stdout=log, stderr=log, start_new_session=True)
     PROCESS[name] = proc
     return proc
@@ -165,9 +173,85 @@ def broker_cluster_ready(items):
     return len(metadata_leaders) == 1 and streams == ready_streams
 
 
-def main():
+def compression_configurations():
+    """Copy only the known fixture YAML shape; never rewrite active policies."""
+    for port in (14440, 14441, 14443, 14444, 14445):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                raise AssertionError("compression acceptance requires idle gateway and node ports")
+        except ConnectionRefusedError:
+            pass
+    prepared = {}
+    expected_limits = {"init": 2, "gateway1": 2, "gateway2": 2, "a1": 1, "a2": 1, "b1": 1}
+    for name, expected in expected_limits.items():
+        text = (DIR / (name + ".yml")).read_text()
+        assert not re.search(r"(?m)^\s*result_compression:", text), "fixture already has a result compression policy"
+        # cluster_fixture.py emits each policy's limits as a block mapping. All
+        # other values and absolute resource references remain byte-for-byte.
+        updated, count = re.subn(r"(?m)^( +)limits:\n", lambda match:
+            match.group(0) + match.group(1) + '  result_compression: "lz4_frame"\n', text)
+        assert count == expected, "fixture policy layout differs from the known template"
+        prepared[name] = updated
+    directory = Path(tempfile.mkdtemp(prefix="compression-acceptance-", dir=DIR))
+    for name, text in prepared.items():
+        fd = os.open(directory / (name + ".yml"), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as output:
+            output.write(text)
+    return directory
+
+
+def compressed_result_acceptance():
+    rows = 16384
+    label = "Kelvo α" * 16
+    sql = ("SELECT i::BIGINT AS id, CASE WHEN i % 7 = 0 THEN NULL "
+           "ELSE repeat('Kelvo α', 16) END::VARCHAR AS label "
+           f"FROM range({rows}) t(i) ORDER BY i")
+    identifier = submit(sql)
+    code, body = call("/v1/queries/" + identifier + "/results", gateway=2)
+    assert code == 200, "compressed cluster result request failed"
+    assert body[-8:] == b"\xff\xff\xff\xff\0\0\0\0", "compressed result is missing Arrow EOS"
+    reader = pa.ipc.open_stream(body)
+    batches = list(reader)
+    assert len(batches) > 1, "compression fixture did not exercise multiple Arrow batches"
+    table = pa.Table.from_batches(batches, schema=reader.schema)
+    assert table.column_names == ["id", "label"] and table.num_rows == rows
+    assert table.column("id").combine_chunks().equals(pa.array(range(rows), type=pa.int64())), "compressed integer values changed"
+    expected_labels = pa.array([None if i % 7 == 0 else label for i in range(rows)], type=pa.string())
+    assert table.column("label").combine_chunks().equals(expected_labels), "compressed Unicode or NULL values changed"
+
+    code, status_body = call("/v1/queries/" + identifier, gateway=1)
+    assert code == 200, "compressed query status unavailable"
+    status = json.loads(status_body)
+    stats = status["stats"]
+    assert status["state"] == "succeeded", "compressed query did not commit success"
+    assert stats["backend"] == "duckdb" and not stats.get("federation"), "compression fixture used an unexpected source backend"
+    assert stats["rows"] == rows and stats["batches"] == len(batches), "compressed row or batch accounting differs"
+    assert stats["wire_bytes"] == len(body), "gateway byte count differs from the node's encoded result"
+    assert call("/v1/queries/" + identifier + "/results")[0] == 409, "compressed results were replayable"
+
+    # Compare with an explicitly uncompressed encoding of these exact decoded
+    # batches. This is a compression check, not a cross-encoder byte identity test.
+    uncompressed = pa.BufferOutputStream()
+    with pa.ipc.new_stream(uncompressed, reader.schema, options=pa.ipc.IpcWriteOptions(compression=None)) as writer:
+        for batch in batches:
+            writer.write_batch(batch)
+    uncompressed_bytes = uncompressed.getvalue().size
+    assert len(body) * 2 < uncompressed_bytes, "repetitive result did not meaningfully compress"
+    record("cluster_lz4_multi_batch_values_and_completion", result_compression="lz4_frame",
+           backend=stats["backend"], rows=rows, batches=len(batches),
+           node_wire_bytes=stats["wire_bytes"], received_bytes=len(body),
+           received_sha256=hashlib.sha256(body).hexdigest(), arrow_eos=True,
+           pyarrow_uncompressed_bytes=uncompressed_bytes,
+           note="Real DuckDB range query; exact decoded integers, Unicode and NULLs; node/client byte counts agree. Byte identity through the gateway is covered separately by the Go relay regression.")
+
+
+def main(result_compression="none"):
+    global RUN_DIR
     abi = ctypes.CDLL(None).syscall(444, None, 0, 1)
     assert abi >= 3, "Landlock ABI 3 or later is required"
+    config_dir = DIR
+    if result_compression == "lz4_frame":
+        config_dir = RUN_DIR = compression_configurations()
     # A previous fault test may have stopped a broker. Preserve its disk state
     # and restart only the fixture's own recorded processes.
     broker_pids = json.loads((DIR / "pids.json").read_text())
@@ -179,17 +263,20 @@ def main():
             PROCESS.pop(item["name"])
     (DIR / "pids.json").write_text(json.dumps(broker_pids))
     wait(lambda: broker_cluster_ready(broker_pids), "three current broker replicas", timeout=30)
-    subprocess.run([str(BIN), "cluster-init", "--config", str(DIR / "init.yml")], env=ENV, check=True)
+    subprocess.run([str(BIN), "cluster-init", "--config", str(config_dir / "init.yml")], env=ENV, check=True)
     wait(lambda: broker_cluster_ready(broker_pids), "initialized stream replicas", timeout=30)
     for name in ("a1", "a2", "b1"):
-        start(name, [str(BIN), "node", "--config", str(DIR / (name + ".yml"))])
+        start(name, [str(BIN), "node", "--config", str(config_dir / (name + ".yml"))])
     for number in (1, 2):
         name = "gateway" + str(number)
-        start(name, [str(BIN), "gateway", "--config", str(DIR / (name + ".yml"))])
+        start(name, [str(BIN), "gateway", "--config", str(config_dir / (name + ".yml"))])
         wait(lambda: call("/ready", gateway=number)[0] == 200, name + " readiness")
     time.sleep(1)
     assert all(p.poll() is None for p in PROCESS.values()), "a cluster process exited"
     record("startup", landlock_abi=abi, gateways=2, workers=3, tenants=2, broker_replicas=3)
+    if result_compression == "lz4_frame":
+        compressed_result_acceptance()
+        return
 
     for tenant in ("a", "b"):
         id = submit("SELECT label, sum(id) AS n FROM sample GROUP BY label", tenant, sources=["sample"])
@@ -306,9 +393,14 @@ def main():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--result-compression", choices=("none", "lz4_frame"), default="none")
+    args = parser.parse_args()
     outcome = {"passed": False, "checks": CHECKS}
+    if args.result_compression != "none":
+        outcome["result_compression"] = args.result_compression
     try:
-        main()
+        main(args.result_compression)
         outcome["passed"] = True
     finally:
         for name, proc in PROCESS.items():
@@ -320,5 +412,6 @@ if __name__ == "__main__":
             except subprocess.TimeoutExpired:
                 os.killpg(proc.pid, signal.SIGKILL)
                 proc.wait(timeout=3)
-        evidence = ROOT / "docs/evidence/cluster-acceptance.json"
+        filename = "cluster-acceptance.json" if args.result_compression == "none" else "cluster-compression-acceptance.json"
+        evidence = ROOT / "docs/evidence" / filename
         evidence.write_text(json.dumps(outcome, indent=2) + "\n")
