@@ -1,0 +1,244 @@
+schema_version: 1
+title: NYC Taxi full-quarter CTE analytics workflows
+status: measured_and_value_validated
+description: >-
+  Four exact-result operational analyses of the original January-March 2019
+  Yellow Taxi fixture. This public contract contains no timings, credentials,
+  host paths, or generated reference hashes. Runtime manifests expand SQL file
+  references to SQL text and add verified input paths, hashes, versions, limits,
+  and independently validated canonical references.
+
+dataset:
+  trips:
+    rows: 22612607
+    source_month_rows:
+      201901: 7696617
+      201902: 7049370
+      201903: 7866620
+  zones:
+    rows: 265
+    unique_zone_ids: 265
+    expected_borough_labels: 8
+  provenance: docs/evidence/federation-capacity-provenance.json
+  snapshot_rule: identical_raw_normalized_parquet_without_prefiltering
+
+sql_files:
+  path_base: repository_root
+  placeholders: [trips, zones]
+  substitution: validated_trusted_relation_identifiers_only
+
+semantics:
+  source_month_min: 201901
+  source_month_max: 201903
+  timestamp_start_us_inclusive: 1546300800000000
+  timestamp_end_us_exclusive: 1554076800000000
+  timestamp_basis: original_naive_source_wallclock
+  timezone_conversion: none
+  day_bucket_divisor_us: 86400000000
+  hour_bucket_divisor_us: 3600000000
+  monthly_bucket_basis: pickup_timestamp_thresholds_not_source_month
+  amount_input: fare_cents
+  amount_output: total_amount_cents
+  amount_definition: existing_half_to_even_rounded_total_amount_times_100
+  amount_null_sum_contribution: 0
+  measured_amount_count: non_null_fare_cents
+  output_integer_type: int64
+  overflow_policy: fail_preflight_if_signed_sums_or_absolute_sum_bound_exceed_int64
+  string_comparison: binary_utf8
+  unexpected_output_nulls: fail
+  physical_arrow_field_nullability: may_differ_logical_values_must_obey_contract
+
+validation:
+  reference: direct_native_clickhouse_plus_independent_raw_snapshot_invariants
+  canonical_values: ordered_exact_signed_integers_utf8_strings_and_null_validity
+  canonical_batch_boundaries: ignored
+  require_arrow_eos: true
+  require_exact_row_count: true
+  require_exact_column_order: true
+  require_full_canonical_sha256_match: true
+  preflight_invariants:
+    - id: fixture_counts
+      check: Verify source-month counts, total trips, unique trip IDs, and unique non-null zone IDs.
+    - id: dimensions
+      check: Verify 265 unique zone IDs, eight borough labels, and no null output dimension strings.
+    - id: timestamp_audit
+      check: Report null and out-of-quarter pickup timestamps and source-file/pickup-month mismatches.
+    - id: zone_join_audit
+      check: Report null or unmatched pickup and dropoff IDs within the timestamp cohort.
+    - id: amount_distance_audit
+      check: Report null/negative amounts and null/NaN/infinite/nonpositive/above-100 distances.
+    - id: route_stage_audit
+      check: Record disjoint exclusion stages for amounts, usable distances, known zone pairs, and route threshold.
+    - id: integer_bounds
+      check: Independently sum signed amounts and absolute non-null amounts using unbounded integers.
+
+workloads:
+  daily_rolling_kpis:
+    title: Daily and trailing-seven-day recorded-trip KPIs
+    inputs: [trips]
+    sql:
+      duckdb: benchmarks/ride-hailing/daily_rolling_kpis.sql
+      clickhouse: benchmarks/ride-hailing/daily_rolling_kpis.clickhouse.sql
+    output:
+      columns:
+        - {name: day_bucket, type: int64, nullable: false}
+        - {name: trips, type: int64, nullable: false}
+        - {name: measured_amount_trips, type: int64, nullable: false}
+        - {name: total_amount_cents, type: int64, nullable: false}
+        - {name: window_days, type: int64, nullable: false}
+        - {name: trailing_7d_trips, type: int64, nullable: false}
+        - {name: trailing_7d_measured_amount_trips, type: int64, nullable: false}
+        - {name: trailing_7d_total_amount_cents, type: int64, nullable: false}
+      order_by: [day_bucket]
+      max_rows: 90
+      expected_rows: 90
+    semantics:
+      day_bucket_start_inclusive: 17897
+      day_bucket_end_exclusive: 17987
+      fill_missing_days: true
+      window_frame: rows_6_preceding_through_current
+      include_negative_amounts: true
+    invariants:
+      - id: calendar
+        check: Exactly 90 consecutive day buckets from 17897 through 17986.
+      - id: daily_reconciliation
+        check: Daily trips, measured counts, and amounts reconcile to independent eligible-row aggregates.
+      - id: measured_counts
+        check: Each measured amount count is between zero and its trip count.
+      - id: rolling_sums
+        check: Every trailing field equals an independent deque sum over the current and six prior calendar rows.
+      - id: window_days
+        check: Window size is min(day_bucket - 17897 + 1, 7), including zero-trip days.
+
+  borough_hour_hotspots:
+    title: Top three pickup zones in each borough and recorded hour
+    inputs: [trips, zones]
+    sql:
+      duckdb: benchmarks/ride-hailing/borough_hour_hotspots.sql
+      clickhouse: benchmarks/ride-hailing/borough_hour_hotspots.clickhouse.sql
+    output:
+      columns:
+        - {name: hour_bucket, type: int64, nullable: false}
+        - {name: borough, type: string, nullable: false}
+        - {name: zone_id, type: int64, nullable: false}
+        - {name: zone_name, type: string, nullable: false}
+        - {name: trips, type: int64, nullable: false}
+        - {name: borough_hour_trips, type: int64, nullable: false}
+        - {name: zone_rank, type: int64, nullable: false}
+      order_by: [hour_bucket, borough, zone_rank, zone_id]
+      max_rows: 100000
+      theoretical_max_rows_for_expected_fixture: 51840
+    semantics:
+      hour_bucket_start_inclusive: 429528
+      hour_bucket_end_exclusive: 431688
+      zone_join: known_pickup_zone_inner_join
+      rank_function: row_number
+      rank_partition_by: [hour_bucket, borough]
+      rank_order_by:
+        - {column: trips, direction: desc}
+        - {column: zone_id, direction: asc}
+      top_k: 3
+    invariants:
+      - id: ranks
+        check: Each borough/hour has at most three rows with consecutive ranks starting at one.
+      - id: denominator
+        check: The borough/hour total is constant within its output partition and at least the displayed trip sum.
+      - id: known_pickup_reconciliation
+        check: Independent unranked zone/hour counts reconcile to the known-pickup eligible-row audit.
+      - id: exact_top_three
+        check: Keys, counts, totals, and ranks equal independent full-order top-three selection.
+
+  route_economics:
+    title: Top ten route charge summaries and distance mixes per pickup borough
+    inputs: [trips, zones]
+    sql:
+      duckdb: benchmarks/ride-hailing/route_economics.sql
+      clickhouse: benchmarks/ride-hailing/route_economics.clickhouse.sql
+    output:
+      columns:
+        - {name: pickup_borough, type: string, nullable: false}
+        - {name: pickup_zone_id, type: int64, nullable: false}
+        - {name: pickup_zone_name, type: string, nullable: false}
+        - {name: dropoff_borough, type: string, nullable: false}
+        - {name: dropoff_zone_id, type: int64, nullable: false}
+        - {name: dropoff_zone_name, type: string, nullable: false}
+        - {name: trips, type: int64, nullable: false}
+        - {name: total_amount_cents, type: int64, nullable: false}
+        - {name: lt_1_mile_trips, type: int64, nullable: false}
+        - {name: ge_1_lt_5_mile_trips, type: int64, nullable: false}
+        - {name: ge_5_le_100_mile_trips, type: int64, nullable: false}
+        - {name: route_rank, type: int64, nullable: false}
+      order_by: [pickup_borough, route_rank, pickup_zone_id, dropoff_zone_id]
+      max_rows: 1000
+      theoretical_max_rows_for_expected_fixture: 80
+    semantics:
+      amount_cohort: present_and_nonnegative
+      usable_distance_miles: greater_than_0_and_less_than_or_equal_to_100
+      sql_distance_handling: conditional_aggregation_not_pushed_float_where_filter
+      distance_band_bounds_miles: [0, 1, 5, 100]
+      route_minimum_usable_trips: 100
+      zone_join: known_pickup_and_dropoff_inner_joins
+      rank_function: row_number
+      rank_partition_by: [pickup_borough]
+      rank_order_by:
+        - {column: total_amount_cents, direction: desc}
+        - {column: trips, direction: desc}
+        - {column: pickup_zone_id, direction: asc}
+        - {column: dropoff_zone_id, direction: asc}
+      top_k: 10
+    invariants:
+      - id: bands
+        check: The three nonnegative distance-band counts sum exactly to trips.
+      - id: route_cohort
+        check: Each route has at least 100 trips, a nonnegative amount, and two known unique dimension keys.
+      - id: cohort_reconciliation
+        check: Independent pre-threshold aggregates reconcile to the audited usable-distance known-both-zones cohort.
+      - id: exact_top_ten
+        check: Every output value matches independent route grouping and the complete deterministic top-ten rank order.
+
+  monthly_zone_momentum:
+    title: February and March zone demand change from the preceding month
+    inputs: [trips, zones]
+    sql:
+      duckdb: benchmarks/ride-hailing/monthly_zone_momentum.sql
+      clickhouse: benchmarks/ride-hailing/monthly_zone_momentum.clickhouse.sql
+    output:
+      columns:
+        - {name: month, type: int64, nullable: false}
+        - {name: borough, type: string, nullable: false}
+        - {name: zone_id, type: int64, nullable: false}
+        - {name: zone_name, type: string, nullable: false}
+        - {name: trips, type: int64, nullable: false}
+        - {name: previous_trips, type: int64, nullable: false}
+        - {name: trip_change, type: int64, nullable: false}
+        - {name: measured_amount_trips, type: int64, nullable: false}
+        - {name: total_amount_cents, type: int64, nullable: false}
+        - {name: zone_rank, type: int64, nullable: false}
+      order_by: [month, borough, zone_rank, zone_id]
+      max_rows: 1000
+      expected_rows: 530
+    semantics:
+      grid_months: [201901, 201902, 201903]
+      output_months: [201902, 201903]
+      month_start_us: [1546300800000000, 1548979200000000, 1551398400000000]
+      grid_zone_count: 265
+      fill_missing_zone_months: true
+      previous_month_before_output_filter: true
+      include_negative_amounts: true
+      rank_function: row_number
+      rank_partition_by: [month, borough]
+      rank_order_by:
+        - {column: trip_change, direction: desc}
+        - {column: zone_id, direction: asc}
+      return_all_ranks: true
+    invariants:
+      - id: full_zone_grid
+        check: Every lookup zone occurs exactly once in February and once in March, totaling 530 rows.
+      - id: previous_month
+        check: Previous trips equals the independent prior-zone-month count, including zero-filled combinations.
+      - id: signed_delta
+        check: Trip change equals signed Int64 trips minus previous trips.
+      - id: monthly_reconciliation
+        check: Counts, measured counts, and amounts reconcile to independent known-pickup month aggregates.
+      - id: exact_rank
+        check: All ranks equal independent month/borough ordering by trip change descending and zone ID ascending.
