@@ -60,7 +60,11 @@ func testWorkerMain() int {
 	if json.NewDecoder(os.Stdin).Decode(&in) != nil {
 		return 2
 	}
-	if in.Request.SQL == "SELECT object_environment" {
+	if in.Request.SQL == "SELECT file_secret_first" || in.Request.SQL == "SELECT file_secret_second" {
+		if !fileSecretChildMatches(in) {
+			return 2
+		}
+	} else if in.Request.SQL == "SELECT object_environment" {
 		if !objectWorkerEnvironmentMatches(in) {
 			return 2
 		}

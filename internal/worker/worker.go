@@ -45,6 +45,8 @@ type Executor struct {
 	// ResourceOverheadBytes reserves memory beyond DuckDB's managed memory limit.
 	ResourceOverheadBytes int64
 	Metrics               *telemetry.Registry
+	SourceAdmission       SourceAdmitter
+	Secrets               SecretResolver
 }
 
 func New(c catalog.Config, l query.Limits) (*Executor, error) {
@@ -110,6 +112,14 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		// resources are released before a competing job can take this reservation.
 		defer reservation.Release()
 	}
+	quotaStarted := time.Now()
+	quotaCtx, releaseQuota, quotaErr := e.acquireSourceQuota(ctx, r)
+	admissionWait += time.Since(quotaStarted)
+	if quotaErr != nil {
+		return stats, quotaErr
+	}
+	defer releaseQuota()
+	ctx = quotaCtx
 	sources, versions, release, err := acceleration.Resolve(ctx, e.Config, r)
 	if err != nil {
 		return stats, err
@@ -149,7 +159,10 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 				if err := catalog.ValidateEnvironment(key); err != nil {
 					return stats, query.NewError("CONFIGURATION_ERROR", "Source environment reference is not permitted")
 				}
-				v, ok := os.LookupEnv(key)
+				v, ok, secretErr := e.resolveSecret(ctx, key)
+				if secretErr != nil {
+					return stats, secretErr
+				}
 				if !ok {
 					return stats, query.NewError("CONFIGURATION_ERROR", "A source environment variable is missing")
 				}
