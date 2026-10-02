@@ -392,6 +392,9 @@ func containsDeniedCapability(sqlText string) bool {
 		"sqlite_attach": {}, "sqlite_query": {}, "sqlite_execute": {},
 	}
 	for _, token := range strings.FieldsFunc(strings.ToLower(sqlText), func(r rune) bool { return !(r == '_' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9') }) {
+		if strings.HasPrefix(token, "kelvo_arrow_scan_") {
+			return true
+		}
 		if _, found := denied[token]; found {
 			return true
 		}

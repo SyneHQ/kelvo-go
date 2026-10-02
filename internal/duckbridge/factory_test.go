@@ -241,18 +241,33 @@ func TestFactoryProjectionFiltersCountAndIndependentRescans(t *testing.T) {
 	}
 }
 
-func TestFactoryUnsupportedFilterFailsBeforeProducer(t *testing.T) {
-	called := false
-	conn, factory := registeredFactory(t, bridgeSchema(), func(context.Context, ScanPlan) (array.RecordReader, error) {
-		called = true
-		return nil, errors.New("must not call")
+func TestFactoryResidualStringPredicatesKeepCorrectResults(t *testing.T) {
+	var plans []ScanPlan
+	conn, factory := registeredFactory(t, bridgeSchema(), func(_ context.Context, plan ScanPlan) (array.RecordReader, error) {
+		plans = append(plans, plan)
+		for _, filter := range plan.Filters {
+			if filter.Column == "label" {
+				return nil, errors.New("string filter must remain local")
+			}
+		}
+		return fixtureReader(t, bridgeSchema(), plan)
 	})
-	_, err := conn.ExecContext(context.Background(), "SELECT label FROM bridge.data WHERE label='private-value'")
-	if err == nil || called || query.PublicError(factory.Err()).Code != "UNSUPPORTED" {
-		t.Fatalf("unsupported predicate was ignored: called=%v error=%v callback=%v", called, err, factory.Err())
+	var label string
+	if err := conn.QueryRowContext(context.Background(), "SELECT label FROM bridge.data WHERE label='row_2'").Scan(&label); err != nil || label != "row_2" {
+		t.Fatalf("local string predicate failed: %q %v %v", label, err, factory.Err())
 	}
-	if strings.Contains(factory.Err().Error(), "private-value") {
-		t.Fatal("native error exposed filter values")
+	if len(plans) != 1 || len(plans[0].Filters) != 0 {
+		t.Fatalf("unsupported predicate was pushed: %+v", plans)
+	}
+	var count int64
+	if err := conn.QueryRowContext(context.Background(), "SELECT count(*) FROM bridge.data WHERE id >= 2 AND label='row_2'").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("mixed source/local predicates changed rows: %d %v %v", count, err, factory.Err())
+	}
+	if len(plans) != 2 || len(plans[1].Filters) == 0 {
+		t.Fatal("integer pushdown was unnecessarily disabled")
+	}
+	if err := conn.QueryRowContext(context.Background(), "SELECT count(*) FROM bridge.data WHERE label='row_2' OR id=4").Scan(&count); err != nil || count != 2 {
+		t.Fatalf("OR across local and source columns changed rows: %d %v %v", count, err, factory.Err())
 	}
 }
 

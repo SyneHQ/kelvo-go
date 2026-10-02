@@ -24,7 +24,11 @@ func (federationDiscardSink) Schema(*arrow.Schema) error    { return nil }
 func (federationDiscardSink) Write(arrow.RecordBatch) error { return nil }
 
 func TestRawArrowEntryPointsRemainPrivate(t *testing.T) {
-	for _, sql := range []string{"SELECT * FROM arrow_scan(1,2,3)", "SELECT * FROM ARROW_SCAN_DUMB(1,2,3)"} {
+	for _, sql := range []string{
+		"SELECT * FROM arrow_scan(1,2,3)", "SELECT * FROM ARROW_SCAN_DUMB(1,2,3)",
+		"SELECT * FROM kelvo_arrow_scan_12(NULL,NULL,NULL)",
+		`SELECT * FROM main."KELVO_ARROW_SCAN_12"(NULL,NULL,NULL)`,
+	} {
 		if !containsDeniedCapability(sql) {
 			t.Fatal("raw pointer table function allowed")
 		}

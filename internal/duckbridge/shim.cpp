@@ -4,8 +4,11 @@
 #include "shim.h"
 #include "duckdb.hpp"
 #include "duckdb.h"
+#include "duckdb/catalog/catalog_entry/table_function_catalog_entry.hpp"
 #include "duckdb/common/arrow/arrow_wrapper.hpp"
 #include "duckdb/function/table/arrow.hpp"
+#include "duckdb/main/database.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/planner/filter/constant_filter.hpp"
 #include "duckdb/planner/filter/conjunction_filter.hpp"
 #include <cstring>
@@ -15,6 +18,27 @@ using namespace duckdb;
 
 namespace {
 struct FactoryState { uint64_t handle; };
+
+bool SupportsPushdown(const FunctionData &data, idx_t column) {
+	const auto &arrow = data.Cast<ArrowScanFunctionData>();
+	if (column >= arrow.all_types.size()) { return false; }
+	// Advertise only the exact scalar types understood by the Go contract.
+	// DuckDB keeps other predicates above the scan instead of handing us a
+	// required predicate that a source cannot safely implement (collations,
+	// floating-point, decimal and timezone semantics are engine-local).
+	switch (arrow.all_types[column].id()) {
+	case LogicalTypeId::BOOLEAN:
+	case LogicalTypeId::TINYINT:
+	case LogicalTypeId::SMALLINT:
+	case LogicalTypeId::INTEGER:
+	case LogicalTypeId::BIGINT:
+	case LogicalTypeId::UTINYINT:
+	case LogicalTypeId::USMALLINT:
+	case LogicalTypeId::UINTEGER:
+	case LogicalTypeId::UBIGINT: return true;
+	default: return false;
+	}
+}
 
 string JsonString(const string &value) {
 	string out = "\"";
@@ -179,7 +203,17 @@ extern "C" void kelvo_factory_destroy(void *factory) { delete static_cast<Factor
 extern "C" int kelvo_factory_register(void *factory, void *connection, const char *schema, const char *name) {
 	try {
 		auto conn = reinterpret_cast<Connection *>(connection);
-		auto relation = conn->TableFunction("arrow_scan", {Value::POINTER(reinterpret_cast<uintptr_t>(factory)), Value::POINTER(reinterpret_cast<uintptr_t>(Produce)), Value::POINTER(reinterpret_cast<uintptr_t>(Schema))});
+		auto state = reinterpret_cast<FactoryState *>(factory);
+		const string function_name = "kelvo_arrow_scan_" + std::to_string(state->handle);
+		// Reuse the pinned Arrow scanner with Kelvo's actual filter capability.
+		// A private per-factory function leaves DuckDB's built-in arrow_scan
+		// untouched and lives in the disposable query database.
+		ExtensionLoader loader(DatabaseInstance::GetDatabase(*conn->context), "kelvo");
+		auto scan = loader.GetTableFunction("arrow_scan").functions.GetFunctionByOffset(0);
+		scan.name = function_name;
+		scan.supports_pushdown_type = SupportsPushdown;
+		loader.RegisterFunction(scan);
+		auto relation = conn->TableFunction(function_name, {Value::POINTER(reinterpret_cast<uintptr_t>(factory)), Value::POINTER(reinterpret_cast<uintptr_t>(Produce)), Value::POINTER(reinterpret_cast<uintptr_t>(Schema))});
 		relation->CreateView(schema, name, false, false);
 		return 0;
 	} catch (...) { return 1; }
