@@ -1,46 +1,45 @@
-# Architecture
+# Dependency rationale
 
-Kelvo Go owns source registration, query lifecycle, Arrow delivery and admission.
-DuckDB supplies SQL execution and federation. Native ClickHouse executes at the source; an optional pinned C++ Arrow bridge connects its Go connector to DuckDB for selected-table federation.
-No DataFusion, Drill, LLM/GPU runtime, Kubernetes operator or Hakopod dependency is included.
+| Dependency | Purpose | License |
+| --- | --- | --- |
+| duckdb-go v2.10506.0 / DuckDB 1.5.6 | Embedded SQL execution, file analysis and supported federation | MIT |
+| Arrow Go v18.5.1 | Typed record batches and IPC encoding/decoding | Apache-2.0 |
+| Arrow Go Parquet/pqarrow v18.5.1 | Bounded Parquet snapshot encoding with Snappy and stored Arrow schema | Apache-2.0 |
+| [NATS Go v1.54.0](https://github.com/nats-io/nats.go/tree/v1.54.0) | Durable cluster jobs, KV state and authenticated broker connections | Apache-2.0 |
+| [Go YAML v3.0.5](https://github.com/yaml/go-yaml/tree/v3.0.5) | Strict YAML source configuration | MIT and Apache-2.0, by file |
+| [Microsoft SQL Server driver v1.9.8](https://github.com/microsoft/go-mssqldb/tree/v1.9.8) | Native SQL Server connector | BSD-3-Clause |
+| [go-ora v2.9.0](https://github.com/sijms/go-ora/tree/v2.9.0) | Native Oracle connector | MIT |
+| [MongoDB Go Driver v2.9.1](https://github.com/mongodb/mongo-go-driver/tree/v2.9.1) | Native MongoDB connector | Apache-2.0 |
+| [zero-sql b01a7e8](https://github.com/SyneHQ/zero-sql/commit/b01a7e87002271a661ebd68060824be013347845) | Restricted MongoDB SQL compiler | Apache-2.0 |
+| [pgx v5.11.0](https://github.com/jackc/pgx/tree/v5.11.0) | Native PostgreSQL protocol connections | MIT |
+| [Go MySQL driver v1.10.1](https://github.com/go-sql-driver/mysql/tree/v1.10.1) | Native MySQL and MariaDB connections | MPL-2.0 |
+| [gRPC Go v1.78.0](https://github.com/grpc/grpc-go/tree/v1.78.0) | Apache Arrow Flight SQL transport | Apache-2.0 |
+| [AWS SDK for Go v2 core v1.47.1](https://github.com/aws/aws-sdk-go-v2/tree/v1.47.1) | Official SigV4 signer for source-bound Athena/DynamoDB and S3-compatible snapshot requests; no ambient credential provider chain | Apache-2.0 |
+| [Exasol Go driver v1.1.1](https://github.com/exasol/exasol-driver-go/tree/v1.1.1) | DSN parsing for the exact native WebSocket connector | MIT |
+| [Gorilla WebSocket v1.5.3](https://github.com/gorilla/websocket/tree/v1.5.3) | Bounded Exasol WebSocket transport | BSD-2-Clause |
+| Go standard library | HTTP, subprocess lifecycle, configuration and CLI | Go BSD-style license |
 
-```mermaid
-flowchart LR
-    Client[CLI or HTTP client] --> Coordinator[Go coordinator]
-    Coordinator --> Worker[Disposable Go query worker]
-    Worker --> DuckDB[DuckDB: files and PG/MySQL federation]
-    DuckDB --> Bridge[Optional C++ Arrow scan bridge]
-    Bridge --> ClickHouse
-    Worker --> ClickHouse[Native ClickHouse ArrowStream]
-    Worker --> Arrow[Arrow IPC batches]
-    Arrow --> Client
-```
+Transitive dependencies are pinned by `go.sum`; review their licenses when distributing binaries. DuckDB's driver includes platform-specific native libraries. Matching signed extensions are external provisioned artifacts, with their own dependency notices.
 
-Each query uses a new process. Federated queries create a fresh DuckDB instance; native queries invoke their selected connector directly. Only selected source definitions and their explicitly named environment variables enter the worker. Cluster nodes launch that process through a native Landlock/seccomp sandbox before Go creates threads. Tenant containers provide PID, memory and network boundaries. Cancellation terminates the query process group; deployment supervision must also bound the process tree when a node is forcibly terminated. A process failure terminates its query; streams are not transparently resumed.
+The ClickHouse adapter uses HTTP and source-produced ArrowStream. Databricks,
+Snowflake and Cloudflare D1 use their documented HTTPS APIs and convert bounded
+JSON responses into Arrow batches. No provider SDK is required for those APIs.
+BigQuery, Elasticsearch, Trino and Presto also use documented HTTPS APIs.
+Flight SQL uses the existing Arrow dependency and gRPC for typed record-batch
+transport. Optional compatibility adapters connect to separately operated
+services; their database drivers and licenses are not bundled with Kelvo.
+Spanner, Cosmos DB and Ignite 2 use documented HTTPS APIs without cloud SDKs.
+Exasol's stock database/sql path converts JSON numbers through float64 and does
+not provide the required read-only transaction/cancellation semantics. Kelvo uses
+its DSN parser with a separate exact-number WebSocket path and read-only database
+credentials. It does not route queries through that driver's database/sql code.
+CDC remains a separate capability requiring its own acceptance evidence.
 
-The callback contract is `Executor.Execute(context, Request, Sink)`. A sink borrows each Arrow batch only during its synchronous Write call. The DuckDB adapter keeps execution, record iteration and Release inside the leased `sql.Conn.Raw` callback.
-
-The pinned DuckDB Go v2.10506.0 path uses non-streaming pending execution, then exposes batches. Kelvo bounds returned rows before execution and enforces delivery limits, but native allocations can precede a limit check. First-batch latency and working memory depend on the engine plan. For a native ClickHouse request, the same configured memory limit is passed to ClickHouse as its per-query memory budget and bounds Kelvo's local Arrow decoding allocator; it is still not a worker-process RSS cap.
-
-Single-domain `serve` uses a bounded in-memory TTL registry and one service token. [Cluster mode](cluster.md) uses per-tenant tokens, NATS account isolation, atomic KV admission, worker leases and mTLS result delivery. It distributes independent queries among tenant-bound workers. External identity/KMS integration, an Arrow Flight SQL server (the project includes a Flight SQL client), durable query exports, CDC and additional native adapters remain future milestones.
-
-[Dataset acceleration](acceleration.md) executes configured refresh queries in the same subprocess boundary and writes immutable Parquet generations. A private tenant store atomically publishes YAML manifests; queries pin only selected generations and receive no original-source credentials for dataset-only reads. Full refreshes can run manually, through a local scheduler, or through a bounded tenant NATS refresh queue. The default backend uses a tenant-specific POSIX volume. The opt-in object backend uses provider-conditional manifest publication and immutable Parquet objects. A parent-owned loopback range bridge serves only selected versions to DuckDB and rejects upstream redirects; cloud reader and writer credentials never enter snapshot query subprocesses. It does not pre-download whole snapshots or maintain a persistent local cache. This dataset lifecycle is separate from the per-query DuckDB instance and the query-handle TTL registry.
-
-Live federation reads sources independently. It has no global transaction or comparable cross-source watermark. Later CDC must include snapshot/log handoff, durable checkpoints, idempotent replay, deletes, schema changes and recovery from expired source history.
-
-Source references:
-
-- [DuckDB Go Arrow API](https://github.com/duckdb/duckdb-go/blob/v2.10506.0/arrow.go)
-- [Driver query execution](https://github.com/duckdb/duckdb-go/blob/v2.10506.0/statement.go#L778-L803)
-- [DuckDB streaming flag](https://github.com/duckdb/duckdb/blob/v1.5.6/src/main/capi/pending-c.cpp#L17-L44)
-- [Arrow IPC](https://arrow.apache.org/docs/format/Columnar.html#serialization-and-interprocess-communication-ipc)
-- [Spice OSS](https://github.com/spiceai/spiceai), architectural reference
-
-The [custom federation bridge](federation.md) receives DuckDB optimizer projections
-and typed filters, executes supported predicates through Go native connectors,
-and lends retained/pinned Arrow batches back through the C Data interface. The
-first adapter is ClickHouse. It retains the existing subprocess trust boundary
-and uses an opt-in pinned driver accessor patch; no Rust service is introduced.
+Object snapshots use the pinned AWS core signer for S3/R2/GCS XML requests and
+standard-library HTTPS for Azure Blob with explicit SAS tokens. No extra cloud
+SDK or credential-provider chain is introduced. DuckDB reads anonymous loopback
+ranges through its version-matched signed `httpfs` extension; the Go parent owns
+cloud TLS, conditional reads and redirect refusal.
 
 Optional native federation builds compile a small C++17 Arrow scan shim against
 DuckDB 1.5.6 headers and apply a scoped accessor patch to the same pinned Go
