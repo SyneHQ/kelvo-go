@@ -1,7 +1,14 @@
 // Copyright 2026 SYNEHQ. SPDX-License-Identifier: Apache-2.0
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+
+	"github.com/SYNEHQ/kelvo-go/internal/query"
+)
 
 func TestCLIRequestAcceptsSQLAndMongoForms(t *testing.T) {
 	sql, err := makeRequest("SELECT ?", "federated", "", "source", `[{"type":"int64","value":"9223372036854775807"}]`, "", "")
@@ -32,5 +39,70 @@ func TestCLIRequestRejectsMixedAndMalformedMongoForms(t *testing.T) {
 		if _, err := makeRequest(args[0], args[1], args[2], args[3], args[4], args[5], args[6]); err == nil {
 			t.Fatalf("accepted %+v", args)
 		}
+	}
+}
+
+func TestCLISandboxIsOptionalAndResolvesRelativePath(t *testing.T) {
+	if path, err := resolveCLISandbox(""); err != nil || path != "" {
+		t.Fatalf("default sandbox changed: %q %v", path, err)
+	}
+	if runtime.GOOS != "linux" {
+		if _, err := resolveCLISandbox("launcher"); err == nil {
+			t.Fatal("non-Linux sandbox was accepted")
+		}
+		return
+	}
+	directory := t.TempDir()
+	t.Chdir(directory)
+	if err := os.WriteFile("launcher", []byte("#!/bin/sh\nexit 125\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	path, err := resolveCLISandbox("launcher")
+	if err != nil || path != filepath.Join(directory, "launcher") {
+		t.Fatalf("relative sandbox path: %q %v", path, err)
+	}
+}
+
+func TestCLIRejectsInvalidSandboxBeforeStartingQueryOrServer(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("launcher permissions are checked on Linux")
+	}
+	directory := t.TempDir()
+	config := filepath.Join(directory, "catalog.yml")
+	if err := os.WriteFile(config, []byte("sources: []\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		mode os.FileMode
+	}{
+		{name: "not-executable", mode: 0600},
+		{name: "group-writable", mode: 0720},
+		{name: "other-writable", mode: 0702},
+		{name: "missing"},
+		{name: "directory", mode: os.ModeDir | 0700},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			launcher := filepath.Join(directory, tc.name)
+			if tc.mode.IsDir() {
+				if err := os.Mkdir(launcher, tc.mode.Perm()); err != nil {
+					t.Fatal(err)
+				}
+			} else if tc.mode != 0 {
+				if err := os.WriteFile(launcher, []byte("#!/bin/sh\nexit 125\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(launcher, tc.mode); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for _, command := range []string{"query", "serve"} {
+				err := run([]string{command, "--config", config, "--sandbox", launcher})
+				if err == nil || query.PublicError(err).Code != "CONFIGURATION_ERROR" ||
+					query.PublicError(err).Message != "Sandbox launcher must be executable and not writable by group or others" {
+					t.Fatalf("%s accepted an invalid sandbox or failed elsewhere: %v", command, err)
+				}
+			}
+		})
 	}
 }

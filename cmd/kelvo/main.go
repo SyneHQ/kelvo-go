@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -58,6 +60,7 @@ func run(args []string) error {
 	}
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	config := f.String("config", "kelvo.yml", "Registered source configuration (YAML)")
+	sandbox := f.String("sandbox", "", "Optional Linux sandbox launcher for query workers")
 	listen := f.String("listen", "127.0.0.1:8080", "HTTP listen address")
 	sql := f.String("sql", "", "SQL query")
 	sourceIDs := f.String("sources", "", "Comma-separated source IDs for federation")
@@ -95,6 +98,10 @@ func run(args []string) error {
 		return query.NewError("CONFIGURATION_ERROR", e.Error())
 	}
 	exec, e := worker.New(c, limits)
+	if e != nil {
+		return e
+	}
+	exec.SandboxPath, e = resolveCLISandbox(*sandbox)
 	if e != nil {
 		return e
 	}
@@ -159,6 +166,27 @@ func run(args []string) error {
 		return server.Shutdown(shutdown)
 	}
 }
+
+func resolveCLISandbox(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	if runtime.GOOS != "linux" {
+		return "", query.NewError("CONFIGURATION_ERROR", "Worker sandbox requires Linux Landlock")
+	}
+	// The worker starts from its own temporary directory. Resolve CLI-relative
+	// paths now, and apply the same launcher permission checks as cluster nodes.
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", query.NewError("CONFIGURATION_ERROR", "Sandbox launcher path is unavailable")
+	}
+	info, err := os.Stat(abs)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&0111 == 0 || info.Mode()&0022 != 0 {
+		return "", query.NewError("CONFIGURATION_ERROR", "Sandbox launcher must be executable and not writable by group or others")
+	}
+	return abs, nil
+}
+
 func runWorker() error {
 	var in worker.Input
 	d := json.NewDecoder(io.LimitReader(os.Stdin, 2<<20))
