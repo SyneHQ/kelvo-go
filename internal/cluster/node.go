@@ -340,6 +340,10 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "mutual TLS gateway identity required", http.StatusUnauthorized)
 		return
 	}
+	if r.URL.Path == "/datasets" && n.cfg.RuntimeDatasets != nil {
+		n.cfg.RuntimeDatasets.ServeHTTP(w, r)
+		return
+	}
 	if r.URL.Path == "/metrics" && n.cfg.RuntimeMetrics != nil {
 		n.cfg.RuntimeMetrics.ServeHTTP(w, r)
 		return
@@ -380,6 +384,12 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		n.mu.Lock()
 		ready := !n.draining && n.ctx.Err() == nil
 		n.mu.Unlock()
+		if ready && !n.cfg.RuntimeDatasets.hasRequired(n.cfg.RequiredDatasets) {
+			ready = false
+		}
+		if ready && n.cfg.RuntimeDatasets != nil {
+			ready = n.cfg.RuntimeDatasets.Ready(r.Context())
+		}
 		if !ready {
 			http.Error(w, "worker unavailable", http.StatusServiceUnavailable)
 		} else {

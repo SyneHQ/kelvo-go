@@ -10,6 +10,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 )
 
 // This gate tracks refresh lifetimes even when resource accounting is disabled.
@@ -51,7 +52,7 @@ func (g *refreshGate) Wait(ctx context.Context) error {
 	}
 }
 
-func withRefreshReservation(ctx context.Context, pool *admission.Pool, overhead int64, limits query.Limits, metrics *telemetry.Registry, run func(context.Context) error) (err error) {
+func withRefreshReservation(ctx context.Context, pool *admission.Pool, overhead int64, limits query.Limits, metrics *telemetry.Registry, run func(context.Context) error, recorders ...*tracing.Recorder) (err error) {
 	ctx, cancel := context.WithTimeout(ctx, limits.Timeout)
 	defer cancel()
 	started := time.Now()
@@ -75,10 +76,14 @@ func withRefreshReservation(ctx context.Context, pool *admission.Pool, overhead 
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			outcome = telemetry.OutcomeCanceled
 		}
-		metrics.Observe(telemetry.KindRefresh, outcome, wait, time.Since(started)-wait)
+		duration := time.Since(started) - wait
+		metrics.Observe(telemetry.KindRefresh, outcome, wait, duration)
+		if len(recorders) > 0 {
+			recorders[0].Record(tracing.Event{Kind: telemetry.KindRefresh, Outcome: outcome, StartedAt: started, AdmissionWait: wait, Duration: duration})
+		}
 	}()
 	if pool != nil {
-		reservation, acquireErr := pool.Acquire(ctx, admission.Request{MemoryBytes: (int64(limits.MemoryMB) << 20) + overhead, ScratchBytes: (int64(limits.MaxTempMB) << 20) + limits.MaxBytes})
+		reservation, acquireErr := pool.Acquire(ctx, admission.Request{Background: true, MemoryBytes: (int64(limits.MemoryMB) << 20) + overhead, ScratchBytes: (int64(limits.MaxTempMB) << 20) + limits.MaxBytes})
 		wait = time.Since(started)
 		if acquireErr != nil {
 			return acquireErr

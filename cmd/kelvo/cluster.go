@@ -14,12 +14,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/cluster"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/secrets"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
 
@@ -118,6 +120,20 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 		defer provider.Close()
 		executor.Secrets = provider
 	}
+	if cfg.Tracing != nil {
+		cfg.RuntimeTracing, err = tracing.New(*cfg.Tracing)
+		if err != nil {
+			return err
+		}
+		executor.Tracing = cfg.RuntimeTracing
+		defer func() {
+			shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := cfg.RuntimeTracing.Shutdown(shutdown); err != nil {
+				fmt.Fprintln(os.Stderr, "Tracing shutdown did not complete")
+			}
+		}()
+	}
 	if cfg.History != nil {
 		cfg.RuntimeHistory, err = telemetry.NewHistory(*cfg.History)
 		if err != nil {
@@ -167,6 +183,28 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 			return query.NewError("CONFIGURATION_ERROR", "Acceleration dispatch is unavailable; run cluster-init")
 		}
 	}
+	closeDatasets := func() {}
+	datasetsTransferred := false
+	if catalogue.Acceleration != nil {
+		backend, err := acceleration.OpenBackend(*catalogue.Acceleration)
+		if err != nil {
+			return query.NewError("CONFIGURATION_ERROR", "Dataset diagnostics backend is unavailable")
+		}
+		reporter, err := cluster.NewDatasetReporter(catalogue, backend, cfg.RequiredDatasets)
+		if err != nil {
+			_ = backend.Close()
+			return query.NewError("CONFIGURATION_ERROR", "Invalid required dataset configuration")
+		}
+		cfg.RuntimeDatasets = reporter
+		closeDatasets = func() { reporter.Close(); _ = backend.Close() }
+	} else if len(cfg.RequiredDatasets) != 0 {
+		return query.NewError("CONFIGURATION_ERROR", "Required datasets need acceleration configuration")
+	}
+	defer func() {
+		if !datasetsTransferred {
+			closeDatasets()
+		}
+	}()
 	// Bind before reserving the durable worker identity or pulling jobs.
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
@@ -186,22 +224,26 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 	if refreshQueue != nil {
 		refreshDone = make(chan error, 1)
 		go func() {
-			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets)
+			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeTracing)
 			stop()
 		}()
 	}
 	lifecycle := &nodeLifecycle{Node: node, pool: pool, refresh: refreshGate, stopRefresh: stopRefresh}
 	cleanupDone := make(chan struct{})
 	var refreshErr error // read only after cleanupDone closes
+	datasetsTransferred = true
 	result := serveCluster(runCtx, ln, tc, lifecycle, func() {
 		defer close(cleanupDone)
 		stopRefresh()
 		nodeDone := make(chan struct{})
+		datasetsDone := make(chan struct{})
+		go func() { closeDatasets(); close(datasetsDone) }()
 		go func() { _ = node.Close(); close(nodeDone) }()
 		if refreshDone != nil {
 			refreshErr = <-refreshDone
 		}
 		<-nodeDone
+		<-datasetsDone
 	}, drainTimeout)
 	stop()
 	// serveCluster bounds both joins; never wait again after its deadline.

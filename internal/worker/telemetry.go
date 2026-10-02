@@ -9,6 +9,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 )
 
 type refreshTelemetryKey struct{}
@@ -22,8 +23,8 @@ func WithRefreshTelemetry(ctx context.Context) context.Context {
 // recordExecution observes the entire Execute call after cleanup, excluding its
 // measured admission wait. Execution includes setup, computation and transfer;
 // it is not database execution time alone or full distributed queue latency.
-func recordExecution(metrics *telemetry.Registry, ctx context.Context, start time.Time, admissionWait *time.Duration, resultErr *error) {
-	if metrics == nil {
+func recordExecution(metrics *telemetry.Registry, ctx context.Context, start time.Time, admissionWait *time.Duration, resultErr *error, recorders ...*tracing.Recorder) {
+	if metrics == nil && (len(recorders) == 0 || recorders[0] == nil) {
 		return
 	}
 	kind := telemetry.KindQuery
@@ -49,5 +50,9 @@ func recordExecution(metrics *telemetry.Registry, ctx context.Context, start tim
 			outcome = telemetry.OutcomeCanceled
 		}
 	}
-	metrics.Observe(kind, outcome, *admissionWait, time.Since(start)-*admissionWait)
+	duration := time.Since(start) - *admissionWait
+	metrics.Observe(kind, outcome, *admissionWait, duration)
+	if len(recorders) > 0 {
+		recorders[0].Record(tracing.Event{Kind: kind, Outcome: outcome, StartedAt: start, AdmissionWait: *admissionWait, Duration: duration})
+	}
 }

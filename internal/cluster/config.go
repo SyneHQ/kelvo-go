@@ -81,6 +81,21 @@ func LoadNode(path string) (NodeConfig, error) {
 	}
 	resolveTLS(base, &c.TLS)
 	resolveNATS(base, &c.NATS)
+	if len(c.RequiredDatasets) > 64 {
+		return c, errors.New("too many required datasets")
+	}
+	seenRequired := map[string]bool{}
+	for _, id := range c.RequiredDatasets {
+		if !catalog.ValidID(id) || seenRequired[id] {
+			return c, errors.New("invalid required dataset")
+		}
+		seenRequired[id] = true
+	}
+	if c.Tracing != nil {
+		if err := c.Tracing.Validate(); err != nil {
+			return c, err
+		}
+	}
 	if c.History != nil {
 		if err := c.History.Validate(); err != nil {
 			return c, err

@@ -11,6 +11,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/secrets"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 )
 
 const (
@@ -131,6 +132,10 @@ type GatewayConfig struct {
 }
 
 type NodeConfig struct {
+	Tracing          *tracing.Config          `yaml:"tracing,omitempty"`
+	RuntimeTracing   *tracing.Recorder        `yaml:"-"`
+	RequiredDatasets []string                 `yaml:"required_datasets,omitempty"`
+	RuntimeDatasets  *DatasetReporter         `yaml:"-"`
 	History          *telemetry.HistoryConfig `yaml:"history,omitempty"`
 	RuntimeHistory   *telemetry.History       `yaml:"-"`
 	Secrets          *secrets.Config          `yaml:"secrets,omitempty"`

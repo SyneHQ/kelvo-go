@@ -21,6 +21,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 	arrowutil "github.com/apache/arrow-go/v18/arrow/util"
@@ -36,6 +37,7 @@ type Outcome struct {
 	Error *query.Error `json:"error,omitempty"`
 }
 type Executor struct {
+	Tracing     *tracing.Recorder
 	Config      catalog.Config
 	Limits      query.Limits
 	Binary      string
@@ -79,7 +81,7 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	parent := ctx
 	start := time.Now()
 	var admissionWait time.Duration
-	defer recordExecution(e.Metrics, ctx, start, &admissionWait, &resultErr)
+	defer recordExecution(e.Metrics, ctx, start, &admissionWait, &resultErr, e.Tracing)
 	if err := e.Limits.Validate(); err != nil {
 		return stats, err
 	}

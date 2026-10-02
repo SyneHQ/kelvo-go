@@ -17,6 +17,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/cluster"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 	"go.yaml.in/yaml/v3"
 )
@@ -121,7 +122,7 @@ func runAcceleration(args []string) error {
 // Cluster dispatch uses a tenant's existing authenticated JetStream account.
 // Messages contain dataset identity and definition fingerprint only. Every node
 // must mount the same tenant snapshot store with working POSIX flock semantics.
-func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate, sourceQuotas worker.SourceAdmitter, secrets worker.SecretResolver) error {
+func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate, sourceQuotas worker.SourceAdmitter, secrets worker.SecretResolver, recorders ...*tracing.Recorder) error {
 	m, err := acceleration.NewManager(c, refreshFactory(sandbox, refreshOptions{Admission: sourceQuotas, Secrets: secrets}))
 	if err != nil {
 		return err
@@ -153,7 +154,7 @@ func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, qu
 			return withRefreshReservation(ctx, pool, overhead, d.Limits, metrics, func(ctx context.Context) error {
 				_, err := m.Refresh(ctx, job.Dataset, true)
 				return err
-			})
+			}, recorders...)
 		}, func(err error) { fmt.Fprintln(os.Stderr, "Acceleration refresh: "+query.PublicError(err).Message) })
 	}()
 	defer func() { cancel(); <-consumerDone }()
