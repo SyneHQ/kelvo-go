@@ -101,6 +101,11 @@ func Load(path string) (Config, error) {
 			}
 			continue
 		}
+		if s.Federation != nil && !KnownType(s.Type) {
+			// ValidateFederation already required an explicitly compiled-in
+			// custom driver. It does not add native SQL execution or file access.
+			continue
+		}
 		switch s.Type {
 		case "csv", "parquet", "duckdb", "sqlite":
 			if s.Path == "" {

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	federationapi "github.com/SYNEHQ/kelvo-go/federation"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/duckbridge"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
@@ -32,6 +33,8 @@ type Table struct {
 	limits                      query.Limits
 	config                      catalog.Config
 	factory                     executorFactory
+	customDriver                federationapi.Driver
+	selected                    catalog.FederationTable
 	budget                      *scanBudget
 	mu                          sync.Mutex
 	closed                      bool
@@ -59,6 +62,9 @@ type Stats struct {
 func New(ctx context.Context, source catalog.Source, table catalog.FederationTable, limits query.Limits) (*Table, error) {
 	dialect, err := dialectFor(source.Type)
 	if err != nil {
+		if driver, ok := federationapi.Lookup(source.Type); ok {
+			return newCustomTable(ctx, source, table, limits, driver)
+		}
 		return nil, err
 	}
 	return newTable(ctx, source, table, limits, dialect.executor)
@@ -108,7 +114,7 @@ func newTable(ctx context.Context, source catalog.Source, table catalog.Federati
 		return nil, err
 	}
 	sink := &describeSink{}
-	_, err = executor.Execute(lifetime, query.Request{Mode: "native", ConnectionID: source.ID, SQL: "SELECT * FROM " + t.remoteName + " LIMIT 0"}, sink)
+	_, err = executor.Execute(lifetime, query.Request{Mode: "native", ConnectionID: source.ID, SQL: dialect.describeSQL(t.remoteName)}, sink)
 	closeErr := executor.Close()
 	if err == nil {
 		err = closeErr
@@ -139,7 +145,14 @@ func (t *Table) Stats() Stats {
 	return Stats{Rows: t.rows.Load(), Bytes: t.bytes.Load(), Batches: t.batches.Load(), Scans: t.scans.Load(), SourceWireBytes: t.sourceWireBytes.Load()}
 }
 func (t *Table) Scan(ctx context.Context, plan duckbridge.ScanPlan) (array.RecordReader, error) {
-	sql, schema, err := t.compileScan(plan)
+	var sql string
+	var schema *arrow.Schema
+	var err error
+	if t.customDriver != nil {
+		plan, schema, err = t.prepareCustomScan(plan)
+	} else {
+		sql, schema, err = t.compileScan(plan)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +167,12 @@ func (t *Table) Scan(ctx context.Context, plan duckbridge.ScanPlan) (array.Recor
 	if !t.budget.acquire() {
 		return nil, query.NewError("RESOURCE_EXHAUSTED", "Federation concurrent scan budget is full")
 	}
-	executor, err := t.factory(t.config, t.limits)
+	var executor execution
+	if t.customDriver != nil {
+		executor = &customExecution{driver: t.customDriver, source: publicSource(t.config.Sources[0]), table: publicTable(t.selected), limits: publicLimits(t.limits), plan: plan, schema: t.schema}
+	} else {
+		executor, err = t.factory(t.config, t.limits)
+	}
 	if err != nil {
 		t.budget.release()
 		return nil, err

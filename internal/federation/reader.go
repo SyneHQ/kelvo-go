@@ -139,7 +139,7 @@ func sameSchema(expected, actual *arrow.Schema) bool {
 }
 func (s *scanSink) Write(record arrow.RecordBatch) error {
 	r := s.reader
-	if !s.schemaSeen || record == nil || !sameSchema(r.schema, record.Schema()) {
+	if !s.schemaSeen || record == nil || record.NumRows() < 0 || !sameSchema(r.schema, record.Schema()) {
 		return query.NewError("QUERY_FAILED", "Federation source returned an invalid batch")
 	}
 	if cause := context.Cause(r.ctx); cause != nil {

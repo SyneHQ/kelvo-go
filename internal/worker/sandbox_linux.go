@@ -72,6 +72,12 @@ func SandboxCommand(binary, jobdir string, cfg catalog.Config, limits query.Limi
 		case catalog.NativeType(source.Type):
 			// Network access is intentionally outside Landlock ABI 3. Source
 			// credentials are passed through the worker's already-filtered env.
+		case source.Federation != nil:
+			// Compiled-in custom federation drivers receive network access and
+			// selected environment references, never additional host file grants.
+			if err := source.ValidateFederation(); err != nil {
+				return nil, fmt.Errorf("sandbox source %q has invalid federation configuration", source.ID)
+			}
 		default:
 			return nil, fmt.Errorf("sandbox source %q has unsupported type", source.ID)
 		}
