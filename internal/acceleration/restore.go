@@ -36,9 +36,11 @@ type RestoreRequest struct {
 	ExpectedGeneration string
 }
 type Generation struct {
-	Snapshot Snapshot `yaml:"snapshot"`
-	Active   bool     `yaml:"active"`
-	Verified bool     `yaml:"verified"`
+	CatalogScope     string   `yaml:"catalog_scope,omitempty"`
+	CatalogTruncated bool     `yaml:"catalog_truncated,omitempty"`
+	Snapshot         Snapshot `yaml:"snapshot"`
+	Active           bool     `yaml:"active"`
+	Verified         bool     `yaml:"verified"`
 }
 
 func generationManifestName(generation string) string { return generation + ".yaml" }
@@ -270,13 +272,6 @@ func (s *Store) Restore(ctx context.Context, request RestoreRequest) (snapshot S
 		return snapshot, fmt.Errorf("snapshot restored but directory durability is uncertain: %w", err)
 	}
 	return snapshot, nil
-}
-
-func (*objectBackend) Inventory(context.Context, string) ([]Generation, error) {
-	return nil, ErrRecoveryUnsupported
-}
-func (*objectBackend) Restore(context.Context, RestoreRequest) (Snapshot, error) {
-	return Snapshot{}, ErrRecoveryUnsupported
 }
 
 var _ RecoveryBackend = (*localBackend)(nil)

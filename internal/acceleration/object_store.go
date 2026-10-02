@@ -40,10 +40,12 @@ type objectBackend struct {
 }
 
 type objectManifest struct {
-	Version   int                `yaml:"version"`
-	Dataset   string             `yaml:"dataset"`
-	Committed *objectCommitted   `yaml:"committed,omitempty"`
-	Writer    *objectWriterLease `yaml:"writer,omitempty"`
+	History          []*objectCommitted `yaml:"history,omitempty"`
+	HistoryTruncated bool               `yaml:"history_truncated,omitempty"`
+	Version          int                `yaml:"version"`
+	Dataset          string             `yaml:"dataset"`
+	Committed        *objectCommitted   `yaml:"committed,omitempty"`
+	Writer           *objectWriterLease `yaml:"writer,omitempty"`
 }
 
 type objectCommitted struct {
@@ -127,7 +129,7 @@ func (backend *objectBackend) key(dataset, filename string) string {
 }
 
 func (backend *objectBackend) readState(ctx context.Context, dataset string, client objectstore.Client) (objectState, error) {
-	state := objectState{manifest: objectManifest{Version: 2, Dataset: dataset}}
+	state := objectState{manifest: objectManifest{Version: 3, Dataset: dataset}}
 	body, info, err := client.Get(ctx, backend.key(dataset, storeManifestName), "")
 	state.info, state.receivedAt = info, time.Now()
 	if errors.Is(err, objectstore.ErrNotFound) {
@@ -169,15 +171,32 @@ func (backend *objectBackend) readState(ctx context.Context, dataset string, cli
 }
 
 func validateObjectManifest(manifest objectManifest, dataset string) error {
-	if manifest.Version != 2 || manifest.Dataset != dataset {
+	if (manifest.Version != 2 && manifest.Version != 3) || manifest.Dataset != dataset {
 		return fmt.Errorf("%w: remote manifest identity mismatch", ErrCorrupt)
 	}
-	if snapshot := manifest.Committed; snapshot != nil {
-		if (snapshot.SchemaHash != "" && !storeDigest.MatchString(snapshot.SchemaHash)) || !storeGenerationID.MatchString(snapshot.Generation) || snapshot.Fingerprint == "" || len(snapshot.Fingerprint) > storeFingerprintLimit ||
-			!storeDigest.MatchString(snapshot.SHA256) || snapshot.Rows < 0 || snapshot.Bytes <= 0 || snapshot.Bytes > objectstore.MaxUploadBytes ||
-			snapshot.RefreshedAt.IsZero() || !validObjectVersion(snapshot.ObjectVersion) {
-			return fmt.Errorf("%w: invalid remote snapshot fields", ErrCorrupt)
+	if manifest.Version == 2 && (len(manifest.History) != 0 || manifest.HistoryTruncated) {
+		return fmt.Errorf("%w: retained catalog requires manifest version 3", ErrCorrupt)
+	}
+	if manifest.Committed != nil {
+		if err := validateObjectCommit(manifest.Committed); err != nil {
+			return err
 		}
+	}
+	if len(manifest.History) > ObjectHistoryLimit || (len(manifest.History) > 0 && manifest.Committed == nil) {
+		return fmt.Errorf("%w: invalid retained generation catalog", ErrCorrupt)
+	}
+	seen := map[string]bool{}
+	if manifest.Committed != nil {
+		seen[manifest.Committed.Generation] = true
+	}
+	for _, generation := range manifest.History {
+		if err := validateObjectCommit(generation); err != nil {
+			return err
+		}
+		if seen[generation.Generation] {
+			return fmt.Errorf("%w: duplicate retained generation", ErrCorrupt)
+		}
+		seen[generation.Generation] = true
 	}
 	if writer := manifest.Writer; writer != nil && (!storeGenerationID.MatchString(writer.Owner) || writer.ExpiresAt.IsZero()) {
 		return fmt.Errorf("%w: invalid remote writer lease", ErrCorrupt)
@@ -190,6 +209,7 @@ func validObjectVersion(version string) bool {
 }
 
 func (backend *objectBackend) writeState(ctx context.Context, client objectstore.Client, state objectState, manifest objectManifest) (objectState, error) {
+	manifest.Version = 3
 	data, err := yaml.Marshal(manifest)
 	if err != nil {
 		return state, err
@@ -289,6 +309,10 @@ func (backend *objectBackend) Verify(ctx context.Context, dataset string) (Snaps
 	if err != nil {
 		return Snapshot{}, err
 	}
+	return backend.verifyObjectBytes(ctx, snapshot)
+}
+
+func (backend *objectBackend) verifyObjectBytes(ctx context.Context, snapshot Snapshot) (Snapshot, error) {
 	body, info, err := backend.reader.Get(ctx, snapshot.ObjectKey, snapshot.ObjectVersion)
 	if err != nil {
 		return Snapshot{}, err
@@ -543,7 +567,10 @@ func (tx *objectTransaction) Commit(fingerprint string, rows int64) (snapshot Sn
 	}
 	committed := &objectCommitted{SchemaHash: tx.schemaHash, Generation: tx.local.generation, Fingerprint: fingerprint, SHA256: digest,
 		Rows: rows, Bytes: info.Size(), RefreshedAt: state.now(), ObjectVersion: uploaded.Version}
-	manifest := objectManifest{Version: 2, Dataset: tx.dataset, Committed: committed}
+	manifest, err := nextObjectManifest(state.manifest, committed)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	published, err := tx.backend.writeState(tx.ctx, tx.client, state, manifest)
 	if err != nil {
 		if errors.Is(err, objectstore.ErrConflict) {
