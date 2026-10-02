@@ -14,6 +14,8 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/catalog"
+	"github.com/SYNEHQ/kelvo-go/internal/secrets"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -70,11 +72,33 @@ func LoadNode(path string) (NodeConfig, error) {
 		return c, err
 	}
 	if c.Resources != nil {
- if _, err := c.Resources.NewPool(); err != nil { return c, err }
- if !c.Resources.Fits(c.Policy.Limits, false) { return c, errors.New("query reservation exceeds node resources") }
- }
- resolveTLS(base, &c.TLS)
- resolveNATS(base, &c.NATS)
+		if _, err := c.Resources.NewPool(); err != nil {
+			return c, err
+		}
+		if !c.Resources.Fits(c.Policy.Limits, false) {
+			return c, errors.New("query reservation exceeds node resources")
+		}
+	}
+	resolveTLS(base, &c.TLS)
+	resolveNATS(base, &c.NATS)
+	if c.History != nil {
+		if err := c.History.Validate(); err != nil {
+			return c, err
+		}
+	}
+	if c.Secrets != nil {
+		for key, path := range c.Secrets.Files {
+			if err := catalog.ValidateEnvironment(key); err != nil {
+				return c, errors.New("invalid secret environment reference")
+			}
+			c.Secrets.Files[key] = relativePath(base, path)
+		}
+		provider, err := secrets.New(*c.Secrets)
+		if err != nil {
+			return c, errors.New("invalid file secret provider configuration")
+		}
+		_ = provider.Close()
+	}
 	c.CatalogFile = relativePath(base, c.CatalogFile)
 	c.SandboxPath = relativePath(base, c.SandboxPath)
 	if err = ValidatePolicy(c.Policy); err != nil {
@@ -91,6 +115,10 @@ func LoadNode(path string) (NodeConfig, error) {
 }
 
 func ValidatePolicy(p Policy) error {
+	if err := ValidateSourceQuotas(p.SourceQuotas); err != nil {
+		return err
+	}
+
 	if !clusterID.MatchString(p.TenantID) || p.MaxQueries < 1 || p.MaxQueries > 512 || p.LeaseDuration < 5*time.Second || p.LeaseDuration > time.Minute || p.JobTTL < p.Limits.Timeout+2*p.LeaseDuration || p.JobTTL > 4*time.Hour || (p.Replicas != 1 && p.Replicas != 3) || len(p.Workers) == 0 || len(p.Workers) > 64 {
 		return errors.New("invalid tenant scheduling policy")
 	}

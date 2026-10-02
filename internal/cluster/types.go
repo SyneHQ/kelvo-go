@@ -9,6 +9,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/secrets"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 )
 
@@ -36,6 +37,7 @@ var (
 // Static tenant budgets partition cluster capacity; there is no shared mutable
 // quota counter. One durable KV slot atomically contains admission AND job state.
 type Policy struct {
+	SourceQuotas  map[string]int `json:"source_quotas,omitempty" yaml:"source_quotas,omitempty"`
 	TenantID      string         `json:"tenant_id" yaml:"tenant_id"`
 	MaxQueries    int            `json:"max_queries" yaml:"max_queries"`
 	JobTTL        time.Duration  `json:"job_ttl" yaml:"job_ttl"`
@@ -129,14 +131,17 @@ type GatewayConfig struct {
 }
 
 type NodeConfig struct {
-	RuntimeResources *admission.Pool     `yaml:"-"`
-	Resources        *ResourceConfig     `yaml:"resources,omitempty"`
-	RuntimeMetrics   *telemetry.Registry `yaml:"-"`
-	Listen           string              `yaml:"listen"`
-	TLS              TLSConfig           `yaml:"tls"`
-	NATS             NATSConfig          `yaml:"nats"`
-	Policy           Policy              `yaml:"policy"`
-	WorkerID         string              `yaml:"worker_id"`
-	CatalogFile      string              `yaml:"catalog_file"`
-	SandboxPath      string              `yaml:"sandbox_path"`
+	History          *telemetry.HistoryConfig `yaml:"history,omitempty"`
+	RuntimeHistory   *telemetry.History       `yaml:"-"`
+	Secrets          *secrets.Config          `yaml:"secrets,omitempty"`
+	RuntimeResources *admission.Pool          `yaml:"-"`
+	Resources        *ResourceConfig          `yaml:"resources,omitempty"`
+	RuntimeMetrics   *telemetry.Registry      `yaml:"-"`
+	Listen           string                   `yaml:"listen"`
+	TLS              TLSConfig                `yaml:"tls"`
+	NATS             NATSConfig               `yaml:"nats"`
+	Policy           Policy                   `yaml:"policy"`
+	WorkerID         string                   `yaml:"worker_id"`
+	CatalogFile      string                   `yaml:"catalog_file"`
+	SandboxPath      string                   `yaml:"sandbox_path"`
 }

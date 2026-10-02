@@ -47,9 +47,11 @@ type refreshConsumer interface {
 // fingerprint and freshness before refreshing. Message-ID deduplication is only
 // a short-term publication optimization, not an exactly-once guarantee.
 type RefreshQueue struct {
-	js        refreshPublisher
-	consumer  refreshConsumer
-	consuming atomic.Bool
+	js             refreshPublisher
+	consumer       refreshConsumer
+	consuming      atomic.Bool
+	status         refreshStatusStore
+	latestSequence func(context.Context) (uint64, error)
 }
 
 func refreshStreamConfig(p Policy) jetstream.StreamConfig {
@@ -151,7 +153,17 @@ func (s *NATSStore) OpenRefreshQueue(parent context.Context, initialize bool) (*
 	if err = validateRefreshConsumer(ci.Config, s.policy); err != nil {
 		return nil, err
 	}
-	return &RefreshQueue{js: s.js, consumer: consumer}, nil
+	status, err := s.openRefreshStatus(ctx, initialize)
+	if err != nil {
+		return nil, err
+	}
+	return &RefreshQueue{js: s.js, consumer: consumer, status: status, latestSequence: func(ctx context.Context) (uint64, error) {
+		info, err := stream.Info(ctx)
+		if err != nil {
+			return 0, errors.New("refresh stream sequence unavailable")
+		}
+		return info.State.LastSeq, nil
+	}}, nil
 }
 
 func validRefreshJob(job RefreshJob) bool {
@@ -185,6 +197,13 @@ func (q *RefreshQueue) Publish(ctx context.Context, job RefreshJob, dedupID stri
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	status, _, err := q.loadStatus(ctx, job)
+	if err != nil {
+		return err
+	}
+	if status.stopped() || time.Now().Before(status.NextRetryAt) {
+		return nil
 	}
 	data, err := json.Marshal(job)
 	if err != nil || len(data) > refreshMessageLimit {
@@ -247,7 +266,7 @@ func decodeRefreshJob(data []byte) (RefreshJob, error) {
 // Consume executes one handler at a time. The handler must honor cancellation:
 // shutdown and failed heartbeats wait for it to release its writer lock before
 // returning or accepting another delivery. Errors passed to onError can include
-// handler errors; callers must sanitize those before logging or exposing them.
+// fixed sanitized failure categories, never raw driver messages.
 func (q *RefreshQueue) Consume(ctx context.Context, handler func(context.Context, RefreshJob) error, onError func(error)) error {
 	if handler == nil {
 		return errors.New("refresh handler is required")
@@ -297,7 +316,7 @@ func (q *RefreshQueue) Consume(ctx context.Context, handler func(context.Context
 			}
 			continue
 		}
-		if err := processRefresh(ctx, msg, job, handler, refreshHeartbeat); err != nil {
+		if err := q.processRefresh(ctx, msg, job, handler, refreshHeartbeat); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -321,6 +340,52 @@ func waitRefreshRetry(ctx context.Context, delay time.Duration) error {
 }
 
 func processRefresh(ctx context.Context, msg jetstream.Msg, job RefreshJob, handler func(context.Context, RefreshJob) error, heartbeat time.Duration) error {
+	return (&RefreshQueue{}).processRefresh(ctx, msg, job, handler, heartbeat)
+}
+
+func (q *RefreshQueue) processRefresh(ctx context.Context, msg jetstream.Msg, job RefreshJob, handler func(context.Context, RefreshJob) error, heartbeat time.Duration) error {
+	metadata, err := msg.Metadata()
+	if err != nil || metadata == nil || metadata.NumDelivered == 0 {
+		return errors.New("refresh delivery metadata unavailable")
+	}
+	status, revision, err := q.loadStatus(ctx, job)
+	if err != nil {
+		return err
+	}
+	if status.ResetThroughSequence != 0 && metadata.Sequence.Stream <= status.ResetThroughSequence {
+		// An explicit reset authorizes future scheduled jobs, never an old
+		// exhausted delivery still pending broker acknowledgement.
+		if msg.Term() != nil {
+			return errors.New("refresh message termination failed")
+		}
+		return nil
+	}
+	if status.stopped() {
+		if msg.Term() != nil {
+			return errors.New("refresh message termination failed")
+		}
+		return &RefreshFailure{Category: status.Category, Permanent: status.State == "permanent"}
+	}
+	if metadata.NumDelivered > refreshMaxAttempts {
+		terminal, err := q.recordFailure(ctx, job, &RefreshFailure{Category: "delivery_limit"}, metadata.NumDelivered, metadata.Sequence.Stream, 0)
+		if err != nil {
+			return err
+		}
+		if !terminal.stopped() || msg.Term() != nil {
+			return errors.New("refresh message termination failed")
+		}
+		return &RefreshFailure{Category: "delivery_limit"}
+	}
+	if delay := time.Until(status.NextRetryAt); delay > 0 {
+		if delay > refreshMaxRetryDelay {
+			delay = refreshMaxRetryDelay
+		}
+		if msg.NakWithDelay(delay) != nil {
+			return errors.New("refresh retry acknowledgement failed")
+		}
+		return nil
+	}
+
 	work, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan error, 1)
@@ -346,10 +411,54 @@ func processRefresh(ctx context.Context, msg jetstream.Msg, job RefreshJob, hand
 				return ctx.Err()
 			}
 			if err != nil {
-				if msg.NakWithDelay(refreshRetryDelay) != nil {
-					return errors.Join(err, errors.New("refresh retry acknowledgement failed"))
+				failure := classifyRefreshFailure(err)
+				attempt := status.Attempts + 1
+				if metadata.NumDelivered > attempt {
+					attempt = metadata.NumDelivered
 				}
-				return err
+				delay, allowed := refreshBackoff(attempt, err)
+				if !allowed {
+					failure = &RefreshFailure{Category: "retry_after", Permanent: true}
+				}
+				updated, persistErr := q.recordFailure(ctx, job, failure, metadata.NumDelivered, metadata.Sequence.Stream, delay)
+				if persistErr != nil {
+					return persistErr
+				} // no ACK before durable state
+				if updated.ResetThroughSequence != 0 && metadata.Sequence.Stream <= updated.ResetThroughSequence {
+					if msg.Term() != nil {
+						return errors.New("refresh message termination failed")
+					}
+					return nil
+				}
+				if updated.stopped() {
+					if msg.Term() != nil {
+						return errors.New("refresh message termination failed")
+					}
+				} else if msg.NakWithDelay(delay) != nil {
+					return errors.New("refresh retry acknowledgement failed")
+				}
+				return failure
+			}
+			if q.status != nil {
+				// Clear only the failure revision observed before this work.
+				// A concurrent failure/reset must never be overwritten.
+				status.State, status.Category, status.Attempts = "ready", "", 0
+				status.NextRetryAt = time.Time{}
+				status.UpdatedAt = time.Now().UTC()
+				status.LastSuccessAt = status.UpdatedAt
+				raw, marshalErr := json.Marshal(status)
+				if marshalErr != nil {
+					return errors.New("refresh status invalid")
+				}
+				var persistErr error
+				if revision == 0 {
+					_, persistErr = q.status.Create(ctx, refreshStatusKey(job), raw)
+				} else {
+					_, persistErr = q.status.Update(ctx, refreshStatusKey(job), raw, revision)
+				}
+				if persistErr != nil {
+					return errors.New("refresh success status update conflicted or unavailable")
+				}
 			}
 			ackCtx, ackCancel := context.WithTimeout(ctx, 5*time.Second)
 			defer ackCancel()

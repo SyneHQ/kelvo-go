@@ -155,13 +155,32 @@ func TestRefreshPublishValidation(t *testing.T) {
 
 type refreshTestMessage struct {
 	jetstream.Msg
-	data       []byte
-	acks       atomic.Int32
-	naks       atomic.Int32
-	terms      atomic.Int32
-	heartbeats atomic.Int32
-	delay      time.Duration
-	progress   func() error
+	data           []byte
+	acks           atomic.Int32
+	naks           atomic.Int32
+	terms          atomic.Int32
+	heartbeats     atomic.Int32
+	delay          time.Duration
+	progress       func() error
+	delivered      uint64
+	sentAt         time.Time
+	streamSequence uint64
+}
+
+func (m *refreshTestMessage) Metadata() (*jetstream.MsgMetadata, error) {
+	n := m.delivered
+	if n == 0 {
+		n = 1
+	}
+	stamp := m.sentAt
+	if stamp.IsZero() {
+		stamp = time.Now().UTC()
+	}
+	seq := m.streamSequence
+	if seq == 0 {
+		seq = 100
+	}
+	return &jetstream.MsgMetadata{NumDelivered: n, Timestamp: stamp, Sequence: jetstream.SequencePair{Stream: seq}}, nil
 }
 
 func (m *refreshTestMessage) Data() []byte                    { return m.data }
@@ -194,7 +213,7 @@ func TestRefreshAckAfterHandlerAndRetry(t *testing.T) {
 			return nil
 		}, time.Second)
 		if fail {
-			if !errors.Is(err, handlerErr) || msg.acks.Load() != 0 || msg.naks.Load() != 1 || msg.delay != 10*time.Second {
+			if err == nil || strings.Contains(err.Error(), handlerErr.Error()) || msg.acks.Load() != 0 || msg.naks.Load() != 1 || msg.delay < 5*time.Second || msg.delay > 10*time.Second {
 				t.Fatalf("failed handler was not retried: ack=%d nak=%d delay=%s err=%v", msg.acks.Load(), msg.naks.Load(), msg.delay, err)
 			}
 		} else if err != nil || msg.acks.Load() != 1 || msg.naks.Load() != 0 {
