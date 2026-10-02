@@ -28,3 +28,19 @@ func TestReadOnlyDollarParameters(t *testing.T) {
 		}
 	}
 }
+
+func TestRejectExecutableOptimizerHints(t *testing.T) {
+	for _, statement := range []string{
+		"SELECT /*+ MAX_EXECUTION_TIME(3600000) */ SLEEP(5)",
+		"SELECT /*+ SET_VAR(max_execution_time=0) */ 1",
+		"WITH q AS (SELECT /*+ MAX_EXECUTION_TIME(0) */ 1) SELECT * FROM q",
+		"SELECT #'\n/*+ MAX_EXECUTION_TIME(3600000) */ SLEEP(5) #'",
+	} {
+		if _, err := ReadOnly(statement); err == nil {
+			t.Fatal("accepted an executable optimizer hint")
+		}
+	}
+	if _, err := ReadOnly("SELECT '/*+ MAX_EXECUTION_TIME(0) */' AS example"); err != nil {
+		t.Fatal("rejected inert quoted content")
+	}
+}

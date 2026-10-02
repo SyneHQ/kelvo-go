@@ -6,6 +6,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func clearPG(t *testing.T) {
@@ -49,6 +52,11 @@ func TestConfigUsesNoAmbientCredentials(t *testing.T) {
 	}
 	if config.Host != "db.example" || config.User != "explicit" || config.Password != "password" || config.Database != "analytics" || config.TLSConfig.MinVersion != tls.VersionTLS12 || config.TLSConfig.InsecureSkipVerify || len(config.TLSConfig.Certificates) != 0 || len(config.Fallbacks) != 0 || config.RuntimeParams["timezone"] != "UTC" {
 		t.Fatal("config was not isolated")
+	}
+	conn := &pgconn.PgConn{}
+	handler, ok := config.BuildContextWatcherHandler(conn).(*pgconn.CancelRequestContextWatcherHandler)
+	if !ok || handler.Conn != conn || handler.CancelRequestDelay != 0 || handler.DeadlineDelay != 500*time.Millisecond {
+		t.Fatal("bounded upstream cancellation handler missing")
 	}
 	for _, name := range []string{"PGSERVICEFILE", "PGSERVICE", "PGPASSFILE", "PGSSLKEY", "PGSSLCERT", "PGSSLROOTCERT", "PGPASSWORD", "PGUSER", "PGHOST", "PGPORT", "PGOPTIONS"} {
 		t.Run(name, func(t *testing.T) {

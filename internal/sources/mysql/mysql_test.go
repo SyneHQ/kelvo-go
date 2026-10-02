@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"testing"
 	"time"
+
+	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
 const safeDSN = "u:p@tcp(db.example:3306)/analytics?tls=true&parseTime=true&loc=UTC&time_zone=%27%2B00%3A00%27"
@@ -25,5 +27,31 @@ func TestTLSAndTimeDSN(t *testing.T) {
 		if validateDSN(dsn) == nil {
 			t.Fatal("unsafe DSN accepted")
 		}
+	}
+}
+
+func TestServerExecutionDeadline(t *testing.T) {
+	for _, test := range []struct {
+		timeout time.Duration
+		want    string
+	}{
+		{time.Nanosecond, "1"},
+		{1500 * time.Microsecond, "2"},
+		{30 * time.Second, "30000"},
+		{time.Hour, "3600000"},
+	} {
+		limits := query.DefaultLimits()
+		limits.Timeout = test.timeout
+		config, err := executionConfig(safeDSN, limits, "mysql")
+		if err != nil || config.Params["max_execution_time"] != test.want {
+			t.Fatalf("timeout %s did not bound server execution: %v", test.timeout, err)
+		}
+	}
+	if _, err := executionConfig(safeDSN+"&max_execution_time=0", query.DefaultLimits(), "mysql"); err == nil {
+		t.Fatal("accepted a DSN override of the server execution limit")
+	}
+	config, err := executionConfig(safeDSN, query.DefaultLimits(), "mariadb")
+	if err != nil || config.Params["max_execution_time"] != "" {
+		t.Fatal("applied a MySQL-only setting to MariaDB")
 	}
 }

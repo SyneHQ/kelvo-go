@@ -9,12 +9,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/sqlnative"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -114,6 +116,12 @@ func parseConfig(dsn string) (*pgx.ConnConfig, error) {
 		return nil, configError()
 	}
 	config.TLSConfig.MinVersion = tls.VersionTLS12
+	// Socket closure alone can leave a server query running. Send pgx's
+	// connection-keyed CancelRequest before the worker's bounded shutdown
+	// grace expires, with a socket deadline as the fallback.
+	config.BuildContextWatcherHandler = func(conn *pgconn.PgConn) ctxwatch.Handler {
+		return &pgconn.CancelRequestContextWatcherHandler{Conn: conn, CancelRequestDelay: 0, DeadlineDelay: 500 * time.Millisecond}
+	}
 	return config, nil
 }
 func openDB(dsn string) (*sql.DB, error) {

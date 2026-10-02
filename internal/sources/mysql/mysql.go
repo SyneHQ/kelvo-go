@@ -22,18 +22,34 @@ func New(c catalog.Config, l query.Limits) (*Engine, error)        { return fami
 func NewMariaDB(c catalog.Config, l query.Limits) (*Engine, error) { return family(c, l, "mariadb") }
 func family(c catalog.Config, l query.Limits, kind string) (*Engine, error) {
 	return sqlnative.New(c, l, sqlnative.Dialect{SourceType: kind, DriverName: "mysql", ReadOnlyOption: true, ValidateDSN: validateDSN, OpenDB: func(dsn string) (*sql.DB, error) {
-		config, err := parseConfig(dsn)
+		config, err := executionConfig(dsn, l, kind)
 		if err != nil {
 			return nil, err
 		}
-		config.MaxAllowedPacket = int(min(int64(16<<20), int64(l.MemoryMB)<<18))
-		config.Logger = quietLogger{}
 		connector, err := driver.NewConnector(config)
 		if err != nil {
 			return nil, configError()
 		}
 		return sql.OpenDB(connector), nil
 	}})
+}
+
+func executionConfig(dsn string, limits query.Limits, kind string) (*driver.Config, error) {
+	config, err := parseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	config.MaxAllowedPacket = int(min(int64(16<<20), int64(limits.MemoryMB)<<18))
+	config.Logger = quietLogger{}
+	if kind == "mysql" {
+		// Closing a cancelled MySQL connection does not promptly interrupt every
+		// server operation. Bound read-only SELECT execution at the server too.
+		// Round up: zero disables the server timer. sqlguard rejects optimizer
+		// hints, so a native request cannot override this session-owned setting.
+		milliseconds := (limits.Timeout + time.Millisecond - 1) / time.Millisecond
+		config.Params["max_execution_time"] = strconv.FormatInt(int64(milliseconds), 10)
+	}
+	return config, nil
 }
 
 type quietLogger struct{}

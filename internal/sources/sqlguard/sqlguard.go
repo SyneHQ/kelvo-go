@@ -30,7 +30,9 @@ func ReadOnlyWithOptions(sql string, allowDollarParams bool) (string, error) {
 			i++
 			continue
 		}
-		if c == 0 || c == '\\' {
+		// MySQL treats # as a line comment. Do not let quotes inside such a
+		// comment hide executable syntax from this shared dialect envelope.
+		if c == 0 || c == '\\' || c == '#' {
 			return deny()
 		}
 		if c == '-' && i+1 < len(sql) && sql[i+1] == '-' {
@@ -42,7 +44,9 @@ func ReadOnlyWithOptions(sql string, allowDollarParams bool) (string, error) {
 		}
 		if c == '/' && i+1 < len(sql) && sql[i+1] == '*' {
 			i += 2
-			if i < len(sql) && sql[i] == '!' {
+			// Optimizer hints can override operator-owned session timeouts and
+			// resource settings. They are executable syntax, not inert comments.
+			if i < len(sql) && (sql[i] == '!' || sql[i] == '+') {
 				return deny()
 			}
 			closed := false
