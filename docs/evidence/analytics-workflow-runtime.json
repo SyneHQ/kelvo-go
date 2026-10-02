@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "scope": "Observed after measured campaigns; no compilation or query execution. Source runtime inputs retained unchanged during measurement.",
+  "python": "3.11.2",
+  "scripts_sha256": {
+    "analytics_library_baseline.py": "e0e388117de5cd25642996d1f5a917b36338cba10f7ddf22277eaa333ef8870c",
+    "analytics_native_references.py": "af8bdb83b5cd7a7ec9838c693946cdc3611b39e6645329f302144afacfdd914e",
+    "analytics_workflow_benchmark.py": "10d0c7892872bdae95fb6552041c0e81b17f4387186a3c7a1e674ee55af0f07f",
+    "prepare_analytics_dataset.py": "3784e4168bfbf5e59031d98499f869d4d4670405d341f6fcbe0b978d639a772d",
+    "prepare_analytics_manifests.py": "a987c93245613c4b68b484d9ce516c5a812f8dcdce3c96c4a8f367b045930f34",
+    "summarize_analytics_workflows.py": "8dae8da2499b0436d489b52fc0634e195e419ea2536fd8a24e8754ec508f9b3c",
+    "test_analytics_evidence.py": "85538c66eef0a90d4c09bc9e525d52f555c75fe3345f14b9ca1adaed03166749",
+    "validate_analytics_workflows.py": "c09ef1ae30b0823a377a05a5a78bb9c1c3ffe709b8899c2f6f8eec85bbd34b30"
+  },
+  "binary_sha256": {
+    "kelvo": "fefdba4eaa4b2ac99eaf2878d30cfe80ddeacaf1df4fac1c52182f9ca944d6ac",
+    "kelvo-landlock": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1"
+  },
+  "packages": {
+    "duckdb": {
+      "version": "1.5.6",
+      "native_libraries": {
+        "_duckdb.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "b4e821e87e84b0b660aff20a34151fb392e83b0bf2d49cc6a75259b22a77245c",
+          "bytes": 60374968
+        }
+      }
+    },
+    "polars": {
+      "version": "1.44.2",
+      "native_libraries": {}
+    },
+    "polars-runtime-32": {
+      "version": "1.44.2",
+      "native_libraries": {
+        "_polars_runtime_32/_polars_runtime.abi3.so": {
+          "sha256": "bd7cdb9876c63ae705bd918423eb5812e7746a3b9379501cf4f0707e5c151736",
+          "bytes": 180192520
+        }
+      }
+    },
+    "pyarrow": {
+      "version": "25.0.1",
+      "native_libraries": {
+        "pyarrow/_acero.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "2af77124e6b23510ca382fdf3c5c236ec3f105a5b300885f7abe962807f79089",
+          "bytes": 293104
+        },
+        "pyarrow/_azurefs.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "573f4c1c4a9c0f147120e9fe1db1bca77028fe62cdae6442ea490af46944029f",
+          "bytes": 138912
+        },
+        "pyarrow/_compute.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "c0904f2b625b528ab0306734efc45bf8d0666e100499bede2065762f57dba25e",
+          "bytes": 1298424
+        },
+        "pyarrow/_csv.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "e1bbd0840c7761a306c741f8133985527d7370b49beffe7edffb2d2a065a69ad",
+          "bytes": 393552
+        },
+        "pyarrow/_dataset.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "1ac70cd017aad003c8ee7aa243b76200cb1e16504a00674c556b7a8e5d90d2e9",
+          "bytes": 1011776
+        },
+        "pyarrow/_dataset_orc.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "1baee9373851897c414892ebf70481717ec9daf9eadcd85f52a3642da6310187",
+          "bytes": 80208
+        },
+        "pyarrow/_dataset_parquet.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "f516fc4302d35558ef4d36da40e3bb2c31a13bc4ca2f24a381db433cd24eae57",
+          "bytes": 359456
+        },
+        "pyarrow/_dataset_parquet_encryption.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "7e20bd2b26606063967eb577dbaa399e0222e24234679200a08b51e26a919ac5",
+          "bytes": 120872
+        },
+        "pyarrow/_feather.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "86d586c887befd261562be642a16e1e2cc5ee8eee76a56df781ef8a9872d4662",
+          "bytes": 113160
+        },
+        "pyarrow/_flight.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "f1be59d721c8af371786098dc34998a7d1769e6cbf683060922653348641376e",
+          "bytes": 1211696
+        },
+        "pyarrow/_fs.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "a9716ca9419d322c3c70b83535c755519792677ff6ea99a3821dcd2c44e25354",
+          "bytes": 438560
+        },
+        "pyarrow/_gcsfs.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "a9241174f18e5cf4aed1b390fc57491208cfd0682ea7dc138260e1d9ac4ceee5",
+          "bytes": 144768
+        },
+        "pyarrow/_hdfs.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "6355f946a8016a967ba857761efcbd8929e2e5a1ed9e533f231bb014fafc2a32",
+          "bytes": 142744
+        },
+        "pyarrow/_json.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "c26ced12c7749592b6c4b6dc124f4a7c695ef53bb5a1b69ec953944163eb5a1f",
+          "bytes": 138296
+        },
+        "pyarrow/_orc.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "e6317cd29713ab08875e2d405f14cae462b9073f417475d75e1130937fbb8532",
+          "bytes": 210352
+        },
+        "pyarrow/_parquet.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "122f4fec1f0edb47ef6a567f403c6dd01bddff4b1467cf5c8b14626ed9c47fc6",
+          "bytes": 641136
+        },
+        "pyarrow/_parquet_encryption.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "342dbd3641c13e2b050b35b0acff31a058ffb9515624e0afab665bfa8bd3be6a",
+          "bytes": 382840
+        },
+        "pyarrow/_pyarrow_cpp_tests.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "6e0b3998d555f64580ee3f03c7c6f74834b499e8f4a6bb8e94ddd99612497663",
+          "bytes": 88784
+        },
+        "pyarrow/_s3fs.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "f6b0c83d773c71e37c5a0dca28b639e2ec90491832edfe32d45e6dbe7fde343f",
+          "bytes": 229480
+        },
+        "pyarrow/_substrait.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "7486c63fef7a9814ada4c7a5108eebfacee7082bf5b499392160e123cda488ae",
+          "bytes": 209864
+        },
+        "pyarrow/lib.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "2ce5f387bb327c8b86d7e96ff9075d6cce791bb1fafea9515ca5be88396d47a2",
+          "bytes": 4369992
+        },
+        "pyarrow/libarrow.so.2500": {
+          "sha256": "98eeddf7743c060b670ed0288419e135540584e73727f21ae05179da73c7cfe0",
+          "bytes": 55368864
+        },
+        "pyarrow/libarrow_acero.so.2500": {
+          "sha256": "350b806d802990801d179cc381cfc80b130ae781747a1e02f29c1e332937a068",
+          "bytes": 1998872
+        },
+        "pyarrow/libarrow_compute.so.2500": {
+          "sha256": "847cd8c8aaa9c77ee5984891589ba13e80933bd8668b06d3bf3c06872f260e7e",
+          "bytes": 18557840
+        },
+        "pyarrow/libarrow_dataset.so.2500": {
+          "sha256": "c87f0bcd32eb9423829dbbe5e1ed6651f7bccec3dcfbbd5ea8a589f06e2cd134",
+          "bytes": 2422608
+        },
+        "pyarrow/libarrow_flight.so.2500": {
+          "sha256": "927367e32d2c9001399aadf64df9862e820f9db950552e4158931acda1b8e2dc",
+          "bytes": 30025232
+        },
+        "pyarrow/libarrow_python.so": {
+          "sha256": "375059a2ac2c26b36e2e613f22b07d5dfffe93cb4b168db9c6854a3ab82189c4",
+          "bytes": 2363464
+        },
+        "pyarrow/libarrow_python.so.2500": {
+          "sha256": "375059a2ac2c26b36e2e613f22b07d5dfffe93cb4b168db9c6854a3ab82189c4",
+          "bytes": 2363464
+        },
+        "pyarrow/libarrow_python.so.2500.1.0": {
+          "sha256": "375059a2ac2c26b36e2e613f22b07d5dfffe93cb4b168db9c6854a3ab82189c4",
+          "bytes": 2363464
+        },
+        "pyarrow/libarrow_python_flight.so": {
+          "sha256": "150c8419bd7f86ca204372e81d9cbba838b0739c0a96e2d3fe6da011649c373e",
+          "bytes": 104024
+        },
+        "pyarrow/libarrow_python_flight.so.2500": {
+          "sha256": "150c8419bd7f86ca204372e81d9cbba838b0739c0a96e2d3fe6da011649c373e",
+          "bytes": 104024
+        },
+        "pyarrow/libarrow_python_flight.so.2500.1.0": {
+          "sha256": "150c8419bd7f86ca204372e81d9cbba838b0739c0a96e2d3fe6da011649c373e",
+          "bytes": 104024
+        },
+        "pyarrow/libarrow_python_parquet_encryption.so": {
+          "sha256": "2f48eb0ffbdbf67e1faf2ccd3e21c1cd42b0930498d06071da8aeff2ce020572",
+          "bytes": 38448
+        },
+        "pyarrow/libarrow_python_parquet_encryption.so.2500": {
+          "sha256": "2f48eb0ffbdbf67e1faf2ccd3e21c1cd42b0930498d06071da8aeff2ce020572",
+          "bytes": 38448
+        },
+        "pyarrow/libarrow_python_parquet_encryption.so.2500.1.0": {
+          "sha256": "2f48eb0ffbdbf67e1faf2ccd3e21c1cd42b0930498d06071da8aeff2ce020572",
+          "bytes": 38448
+        },
+        "pyarrow/libarrow_substrait.so.2500": {
+          "sha256": "fabc59b7aa3c9be2b9d51ad7cb42568ee6ec11caf38f2f350921b9bb73f450a0",
+          "bytes": 5874392
+        },
+        "pyarrow/libparquet.so.2500": {
+          "sha256": "e156e75ab78dca976d8788021de8ae2f4b0119f40d81e7cd7e52b3df47653915",
+          "bytes": 12803744
+        }
+      }
+    },
+    "PyYAML": {
+      "version": "6.0.3",
+      "native_libraries": {
+        "yaml/_yaml.cpython-311-x86_64-linux-gnu.so": {
+          "sha256": "aa9bb0d7b261b8266ababd9e19f5bf2f505d9a84ba360ce16502297e8a033765",
+          "bytes": 2650176
+        }
+      }
+    }
+  },
+  "ast_checks_passed": 8
+}

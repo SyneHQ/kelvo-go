@@ -1,0 +1,1996 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-10-02T04:59:28.481717+00:00",
+  "state": "passed",
+  "all_passed": true,
+  "manifest_sha256": "0f22c04589e378678240dfeed4732877c3790dc97cd277dc27434abd02da45de",
+  "validator_sha256": "c09ef1ae30b0823a377a05a5a78bb9c1c3ffe709b8899c2f6f8eec85bbd34b30",
+  "validation_scope": "All snapshot hashes, raw audits, independent aggregate/window/rank expectations, Arrow decoding, canonical checks and invariants are outside benchmark trial timing.",
+  "reference_scope": "Pre-existing references declared to originate from direct ClickHouse; this validator independently checks their full values against the raw normalized snapshot.",
+  "resource_limits": {
+    "threads": 2,
+    "duckdb_memory_mib": 1024,
+    "duckdb_temp_mib": 512,
+    "scope": "DuckDB settings only; the caller must provide any whole-process cgroup or filesystem cap."
+  },
+  "errors": [],
+  "references": {
+    "daily_rolling_kpis": {
+      "state": "passed",
+      "errors": [],
+      "file": {
+        "sha256": "647d0860bbc8393fbbb3514d72808b4935a90cbc503167197ca3a6579ae22e89",
+        "bytes": 4808
+      },
+      "physical_schema": [
+        {
+          "name": "day_bucket",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "measured_amount_trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "total_amount_cents",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "window_days",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "trailing_7d_trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "trailing_7d_measured_amount_trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "trailing_7d_total_amount_cents",
+          "type": "int64",
+          "nullable": false
+        }
+      ],
+      "decoded_arrow_bytes": 5760,
+      "arrow_eos_present": true,
+      "canonical": {
+        "rows": 90,
+        "canonical_value_sha256": "33f494435a933e87712d305e75bf28f5428f36335206acb368995a31bc586239",
+        "integer_sums": {
+          "day_bucket": 1614735,
+          "trips": 22611807,
+          "measured_amount_trips": 22611807,
+          "total_amount_cents": 40533408524,
+          "window_days": 609,
+          "trailing_7d_trips": 153128158,
+          "trailing_7d_measured_amount_trips": 153128158,
+          "trailing_7d_total_amount_cents": 273856837590
+        },
+        "null_counts": {
+          "day_bucket": 0,
+          "trips": 0,
+          "measured_amount_trips": 0,
+          "total_amount_cents": 0,
+          "window_days": 0,
+          "trailing_7d_trips": 0,
+          "trailing_7d_measured_amount_trips": 0,
+          "trailing_7d_total_amount_cents": 0
+        },
+        "physical_arrow_schema": [
+          [
+            "day_bucket",
+            "int64"
+          ],
+          [
+            "trips",
+            "int64"
+          ],
+          [
+            "measured_amount_trips",
+            "int64"
+          ],
+          [
+            "total_amount_cents",
+            "int64"
+          ],
+          [
+            "window_days",
+            "int64"
+          ],
+          [
+            "trailing_7d_trips",
+            "int64"
+          ],
+          [
+            "trailing_7d_measured_amount_trips",
+            "int64"
+          ],
+          [
+            "trailing_7d_total_amount_cents",
+            "int64"
+          ]
+        ],
+        "arrow_ipc_bytes": 4808,
+        "arrow_ipc_sha256": "647d0860bbc8393fbbb3514d72808b4935a90cbc503167197ca3a6579ae22e89"
+      },
+      "invariants": {
+        "state": "passed",
+        "checks": {
+          "strict_complete_output_order": true,
+          "exact_independent_raw_aggregate_result": true,
+          "calendar_spine": true,
+          "daily_reconciliation": true,
+          "measured_counts": true,
+          "independent_deque_windows": true
+        }
+      },
+      "declared_engine": "clickhouse",
+      "sql_sha256": {
+        "duckdb": "a47e6b0e77956cef131dde70b3b3648a92c8a5dce2d47b7845d7fb5f12b7b902",
+        "clickhouse": "dc022b8d2f99d1baf6cadbad89fb2beebc09279f13fd3e516e53e3cb932bb8eb"
+      }
+    },
+    "borough_hour_hotspots": {
+      "state": "passed",
+      "errors": [],
+      "file": {
+        "sha256": "8eebcdf245f0df973de8a856ebae6321f700370918f28c0122d9c746f4e6fc2b",
+        "bytes": 636928
+      },
+      "physical_schema": [
+        {
+          "name": "hour_bucket",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "borough",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "zone_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "zone_name",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "borough_hour_trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "zone_rank",
+          "type": "int64",
+          "nullable": false
+        }
+      ],
+      "decoded_arrow_bytes": 2248684,
+      "arrow_eos_present": true,
+      "canonical": {
+        "rows": 31843,
+        "canonical_value_sha256": "0917fb3308c8f1ef515ba5d036fb1383c7fae0f243252dd8563e3925bc368e4d",
+        "integer_sums": {
+          "hour_bucket": 13711875364,
+          "zone_id": 4746592,
+          "trips": 5190982,
+          "borough_hour_trips": 67240651,
+          "zone_rank": 57802
+        },
+        "null_counts": {
+          "hour_bucket": 0,
+          "borough": 0,
+          "zone_id": 0,
+          "zone_name": 0,
+          "trips": 0,
+          "borough_hour_trips": 0,
+          "zone_rank": 0
+        },
+        "physical_arrow_schema": [
+          [
+            "hour_bucket",
+            "int64"
+          ],
+          [
+            "borough",
+            "string"
+          ],
+          [
+            "zone_id",
+            "int64"
+          ],
+          [
+            "zone_name",
+            "string"
+          ],
+          [
+            "trips",
+            "int64"
+          ],
+          [
+            "borough_hour_trips",
+            "int64"
+          ],
+          [
+            "zone_rank",
+            "int64"
+          ]
+        ],
+        "arrow_ipc_bytes": 636928,
+        "arrow_ipc_sha256": "8eebcdf245f0df973de8a856ebae6321f700370918f28c0122d9c746f4e6fc2b"
+      },
+      "invariants": {
+        "state": "passed",
+        "checks": {
+          "strict_complete_output_order": true,
+          "exact_independent_raw_aggregate_result": true,
+          "top_three_rank_and_denominator": true,
+          "known_zone_hour_cohort": true
+        }
+      },
+      "declared_engine": "clickhouse",
+      "sql_sha256": {
+        "duckdb": "d23b2ff2a97d1d706ac820829cbc7b4aa01b4c84b105a3026fea08ae76020359",
+        "clickhouse": "398731c07d6f2491956ac8ed09068915cb7e2a5d3aa1584d5f15ab8d8cdb2b81"
+      }
+    },
+    "route_economics": {
+      "state": "passed",
+      "errors": [],
+      "file": {
+        "sha256": "e299eda760130b326a0cc0071dff744be887fb1b95565962c4277ea80108c023",
+        "bytes": 5408
+      },
+      "physical_schema": [
+        {
+          "name": "pickup_borough",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "pickup_zone_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "pickup_zone_name",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "dropoff_borough",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "dropoff_zone_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "dropoff_zone_name",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "total_amount_cents",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "lt_1_mile_trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "ge_1_lt_5_mile_trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "ge_5_le_100_mile_trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "route_rank",
+          "type": "int64",
+          "nullable": false
+        }
+      ],
+      "decoded_arrow_bytes": 6648,
+      "arrow_eos_present": true,
+      "canonical": {
+        "rows": 53,
+        "canonical_value_sha256": "91e360a36da06cede52d01a8ddaecd10761a0810b32cb9cfb73a87a23080be52",
+        "integer_sums": {
+          "pickup_zone_id": 9627,
+          "dropoff_zone_id": 7747,
+          "trips": 1050733,
+          "total_amount_cents": 2532807906,
+          "lt_1_mile_trips": 418434,
+          "ge_1_lt_5_mile_trips": 352842,
+          "ge_5_le_100_mile_trips": 279457,
+          "route_rank": 279
+        },
+        "null_counts": {
+          "pickup_borough": 0,
+          "pickup_zone_id": 0,
+          "pickup_zone_name": 0,
+          "dropoff_borough": 0,
+          "dropoff_zone_id": 0,
+          "dropoff_zone_name": 0,
+          "trips": 0,
+          "total_amount_cents": 0,
+          "lt_1_mile_trips": 0,
+          "ge_1_lt_5_mile_trips": 0,
+          "ge_5_le_100_mile_trips": 0,
+          "route_rank": 0
+        },
+        "physical_arrow_schema": [
+          [
+            "pickup_borough",
+            "string"
+          ],
+          [
+            "pickup_zone_id",
+            "int64"
+          ],
+          [
+            "pickup_zone_name",
+            "string"
+          ],
+          [
+            "dropoff_borough",
+            "string"
+          ],
+          [
+            "dropoff_zone_id",
+            "int64"
+          ],
+          [
+            "dropoff_zone_name",
+            "string"
+          ],
+          [
+            "trips",
+            "int64"
+          ],
+          [
+            "total_amount_cents",
+            "int64"
+          ],
+          [
+            "lt_1_mile_trips",
+            "int64"
+          ],
+          [
+            "ge_1_lt_5_mile_trips",
+            "int64"
+          ],
+          [
+            "ge_5_le_100_mile_trips",
+            "int64"
+          ],
+          [
+            "route_rank",
+            "int64"
+          ]
+        ],
+        "arrow_ipc_bytes": 5408,
+        "arrow_ipc_sha256": "e299eda760130b326a0cc0071dff744be887fb1b95565962c4277ea80108c023"
+      },
+      "invariants": {
+        "state": "passed",
+        "checks": {
+          "strict_complete_output_order": true,
+          "exact_independent_raw_aggregate_result": true,
+          "usable_route_counts_and_bands": true,
+          "known_route_dimensions": true,
+          "top_ten_deterministic_rank": true
+        }
+      },
+      "declared_engine": "clickhouse",
+      "sql_sha256": {
+        "duckdb": "28cbaee7b538a52ad5ea1a634af1ca8e91401c9a8ede6a19dd7e5a421fa5b258",
+        "clickhouse": "796ac39c6ef8604a78e4cbbc0b5078c6afa84cad99756f0581b9ca3d273afe3c"
+      }
+    },
+    "monthly_zone_momentum": {
+      "state": "passed",
+      "errors": [],
+      "file": {
+        "sha256": "feceaf25e9cc1446cb13e38a820360c79c27a250319a9e0d640fbd86fe2f7186",
+        "bytes": 23728
+      },
+      "physical_schema": [
+        {
+          "name": "month",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "borough",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "zone_id",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "zone_name",
+          "type": "string",
+          "nullable": false
+        },
+        {
+          "name": "trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "previous_trips",
+          "type": "int64",
+          "nullable": true
+        },
+        {
+          "name": "trip_change",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "measured_amount_trips",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "total_amount_cents",
+          "type": "int64",
+          "nullable": false
+        },
+        {
+          "name": "zone_rank",
+          "type": "int64",
+          "nullable": false
+        }
+      ],
+      "decoded_arrow_bytes": 50576,
+      "arrow_eos_present": true,
+      "canonical": {
+        "rows": 530,
+        "canonical_value_sha256": "57d5468f7fe53bf9f5bd8b8fe80af9a61e0a10b06497f9527b1cc2f84cf42c6f",
+        "integer_sums": {
+          "month": 107008325,
+          "zone_id": 70490,
+          "trips": 14915417,
+          "previous_trips": 14745568,
+          "trip_change": 169849,
+          "measured_amount_trips": 14915417,
+          "total_amount_cents": 28364995564,
+          "zone_rank": 15760
+        },
+        "null_counts": {
+          "month": 0,
+          "borough": 0,
+          "zone_id": 0,
+          "zone_name": 0,
+          "trips": 0,
+          "previous_trips": 0,
+          "trip_change": 0,
+          "measured_amount_trips": 0,
+          "total_amount_cents": 0,
+          "zone_rank": 0
+        },
+        "physical_arrow_schema": [
+          [
+            "month",
+            "int64"
+          ],
+          [
+            "borough",
+            "string"
+          ],
+          [
+            "zone_id",
+            "int64"
+          ],
+          [
+            "zone_name",
+            "string"
+          ],
+          [
+            "trips",
+            "int64"
+          ],
+          [
+            "previous_trips",
+            "int64"
+          ],
+          [
+            "trip_change",
+            "int64"
+          ],
+          [
+            "measured_amount_trips",
+            "int64"
+          ],
+          [
+            "total_amount_cents",
+            "int64"
+          ],
+          [
+            "zone_rank",
+            "int64"
+          ]
+        ],
+        "arrow_ipc_bytes": 23728,
+        "arrow_ipc_sha256": "feceaf25e9cc1446cb13e38a820360c79c27a250319a9e0d640fbd86fe2f7186"
+      },
+      "invariants": {
+        "state": "passed",
+        "checks": {
+          "strict_complete_output_order": true,
+          "exact_independent_raw_aggregate_result": true,
+          "full_two_month_zone_grid": true,
+          "previous_month_and_signed_delta": true,
+          "monthly_deterministic_rank": true,
+          "monthly_known_pickup_reconciliation": true
+        }
+      },
+      "declared_engine": "clickhouse",
+      "sql_sha256": {
+        "duckdb": "0522c7bc5b3aecba5df0c3235831b3e6cb37e999a0016c43c2e3fa2c8466a9ba",
+        "clickhouse": "188611946d67457854ae66650cc6d45fda646d0823617d5483398d4e4afa9402"
+      }
+    }
+  },
+  "results": [
+    {
+      "case": "oracle-live-borough_hour_hotspots-kelvo-federated",
+      "workflow": "borough_hour_hotspots",
+      "engine": "kelvo-federated",
+      "trial": 1,
+      "execution_state": "succeeded",
+      "artifact": {
+        "state": "passed",
+        "errors": [],
+        "file": {
+          "sha256": "19e87be7264ee0f0d516c9da092c6bd682849ecfb46bf16d4997669718222c3f",
+          "bytes": 671960
+        },
+        "physical_schema": [
+          {
+            "name": "hour_bucket",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "borough",
+            "type": "string",
+            "nullable": true
+          },
+          {
+            "name": "zone_id",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "zone_name",
+            "type": "string",
+            "nullable": true
+          },
+          {
+            "name": "trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "borough_hour_trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "zone_rank",
+            "type": "int64",
+            "nullable": true
+          }
+        ],
+        "decoded_arrow_bytes": 2248684,
+        "arrow_eos_present": true,
+        "canonical": {
+          "rows": 31843,
+          "canonical_value_sha256": "0917fb3308c8f1ef515ba5d036fb1383c7fae0f243252dd8563e3925bc368e4d",
+          "integer_sums": {
+            "hour_bucket": 13711875364,
+            "zone_id": 4746592,
+            "trips": 5190982,
+            "borough_hour_trips": 67240651,
+            "zone_rank": 57802
+          },
+          "null_counts": {
+            "hour_bucket": 0,
+            "borough": 0,
+            "zone_id": 0,
+            "zone_name": 0,
+            "trips": 0,
+            "borough_hour_trips": 0,
+            "zone_rank": 0
+          },
+          "physical_arrow_schema": [
+            [
+              "hour_bucket",
+              "int64"
+            ],
+            [
+              "borough",
+              "string"
+            ],
+            [
+              "zone_id",
+              "int64"
+            ],
+            [
+              "zone_name",
+              "string"
+            ],
+            [
+              "trips",
+              "int64"
+            ],
+            [
+              "borough_hour_trips",
+              "int64"
+            ],
+            [
+              "zone_rank",
+              "int64"
+            ]
+          ],
+          "arrow_ipc_bytes": 671960,
+          "arrow_ipc_sha256": "19e87be7264ee0f0d516c9da092c6bd682849ecfb46bf16d4997669718222c3f"
+        },
+        "invariants": {
+          "state": "passed",
+          "checks": {
+            "strict_complete_output_order": true,
+            "exact_independent_raw_aggregate_result": true,
+            "top_three_rank_and_denominator": true,
+            "known_zone_hour_cohort": true
+          }
+        }
+      },
+      "errors": [],
+      "matches_direct_clickhouse_canonical_values": true,
+      "state": "passed"
+    },
+    {
+      "case": "oracle-live-borough_hour_hotspots-kelvo-native",
+      "workflow": "borough_hour_hotspots",
+      "engine": "kelvo-native",
+      "trial": 1,
+      "execution_state": "succeeded",
+      "artifact": {
+        "state": "passed",
+        "errors": [],
+        "file": {
+          "sha256": "a275f002611663d158537883b1a74b7806eaca9c40c6cb0aa228dbe82b3e03f4",
+          "bytes": 641040
+        },
+        "physical_schema": [
+          {
+            "name": "hour_bucket",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "borough",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "name": "zone_id",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "zone_name",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "name": "trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "borough_hour_trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "zone_rank",
+            "type": "int64",
+            "nullable": false
+          }
+        ],
+        "decoded_arrow_bytes": 2248684,
+        "arrow_eos_present": true,
+        "canonical": {
+          "rows": 31843,
+          "canonical_value_sha256": "0917fb3308c8f1ef515ba5d036fb1383c7fae0f243252dd8563e3925bc368e4d",
+          "integer_sums": {
+            "hour_bucket": 13711875364,
+            "zone_id": 4746592,
+            "trips": 5190982,
+            "borough_hour_trips": 67240651,
+            "zone_rank": 57802
+          },
+          "null_counts": {
+            "hour_bucket": 0,
+            "borough": 0,
+            "zone_id": 0,
+            "zone_name": 0,
+            "trips": 0,
+            "borough_hour_trips": 0,
+            "zone_rank": 0
+          },
+          "physical_arrow_schema": [
+            [
+              "hour_bucket",
+              "int64"
+            ],
+            [
+              "borough",
+              "string"
+            ],
+            [
+              "zone_id",
+              "int64"
+            ],
+            [
+              "zone_name",
+              "string"
+            ],
+            [
+              "trips",
+              "int64"
+            ],
+            [
+              "borough_hour_trips",
+              "int64"
+            ],
+            [
+              "zone_rank",
+              "int64"
+            ]
+          ],
+          "arrow_ipc_bytes": 641040,
+          "arrow_ipc_sha256": "a275f002611663d158537883b1a74b7806eaca9c40c6cb0aa228dbe82b3e03f4"
+        },
+        "invariants": {
+          "state": "passed",
+          "checks": {
+            "strict_complete_output_order": true,
+            "exact_independent_raw_aggregate_result": true,
+            "top_three_rank_and_denominator": true,
+            "known_zone_hour_cohort": true
+          }
+        }
+      },
+      "errors": [],
+      "matches_direct_clickhouse_canonical_values": true,
+      "state": "passed"
+    },
+    {
+      "case": "oracle-live-daily_rolling_kpis-kelvo-federated",
+      "workflow": "daily_rolling_kpis",
+      "engine": "kelvo-federated",
+      "trial": 1,
+      "execution_state": "succeeded",
+      "artifact": {
+        "state": "passed",
+        "errors": [],
+        "file": {
+          "sha256": "90cc40ccde7270c0399fae23ad0c8999939d8d5db936fe4ea4140d7b78a8ea27",
+          "bytes": 5088
+        },
+        "physical_schema": [
+          {
+            "name": "day_bucket",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "measured_amount_trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "total_amount_cents",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "window_days",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "trailing_7d_trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "trailing_7d_measured_amount_trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "trailing_7d_total_amount_cents",
+            "type": "int64",
+            "nullable": true
+          }
+        ],
+        "decoded_arrow_bytes": 5760,
+        "arrow_eos_present": true,
+        "canonical": {
+          "rows": 90,
+          "canonical_value_sha256": "33f494435a933e87712d305e75bf28f5428f36335206acb368995a31bc586239",
+          "integer_sums": {
+            "day_bucket": 1614735,
+            "trips": 22611807,
+            "measured_amount_trips": 22611807,
+            "total_amount_cents": 40533408524,
+            "window_days": 609,
+            "trailing_7d_trips": 153128158,
+            "trailing_7d_measured_amount_trips": 153128158,
+            "trailing_7d_total_amount_cents": 273856837590
+          },
+          "null_counts": {
+            "day_bucket": 0,
+            "trips": 0,
+            "measured_amount_trips": 0,
+            "total_amount_cents": 0,
+            "window_days": 0,
+            "trailing_7d_trips": 0,
+            "trailing_7d_measured_amount_trips": 0,
+            "trailing_7d_total_amount_cents": 0
+          },
+          "physical_arrow_schema": [
+            [
+              "day_bucket",
+              "int64"
+            ],
+            [
+              "trips",
+              "int64"
+            ],
+            [
+              "measured_amount_trips",
+              "int64"
+            ],
+            [
+              "total_amount_cents",
+              "int64"
+            ],
+            [
+              "window_days",
+              "int64"
+            ],
+            [
+              "trailing_7d_trips",
+              "int64"
+            ],
+            [
+              "trailing_7d_measured_amount_trips",
+              "int64"
+            ],
+            [
+              "trailing_7d_total_amount_cents",
+              "int64"
+            ]
+          ],
+          "arrow_ipc_bytes": 5088,
+          "arrow_ipc_sha256": "90cc40ccde7270c0399fae23ad0c8999939d8d5db936fe4ea4140d7b78a8ea27"
+        },
+        "invariants": {
+          "state": "passed",
+          "checks": {
+            "strict_complete_output_order": true,
+            "exact_independent_raw_aggregate_result": true,
+            "calendar_spine": true,
+            "daily_reconciliation": true,
+            "measured_counts": true,
+            "independent_deque_windows": true
+          }
+        }
+      },
+      "errors": [],
+      "matches_direct_clickhouse_canonical_values": true,
+      "state": "passed"
+    },
+    {
+      "case": "oracle-live-daily_rolling_kpis-kelvo-native",
+      "workflow": "daily_rolling_kpis",
+      "engine": "kelvo-native",
+      "trial": 1,
+      "execution_state": "succeeded",
+      "artifact": {
+        "state": "passed",
+        "errors": [],
+        "file": {
+          "sha256": "a97a4b5534208c5dc78b982160d953fd1caeab4806dad7582af6151bd15c3fc3",
+          "bytes": 5088
+        },
+        "physical_schema": [
+          {
+            "name": "day_bucket",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "measured_amount_trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "total_amount_cents",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "window_days",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "trailing_7d_trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "trailing_7d_measured_amount_trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "trailing_7d_total_amount_cents",
+            "type": "int64",
+            "nullable": false
+          }
+        ],
+        "decoded_arrow_bytes": 5760,
+        "arrow_eos_present": true,
+        "canonical": {
+          "rows": 90,
+          "canonical_value_sha256": "33f494435a933e87712d305e75bf28f5428f36335206acb368995a31bc586239",
+          "integer_sums": {
+            "day_bucket": 1614735,
+            "trips": 22611807,
+            "measured_amount_trips": 22611807,
+            "total_amount_cents": 40533408524,
+            "window_days": 609,
+            "trailing_7d_trips": 153128158,
+            "trailing_7d_measured_amount_trips": 153128158,
+            "trailing_7d_total_amount_cents": 273856837590
+          },
+          "null_counts": {
+            "day_bucket": 0,
+            "trips": 0,
+            "measured_amount_trips": 0,
+            "total_amount_cents": 0,
+            "window_days": 0,
+            "trailing_7d_trips": 0,
+            "trailing_7d_measured_amount_trips": 0,
+            "trailing_7d_total_amount_cents": 0
+          },
+          "physical_arrow_schema": [
+            [
+              "day_bucket",
+              "int64"
+            ],
+            [
+              "trips",
+              "int64"
+            ],
+            [
+              "measured_amount_trips",
+              "int64"
+            ],
+            [
+              "total_amount_cents",
+              "int64"
+            ],
+            [
+              "window_days",
+              "int64"
+            ],
+            [
+              "trailing_7d_trips",
+              "int64"
+            ],
+            [
+              "trailing_7d_measured_amount_trips",
+              "int64"
+            ],
+            [
+              "trailing_7d_total_amount_cents",
+              "int64"
+            ]
+          ],
+          "arrow_ipc_bytes": 5088,
+          "arrow_ipc_sha256": "a97a4b5534208c5dc78b982160d953fd1caeab4806dad7582af6151bd15c3fc3"
+        },
+        "invariants": {
+          "state": "passed",
+          "checks": {
+            "strict_complete_output_order": true,
+            "exact_independent_raw_aggregate_result": true,
+            "calendar_spine": true,
+            "daily_reconciliation": true,
+            "measured_counts": true,
+            "independent_deque_windows": true
+          }
+        }
+      },
+      "errors": [],
+      "matches_direct_clickhouse_canonical_values": true,
+      "state": "passed"
+    },
+    {
+      "case": "oracle-live-monthly_zone_momentum-kelvo-federated",
+      "workflow": "monthly_zone_momentum",
+      "engine": "kelvo-federated",
+      "trial": 1,
+      "execution_state": "succeeded",
+      "artifact": {
+        "state": "passed",
+        "errors": [],
+        "file": {
+          "sha256": "f60624efd86dbceff9c2f24a981ef16835e5a8e84d001d49d6aa01ea0e9fba79",
+          "bytes": 24320
+        },
+        "physical_schema": [
+          {
+            "name": "month",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "borough",
+            "type": "string",
+            "nullable": true
+          },
+          {
+            "name": "zone_id",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "zone_name",
+            "type": "string",
+            "nullable": true
+          },
+          {
+            "name": "trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "previous_trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "trip_change",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "measured_amount_trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "total_amount_cents",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "zone_rank",
+            "type": "int64",
+            "nullable": true
+          }
+        ],
+        "decoded_arrow_bytes": 50576,
+        "arrow_eos_present": true,
+        "canonical": {
+          "rows": 530,
+          "canonical_value_sha256": "57d5468f7fe53bf9f5bd8b8fe80af9a61e0a10b06497f9527b1cc2f84cf42c6f",
+          "integer_sums": {
+            "month": 107008325,
+            "zone_id": 70490,
+            "trips": 14915417,
+            "previous_trips": 14745568,
+            "trip_change": 169849,
+            "measured_amount_trips": 14915417,
+            "total_amount_cents": 28364995564,
+            "zone_rank": 15760
+          },
+          "null_counts": {
+            "month": 0,
+            "borough": 0,
+            "zone_id": 0,
+            "zone_name": 0,
+            "trips": 0,
+            "previous_trips": 0,
+            "trip_change": 0,
+            "measured_amount_trips": 0,
+            "total_amount_cents": 0,
+            "zone_rank": 0
+          },
+          "physical_arrow_schema": [
+            [
+              "month",
+              "int64"
+            ],
+            [
+              "borough",
+              "string"
+            ],
+            [
+              "zone_id",
+              "int64"
+            ],
+            [
+              "zone_name",
+              "string"
+            ],
+            [
+              "trips",
+              "int64"
+            ],
+            [
+              "previous_trips",
+              "int64"
+            ],
+            [
+              "trip_change",
+              "int64"
+            ],
+            [
+              "measured_amount_trips",
+              "int64"
+            ],
+            [
+              "total_amount_cents",
+              "int64"
+            ],
+            [
+              "zone_rank",
+              "int64"
+            ]
+          ],
+          "arrow_ipc_bytes": 24320,
+          "arrow_ipc_sha256": "f60624efd86dbceff9c2f24a981ef16835e5a8e84d001d49d6aa01ea0e9fba79"
+        },
+        "invariants": {
+          "state": "passed",
+          "checks": {
+            "strict_complete_output_order": true,
+            "exact_independent_raw_aggregate_result": true,
+            "full_two_month_zone_grid": true,
+            "previous_month_and_signed_delta": true,
+            "monthly_deterministic_rank": true,
+            "monthly_known_pickup_reconciliation": true
+          }
+        }
+      },
+      "errors": [],
+      "matches_direct_clickhouse_canonical_values": true,
+      "state": "passed"
+    },
+    {
+      "case": "oracle-live-monthly_zone_momentum-kelvo-native",
+      "workflow": "monthly_zone_momentum",
+      "engine": "kelvo-native",
+      "trial": 1,
+      "execution_state": "succeeded",
+      "artifact": {
+        "state": "passed",
+        "errors": [],
+        "file": {
+          "sha256": "103bfb95f564394d1c7a225e533c498d87828c810730af08d407d76413cb5d75",
+          "bytes": 24336
+        },
+        "physical_schema": [
+          {
+            "name": "month",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "borough",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "name": "zone_id",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "zone_name",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "name": "trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "previous_trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "trip_change",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "measured_amount_trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "total_amount_cents",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "zone_rank",
+            "type": "int64",
+            "nullable": false
+          }
+        ],
+        "decoded_arrow_bytes": 50576,
+        "arrow_eos_present": true,
+        "canonical": {
+          "rows": 530,
+          "canonical_value_sha256": "57d5468f7fe53bf9f5bd8b8fe80af9a61e0a10b06497f9527b1cc2f84cf42c6f",
+          "integer_sums": {
+            "month": 107008325,
+            "zone_id": 70490,
+            "trips": 14915417,
+            "previous_trips": 14745568,
+            "trip_change": 169849,
+            "measured_amount_trips": 14915417,
+            "total_amount_cents": 28364995564,
+            "zone_rank": 15760
+          },
+          "null_counts": {
+            "month": 0,
+            "borough": 0,
+            "zone_id": 0,
+            "zone_name": 0,
+            "trips": 0,
+            "previous_trips": 0,
+            "trip_change": 0,
+            "measured_amount_trips": 0,
+            "total_amount_cents": 0,
+            "zone_rank": 0
+          },
+          "physical_arrow_schema": [
+            [
+              "month",
+              "int64"
+            ],
+            [
+              "borough",
+              "string"
+            ],
+            [
+              "zone_id",
+              "int64"
+            ],
+            [
+              "zone_name",
+              "string"
+            ],
+            [
+              "trips",
+              "int64"
+            ],
+            [
+              "previous_trips",
+              "int64"
+            ],
+            [
+              "trip_change",
+              "int64"
+            ],
+            [
+              "measured_amount_trips",
+              "int64"
+            ],
+            [
+              "total_amount_cents",
+              "int64"
+            ],
+            [
+              "zone_rank",
+              "int64"
+            ]
+          ],
+          "arrow_ipc_bytes": 24336,
+          "arrow_ipc_sha256": "103bfb95f564394d1c7a225e533c498d87828c810730af08d407d76413cb5d75"
+        },
+        "invariants": {
+          "state": "passed",
+          "checks": {
+            "strict_complete_output_order": true,
+            "exact_independent_raw_aggregate_result": true,
+            "full_two_month_zone_grid": true,
+            "previous_month_and_signed_delta": true,
+            "monthly_deterministic_rank": true,
+            "monthly_known_pickup_reconciliation": true
+          }
+        }
+      },
+      "errors": [],
+      "matches_direct_clickhouse_canonical_values": true,
+      "state": "passed"
+    },
+    {
+      "case": "oracle-live-route_economics-kelvo-federated",
+      "workflow": "route_economics",
+      "engine": "kelvo-federated",
+      "trial": 1,
+      "execution_state": "succeeded",
+      "artifact": {
+        "state": "passed",
+        "errors": [],
+        "file": {
+          "sha256": "89ee5e4b3aa2caaeb3f1a83efee119b422b1b7d1983839a80bd651a81c630f0c",
+          "bytes": 5696
+        },
+        "physical_schema": [
+          {
+            "name": "pickup_borough",
+            "type": "string",
+            "nullable": true
+          },
+          {
+            "name": "pickup_zone_id",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "pickup_zone_name",
+            "type": "string",
+            "nullable": true
+          },
+          {
+            "name": "dropoff_borough",
+            "type": "string",
+            "nullable": true
+          },
+          {
+            "name": "dropoff_zone_id",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "dropoff_zone_name",
+            "type": "string",
+            "nullable": true
+          },
+          {
+            "name": "trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "total_amount_cents",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "lt_1_mile_trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "ge_1_lt_5_mile_trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "ge_5_le_100_mile_trips",
+            "type": "int64",
+            "nullable": true
+          },
+          {
+            "name": "route_rank",
+            "type": "int64",
+            "nullable": true
+          }
+        ],
+        "decoded_arrow_bytes": 6648,
+        "arrow_eos_present": true,
+        "canonical": {
+          "rows": 53,
+          "canonical_value_sha256": "91e360a36da06cede52d01a8ddaecd10761a0810b32cb9cfb73a87a23080be52",
+          "integer_sums": {
+            "pickup_zone_id": 9627,
+            "dropoff_zone_id": 7747,
+            "trips": 1050733,
+            "total_amount_cents": 2532807906,
+            "lt_1_mile_trips": 418434,
+            "ge_1_lt_5_mile_trips": 352842,
+            "ge_5_le_100_mile_trips": 279457,
+            "route_rank": 279
+          },
+          "null_counts": {
+            "pickup_borough": 0,
+            "pickup_zone_id": 0,
+            "pickup_zone_name": 0,
+            "dropoff_borough": 0,
+            "dropoff_zone_id": 0,
+            "dropoff_zone_name": 0,
+            "trips": 0,
+            "total_amount_cents": 0,
+            "lt_1_mile_trips": 0,
+            "ge_1_lt_5_mile_trips": 0,
+            "ge_5_le_100_mile_trips": 0,
+            "route_rank": 0
+          },
+          "physical_arrow_schema": [
+            [
+              "pickup_borough",
+              "string"
+            ],
+            [
+              "pickup_zone_id",
+              "int64"
+            ],
+            [
+              "pickup_zone_name",
+              "string"
+            ],
+            [
+              "dropoff_borough",
+              "string"
+            ],
+            [
+              "dropoff_zone_id",
+              "int64"
+            ],
+            [
+              "dropoff_zone_name",
+              "string"
+            ],
+            [
+              "trips",
+              "int64"
+            ],
+            [
+              "total_amount_cents",
+              "int64"
+            ],
+            [
+              "lt_1_mile_trips",
+              "int64"
+            ],
+            [
+              "ge_1_lt_5_mile_trips",
+              "int64"
+            ],
+            [
+              "ge_5_le_100_mile_trips",
+              "int64"
+            ],
+            [
+              "route_rank",
+              "int64"
+            ]
+          ],
+          "arrow_ipc_bytes": 5696,
+          "arrow_ipc_sha256": "89ee5e4b3aa2caaeb3f1a83efee119b422b1b7d1983839a80bd651a81c630f0c"
+        },
+        "invariants": {
+          "state": "passed",
+          "checks": {
+            "strict_complete_output_order": true,
+            "exact_independent_raw_aggregate_result": true,
+            "usable_route_counts_and_bands": true,
+            "known_route_dimensions": true,
+            "top_ten_deterministic_rank": true
+          }
+        }
+      },
+      "errors": [],
+      "matches_direct_clickhouse_canonical_values": true,
+      "state": "passed"
+    },
+    {
+      "case": "oracle-live-route_economics-kelvo-native",
+      "workflow": "route_economics",
+      "engine": "kelvo-native",
+      "trial": 1,
+      "execution_state": "succeeded",
+      "artifact": {
+        "state": "passed",
+        "errors": [],
+        "file": {
+          "sha256": "22bf8101dc4272da39c5f14241cdb74888702bf64df1fd1ffcb55c3a1f37a124",
+          "bytes": 5696
+        },
+        "physical_schema": [
+          {
+            "name": "pickup_borough",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "name": "pickup_zone_id",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "pickup_zone_name",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "name": "dropoff_borough",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "name": "dropoff_zone_id",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "dropoff_zone_name",
+            "type": "string",
+            "nullable": false
+          },
+          {
+            "name": "trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "total_amount_cents",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "lt_1_mile_trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "ge_1_lt_5_mile_trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "ge_5_le_100_mile_trips",
+            "type": "int64",
+            "nullable": false
+          },
+          {
+            "name": "route_rank",
+            "type": "int64",
+            "nullable": false
+          }
+        ],
+        "decoded_arrow_bytes": 6648,
+        "arrow_eos_present": true,
+        "canonical": {
+          "rows": 53,
+          "canonical_value_sha256": "91e360a36da06cede52d01a8ddaecd10761a0810b32cb9cfb73a87a23080be52",
+          "integer_sums": {
+            "pickup_zone_id": 9627,
+            "dropoff_zone_id": 7747,
+            "trips": 1050733,
+            "total_amount_cents": 2532807906,
+            "lt_1_mile_trips": 418434,
+            "ge_1_lt_5_mile_trips": 352842,
+            "ge_5_le_100_mile_trips": 279457,
+            "route_rank": 279
+          },
+          "null_counts": {
+            "pickup_borough": 0,
+            "pickup_zone_id": 0,
+            "pickup_zone_name": 0,
+            "dropoff_borough": 0,
+            "dropoff_zone_id": 0,
+            "dropoff_zone_name": 0,
+            "trips": 0,
+            "total_amount_cents": 0,
+            "lt_1_mile_trips": 0,
+            "ge_1_lt_5_mile_trips": 0,
+            "ge_5_le_100_mile_trips": 0,
+            "route_rank": 0
+          },
+          "physical_arrow_schema": [
+            [
+              "pickup_borough",
+              "string"
+            ],
+            [
+              "pickup_zone_id",
+              "int64"
+            ],
+            [
+              "pickup_zone_name",
+              "string"
+            ],
+            [
+              "dropoff_borough",
+              "string"
+            ],
+            [
+              "dropoff_zone_id",
+              "int64"
+            ],
+            [
+              "dropoff_zone_name",
+              "string"
+            ],
+            [
+              "trips",
+              "int64"
+            ],
+            [
+              "total_amount_cents",
+              "int64"
+            ],
+            [
+              "lt_1_mile_trips",
+              "int64"
+            ],
+            [
+              "ge_1_lt_5_mile_trips",
+              "int64"
+            ],
+            [
+              "ge_5_le_100_mile_trips",
+              "int64"
+            ],
+            [
+              "route_rank",
+              "int64"
+            ]
+          ],
+          "arrow_ipc_bytes": 5696,
+          "arrow_ipc_sha256": "22bf8101dc4272da39c5f14241cdb74888702bf64df1fd1ffcb55c3a1f37a124"
+        },
+        "invariants": {
+          "state": "passed",
+          "checks": {
+            "strict_complete_output_order": true,
+            "exact_independent_raw_aggregate_result": true,
+            "usable_route_counts_and_bands": true,
+            "known_route_dimensions": true,
+            "top_ten_deterministic_rank": true
+          }
+        }
+      },
+      "errors": [],
+      "matches_direct_clickhouse_canonical_values": true,
+      "state": "passed"
+    }
+  ],
+  "versions": {
+    "duckdb": "1.5.6",
+    "pyarrow": "25.0.1"
+  },
+  "canonical_implementation_sha256": "cd7e542c62151fecfaf38b5918a6c99238b34e62ab11e29576fdb66f0a196396",
+  "dataset": {
+    "trips": {
+      "rows": 22612607,
+      "files": [
+        {
+          "sha256": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+          "bytes": 372839618,
+          "expected_sha256": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+          "rows": 22612607
+        }
+      ],
+      "hashes_verified": true,
+      "schema_verified": true
+    },
+    "zones": {
+      "rows": 265,
+      "files": [
+        {
+          "sha256": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816",
+          "bytes": 4964,
+          "expected_sha256": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816",
+          "rows": 265
+        }
+      ],
+      "hashes_verified": true,
+      "schema_verified": true
+    }
+  },
+  "raw_audit": {
+    "state": "passed",
+    "checks": {
+      "exact_source_month_rows": true,
+      "source_row_ranges": true,
+      "trip_id_uniqueness_and_formula": true,
+      "normalized_fixture_sentinels": true,
+      "amount_int64_absolute_sum_bound": true,
+      "unique_nonnull_dimension": true,
+      "timestamp_stage_partition": true,
+      "known_timestamp_anomalies": true,
+      "amount_quality_partition": true,
+      "distance_quality_partition": true,
+      "route_stage_partition": true,
+      "known_pickup_month_reconciliation": true
+    },
+    "identity_and_amount_bounds": {
+      "rows": 22612607,
+      "distinct_trip_ids": 22612607,
+      "identity_nulls": 0,
+      "trip_id_formula_mismatches": 0,
+      "trip_id_sum": 4624929309126691,
+      "amount_cents_sum": 40534901730,
+      "amount_cents_absolute_sum": 40603621130,
+      "amount_nulls": 0
+    },
+    "source_months": [
+      {
+        "source_month": 201901,
+        "rows": 7696617,
+        "source_row_min": 0,
+        "source_row_max": 7696616
+      },
+      {
+        "source_month": 201902,
+        "rows": 7049370,
+        "source_row_min": 0,
+        "source_row_max": 7049369
+      },
+      {
+        "source_month": 201903,
+        "rows": 7866620,
+        "source_row_min": 0,
+        "source_row_max": 7866619
+      }
+    ],
+    "dimensions": {
+      "rows": 265,
+      "distinct_zone_ids": 265,
+      "borough_labels": 8,
+      "null_rows": 0
+    },
+    "borough_labels": [
+      "Bronx",
+      "Brooklyn",
+      "EWR",
+      "Manhattan",
+      "N/A",
+      "Queens",
+      "Staten Island",
+      "Unknown"
+    ],
+    "timestamp_stages": {
+      "eligible": 22611807,
+      "before_quarter": 572,
+      "after_quarter": 228
+    },
+    "eligible": {
+      "trips": 22611807,
+      "measured_amount_trips": 22611807,
+      "total_amount_cents": 40533408524,
+      "source_file_pickup_month_mismatches": 873
+    },
+    "source_file_pickup_month_pairs": [
+      {
+        "source_month": 201901,
+        "pickup_month": 201901,
+        "rows": 7696080
+      },
+      {
+        "source_month": 201901,
+        "pickup_month": 201902,
+        "rows": 72
+      },
+      {
+        "source_month": 201901,
+        "pickup_month": 201903,
+        "rows": 5
+      },
+      {
+        "source_month": 201902,
+        "pickup_month": 201901,
+        "rows": 307
+      },
+      {
+        "source_month": 201902,
+        "pickup_month": 201902,
+        "rows": 7048744
+      },
+      {
+        "source_month": 201902,
+        "pickup_month": 201903,
+        "rows": 124
+      },
+      {
+        "source_month": 201903,
+        "pickup_month": 201901,
+        "rows": 3
+      },
+      {
+        "source_month": 201903,
+        "pickup_month": 201902,
+        "rows": 362
+      },
+      {
+        "source_month": 201903,
+        "pickup_month": 201903,
+        "rows": 7866110
+      }
+    ],
+    "zone_quality_within_eligible": {
+      "pickup_null": 0,
+      "pickup_unmatched": 0,
+      "dropoff_null": 0,
+      "dropoff_unmatched": 0,
+      "known_pickup_trips": 22611807,
+      "known_both_zone_trips": 22611807
+    },
+    "amount_distance_quality_within_eligible": {
+      "amount_null": 0,
+      "amount_negative": 28421,
+      "amount_zero": 5173,
+      "amount_positive": 22578213,
+      "distance_null": 0,
+      "distance_nan": 0,
+      "distance_infinite": 0,
+      "distance_nonpositive_finite": 158661,
+      "distance_above_100_finite": 73,
+      "distance_usable": 22453073,
+      "original_amount_null": 0,
+      "original_amount_nan": 0,
+      "original_amount_infinite": 0
+    },
+    "route_exclusion_stages": {
+      "distance_nonpositive_finite": {
+        "trips": 153625,
+        "total_amount_cents": 633941675
+      },
+      "distance_above_100_finite": {
+        "trips": 73,
+        "total_amount_cents": 3288864
+      },
+      "usable_known_pair": {
+        "trips": 22429688,
+        "total_amount_cents": 39930537005
+      },
+      "amount_negative": {
+        "trips": 28421,
+        "total_amount_cents": -34359020
+      }
+    },
+    "route_stage_scope": "Disjoint priority stages in displayed SQL order; amounts are recorded for all stages and may be negative in excluded stages.",
+    "known_pickup_month_totals": [
+      {
+        "month": 201901,
+        "trips": 7696390,
+        "measured_amount_trips": 7696390,
+        "total_amount_cents": 12168412960
+      },
+      {
+        "month": 201902,
+        "trips": 7049178,
+        "measured_amount_trips": 7049178,
+        "total_amount_cents": 13174600679
+      },
+      {
+        "month": 201903,
+        "trips": 7866239,
+        "measured_amount_trips": 7866239,
+        "total_amount_cents": 15190394885
+      }
+    ]
+  },
+  "independent_expectations": {
+    "state": "passed",
+    "checks": {
+      "daily_raw_reconciliation": true,
+      "hourly_known_pickup_reconciliation": true,
+      "route_raw_reconciliation": true,
+      "monthly_raw_reconciliation": true
+    },
+    "details": {
+      "hourly": {
+        "unranked_known_zone_hour_groups": 302953,
+        "borough_hour_partitions": 14482,
+        "unranked_known_pickup_trips": 22611807,
+        "top_three_rows": 31843
+      },
+      "routes": {
+        "raw_known_route_count": 41552,
+        "raw_known_trips": 22429688,
+        "raw_known_amount_cents": 39930537005,
+        "below_threshold_route_count": 34426,
+        "below_threshold_trips": 512849,
+        "below_threshold_amount_cents": 2019538880,
+        "qualified_route_count": 7126,
+        "qualified_trips": 21916839,
+        "qualified_amount_cents": 37910998125,
+        "top_ten_route_count": 53,
+        "top_ten_trips": 1050733,
+        "top_ten_amount_cents": 2532807906,
+        "qualified_not_top_ten_route_count": 7073,
+        "qualified_not_top_ten_trips": 20866106,
+        "qualified_not_top_ten_amount_cents": 35378190219
+      }
+    },
+    "expected_result_rows": {
+      "daily_rolling_kpis": 90,
+      "borough_hour_hotspots": 31843,
+      "route_economics": 53,
+      "monthly_zone_momentum": 530
+    }
+  },
+  "raw_audit_and_expectation_seconds_outside_timing": 9.614997450000374,
+  "result_workflow_coverage": {
+    "daily_rolling_kpis": true,
+    "borough_hour_hotspots": true,
+    "route_economics": true,
+    "monthly_zone_momentum": true
+  },
+  "all_requested_results_passed": true,
+  "all_references_passed": true,
+  "finished_at": "2026-10-02T04:59:39.070222+00:00",
+  "validation_seconds_outside_timing": 10.58836438099388
+}

@@ -1,0 +1,292 @@
+{
+  "schema_version": 1,
+  "purpose": "direct_clickhouse_correctness_reference_preparation",
+  "timed_capacity_evidence": false,
+  "state": "verified",
+  "all_references_verified": true,
+  "source_limits": {
+    "readonly": "1",
+    "default_format": "ArrowStream",
+    "max_threads": "2",
+    "max_memory_usage": "536870912",
+    "max_execution_time": "180",
+    "max_result_bytes": "67108864",
+    "result_overflow_mode": "throw",
+    "output_format_arrow_compression_method": "lz4_frame",
+    "wait_end_of_query": "0",
+    "cancel_http_readonly_queries_on_client_close": "1"
+  },
+  "wire_and_decoded_byte_limit": 67108864,
+  "workflows": {
+    "borough_hour_hotspots": {
+      "state": "verified",
+      "rows": 31843,
+      "canonical_value_sha256": "0917fb3308c8f1ef515ba5d036fb1383c7fae0f243252dd8563e3925bc368e4d",
+      "integer_sums": {
+        "hour_bucket": 13711875364,
+        "zone_id": 4746592,
+        "trips": 5190982,
+        "borough_hour_trips": 67240651,
+        "zone_rank": 57802
+      },
+      "null_counts": {
+        "hour_bucket": 0,
+        "borough": 0,
+        "zone_id": 0,
+        "zone_name": 0,
+        "trips": 0,
+        "borough_hour_trips": 0,
+        "zone_rank": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "hour_bucket",
+          "int64"
+        ],
+        [
+          "borough",
+          "string"
+        ],
+        [
+          "zone_id",
+          "int64"
+        ],
+        [
+          "zone_name",
+          "string"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "borough_hour_trips",
+          "int64"
+        ],
+        [
+          "zone_rank",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 636928,
+      "arrow_ipc_sha256": "8eebcdf245f0df973de8a856ebae6321f700370918f28c0122d9c746f4e6fc2b",
+      "decoded_arrow_bytes": 2248684
+    },
+    "daily_rolling_kpis": {
+      "state": "verified",
+      "rows": 90,
+      "canonical_value_sha256": "33f494435a933e87712d305e75bf28f5428f36335206acb368995a31bc586239",
+      "integer_sums": {
+        "day_bucket": 1614735,
+        "trips": 22611807,
+        "measured_amount_trips": 22611807,
+        "total_amount_cents": 40533408524,
+        "window_days": 609,
+        "trailing_7d_trips": 153128158,
+        "trailing_7d_measured_amount_trips": 153128158,
+        "trailing_7d_total_amount_cents": 273856837590
+      },
+      "null_counts": {
+        "day_bucket": 0,
+        "trips": 0,
+        "measured_amount_trips": 0,
+        "total_amount_cents": 0,
+        "window_days": 0,
+        "trailing_7d_trips": 0,
+        "trailing_7d_measured_amount_trips": 0,
+        "trailing_7d_total_amount_cents": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "day_bucket",
+          "int64"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "measured_amount_trips",
+          "int64"
+        ],
+        [
+          "total_amount_cents",
+          "int64"
+        ],
+        [
+          "window_days",
+          "int64"
+        ],
+        [
+          "trailing_7d_trips",
+          "int64"
+        ],
+        [
+          "trailing_7d_measured_amount_trips",
+          "int64"
+        ],
+        [
+          "trailing_7d_total_amount_cents",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 4808,
+      "arrow_ipc_sha256": "647d0860bbc8393fbbb3514d72808b4935a90cbc503167197ca3a6579ae22e89",
+      "decoded_arrow_bytes": 5760
+    },
+    "monthly_zone_momentum": {
+      "state": "verified",
+      "rows": 530,
+      "canonical_value_sha256": "57d5468f7fe53bf9f5bd8b8fe80af9a61e0a10b06497f9527b1cc2f84cf42c6f",
+      "integer_sums": {
+        "month": 107008325,
+        "zone_id": 70490,
+        "trips": 14915417,
+        "previous_trips": 14745568,
+        "trip_change": 169849,
+        "measured_amount_trips": 14915417,
+        "total_amount_cents": 28364995564,
+        "zone_rank": 15760
+      },
+      "null_counts": {
+        "month": 0,
+        "borough": 0,
+        "zone_id": 0,
+        "zone_name": 0,
+        "trips": 0,
+        "previous_trips": 0,
+        "trip_change": 0,
+        "measured_amount_trips": 0,
+        "total_amount_cents": 0,
+        "zone_rank": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "month",
+          "int64"
+        ],
+        [
+          "borough",
+          "string"
+        ],
+        [
+          "zone_id",
+          "int64"
+        ],
+        [
+          "zone_name",
+          "string"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "previous_trips",
+          "int64"
+        ],
+        [
+          "trip_change",
+          "int64"
+        ],
+        [
+          "measured_amount_trips",
+          "int64"
+        ],
+        [
+          "total_amount_cents",
+          "int64"
+        ],
+        [
+          "zone_rank",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 23728,
+      "arrow_ipc_sha256": "feceaf25e9cc1446cb13e38a820360c79c27a250319a9e0d640fbd86fe2f7186",
+      "decoded_arrow_bytes": 50576
+    },
+    "route_economics": {
+      "state": "verified",
+      "rows": 53,
+      "canonical_value_sha256": "91e360a36da06cede52d01a8ddaecd10761a0810b32cb9cfb73a87a23080be52",
+      "integer_sums": {
+        "pickup_zone_id": 9627,
+        "dropoff_zone_id": 7747,
+        "trips": 1050733,
+        "total_amount_cents": 2532807906,
+        "lt_1_mile_trips": 418434,
+        "ge_1_lt_5_mile_trips": 352842,
+        "ge_5_le_100_mile_trips": 279457,
+        "route_rank": 279
+      },
+      "null_counts": {
+        "pickup_borough": 0,
+        "pickup_zone_id": 0,
+        "pickup_zone_name": 0,
+        "dropoff_borough": 0,
+        "dropoff_zone_id": 0,
+        "dropoff_zone_name": 0,
+        "trips": 0,
+        "total_amount_cents": 0,
+        "lt_1_mile_trips": 0,
+        "ge_1_lt_5_mile_trips": 0,
+        "ge_5_le_100_mile_trips": 0,
+        "route_rank": 0
+      },
+      "physical_arrow_schema": [
+        [
+          "pickup_borough",
+          "string"
+        ],
+        [
+          "pickup_zone_id",
+          "int64"
+        ],
+        [
+          "pickup_zone_name",
+          "string"
+        ],
+        [
+          "dropoff_borough",
+          "string"
+        ],
+        [
+          "dropoff_zone_id",
+          "int64"
+        ],
+        [
+          "dropoff_zone_name",
+          "string"
+        ],
+        [
+          "trips",
+          "int64"
+        ],
+        [
+          "total_amount_cents",
+          "int64"
+        ],
+        [
+          "lt_1_mile_trips",
+          "int64"
+        ],
+        [
+          "ge_1_lt_5_mile_trips",
+          "int64"
+        ],
+        [
+          "ge_5_le_100_mile_trips",
+          "int64"
+        ],
+        [
+          "route_rank",
+          "int64"
+        ]
+      ],
+      "arrow_ipc_bytes": 5408,
+      "arrow_ipc_sha256": "e299eda760130b326a0cc0071dff744be887fb1b95565962c4277ea80108c023",
+      "decoded_arrow_bytes": 6648
+    }
+  }
+}

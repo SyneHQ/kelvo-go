@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "prepared_at": "2026-10-02T04:36:17.370652+00:00",
+  "pyarrow_version": "25.0.1",
+  "source_provenance_sha256": "9f7d1bb351b847ff53a845250e0392d06630d48b7139248895b84696ab168344",
+  "source_files": [
+    {
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2019-01.parquet",
+      "bytes": 110439634,
+      "sha256": "3ad95f39714bfc9864219e69e577f119925c6ba32d384ac68d40bdad1dc7726d",
+      "source_month": 201901,
+      "rows": 7696617
+    },
+    {
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2019-02.parquet",
+      "bytes": 103356025,
+      "sha256": "d20a9e3edf838017ae641e664da085564341c729aed2ee05c7631c74dccf761a",
+      "source_month": 201902,
+      "rows": 7049370
+    },
+    {
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2019-03.parquet",
+      "bytes": 116017372,
+      "sha256": "6883b45b3c1a8908346334b6143804f9dab4a223a72b3b9e3140ef0239920978",
+      "source_month": 201903,
+      "rows": 7866620
+    },
+    {
+      "url": "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv",
+      "bytes": 12331,
+      "sha256": "1a99e105092230f8620f301edcca7f80d3080642ff404d28ed957d3fa222c8ed",
+      "rows": 265
+    }
+  ],
+  "normalization": "federation_capacity.convert",
+  "conversion_script_sha256": "cd7e542c62151fecfaf38b5918a6c99238b34e62ab11e29576fdb66f0a196396",
+  "query_time_preloading": false,
+  "reference_aggregates": {
+    "trip_id_sum": 4624929309126691,
+    "fare_cents_sum": 40534901730,
+    "fare_cents_nulls": 0,
+    "timestamp_nulls": 0,
+    "outside_quarter_timestamps": 800
+  },
+  "datasets": {
+    "trips": {
+      "file": "trips.parquet",
+      "rows": 22612607,
+      "bytes": 372839618,
+      "sha256": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+      "schema": "trip_id: int64 not null\nsource_month: int32 not null\nsource_row: int32 not null\npickup_unix_us: int64\npickup_zone_id: int32\ndropoff_zone_id: int32\npassenger_count: double\ntrip_distance: double\ntotal_amount: double\nfare_cents: int64"
+    },
+    "zones": {
+      "file": "zones.parquet",
+      "rows": 265,
+      "bytes": 4964,
+      "sha256": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816",
+      "schema": "zone_id: int32 not null\nborough: string not null\nzone: string not null\nservice_zone: string not null"
+    }
+  },
+  "clickhouse_reference_aggregates_match": true,
+  "clickhouse_rows": 22612607
+}

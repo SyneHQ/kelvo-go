@@ -1,0 +1,35 @@
+{
+  "azure": {
+    "kernel": "6.12.95+deb12-cloud-amd64",
+    "machine": "x86_64",
+    "visible_logical_cpus": 4,
+    "memory_bytes": {
+      "MemTotal": 33657421824,
+      "MemAvailable": 31271268352
+    },
+    "clickhouse_version": "26.9.7.9",
+    "clickhouse_limits": {
+      "memory_bytes": 4294967296,
+      "nano_cpus": 1500000000
+    },
+    "library_environment": {
+      "python": "3.11.2",
+      "duckdb": "1.5.6",
+      "polars": "1.44.2",
+      "pyarrow": "25.0.1",
+      "pyyaml": "6.0.3"
+    }
+  },
+  "oracle": {
+    "kernel": "7.0.0-1009-oracle",
+    "machine": "x86_64",
+    "visible_logical_cpus": 2,
+    "memory_bytes": {
+      "MemTotal": 997474304,
+      "MemAvailable": 732176384
+    },
+    "shape": "VM.Standard.E2.1.Micro",
+    "tailscaled_active": true
+  },
+  "scope": "Source database runs on Azure; Oracle uses pinned-key SSH forwarding to the private ClickHouse endpoint. No source database is installed on Oracle. Benchmark processes are sequential; libraries use identical normalized local Parquet on Azure."
+}

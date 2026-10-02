@@ -1,0 +1,2905 @@
+{
+  "schema_version": 1,
+  "profile": "azure-snapshot-preflight",
+  "started_at": "2026-10-02T04:46:04.444047+00:00",
+  "state": "execution_complete_validation_pending",
+  "harness_sha256": "10d0c7892872bdae95fb6552041c0e81b17f4387186a3c7a1e674ee55af0f07f",
+  "shared_sampler_sha256": "82a8e82e952263633c1ebfa8ab21d68db8dcfbb9e767b64e88142c8ce60f9fb0",
+  "host": {
+    "logical_cpus": 4,
+    "machine": "x86_64",
+    "kernel": "6.12.95+deb12-cloud-amd64"
+  },
+  "limits": {
+    "max_output_bytes": 67108864,
+    "timeout_seconds": 180,
+    "memory_max_mib": 1536,
+    "threads": 2,
+    "tasks_max": 96,
+    "temp_mib": 2048,
+    "memory_swap_max_bytes": 0,
+    "cpu_weight": 20,
+    "cpu_quota_percent": 200,
+    "cpu_quota_period_usec": 100000,
+    "trials": 1,
+    "disk_reserve_bytes": 67108864,
+    "minimum_scratch_headroom_bytes": 67108864,
+    "log_max_bytes_per_stream": 4194304,
+    "sample_seconds": 0.1,
+    "status_poll_seconds": 0.5
+  },
+  "filesystem": {
+    "type": "ext4",
+    "capacity_bytes": 2040373248,
+    "available_bytes_at_start": 1916186624,
+    "capacity_scope": "shared_workdir_filesystem_including_all_retained_trials_and_other_files",
+    "per_trial_scratch_limit_enforcement": "sampled_soft_limit"
+  },
+  "headline_time_metric": "process_seconds_including_wrapper_and_fsync",
+  "canonical_validation": {
+    "state": "pending_external"
+  },
+  "cases": [
+    {
+      "id": "daily_rolling_kpis-kelvo-snapshot",
+      "panel": "snapshot",
+      "engine": "kelvo-snapshot",
+      "workflow": "daily_rolling_kpis",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "sql": "c44fea405f489e04bebd0aba1835eeb9fdf5602aacac76c1c9475b96f8a59b08"
+      },
+      "expected_rows": 90,
+      "reference_configured": false,
+      "executable_sha256": "fefdba4eaa4b2ac99eaf2878d30cfe80ddeacaf1df4fac1c52182f9ca944d6ac"
+    },
+    {
+      "id": "daily_rolling_kpis-duckdb",
+      "panel": "snapshot",
+      "engine": "duckdb",
+      "workflow": "daily_rolling_kpis",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "driver": "e0e388117de5cd25642996d1f5a917b36338cba10f7ddf22277eaa333ef8870c",
+        "sql": "a47e6b0e77956cef131dde70b3b3648a92c8a5dce2d47b7845d7fb5f12b7b902"
+      },
+      "expected_rows": 90,
+      "reference_configured": false,
+      "executable_sha256": "6d972cf21be56fe3c947ab6ba257ff8d08c342dd2714442986791bd9a6dfabfe"
+    },
+    {
+      "id": "daily_rolling_kpis-polars",
+      "panel": "snapshot",
+      "engine": "polars",
+      "workflow": "daily_rolling_kpis",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "driver": "e0e388117de5cd25642996d1f5a917b36338cba10f7ddf22277eaa333ef8870c",
+        "sql": "a47e6b0e77956cef131dde70b3b3648a92c8a5dce2d47b7845d7fb5f12b7b902"
+      },
+      "expected_rows": 90,
+      "reference_configured": false,
+      "executable_sha256": "6d972cf21be56fe3c947ab6ba257ff8d08c342dd2714442986791bd9a6dfabfe"
+    },
+    {
+      "id": "borough_hour_hotspots-kelvo-snapshot",
+      "panel": "snapshot",
+      "engine": "kelvo-snapshot",
+      "workflow": "borough_hour_hotspots",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "sql": "81edbc72448c8eb3eac85f5f240b39b6e141403f1fc63f0e1dd9660dde94317f"
+      },
+      "reference_configured": false,
+      "executable_sha256": "fefdba4eaa4b2ac99eaf2878d30cfe80ddeacaf1df4fac1c52182f9ca944d6ac"
+    },
+    {
+      "id": "borough_hour_hotspots-duckdb",
+      "panel": "snapshot",
+      "engine": "duckdb",
+      "workflow": "borough_hour_hotspots",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "driver": "e0e388117de5cd25642996d1f5a917b36338cba10f7ddf22277eaa333ef8870c",
+        "sql": "d23b2ff2a97d1d706ac820829cbc7b4aa01b4c84b105a3026fea08ae76020359"
+      },
+      "reference_configured": false,
+      "executable_sha256": "6d972cf21be56fe3c947ab6ba257ff8d08c342dd2714442986791bd9a6dfabfe"
+    },
+    {
+      "id": "borough_hour_hotspots-polars",
+      "panel": "snapshot",
+      "engine": "polars",
+      "workflow": "borough_hour_hotspots",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "driver": "e0e388117de5cd25642996d1f5a917b36338cba10f7ddf22277eaa333ef8870c",
+        "sql": "d23b2ff2a97d1d706ac820829cbc7b4aa01b4c84b105a3026fea08ae76020359"
+      },
+      "reference_configured": false,
+      "executable_sha256": "6d972cf21be56fe3c947ab6ba257ff8d08c342dd2714442986791bd9a6dfabfe"
+    },
+    {
+      "id": "route_economics-kelvo-snapshot",
+      "panel": "snapshot",
+      "engine": "kelvo-snapshot",
+      "workflow": "route_economics",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "sql": "d9c5ac0f7a7cbe1610843dfd782d7f9ac02b56c7821b126af92f42d778de0864"
+      },
+      "reference_configured": false,
+      "executable_sha256": "fefdba4eaa4b2ac99eaf2878d30cfe80ddeacaf1df4fac1c52182f9ca944d6ac"
+    },
+    {
+      "id": "route_economics-duckdb",
+      "panel": "snapshot",
+      "engine": "duckdb",
+      "workflow": "route_economics",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "driver": "e0e388117de5cd25642996d1f5a917b36338cba10f7ddf22277eaa333ef8870c",
+        "sql": "28cbaee7b538a52ad5ea1a634af1ca8e91401c9a8ede6a19dd7e5a421fa5b258"
+      },
+      "reference_configured": false,
+      "executable_sha256": "6d972cf21be56fe3c947ab6ba257ff8d08c342dd2714442986791bd9a6dfabfe"
+    },
+    {
+      "id": "route_economics-polars",
+      "panel": "snapshot",
+      "engine": "polars",
+      "workflow": "route_economics",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "driver": "e0e388117de5cd25642996d1f5a917b36338cba10f7ddf22277eaa333ef8870c",
+        "sql": "28cbaee7b538a52ad5ea1a634af1ca8e91401c9a8ede6a19dd7e5a421fa5b258"
+      },
+      "reference_configured": false,
+      "executable_sha256": "6d972cf21be56fe3c947ab6ba257ff8d08c342dd2714442986791bd9a6dfabfe"
+    },
+    {
+      "id": "monthly_zone_momentum-kelvo-snapshot",
+      "panel": "snapshot",
+      "engine": "kelvo-snapshot",
+      "workflow": "monthly_zone_momentum",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "sql": "cd97d8670fa88788cae2d15a8feb0b06d17969766f23c20da185ac8361c84aa1"
+      },
+      "expected_rows": 530,
+      "reference_configured": false,
+      "executable_sha256": "fefdba4eaa4b2ac99eaf2878d30cfe80ddeacaf1df4fac1c52182f9ca944d6ac"
+    },
+    {
+      "id": "monthly_zone_momentum-duckdb",
+      "panel": "snapshot",
+      "engine": "duckdb",
+      "workflow": "monthly_zone_momentum",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "driver": "e0e388117de5cd25642996d1f5a917b36338cba10f7ddf22277eaa333ef8870c",
+        "sql": "0522c7bc5b3aecba5df0c3235831b3e6cb37e999a0016c43c2e3fa2c8466a9ba"
+      },
+      "expected_rows": 530,
+      "reference_configured": false,
+      "executable_sha256": "6d972cf21be56fe3c947ab6ba257ff8d08c342dd2714442986791bd9a6dfabfe"
+    },
+    {
+      "id": "monthly_zone_momentum-polars",
+      "panel": "snapshot",
+      "engine": "polars",
+      "workflow": "monthly_zone_momentum",
+      "stdout_is_arrow": false,
+      "input_hashes": {
+        "trips": "ade9976a1ea2584dd2d31a8ae877759ee62bfb2b13d650f9eea4f0b186519a85",
+        "zones": "d2ead414696820d9155d741002ddfdd5aa6d353b6baef39d89f2ab87ea9f9816"
+      },
+      "code_hashes": {
+        "driver": "e0e388117de5cd25642996d1f5a917b36338cba10f7ddf22277eaa333ef8870c",
+        "sql": "0522c7bc5b3aecba5df0c3235831b3e6cb37e999a0016c43c2e3fa2c8466a9ba"
+      },
+      "expected_rows": 530,
+      "reference_configured": false,
+      "executable_sha256": "6d972cf21be56fe3c947ab6ba257ff8d08c342dd2714442986791bd9a6dfabfe"
+    }
+  ],
+  "schedule": [
+    {
+      "sequence": 1,
+      "trial": 1,
+      "case": "borough_hour_hotspots-duckdb"
+    },
+    {
+      "sequence": 2,
+      "trial": 1,
+      "case": "borough_hour_hotspots-kelvo-snapshot"
+    },
+    {
+      "sequence": 3,
+      "trial": 1,
+      "case": "borough_hour_hotspots-polars"
+    },
+    {
+      "sequence": 4,
+      "trial": 1,
+      "case": "daily_rolling_kpis-duckdb"
+    },
+    {
+      "sequence": 5,
+      "trial": 1,
+      "case": "daily_rolling_kpis-kelvo-snapshot"
+    },
+    {
+      "sequence": 6,
+      "trial": 1,
+      "case": "daily_rolling_kpis-polars"
+    },
+    {
+      "sequence": 7,
+      "trial": 1,
+      "case": "monthly_zone_momentum-duckdb"
+    },
+    {
+      "sequence": 8,
+      "trial": 1,
+      "case": "monthly_zone_momentum-kelvo-snapshot"
+    },
+    {
+      "sequence": 9,
+      "trial": 1,
+      "case": "monthly_zone_momentum-polars"
+    },
+    {
+      "sequence": 10,
+      "trial": 1,
+      "case": "route_economics-duckdb"
+    },
+    {
+      "sequence": 11,
+      "trial": 1,
+      "case": "route_economics-kelvo-snapshot"
+    },
+    {
+      "sequence": 12,
+      "trial": 1,
+      "case": "route_economics-polars"
+    }
+  ],
+  "results": [
+    {
+      "id": "borough_hour_hotspots-duckdb",
+      "panel": "snapshot",
+      "engine": "duckdb",
+      "workflow": "borough_hour_hotspots",
+      "trial": 1,
+      "sequence": 1,
+      "unit": "kelvo-analytics-fea283df8ba7c93291449a40.service",
+      "started_at": "2026-10-02T04:46:05.125298+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 637248,
+        "sha256": "046d5584b1a44a6c950e5907490463bd490e33637ac650140e502d15cb66d47c",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1916174336,
+      "scratch_headroom_bytes_before_launch": 1773568000,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 1.615512287004094,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 1.6068903190025594,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 18,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10013369600346778,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199584,
+            "role": "coordinator",
+            "rss_bytes_peak": 12140544,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.02,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199586,
+            "role": "worker",
+            "rss_bytes_peak": 267583488,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 1.56,
+            "sampled_system_seconds": 0.08
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.02,
+            "system": 0.0
+          },
+          "worker": {
+            "user": 1.56,
+            "system": 0.08
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 12140544,
+          "worker": 267583488,
+          "combined": 279592960
+        },
+        "cgroup_last_observed": {
+          "memory.current": 7462912,
+          "memory.peak": 201388032,
+          "memory.swap.current": 0,
+          "pids.peak": 7,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 1717315,
+            "user_usec": 1614435,
+            "system_usec": 102880,
+            "nice_usec": 0,
+            "nr_periods": 10,
+            "nr_throttled": 3,
+            "throttled_usec": 9107,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 197718016,
+        "cgroup_memory_peak_bytes": 201388032,
+        "host_memavailable_bytes_baseline": 31203332096,
+        "host_memavailable_bytes_minimum": 31022497792,
+        "host_cpu_delta": {
+          "total_ticks": 643,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 641307,
+          "allocated_bytes": 655360
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1916174336,
+        "filesystem_available_bytes_minimum": 1915523072,
+        "output_bytes_sampled_peak": 637248
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 1722468000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 1.062046,
+      "wrapper_status": {
+        "stdout_bytes_seen": 75,
+        "stdout_bytes_retained": 75,
+        "stderr_bytes_seen": 0,
+        "stderr_bytes_retained": 0,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 0.0006321179971564561,
+      "output_from_verified_successful_process": true,
+      "query_stats": null,
+      "driver_metrics": {
+        "threads": 2,
+        "memory_budget_profile_mb": 1024,
+        "engine_memory_limit_mb": 1024,
+        "configured_temp_mb": 2048,
+        "preload_seconds": 0,
+        "import_seconds": 0.073540998,
+        "setup_seconds": 0.03293071,
+        "rows": 31843,
+        "batches": 1,
+        "arrow_buffer_bytes": 2276551,
+        "wire_bytes": 637248,
+        "query_to_first_arrow_batch_seconds": 0.757160975,
+        "compute_serialize_seconds": 0.818006325,
+        "teardown_seconds": 0.011092104,
+        "in_process_wall_seconds": 0.957162417,
+        "process_cpu_seconds": 1.670549,
+        "process_peak_rss_kib": 261440,
+        "success": true,
+        "source_read_included_in_compute": true,
+        "engine": "duckdb",
+        "implementation": "duckdb_sql",
+        "result_compression": "lz4_frame",
+        "manifest_sha256": "f658d5933bde8fbcfaaa92699ab4692118d23d352bec97dbe1332e0def86f40b",
+        "sql_sha256": "81edbc72448c8eb3eac85f5f240b39b6e141403f1fc63f0e1dd9660dde94317f",
+        "versions": {
+          "duckdb": "1.5.6",
+          "pyarrow": "25.0.1"
+        }
+      },
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:06.758936+00:00"
+    },
+    {
+      "id": "borough_hour_hotspots-kelvo-snapshot",
+      "panel": "snapshot",
+      "engine": "kelvo-snapshot",
+      "workflow": "borough_hour_hotspots",
+      "trial": 1,
+      "sequence": 2,
+      "unit": "kelvo-analytics-9b34dafe19c1a9f9755e8e90.service",
+      "started_at": "2026-10-02T04:46:06.828907+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 671960,
+        "sha256": "19e87be7264ee0f0d516c9da092c6bd682849ecfb46bf16d4997669718222c3f",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1915498496,
+      "scratch_headroom_bytes_before_launch": 1772892160,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 1.0740888380023534,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 1.0652018879991374,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 12,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10012434000236681,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199609,
+            "role": "coordinator",
+            "rss_bytes_peak": 11849728,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.02,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199612,
+            "role": "worker",
+            "rss_bytes_peak": 60903424,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.02,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199622,
+            "role": "worker",
+            "rss_bytes_peak": 215121920,
+            "no_new_privs_observed": true,
+            "seccomp_mode_observed": 2,
+            "seccomp_filters_observed": 1,
+            "sampled_user_seconds": 1.31,
+            "sampled_system_seconds": 0.09
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 2
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.02,
+            "system": 0.0
+          },
+          "worker": {
+            "user": 1.33,
+            "system": 0.09
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 11849728,
+          "worker": 270913536,
+          "combined": 282763264
+        },
+        "cgroup_last_observed": {
+          "memory.current": 30928896,
+          "memory.peak": 186040320,
+          "memory.swap.current": 0,
+          "pids.peak": 19,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 1611155,
+            "user_usec": 1488739,
+            "system_usec": 122416,
+            "nice_usec": 0,
+            "nr_periods": 9,
+            "nr_throttled": 2,
+            "throttled_usec": 4418,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 179761152,
+        "cgroup_memory_peak_bytes": 186040320,
+        "host_memavailable_bytes_baseline": 31136595968,
+        "host_memavailable_bytes_minimum": 31036379136,
+        "host_cpu_delta": {
+          "total_ticks": 427,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 675006,
+          "allocated_bytes": 688128
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1915498496,
+        "filesystem_available_bytes_minimum": 1914814464,
+        "output_bytes_sampled_peak": 671960
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 1618155000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 0.933771,
+      "wrapper_status": {
+        "stdout_bytes_seen": 0,
+        "stdout_bytes_retained": 0,
+        "stderr_bytes_seen": 160,
+        "stderr_bytes_retained": 160,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 0.0006857370026409626,
+      "output_from_verified_successful_process": true,
+      "query_stats": {
+        "rows": 31843,
+        "batches": 16,
+        "arrow_bytes": 2248812,
+        "wire_bytes": 671960,
+        "prepare_ns": 18459775,
+        "duration_ns": 830592075,
+        "engine_streaming": false,
+        "backend": "duckdb",
+        "federation": []
+      },
+      "driver_metrics": null,
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:07.921265+00:00"
+    },
+    {
+      "id": "borough_hour_hotspots-polars",
+      "panel": "snapshot",
+      "engine": "polars",
+      "workflow": "borough_hour_hotspots",
+      "trial": 1,
+      "sequence": 3,
+      "unit": "kelvo-analytics-9f419f3b9fe29d089703200b.service",
+      "started_at": "2026-10-02T04:46:07.983279+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 640080,
+        "sha256": "5fa1f81ada40b4e68a85c4970328e5a73d5418bb11df5631a1af3659e8a25739",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1914789888,
+      "scratch_headroom_bytes_before_launch": 1772183552,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 1.5881563419970917,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 1.5792646699992474,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 17,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10013177800283302,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199645,
+            "role": "coordinator",
+            "rss_bytes_peak": 12005376,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.02,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199648,
+            "role": "worker",
+            "rss_bytes_peak": 581857280,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 2.21,
+            "sampled_system_seconds": 0.23
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.02,
+            "system": 0.0
+          },
+          "worker": {
+            "user": 2.21,
+            "system": 0.23
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 12005376,
+          "worker": 581857280,
+          "combined": 593862656
+        },
+        "cgroup_last_observed": {
+          "memory.current": 498376704,
+          "memory.peak": 499855360,
+          "memory.swap.current": 0,
+          "pids.peak": 19,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 2480551,
+            "user_usec": 2241886,
+            "system_usec": 238665,
+            "nice_usec": 0,
+            "nr_periods": 14,
+            "nr_throttled": 8,
+            "throttled_usec": 59608,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 498376704,
+        "cgroup_memory_peak_bytes": 499855360,
+        "host_memavailable_bytes_baseline": 31141515264,
+        "host_memavailable_bytes_minimum": 30708727808,
+        "host_cpu_delta": {
+          "total_ticks": 637,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 644748,
+          "allocated_bytes": 659456
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1914789888,
+        "filesystem_available_bytes_minimum": 1914134528,
+        "output_bytes_sampled_peak": 640080
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 2523659000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 1.450428,
+      "wrapper_status": {
+        "stdout_bytes_seen": 75,
+        "stdout_bytes_retained": 75,
+        "stderr_bytes_seen": 0,
+        "stderr_bytes_retained": 0,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 0.0006099090023781173,
+      "output_from_verified_successful_process": true,
+      "query_stats": null,
+      "driver_metrics": {
+        "threads": 2,
+        "memory_budget_profile_mb": 1024,
+        "configured_temp_mb": 2048,
+        "preload_seconds": 0,
+        "import_seconds": 0.111289534,
+        "polars_ooc_memory_budget_mb": 1024,
+        "polars_ooc_disk_budget_mb": 2048,
+        "setup_seconds": 0.000272907,
+        "rows": 31843,
+        "batches": 2,
+        "arrow_buffer_bytes": 2248684,
+        "wire_bytes": 640080,
+        "query_to_first_arrow_batch_seconds": 1.143087042,
+        "compute_serialize_seconds": 1.199242719,
+        "teardown_seconds": 0.000118087,
+        "in_process_wall_seconds": 1.33185956,
+        "process_cpu_seconds": 2.4517320000000002,
+        "process_peak_rss_kib": 600864,
+        "success": true,
+        "source_read_included_in_compute": true,
+        "engine": "polars",
+        "implementation": "polars_lazy",
+        "result_compression": "lz4_frame",
+        "execution_engine_requested": "streaming",
+        "manifest_sha256": "f658d5933bde8fbcfaaa92699ab4692118d23d352bec97dbe1332e0def86f40b",
+        "versions": {
+          "polars": "1.44.2",
+          "pyarrow": "25.0.1"
+        }
+      },
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:09.590728+00:00"
+    },
+    {
+      "id": "daily_rolling_kpis-duckdb",
+      "panel": "snapshot",
+      "engine": "duckdb",
+      "workflow": "daily_rolling_kpis",
+      "trial": 1,
+      "sequence": 4,
+      "unit": "kelvo-analytics-0e4e136089fb58284476a110.service",
+      "started_at": "2026-10-02T04:46:09.653189+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 4688,
+        "sha256": "9264fb809290c57bdb8b9a139e6d8ffbbecaa7b722aa35200928ec0ae4338df4",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1914109952,
+      "scratch_headroom_bytes_before_launch": 1771503616,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 1.1031337269960204,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 1.0940907069962122,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 13,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10012260099756531,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199681,
+            "role": "coordinator",
+            "rss_bytes_peak": 11816960,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.01,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199682,
+            "role": "worker",
+            "rss_bytes_peak": 140890112,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.78,
+            "sampled_system_seconds": 0.06
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.01,
+            "system": 0.0
+          },
+          "worker": {
+            "user": 0.78,
+            "system": 0.06
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 11816960,
+          "worker": 140890112,
+          "combined": 152707072
+        },
+        "cgroup_last_observed": {
+          "memory.current": 59654144,
+          "memory.peak": 93741056,
+          "memory.swap.current": 0,
+          "pids.peak": 7,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 880340,
+            "user_usec": 803963,
+            "system_usec": 76376,
+            "nice_usec": 0,
+            "nr_periods": 6,
+            "nr_throttled": 0,
+            "throttled_usec": 0,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 82059264,
+        "cgroup_memory_peak_bytes": 93741056,
+        "host_memavailable_bytes_baseline": 31098830848,
+        "host_memavailable_bytes_minimum": 31069917184,
+        "host_cpu_delta": {
+          "total_ticks": 437,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 8725,
+          "allocated_bytes": 24576
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1914109952,
+        "filesystem_available_bytes_minimum": 1914089472,
+        "output_bytes_sampled_peak": 4688
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 911749000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 0.635345,
+      "wrapper_status": {
+        "stdout_bytes_seen": 72,
+        "stdout_bytes_retained": 72,
+        "stderr_bytes_seen": 0,
+        "stderr_bytes_retained": 0,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 4.658599937101826e-05,
+      "output_from_verified_successful_process": true,
+      "query_stats": null,
+      "driver_metrics": {
+        "threads": 2,
+        "memory_budget_profile_mb": 1024,
+        "engine_memory_limit_mb": 1024,
+        "configured_temp_mb": 2048,
+        "preload_seconds": 0,
+        "import_seconds": 0.072138023,
+        "setup_seconds": 0.031779976,
+        "rows": 90,
+        "batches": 1,
+        "arrow_buffer_bytes": 5856,
+        "wire_bytes": 4688,
+        "query_to_first_arrow_batch_seconds": 0.344992689,
+        "compute_serialize_seconds": 0.396328564,
+        "teardown_seconds": 0.01034548,
+        "in_process_wall_seconds": 0.532345418,
+        "process_cpu_seconds": 0.8594269999999999,
+        "process_peak_rss_kib": 157448,
+        "success": true,
+        "source_read_included_in_compute": true,
+        "engine": "duckdb",
+        "implementation": "duckdb_sql",
+        "result_compression": "lz4_frame",
+        "manifest_sha256": "f658d5933bde8fbcfaaa92699ab4692118d23d352bec97dbe1332e0def86f40b",
+        "sql_sha256": "c44fea405f489e04bebd0aba1835eeb9fdf5602aacac76c1c9475b96f8a59b08",
+        "versions": {
+          "duckdb": "1.5.6",
+          "pyarrow": "25.0.1"
+        }
+      },
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:10.773865+00:00"
+    },
+    {
+      "id": "daily_rolling_kpis-kelvo-snapshot",
+      "panel": "snapshot",
+      "engine": "kelvo-snapshot",
+      "workflow": "daily_rolling_kpis",
+      "trial": 1,
+      "sequence": 5,
+      "unit": "kelvo-analytics-44eb0c2a8d552f8321c5657c.service",
+      "started_at": "2026-10-02T04:46:10.840422+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 5088,
+        "sha256": "90cc40ccde7270c0399fae23ad0c8999939d8d5db936fe4ea4140d7b78a8ea27",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1914064896,
+      "scratch_headroom_bytes_before_launch": 1771458560,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 0.5601410780000151,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 0.5513981520052766,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 7,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10012261399970157,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199703,
+            "role": "coordinator",
+            "rss_bytes_peak": 11874304,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.01,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199706,
+            "role": "worker",
+            "rss_bytes_peak": 58130432,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.0,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199716,
+            "role": "worker",
+            "rss_bytes_peak": 125157376,
+            "no_new_privs_observed": true,
+            "seccomp_mode_observed": 2,
+            "seccomp_filters_observed": 1,
+            "sampled_user_seconds": 0.53,
+            "sampled_system_seconds": 0.07
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 2
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.01,
+            "system": 0.0
+          },
+          "worker": {
+            "user": 0.53,
+            "system": 0.07
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 11874304,
+          "worker": 183287808,
+          "combined": 195162112
+        },
+        "cgroup_last_observed": {
+          "memory.current": 93638656,
+          "memory.peak": 93638656,
+          "memory.swap.current": 0,
+          "pids.peak": 18,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 654501,
+            "user_usec": 558720,
+            "system_usec": 95780,
+            "nice_usec": 0,
+            "nr_periods": 4,
+            "nr_throttled": 1,
+            "throttled_usec": 1163,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 93638656,
+        "cgroup_memory_peak_bytes": 93638656,
+        "host_memavailable_bytes_baseline": 31107043328,
+        "host_memavailable_bytes_minimum": 31071096832,
+        "host_cpu_delta": {
+          "total_ticks": 224,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 8782,
+          "allocated_bytes": 20480
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1914064896,
+        "filesystem_available_bytes_minimum": 1914048512,
+        "output_bytes_sampled_peak": 5088
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 760050000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 0.475778,
+      "wrapper_status": {
+        "stdout_bytes_seen": 0,
+        "stdout_bytes_retained": 0,
+        "stderr_bytes_seen": 151,
+        "stderr_bytes_retained": 151,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 4.687300679506734e-05,
+      "output_from_verified_successful_process": true,
+      "query_stats": {
+        "rows": 90,
+        "batches": 1,
+        "arrow_bytes": 5760,
+        "wire_bytes": 5088,
+        "prepare_ns": 20963119,
+        "duration_ns": 393678130,
+        "engine_streaming": false,
+        "backend": "duckdb",
+        "federation": []
+      },
+      "driver_metrics": null,
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:11.418151+00:00"
+    },
+    {
+      "id": "daily_rolling_kpis-polars",
+      "panel": "snapshot",
+      "engine": "polars",
+      "workflow": "daily_rolling_kpis",
+      "trial": 1,
+      "sequence": 6,
+      "unit": "kelvo-analytics-9ab3900d95e98f15e1b6d9dd.service",
+      "started_at": "2026-10-02T04:46:11.482354+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 5512,
+        "sha256": "84cfac126327d1e53aaab697de8074637c2942215233d84c77e0bebfe7ec2fd9",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1914023936,
+      "scratch_headroom_bytes_before_launch": 1771417600,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 1.1036442940021516,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 1.0947473100022762,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 13,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10012207700492581,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199735,
+            "role": "coordinator",
+            "rss_bytes_peak": 11874304,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.01,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199736,
+            "role": "worker",
+            "rss_bytes_peak": 313286656,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.81,
+            "sampled_system_seconds": 0.08
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.01,
+            "system": 0.0
+          },
+          "worker": {
+            "user": 0.81,
+            "system": 0.08
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 11874304,
+          "worker": 313286656,
+          "combined": 325160960
+        },
+        "cgroup_last_observed": {
+          "memory.current": 124006400,
+          "memory.peak": 124178432,
+          "memory.swap.current": 0,
+          "pids.peak": 19,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 915734,
+            "user_usec": 831390,
+            "system_usec": 84343,
+            "nice_usec": 0,
+            "nr_periods": 6,
+            "nr_throttled": 2,
+            "throttled_usec": 7890,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 124006400,
+        "cgroup_memory_peak_bytes": 124178432,
+        "host_memavailable_bytes_baseline": 31117565952,
+        "host_memavailable_bytes_minimum": 31078895616,
+        "host_cpu_delta": {
+          "total_ticks": 437,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 10147,
+          "allocated_bytes": 24576
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1914023936,
+        "filesystem_available_bytes_minimum": 1914003456,
+        "output_bytes_sampled_peak": 5512
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 954624000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 0.642607,
+      "wrapper_status": {
+        "stdout_bytes_seen": 72,
+        "stdout_bytes_retained": 72,
+        "stderr_bytes_seen": 0,
+        "stderr_bytes_retained": 0,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 4.80719972983934e-05,
+      "output_from_verified_successful_process": true,
+      "query_stats": null,
+      "driver_metrics": {
+        "threads": 2,
+        "memory_budget_profile_mb": 1024,
+        "configured_temp_mb": 2048,
+        "preload_seconds": 0,
+        "import_seconds": 0.111696887,
+        "polars_ooc_memory_budget_mb": 1024,
+        "polars_ooc_disk_budget_mb": 2048,
+        "setup_seconds": 0.000273687,
+        "rows": 90,
+        "batches": 2,
+        "arrow_buffer_bytes": 5760,
+        "wire_bytes": 5512,
+        "query_to_first_arrow_batch_seconds": 0.354753902,
+        "compute_serialize_seconds": 0.39804522,
+        "teardown_seconds": 9.0723e-05,
+        "in_process_wall_seconds": 0.531428664,
+        "process_cpu_seconds": 0.8928759999999999,
+        "process_peak_rss_kib": 329880,
+        "success": true,
+        "source_read_included_in_compute": true,
+        "engine": "polars",
+        "implementation": "polars_lazy",
+        "result_compression": "lz4_frame",
+        "execution_engine_requested": "streaming",
+        "manifest_sha256": "f658d5933bde8fbcfaaa92699ab4692118d23d352bec97dbe1332e0def86f40b",
+        "versions": {
+          "polars": "1.44.2",
+          "pyarrow": "25.0.1"
+        }
+      },
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:12.603742+00:00"
+    },
+    {
+      "id": "monthly_zone_momentum-duckdb",
+      "panel": "snapshot",
+      "engine": "duckdb",
+      "workflow": "monthly_zone_momentum",
+      "trial": 1,
+      "sequence": 7,
+      "unit": "kelvo-analytics-feb159997c2be517822fc326.service",
+      "started_at": "2026-10-02T04:46:12.665097+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 23808,
+        "sha256": "5b72471b8174e1b95d4248691789695eb922dd427e8fb0bfa0bd10502c528369",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1913978880,
+      "scratch_headroom_bytes_before_launch": 1771372544,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 1.0728048079981818,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 1.0641643799972371,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 12,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10012228199775564,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199769,
+            "role": "coordinator",
+            "rss_bytes_peak": 12005376,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.01,
+            "sampled_system_seconds": 0.01
+          },
+          {
+            "pid": 199772,
+            "role": "worker",
+            "rss_bytes_peak": 206540800,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.79,
+            "sampled_system_seconds": 0.08
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.01,
+            "system": 0.01
+          },
+          "worker": {
+            "user": 0.79,
+            "system": 0.08
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 12005376,
+          "worker": 206540800,
+          "combined": 218546176
+        },
+        "cgroup_last_observed": {
+          "memory.current": 138735616,
+          "memory.peak": 138735616,
+          "memory.swap.current": 0,
+          "pids.peak": 7,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 907041,
+            "user_usec": 811563,
+            "system_usec": 95478,
+            "nice_usec": 0,
+            "nr_periods": 6,
+            "nr_throttled": 1,
+            "throttled_usec": 2277,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 138735616,
+        "cgroup_memory_peak_bytes": 138735616,
+        "host_memavailable_bytes_baseline": 31149629440,
+        "host_memavailable_bytes_minimum": 31047835648,
+        "host_cpu_delta": {
+          "total_ticks": 428,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 27862,
+          "allocated_bytes": 40960
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1913978880,
+        "filesystem_available_bytes_minimum": 1913942016,
+        "output_bytes_sampled_peak": 23808
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 947031000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 0.659168,
+      "wrapper_status": {
+        "stdout_bytes_seen": 75,
+        "stdout_bytes_retained": 75,
+        "stderr_bytes_seen": 0,
+        "stderr_bytes_retained": 0,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 6.192000000737607e-05,
+      "output_from_verified_successful_process": true,
+      "query_stats": null,
+      "driver_metrics": {
+        "threads": 2,
+        "memory_budget_profile_mb": 1024,
+        "engine_memory_limit_mb": 1024,
+        "configured_temp_mb": 2048,
+        "preload_seconds": 0,
+        "import_seconds": 0.07368355,
+        "setup_seconds": 0.031191399,
+        "rows": 530,
+        "batches": 1,
+        "arrow_buffer_bytes": 51246,
+        "wire_bytes": 23808,
+        "query_to_first_arrow_batch_seconds": 0.368042487,
+        "compute_serialize_seconds": 0.418520151,
+        "teardown_seconds": 0.011054735,
+        "in_process_wall_seconds": 0.555375035,
+        "process_cpu_seconds": 0.894331,
+        "process_peak_rss_kib": 201828,
+        "success": true,
+        "source_read_included_in_compute": true,
+        "engine": "duckdb",
+        "implementation": "duckdb_sql",
+        "result_compression": "lz4_frame",
+        "manifest_sha256": "f658d5933bde8fbcfaaa92699ab4692118d23d352bec97dbe1332e0def86f40b",
+        "sql_sha256": "cd97d8670fa88788cae2d15a8feb0b06d17969766f23c20da185ac8361c84aa1",
+        "versions": {
+          "duckdb": "1.5.6",
+          "pyarrow": "25.0.1"
+        }
+      },
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:13.755011+00:00"
+    },
+    {
+      "id": "monthly_zone_momentum-kelvo-snapshot",
+      "panel": "snapshot",
+      "engine": "kelvo-snapshot",
+      "workflow": "monthly_zone_momentum",
+      "trial": 1,
+      "sequence": 8,
+      "unit": "kelvo-analytics-86db9c83ccb51bb25a5dd53b.service",
+      "started_at": "2026-10-02T04:46:13.819430+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 24320,
+        "sha256": "f60624efd86dbceff9c2f24a981ef16835e5a8e84d001d49d6aa01ea0e9fba79",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1913917440,
+      "scratch_headroom_bytes_before_launch": 1771311104,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 1.0707462759964983,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 1.0620567639998626,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 12,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.1001237719974597,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199791,
+            "role": "coordinator",
+            "rss_bytes_peak": 11976704,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.02,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199794,
+            "role": "worker",
+            "rss_bytes_peak": 57810944,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.0,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199804,
+            "role": "worker",
+            "rss_bytes_peak": 122683392,
+            "no_new_privs_observed": true,
+            "seccomp_mode_observed": 2,
+            "seccomp_filters_observed": 1,
+            "sampled_user_seconds": 0.56,
+            "sampled_system_seconds": 0.05
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 2
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.02,
+            "system": 0.0
+          },
+          "worker": {
+            "user": 0.56,
+            "system": 0.05
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 11976704,
+          "worker": 180494336,
+          "combined": 192471040
+        },
+        "cgroup_last_observed": {
+          "memory.current": 7487488,
+          "memory.peak": 123592704,
+          "memory.swap.current": 0,
+          "pids.peak": 18,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 796670,
+            "user_usec": 704593,
+            "system_usec": 92077,
+            "nice_usec": 0,
+            "nr_periods": 5,
+            "nr_throttled": 0,
+            "throttled_usec": 0,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 89657344,
+        "cgroup_memory_peak_bytes": 123592704,
+        "host_memavailable_bytes_baseline": 31083339776,
+        "host_memavailable_bytes_minimum": 31051489280,
+        "host_cpu_delta": {
+          "total_ticks": 430,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 28718,
+          "allocated_bytes": 36864
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1913917440,
+        "filesystem_available_bytes_minimum": 1913884672,
+        "output_bytes_sampled_peak": 24320
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 802984000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 0.525592,
+      "wrapper_status": {
+        "stdout_bytes_seen": 0,
+        "stdout_bytes_retained": 0,
+        "stderr_bytes_seen": 154,
+        "stderr_bytes_retained": 154,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 6.39749996480532e-05,
+      "output_from_verified_successful_process": true,
+      "query_stats": {
+        "rows": 530,
+        "batches": 1,
+        "arrow_bytes": 50584,
+        "wire_bytes": 24320,
+        "prepare_ns": 19024849,
+        "duration_ns": 416975281,
+        "engine_streaming": false,
+        "backend": "duckdb",
+        "federation": []
+      },
+      "driver_metrics": null,
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:14.907934+00:00"
+    },
+    {
+      "id": "monthly_zone_momentum-polars",
+      "panel": "snapshot",
+      "engine": "polars",
+      "workflow": "monthly_zone_momentum",
+      "trial": 1,
+      "sequence": 9,
+      "unit": "kelvo-analytics-c20cd70c87db83c78f4143e8.service",
+      "started_at": "2026-10-02T04:46:14.976158+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 27304,
+        "sha256": "626ff03cfd7cd91b7e0403270c40c6ea9f2e00caf14612ad4ff2bf16af2c2fec",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1913860096,
+      "scratch_headroom_bytes_before_launch": 1771253760,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 1.1157977900002152,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 1.1070945500032394,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 13,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.1001615440036403,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199825,
+            "role": "coordinator",
+            "rss_bytes_peak": 11862016,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.02,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199826,
+            "role": "worker",
+            "rss_bytes_peak": 376844288,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 1.17,
+            "sampled_system_seconds": 0.07
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.02,
+            "system": 0.0
+          },
+          "worker": {
+            "user": 1.17,
+            "system": 0.07
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 11862016,
+          "worker": 376844288,
+          "combined": 388706304
+        },
+        "cgroup_last_observed": {
+          "memory.current": 148979712,
+          "memory.peak": 157335552,
+          "memory.swap.current": 0,
+          "pids.peak": 19,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 1271810,
+            "user_usec": 1195097,
+            "system_usec": 76712,
+            "nice_usec": 0,
+            "nr_periods": 8,
+            "nr_throttled": 1,
+            "throttled_usec": 1869,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 152272896,
+        "cgroup_memory_peak_bytes": 157335552,
+        "host_memavailable_bytes_baseline": 31091306496,
+        "host_memavailable_bytes_minimum": 30931275776,
+        "host_cpu_delta": {
+          "total_ticks": 443,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 31958,
+          "allocated_bytes": 45056
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1913860096,
+        "filesystem_available_bytes_minimum": 1913819136,
+        "output_bytes_sampled_peak": 27304
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 1295847000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 0.829658,
+      "wrapper_status": {
+        "stdout_bytes_seen": 75,
+        "stdout_bytes_retained": 75,
+        "stderr_bytes_seen": 0,
+        "stderr_bytes_retained": 0,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 6.957000005058944e-05,
+      "output_from_verified_successful_process": true,
+      "query_stats": null,
+      "driver_metrics": {
+        "threads": 2,
+        "memory_budget_profile_mb": 1024,
+        "configured_temp_mb": 2048,
+        "preload_seconds": 0,
+        "import_seconds": 0.132156232,
+        "polars_ooc_memory_budget_mb": 1024,
+        "polars_ooc_disk_budget_mb": 2048,
+        "setup_seconds": 0.000415745,
+        "rows": 530,
+        "batches": 2,
+        "arrow_buffer_bytes": 50576,
+        "wire_bytes": 27304,
+        "query_to_first_arrow_batch_seconds": 0.517985934,
+        "compute_serialize_seconds": 0.561669011,
+        "teardown_seconds": 0.000110938,
+        "in_process_wall_seconds": 0.717545679,
+        "process_cpu_seconds": 1.231225,
+        "process_peak_rss_kib": 380172,
+        "success": true,
+        "source_read_included_in_compute": true,
+        "engine": "polars",
+        "implementation": "polars_lazy",
+        "result_compression": "lz4_frame",
+        "execution_engine_requested": "streaming",
+        "manifest_sha256": "f658d5933bde8fbcfaaa92699ab4692118d23d352bec97dbe1332e0def86f40b",
+        "versions": {
+          "polars": "1.44.2",
+          "pyarrow": "25.0.1"
+        }
+      },
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:16.109193+00:00"
+    },
+    {
+      "id": "route_economics-duckdb",
+      "panel": "snapshot",
+      "engine": "duckdb",
+      "workflow": "route_economics",
+      "trial": 1,
+      "sequence": 10,
+      "unit": "kelvo-analytics-9b184bfd5daf22119a871038.service",
+      "started_at": "2026-10-02T04:46:16.174448+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 5456,
+        "sha256": "d85c5411d1f99d4145b7b655cf118627e3dff068bfa52af73089ac90c1bb8874",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1913794560,
+      "scratch_headroom_bytes_before_launch": 1771188224,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 2.1362154450034723,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 2.127248065000458,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 23,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10012308599834796,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199859,
+            "role": "coordinator",
+            "rss_bytes_peak": 12034048,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.01,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199862,
+            "role": "worker",
+            "rss_bytes_peak": 206151680,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 2.95,
+            "sampled_system_seconds": 0.12
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.01,
+            "system": 0.0
+          },
+          "worker": {
+            "user": 2.95,
+            "system": 0.12
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 12034048,
+          "worker": 206151680,
+          "combined": 217923584
+        },
+        "cgroup_last_observed": {
+          "memory.current": 6365184,
+          "memory.peak": 144588800,
+          "memory.swap.current": 0,
+          "pids.peak": 7,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 3158567,
+            "user_usec": 3026627,
+            "system_usec": 131940,
+            "nice_usec": 0,
+            "nr_periods": 17,
+            "nr_throttled": 4,
+            "throttled_usec": 6993,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 139677696,
+        "cgroup_memory_peak_bytes": 144588800,
+        "host_memavailable_bytes_baseline": 31019290624,
+        "host_memavailable_bytes_minimum": 30952980480,
+        "host_cpu_delta": {
+          "total_ticks": 851,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 9459,
+          "allocated_bytes": 24576
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1913794560,
+        "filesystem_available_bytes_minimum": 1913774080,
+        "output_bytes_sampled_peak": 5456
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 3163349000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 1.78123,
+      "wrapper_status": {
+        "stdout_bytes_seen": 69,
+        "stdout_bytes_retained": 69,
+        "stderr_bytes_seen": 0,
+        "stderr_bytes_retained": 0,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 4.727600025944412e-05,
+      "output_from_verified_successful_process": true,
+      "query_stats": null,
+      "driver_metrics": {
+        "threads": 2,
+        "memory_budget_profile_mb": 1024,
+        "engine_memory_limit_mb": 1024,
+        "configured_temp_mb": 2048,
+        "preload_seconds": 0,
+        "import_seconds": 0.07316433,
+        "setup_seconds": 0.032469048,
+        "rows": 53,
+        "batches": 1,
+        "arrow_buffer_bytes": 6732,
+        "wire_bytes": 5456,
+        "query_to_first_arrow_batch_seconds": 1.473022845,
+        "compute_serialize_seconds": 1.523276507,
+        "teardown_seconds": 0.016364925,
+        "in_process_wall_seconds": 1.666439536,
+        "process_cpu_seconds": 3.110258,
+        "process_peak_rss_kib": 207856,
+        "success": true,
+        "source_read_included_in_compute": true,
+        "engine": "duckdb",
+        "implementation": "duckdb_sql",
+        "result_compression": "lz4_frame",
+        "manifest_sha256": "f658d5933bde8fbcfaaa92699ab4692118d23d352bec97dbe1332e0def86f40b",
+        "sql_sha256": "d9c5ac0f7a7cbe1610843dfd782d7f9ac02b56c7821b126af92f42d778de0864",
+        "versions": {
+          "duckdb": "1.5.6",
+          "pyarrow": "25.0.1"
+        }
+      },
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:18.328274+00:00"
+    },
+    {
+      "id": "route_economics-kelvo-snapshot",
+      "panel": "snapshot",
+      "engine": "kelvo-snapshot",
+      "workflow": "route_economics",
+      "trial": 1,
+      "sequence": 11,
+      "unit": "kelvo-analytics-6a555de98782bae2eca75b07.service",
+      "started_at": "2026-10-02T04:46:18.404032+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 5696,
+        "sha256": "89ee5e4b3aa2caaeb3f1a83efee119b422b1b7d1983839a80bd651a81c630f0c",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1913745408,
+      "scratch_headroom_bytes_before_launch": 1771139072,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 1.6219681650036364,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 1.6131700830010232,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 18,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10016324000025634,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199885,
+            "role": "coordinator",
+            "rss_bytes_peak": 11878400,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.01,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199886,
+            "role": "worker",
+            "rss_bytes_peak": 58130432,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.0,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199898,
+            "role": "worker",
+            "rss_bytes_peak": 167354368,
+            "no_new_privs_observed": true,
+            "seccomp_mode_observed": 2,
+            "seccomp_filters_observed": 1,
+            "sampled_user_seconds": 2.65,
+            "sampled_system_seconds": 0.09
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 2
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.01,
+            "system": 0.0
+          },
+          "worker": {
+            "user": 2.65,
+            "system": 0.09
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 11878400,
+          "worker": 225484800,
+          "combined": 237363200
+        },
+        "cgroup_last_observed": {
+          "memory.current": 133525504,
+          "memory.peak": 133988352,
+          "memory.swap.current": 0,
+          "pids.peak": 18,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 2800034,
+            "user_usec": 2684198,
+            "system_usec": 115835,
+            "nice_usec": 0,
+            "nr_periods": 15,
+            "nr_throttled": 4,
+            "throttled_usec": 4256,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 133525504,
+        "cgroup_memory_peak_bytes": 133988352,
+        "host_memavailable_bytes_baseline": 31080091648,
+        "host_memavailable_bytes_minimum": 31042224128,
+        "host_cpu_delta": {
+          "total_ticks": 648,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 10374,
+          "allocated_bytes": 24576
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1913745408,
+        "filesystem_available_bytes_minimum": 1913729024,
+        "output_bytes_sampled_peak": 5696
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 2820790000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 1.52063,
+      "wrapper_status": {
+        "stdout_bytes_seen": 0,
+        "stdout_bytes_retained": 0,
+        "stderr_bytes_seen": 152,
+        "stderr_bytes_retained": 152,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 4.7481000365223736e-05,
+      "output_from_verified_successful_process": true,
+      "query_stats": {
+        "rows": 53,
+        "batches": 1,
+        "arrow_bytes": 6664,
+        "wire_bytes": 5696,
+        "prepare_ns": 19170868,
+        "duration_ns": 1434617162,
+        "engine_streaming": false,
+        "backend": "duckdb",
+        "federation": []
+      },
+      "driver_metrics": null,
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:20.043546+00:00"
+    },
+    {
+      "id": "route_economics-polars",
+      "panel": "snapshot",
+      "engine": "polars",
+      "workflow": "route_economics",
+      "trial": 1,
+      "sequence": 12,
+      "unit": "kelvo-analytics-82ff32afe284ad48c39b85c1.service",
+      "started_at": "2026-10-02T04:46:20.109350+00:00",
+      "execution_state": "succeeded",
+      "artifact_validation": {
+        "state": "byte_integrity_observed",
+        "bytes": 6944,
+        "sha256": "60e6a4224245c4dc386214df8fa495fa75518138020e36af1f7231546be1ec52",
+        "arrow_eos_present": true
+      },
+      "canonical_validation": {
+        "state": "pending_external"
+      },
+      "errors": [],
+      "unit_cleanup": {
+        "stop_exit_status": 0,
+        "stop_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 0
+          }
+        ],
+        "reset-failed_exit_status": 1,
+        "reset-failed_attempts": [
+          {
+            "attempt": 1,
+            "exit_status": 1
+          }
+        ],
+        "cgroup_empty": true
+      },
+      "control_status_timeout_count": 0,
+      "control_status_timeouts": [],
+      "final_status_uncertain": false,
+      "filesystem_available_bytes_before_launch": 1913704448,
+      "scratch_headroom_bytes_before_launch": 1771098112,
+      "systemd_run_exit_status": 0,
+      "last_status_elapsed_seconds": 1.58604240600107,
+      "service_limits_verified": true,
+      "wall_seconds_including_service_start_and_status_poll": 1.5770853939975495,
+      "final_status_observation": "final_read",
+      "metrics": {
+        "samples": 17,
+        "interval_seconds": 0.1,
+        "maximum_sample_gap_seconds": 0.10012739599915221,
+        "sampling_errors": [],
+        "processes": [
+          {
+            "pid": 199921,
+            "role": "coordinator",
+            "rss_bytes_peak": 12210176,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 0.02,
+            "sampled_system_seconds": 0.0
+          },
+          {
+            "pid": 199924,
+            "role": "worker",
+            "rss_bytes_peak": 662786048,
+            "no_new_privs_observed": false,
+            "seccomp_mode_observed": 0,
+            "seccomp_filters_observed": 0,
+            "sampled_user_seconds": 1.56,
+            "sampled_system_seconds": 0.17
+          }
+        ],
+        "observed_process_counts": {
+          "coordinator": 1,
+          "worker": 1
+        },
+        "sampled_cpu_seconds_by_role": {
+          "coordinator": {
+            "user": 0.02,
+            "system": 0.0
+          },
+          "worker": {
+            "user": 1.56,
+            "system": 0.17
+          }
+        },
+        "sampled_rss_bytes_peak": {
+          "coordinator": 12210176,
+          "worker": 662786048,
+          "combined": 674603008
+        },
+        "cgroup_last_observed": {
+          "memory.current": 6172672,
+          "memory.peak": 370749440,
+          "memory.swap.current": 0,
+          "pids.peak": 19,
+          "memory.events": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "memory.events.local": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          },
+          "cpu.stat": {
+            "usage_usec": 1812635,
+            "user_usec": 1632572,
+            "system_usec": 180063,
+            "nice_usec": 0,
+            "nr_periods": 11,
+            "nr_throttled": 3,
+            "throttled_usec": 17257,
+            "nr_bursts": 0,
+            "burst_usec": 0
+          },
+          "pids.events": {
+            "max": 0
+          },
+          "cpu.max": {
+            "quota_usec": 200000,
+            "period_usec": 100000
+          }
+        },
+        "cgroup_exists_at_final_sample": false,
+        "cgroup_memory_current_bytes_sampled_peak": 363089920,
+        "cgroup_memory_peak_bytes": 370749440,
+        "host_memavailable_bytes_baseline": 31085998080,
+        "host_memavailable_bytes_minimum": 30767030272,
+        "host_cpu_delta": {
+          "total_ticks": 629,
+          "steal_ticks": 0,
+          "clock_ticks_per_second": 100,
+          "steal_seconds": 0.0,
+          "steal_fraction": 0.0
+        },
+        "run_files_bytes_peak": {
+          "logical_bytes": 11547,
+          "allocated_bytes": 24576
+        },
+        "scratch_files_bytes_peak": {
+          "logical_bytes": 0,
+          "allocated_bytes": 0
+        },
+        "filesystem_available_bytes_baseline": 1913704448,
+        "filesystem_available_bytes_minimum": 1913683968,
+        "output_bytes_sampled_peak": 6944
+      },
+      "unit_exit": {
+        "ActiveState": "active",
+        "SubState": "exited",
+        "Result": "success",
+        "ExecMainCode": 1,
+        "ExecMainStatus": 0
+      },
+      "systemd_accounting": {
+        "CPUUsageNSec": 1817466000
+      },
+      "oom_kill_observed": false,
+      "oom_event_observed": false,
+      "task_limit_event_observed": false,
+      "process_exit_status_verified": true,
+      "process_seconds_including_wrapper_and_fsync": 1.081162,
+      "wrapper_status": {
+        "stdout_bytes_seen": 69,
+        "stdout_bytes_retained": 69,
+        "stderr_bytes_seen": 0,
+        "stderr_bytes_retained": 0,
+        "command_returncode": 0,
+        "output_fsynced": true,
+        "errors": []
+      },
+      "artifact_hash_seconds_outside_process_timing": 4.869200347457081e-05,
+      "output_from_verified_successful_process": true,
+      "query_stats": null,
+      "driver_metrics": {
+        "threads": 2,
+        "memory_budget_profile_mb": 1024,
+        "configured_temp_mb": 2048,
+        "preload_seconds": 0,
+        "import_seconds": 0.111299033,
+        "polars_ooc_memory_budget_mb": 1024,
+        "polars_ooc_disk_budget_mb": 2048,
+        "setup_seconds": 0.000305524,
+        "rows": 53,
+        "batches": 2,
+        "arrow_buffer_bytes": 6648,
+        "wire_bytes": 6944,
+        "query_to_first_arrow_batch_seconds": 0.784466215,
+        "compute_serialize_seconds": 0.831076169,
+        "teardown_seconds": 0.000114325,
+        "in_process_wall_seconds": 0.963949664,
+        "process_cpu_seconds": 1.747201,
+        "process_peak_rss_kib": 647252,
+        "success": true,
+        "source_read_included_in_compute": true,
+        "engine": "polars",
+        "implementation": "polars_lazy",
+        "result_compression": "lz4_frame",
+        "execution_engine_requested": "streaming",
+        "manifest_sha256": "f658d5933bde8fbcfaaa92699ab4692118d23d352bec97dbe1332e0def86f40b",
+        "versions": {
+          "polars": "1.44.2",
+          "pyarrow": "25.0.1"
+        }
+      },
+      "trial_state": "execution_and_byte_checks_passed",
+      "finished_at": "2026-10-02T04:46:21.713720+00:00"
+    }
+  ],
+  "limitations": [
+    "Execution success, byte SHA256 and Arrow EOS do not verify schema, rows, NULL semantics or values; canonical comparison remains external and pending.",
+    "Headline time includes the fresh wrapper, interpreter and driver, complete Arrow output, captured logs, metadata and fsync. Hashing and external canonical decoding are outside it.",
+    "Wall time includes scheduling and polling delay; the headline uses systemd process start/exit timestamps. Forced-stop failure counters end before cleanup.",
+    "No caches are dropped. Trial number is outermost, workflows/panels are sorted, and sorted engine order rotates by trial. There are no hidden retries or concurrent timed services in this runner.",
+    "Two-thread environment settings and a 200% cgroup CPU quota are common limits, not proof of equal VM entitlement or exactly two OS threads. Host steal and unrelated activity are reported.",
+    "Cgroup memory includes page cache. Summed process RSS can double-count shared pages; process samples may miss brief peaks or short-lived descendants.",
+    "Executable hashing before trials warms executable pages outside the service cgroup; dynamic engine libraries may first load inside it. Cgroup memory alone is not a total deployment RAM comparison.",
+    "Process roles coordinator and worker mean wrapper and command/descendants, respectively; orphan reparenting can affect this sampled classification.",
+    "Scratch and directory byte limits are sampled soft limits. Any external filesystem capacity applies to all retained outputs, logs, metadata and scratch together; nominal temp size is not reserved per trial.",
+    "The shared filesystem capacity is observed, not provisioned or independently certified as an isolated quota by this script. Input files may reside elsewhere.",
+    "Native source database execution and network paths are outside the local cgroup. Cross-host timing and remote pushdown cannot establish same-input local-library speedups.",
+    "Federation fetched rows/Arrow bytes describe adapter output, not database storage scans. Supported source wire counters exclude HTTP/TLS framing and discovery.",
+    "The command owns engine memory/temp/thread options beyond the forced environment and cgroup; a manifest must configure corresponding engine options consistently.",
+    "Status timeouts are retried inside the original deadline; last known status and uncertainty survive failed observations. Exact-unit cleanup must establish an empty cgroup before further timed work.",
+    "Only recognized sidecar counters and versions are copied; declared input/code hashes and expected canonical values are provenance claims pending independent validation."
+  ],
+  "finished_at": "2026-10-02T04:46:21.752044+00:00",
+  "all_execution_and_byte_checks_passed": true
+}
