@@ -35,10 +35,19 @@ func (d scanDialect) quoteIdentifier(name string) (string, error) {
 		return "", query.NewError("UNSUPPORTED", "Federation column identifier is unsupported")
 	}
 	switch d {
-	case dialectPostgres:
+	case dialectPostgres, dialectOracle, dialectSnowflake:
 		return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`, nil
-	case dialectMySQL:
+	case dialectMySQL, dialectDatabricks:
 		return "`" + strings.ReplaceAll(name, "`", "``") + "`", nil
+	case dialectSQLServer:
+		return "[" + strings.ReplaceAll(name, "]", "]]") + "]", nil
+	case dialectBigQuery:
+		// GoogleSQL uses backslash escapes, which the native SQL envelope
+		// deliberately forbids. Reject unrepresentable identifiers explicitly.
+		if strings.ContainsRune(name, '`') {
+			return "", query.NewError("UNSUPPORTED", "BigQuery federation identifier contains a backtick")
+		}
+		return "`" + name + "`", nil
 	default:
 		return "", query.NewError("UNSUPPORTED", "Source has no native federation dialect")
 	}
@@ -155,8 +164,15 @@ func (p *predicateCompiler) compile(filter duckbridge.Filter, depth int) (string
 func (d scanDialect) exactConstant(kind, value string, column arrow.DataType) (string, error) {
 	unsupported := query.NewError("UNSUPPORTED", "Federation predicates require exact matching integer or boolean types")
 	if kind == "bool" {
-		if column.ID() != arrow.BOOL || (value != "true" && value != "false") || d == dialectMySQL {
+		if column.ID() != arrow.BOOL || (value != "true" && value != "false") || d == dialectMySQL || d == dialectOracle {
 			return "", unsupported
+		}
+		if d == dialectSQLServer {
+			bit := "0"
+			if value == "true" {
+				bit = "1"
+			}
+			return "CAST(" + bit + " AS BIT)", nil
 		}
 		return value, nil
 	}
@@ -197,6 +213,28 @@ func (d scanDialect) exactConstant(kind, value string, column arrow.DataType) (s
 		if typ.signed {
 			castType = "SIGNED"
 		}
+	case dialectSQLServer:
+		castType = map[string]string{"uint8": "TINYINT", "int16": "SMALLINT", "int32": "INT", "int64": "BIGINT"}[kind]
+		if castType == "" {
+			return "", unsupported
+		}
+	case dialectDatabricks:
+		castType = map[string]string{"int8": "TINYINT", "int16": "SMALLINT", "int32": "INT", "int64": "BIGINT"}[kind]
+		if castType == "" {
+			return "", unsupported
+		}
+	case dialectBigQuery:
+		if kind != "int64" {
+			return "", unsupported
+		}
+		castType = "INT64"
+	case dialectSnowflake, dialectOracle:
+		// Their ordinary NUMBER columns remain Arrow decimals. Never coerce
+		// those fields into integers merely to qualify for predicate pushdown.
+		if !typ.signed {
+			return "", unsupported
+		}
+		castType = "NUMBER(38,0)"
 	default:
 		return "", unsupported
 	}

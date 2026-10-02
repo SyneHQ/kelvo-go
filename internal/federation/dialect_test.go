@@ -24,7 +24,7 @@ func relationalSource(kind string) (catalog.Source, catalog.FederationTable) {
 }
 
 func TestNativeRelationalFactoriesKeepTheirBackend(t *testing.T) {
-	for _, kind := range []string{"postgres", "mysql"} {
+	for _, kind := range []string{"postgres", "mysql", "sqlserver", "oracle"} {
 		t.Run(kind, func(t *testing.T) {
 			source, _ := relationalSource(kind)
 			t.Setenv(source.DSNEnv, "")
@@ -44,7 +44,7 @@ func TestNativeRelationalFactoriesKeepTheirBackend(t *testing.T) {
 			}
 		})
 	}
-	for _, unsupported := range []string{"sqlite", "oracle", "postgresql", "mariadb", "unknown"} {
+	for _, unsupported := range []string{"sqlite", "mongodb", "postgresql", "mariadb", "unknown"} {
 		if _, err := dialectFor(unsupported); err == nil {
 			t.Fatalf("unregistered dialect %q accepted", unsupported)
 		}
