@@ -1,0 +1,16 @@
+{
+  "same_ca_public_key_subject_ski": true,
+  "ca_key_usage": "critical keyCertSign,cRLSign",
+  "ca_basic_constraints": "critical CA:true",
+  "strict_verified_existing_certificates": [
+    "gateway.pem",
+    "broker.pem",
+    "a1.pem",
+    "a2.pem",
+    "b1.pem"
+  ],
+  "old_ca_sha256": "57e263f9d70c8c91d62174918824f7738c130d2bde066c3c71b1aa4313aae207",
+  "new_ca_sha256": "b595d9f93b17919158f3035d7c2f9ccf3fd535d9d2e20e62c6a19c3633b3b609",
+  "service_restarts": 0,
+  "leaf_certificate_changes": 0
+}

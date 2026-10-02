@@ -1,0 +1,149 @@
+{
+  "phase": "final",
+  "checked_at": "2026-10-02T02:08:31.846876+00:00",
+  "passed": true,
+  "suite_complete": true,
+  "requested_clients": [],
+  "requested_duration_seconds": 120,
+  "binary_sha256": "7c8839f50bd8a6d777bb460f118a2189e71825da3b288d441e51bf1b68858c84",
+  "sandbox_sha256": "f673f5de0d37ffa8fd0161aadfba4ce9eff5255500484d1d3fbba5720a120ed1",
+  "limits": {
+    "max_rows": 50000000,
+    "max_bytes": 1073741824,
+    "timeout": "120s",
+    "memory_mb": 256,
+    "threads": 2,
+    "max_temp_mb": 4096
+  },
+  "tenant_policy": {
+    "max_queries": 16,
+    "job_ttl": "5m",
+    "lease_duration": "5s"
+  },
+  "gateway_limits": {
+    "max_queries": 32,
+    "max_concurrent": 4,
+    "max_http_requests": 32
+  },
+  "total_slots": 4,
+  "workloads": [
+    {
+      "name": "zone_join_pg",
+      "reference": "zone_join",
+      "sources": [
+        "taxi",
+        "pg"
+      ],
+      "sql": "SELECT z.borough, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN pg.zones z ON t.pickup_zone_id=z.zone_id GROUP BY z.borough ORDER BY z.borough"
+    },
+    {
+      "name": "zone_join_my",
+      "reference": "zone_join",
+      "sources": [
+        "taxi",
+        "my"
+      ],
+      "sql": "SELECT z.borough, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN my.zones z ON t.pickup_zone_id=z.zone_id GROUP BY z.borough ORDER BY z.borough"
+    },
+    {
+      "name": "large_hash_join_pg",
+      "reference": "large_hash_join",
+      "sources": [
+        "taxi",
+        "pg"
+      ],
+      "sql": "SELECT s.pickup_zone_id AS pickup_zone_id, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN pg.taxi_sample s ON t.trip_id=s.trip_id GROUP BY s.pickup_zone_id ORDER BY s.pickup_zone_id NULLS FIRST"
+    },
+    {
+      "name": "large_hash_join_my",
+      "reference": "large_hash_join",
+      "sources": [
+        "taxi",
+        "my"
+      ],
+      "sql": "SELECT s.pickup_zone_id AS pickup_zone_id, CAST(COUNT(*) AS BIGINT) AS trips, CAST(SUM(t.fare_cents) AS BIGINT) AS fare_cents FROM taxi.trips t INNER JOIN my.taxi_sample s ON t.trip_id=s.trip_id GROUP BY s.pickup_zone_id ORDER BY s.pickup_zone_id NULLS FIRST"
+    }
+  ],
+  "trials": [],
+  "tenant_isolation": [
+    {
+      "tenant": "a",
+      "synthetic_marker": "a",
+      "cross_gateway": true,
+      "cross_tenant_before_after_denied": true
+    },
+    {
+      "tenant": "b",
+      "synthetic_marker": "b",
+      "cross_gateway": true,
+      "cross_tenant_before_after_denied": true
+    }
+  ],
+  "method": "Closed-loop clients alternate tenants and real CH+PG/MySQL joins. Submit through one gateway; consume through the other. Every result is decoded and checked against independent exact native reference hashes. No cached result substitution.",
+  "retention": "Terminal durable slots are immediately reusable in NATSStore.Submit; max_queries16 per tenant remains unchanged. Post-result status reuse is counted separately.",
+  "limitations": [
+    "One window per concurrency; no confidence interval or production sizing claim.",
+    "Client result validation and new HTTP/TLS connections are included in closed-loop throughput and latency.",
+    "In-flight queries may finish after the submission window; only completions within it contribute to the per-second rate.",
+    "Source datasets are identical public taxi copies; synthetic tenant markers and cross-tenant handle denial independently check tenant binding."
+  ],
+  "admission_control": {
+    "tenant_a_retained_nonterminal_handles": 16,
+    "overflow_http_status": 429,
+    "overflow_error": "RESOURCE_EXHAUSTED",
+    "tenant_b_query_succeeded": true,
+    "scope": "Separate bounded admission negative control; excluded from sustained throughput."
+  },
+  "ordered_export_reference": {
+    "request": {
+      "mode": "federated",
+      "sources": [
+        "taxi"
+      ],
+      "sql": "SELECT trip_id,pickup_zone_id,fare_cents FROM taxi.taxi_sample ORDER BY trip_id"
+    },
+    "expected_wire_bytes": 20117616,
+    "expected_wire_sha256": "3a1edcec5e73b2b317075874cf80dbb76b42bae41626a2f19b38e62ccc73863b",
+    "expected_rows": 1000000,
+    "canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+    "binary_sha256": "7c8839f50bd8a6d777bb460f118a2189e71825da3b288d441e51bf1b68858c84",
+    "elapsed_with_verification_seconds": 1.0316460600006394,
+    "stats": {
+      "federation": [
+        {
+          "source": "taxi",
+          "table": "trips",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "taxi",
+          "table": "zones",
+          "scans": 0,
+          "rows_fetched": 0,
+          "arrow_bytes_fetched": 0,
+          "batches_fetched": 0
+        },
+        {
+          "source": "taxi",
+          "table": "taxi_sample",
+          "scans": 1,
+          "rows_fetched": 1000000,
+          "arrow_bytes_fetched": 20000000,
+          "batches_fetched": 26
+        }
+      ],
+      "rows": 1000000,
+      "batches": 489,
+      "arrow_bytes": 20000000,
+      "wire_bytes": 20117616,
+      "backend": "duckdb",
+      "prepare_ns": 16907899,
+      "duration_ns": 219526646,
+      "engine_streaming": false
+    }
+  },
+  "scope": "Preflight and WAN reference only; no sustained trial requested."
+}

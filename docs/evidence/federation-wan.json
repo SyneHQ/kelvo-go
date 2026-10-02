@@ -1,0 +1,61 @@
+{
+  "passed": true,
+  "checked_at": "2026-10-02T02:13:52.194288+00:00",
+  "binary_sha256": "7c8839f50bd8a6d777bb460f118a2189e71825da3b288d441e51bf1b68858c84",
+  "trials": [
+    {
+      "trial": 1,
+      "export_seconds": 8.495538416987984,
+      "verified_seconds": 9.121337958989898,
+      "first_64k_seconds": 2.2499039589893073,
+      "wire_bytes": 20117616,
+      "wire_sha256": "3a1edcec5e73b2b317075874cf80dbb76b42bae41626a2f19b38e62ccc73863b",
+      "rows": 1000000,
+      "rows_per_export_second": 117708.84326770439,
+      "wire_mb_per_export_second": 2.368021308663862
+    },
+    {
+      "trial": 2,
+      "export_seconds": 5.3638088750012685,
+      "verified_seconds": 6.083888666005805,
+      "first_64k_seconds": 1.811797000002116,
+      "wire_bytes": 20117616,
+      "wire_sha256": "3a1edcec5e73b2b317075874cf80dbb76b42bae41626a2f19b38e62ccc73863b",
+      "rows": 1000000,
+      "rows_per_export_second": 186434.68164211267,
+      "wire_mb_per_export_second": 3.750621334358272
+    },
+    {
+      "trial": 3,
+      "export_seconds": 5.764945000002626,
+      "verified_seconds": 6.398220000002766,
+      "first_64k_seconds": 1.7990458749991376,
+      "wire_bytes": 20117616,
+      "wire_sha256": "3a1edcec5e73b2b317075874cf80dbb76b42bae41626a2f19b38e62ccc73863b",
+      "rows": 1000000,
+      "rows_per_export_second": 173462.19261407427,
+      "wire_mb_per_export_second": 3.4896457815279827
+    }
+  ],
+  "request": {
+    "mode": "federated",
+    "sources": [
+      "taxi"
+    ],
+    "sql": "SELECT trip_id,pickup_zone_id,fare_cents FROM taxi.taxi_sample ORDER BY trip_id"
+  },
+  "reference_canonical_value_sha256": "af40c3227845dab74f28b37772689707653e6aadb90228dbf50ed78a3f95daee",
+  "health_request_seconds": [
+    0.8381057910155505,
+    0.8336924999894109,
+    0.8428314999910071
+  ],
+  "scope": "Actual macOS client to Linux VM over SSH forwarding, with inner verified TLS; no result data saved locally.",
+  "limitations": [
+    "SSH encryption, buffering and inner TLS are included; this is not direct HTTPS WAN capacity.",
+    "The standard-library client opens an HTTPS connection per request; connection and TLS setup are included.",
+    "Health request timing includes connection/TLS/server overhead and is not a pure network RTT.",
+    "Export timing includes submission, execution and complete body read; final status verification is separate.",
+    "Result bytes and SHA match a VM-decoded exact reference; no local Arrow library or database execution is used."
+  ]
+}

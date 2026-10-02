@@ -86,7 +86,11 @@ def provision():
         binary = DIR / "nats-server"
         binary.write_bytes(tar.extractfile(member).read())
         binary.chmod(0o700)
-    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(DIR / "ca.key"), "-out", str(DIR / "ca.pem"), "-days", "2", "-subj", "/CN=Kelvo acceptance CA"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(DIR / "ca.key"), "-out", str(DIR / "ca.pem"), "-days", "2", "-subj", "/CN=Kelvo acceptance CA",
+                    "-addext", "basicConstraints=critical,CA:true",
+                    "-addext", "keyUsage=critical,keyCertSign,cRLSign",
+                    "-addext", "subjectKeyIdentifier=hash"],
+                   check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     broker = cert("broker")
     gateway = cert("gateway", "spiffe://kelvo/gateway")
     workers = {k: cert(k, f"spiffe://kelvo/tenant/{k[0]}/worker/{k}") for k in ("a1", "a2", "b1")}
