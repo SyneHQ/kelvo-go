@@ -1,0 +1,31 @@
+{
+  "provider": {
+    "shape": "VM.Standard.E2.1.Micro",
+    "region": "ap-mumbai-1",
+    "availabilityDomain": "nAXO:AP-MUMBAI-1-AD-1"
+  },
+  "cpu": {
+    "vendor_id": "AuthenticAMD",
+    "model name": "AMD EPYC 7551 32-Core Processor",
+    "cpu MHz": "1996.248"
+  },
+  "logical_cpus": 2,
+  "kernel": "7.0.0-1009-oracle",
+  "memory": {
+    "MemTotal": 997474304,
+    "MemAvailable": 560087040,
+    "SwapTotal": 0
+  },
+  "source_tables": {
+    "trips": 22612607,
+    "taxi_sample": 1000000,
+    "zones": 265
+  },
+  "source_placement": "Separate Azure VM reached directly from OCI through pinned-host-key SSH forwarding; HTTP only on loopback and private Docker network. No source database on OCI.",
+  "memory_max_mib": 640,
+  "scratch_filesystem_cap_bytes": 2147483648,
+  "scratch_mount_options": "nodev,nosuid,noexec",
+  "existing_tailscale_service": "active",
+  "binary_sha256": "51ab67046f31debe0a9358c24d5ab732380796ddcb2eb0bd352c4c9220e61fff",
+  "runtime_source_revision": "e955597"
+}

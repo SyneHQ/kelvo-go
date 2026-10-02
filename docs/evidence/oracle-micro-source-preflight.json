@@ -1,0 +1,12 @@
+[
+  {
+    "check": "configured_read",
+    "http_status": 200,
+    "passed": true
+  },
+  {
+    "check": "write_denied",
+    "http_status": 403,
+    "passed": true
+  }
+]
