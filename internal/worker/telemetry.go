@@ -1,0 +1,53 @@
+// Copyright 2026 SYNEHQ. SPDX-License-Identifier: Apache-2.0
+package worker
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
+	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+)
+
+type refreshTelemetryKey struct{}
+
+// WithRefreshTelemetry labels execution used by a snapshot refresh. It carries
+// no identifiers or query data. Ordinary Execute calls are labeled query.
+func WithRefreshTelemetry(ctx context.Context) context.Context {
+	return context.WithValue(ctx, refreshTelemetryKey{}, true)
+}
+
+// recordExecution observes the entire Execute call after cleanup, excluding its
+// measured admission wait. Execution includes setup, computation and transfer;
+// it is not database execution time alone or full distributed queue latency.
+func recordExecution(metrics *telemetry.Registry, ctx context.Context, start time.Time, admissionWait *time.Duration, resultErr *error) {
+	if metrics == nil {
+		return
+	}
+	kind := telemetry.KindQuery
+	if refresh, _ := ctx.Value(refreshTelemetryKey{}).(bool); refresh {
+		kind = telemetry.KindRefresh
+	}
+	err := *resultErr
+	if errors.Is(err, admission.ErrDraining) {
+		metrics.Reject(kind, telemetry.RejectionDraining)
+		return
+	}
+	if errors.Is(err, admission.ErrOversize) || errors.Is(err, admission.ErrBusy) {
+		metrics.Reject(kind, telemetry.RejectionCapacity)
+		return
+	}
+	outcome := telemetry.OutcomeSuccess
+	if err != nil {
+		outcome = telemetry.OutcomeError
+		// Classify the returned result, not ctx.Err(): deferred worker cleanup may
+		// cancel a successful call's derived context before this callback executes.
+		code := query.PublicError(err).Code
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || code == "CANCELLED" || code == "DEADLINE_EXCEEDED" {
+			outcome = telemetry.OutcomeCanceled
+		}
+	}
+	metrics.Observe(kind, outcome, *admissionWait, time.Since(start)-*admissionWait)
+}

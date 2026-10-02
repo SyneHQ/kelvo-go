@@ -10,14 +10,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 	arrowutil "github.com/apache/arrow-go/v18/arrow/util"
@@ -37,6 +40,11 @@ type Executor struct {
 	Limits      query.Limits
 	Binary      string
 	SandboxPath string
+	// ResourcePool must be shared by query and refresh executors on this process.
+	ResourcePool *admission.Pool
+	// ResourceOverheadBytes reserves memory beyond DuckDB's managed memory limit.
+	ResourceOverheadBytes int64
+	Metrics               *telemetry.Registry
 }
 
 func New(c catalog.Config, l query.Limits) (*Executor, error) {
@@ -65,10 +73,11 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink) (query.Stats, error) {
+func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink) (stats query.Stats, resultErr error) {
 	parent := ctx
 	start := time.Now()
-	var stats query.Stats
+	var admissionWait time.Duration
+	defer recordExecution(e.Metrics, ctx, start, &admissionWait, &resultErr)
 	if err := e.Limits.Validate(); err != nil {
 		return stats, err
 	}
@@ -83,6 +92,24 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.Limits.Timeout)
 	defer cancel()
+	if e.ResourcePool != nil {
+		memoryBytes := int64(e.Limits.MemoryMB) << 20
+		if e.ResourceOverheadBytes < 0 || e.ResourceOverheadBytes > math.MaxInt64-memoryBytes {
+			return stats, admission.ErrInvalid
+		}
+		waitStart := time.Now()
+		reservation, err := e.ResourcePool.Acquire(ctx, admission.Request{
+			MemoryBytes:  memoryBytes + e.ResourceOverheadBytes,
+			ScratchBytes: int64(e.Limits.MaxTempMB) << 20,
+		})
+		admissionWait = time.Since(waitStart)
+		if err != nil {
+			return stats, err
+		}
+		// Registered before snapshot leases, temp files and child cleanup so those
+		// resources are released before a competing job can take this reservation.
+		defer reservation.Release()
+	}
 	sources, versions, release, err := acceleration.Resolve(ctx, e.Config, r)
 	if err != nil {
 		return stats, err
