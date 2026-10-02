@@ -394,8 +394,8 @@ def systemctl(unit, arguments, log, timeout=10):
             timeout=timeout, check=False)
 
 
-def unit_state(unit, log):
-    result = systemctl(unit, ["show", "--no-pager", "--property=" + ",".join(UNIT_PROPERTIES)], log)
+def unit_state(unit, log, timeout=10):
+    result = systemctl(unit, ["show", "--no-pager", "--property=" + ",".join(UNIT_PROPERTIES)], log, timeout=timeout)
     if result.returncode:
         raise BenchmarkError("unit_status_unavailable")
     return dict(line.split("=", 1) for line in result.stdout.decode().splitlines() if "=" in line)
@@ -409,7 +409,7 @@ def safe_stats(path):
         return None
     if not isinstance(value, dict):
         return None
-    numeric = ("rows", "batches", "arrow_bytes", "wire_bytes", "prepare_ns", "duration_ns")
+    numeric = ("rows", "batches", "arrow_bytes", "wire_bytes", "source_wire_bytes", "prepare_ns", "duration_ns")
     result = {key: value[key] for key in numeric if type(value.get(key)) is int and value[key] >= 0}
     if type(value.get("engine_streaming")) is bool:
         result["engine_streaming"] = value["engine_streaming"]
@@ -421,7 +421,7 @@ def safe_stats(path):
         for scan in scans:
             if not isinstance(scan, dict):
                 continue
-            clean = {key: scan[key] for key in ("scans", "rows_fetched", "arrow_bytes_fetched", "batches_fetched")
+            clean = {key: scan[key] for key in ("scans", "rows_fetched", "arrow_bytes_fetched", "batches_fetched", "source_wire_bytes")
                      if type(scan.get(key)) is int and scan[key] >= 0}
             for key in ("source", "table"):
                 if isinstance(scan.get(key), str) and IDENTIFIER.fullmatch(scan[key]):
@@ -450,11 +450,27 @@ def execute_trial(args, query, trial, session, wrapper):
               "state": "failed", "private_run_directory": str(directory),
               "private_logs": {"service": str(directory / "stderr.log"), "systemd": str(log),
                                "stdout": str(directory / "stdout.log")},
-              "configured_sandbox_launcher": str(args.launcher), "unit_cleanup": {}, "errors": []}
+              "configured_sandbox_launcher": str(args.launcher), "unit_cleanup": {}, "errors": [],
+              "control_status_timeout_count": 0, "control_status_timeouts": [],
+              "final_status_uncertain": False}
     sampler = None
     owned_unit = False
     state = {}
     started = None
+    deadline = None
+
+    def read_status(phase, timeout):
+        try:
+            observed = unit_state(unit, log, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            result["control_status_timeout_count"] += 1
+            result["control_status_timeouts"].append({"phase": phase, "at": utc_now(),
+                "elapsed_seconds": time.monotonic() - started, "command_timeout_seconds": timeout})
+            return None
+        result["last_status_observed_at"] = utc_now()
+        result["last_status_elapsed_seconds"] = time.monotonic() - started
+        return observed
+
     try:
         if free_bytes(directory) < query["max_bytes"] + TEMP_MIB * MIB + DISK_RESERVE:
             raise BenchmarkError("insufficient_scratch_space_for_bounded_trial")
@@ -470,6 +486,7 @@ def execute_trial(args, query, trial, session, wrapper):
         sampler = Sampler(unit, directory, args.binary)
         sampler.start()
         started = time.monotonic()
+        deadline = started + query["timeout_seconds"] + 45
         owned_unit = True  # Start may time out after systemd has accepted the unit.
         with log.open("ab") as diagnostics:
             launched = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=diagnostics,
@@ -477,9 +494,22 @@ def execute_trial(args, query, trial, session, wrapper):
         result["systemd_run_exit_status"] = launched.returncode
         if launched.returncode:
             raise BenchmarkError("systemd_run_failed")
-        deadline = started + query["timeout_seconds"] + 45
         while True:
-            state = unit_state(unit, log)
+            if sampler.low_disk:
+                raise BenchmarkError("scratch_free_space_below_reserve")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise BenchmarkError("harness_deadline_exceeded")
+            observed = read_status("monitor", min(10, remaining))
+            if observed is None:
+                # A slow control command is not evidence that the query failed.
+                # Keep sampling and retry without extending either deadline.
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise BenchmarkError("harness_deadline_exceeded")
+                time.sleep(min(STATUS_POLL_SECONDS, remaining))
+                continue
+            state = observed
             finished = (state.get("ExecMainExitTimestampMonotonic", "0") not in ("", "0")
                         or state.get("ActiveState") == "failed")
             if state.get("ControlGroup") != "/system.slice/" + unit and not (finished and not state.get("ControlGroup")):
@@ -494,7 +524,7 @@ def execute_trial(args, query, trial, session, wrapper):
                 raise BenchmarkError("scratch_free_space_below_reserve")
             if time.monotonic() >= deadline:
                 raise BenchmarkError("harness_deadline_exceeded")
-            time.sleep(STATUS_POLL_SECONDS)
+            time.sleep(min(STATUS_POLL_SECONDS, max(0, deadline - time.monotonic())))
         result["wall_seconds_including_service_start_and_cli_fsync"] = time.monotonic() - started
         if state.get("ExecMainCode") != "1" or state.get("ExecMainStatus") != "0" or state.get("Result") != "success":
             raise BenchmarkError("query_process_failed")
@@ -511,10 +541,22 @@ def execute_trial(args, query, trial, session, wrapper):
         if started is not None and "wall_seconds_including_service_start_and_cli_fsync" not in result:
             result["wall_seconds_including_service_start_and_cli_fsync"] = time.monotonic() - started
         if owned_unit:
-            try:
-                state = unit_state(unit, log)
-            except (OSError, ValueError, BenchmarkError, subprocess.TimeoutExpired):
-                result["errors"].append("final_unit_status_unavailable")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                result["final_status_uncertain"] = True
+                result["final_status_observation"] = "retained_last_state_after_deadline"
+            else:
+                try:
+                    observed = read_status("final", min(10, remaining))
+                    if observed is None:
+                        result["final_status_uncertain"] = True
+                        result["final_status_observation"] = "timeout_retained_last_state"
+                    else:
+                        state = observed
+                        result["final_status_observation"] = "final_read"
+                except (OSError, ValueError, BenchmarkError):
+                    result["final_status_uncertain"] = True
+                    result["final_status_observation"] = "unavailable_retained_last_state"
         if sampler is not None:
             try:
                 result["metrics"] = sampler.stop()
@@ -523,13 +565,24 @@ def execute_trial(args, query, trial, session, wrapper):
         # Read all counters before stopping/resetting this exact owned unit.
         if owned_unit:
             for action in ("stop", "reset-failed"):
-                try:
-                    cleaned = systemctl(unit, [action], log, timeout=15)
-                    result["unit_cleanup"][action + "_exit_status"] = cleaned.returncode
-                    if cleaned.returncode and action == "stop":
-                        result["errors"].append("unit_stop_failed")
-                except (OSError, subprocess.TimeoutExpired):
-                    result["errors"].append("unit_" + action + "_failed")
+                attempts = []
+                for attempt in range(1, 3):
+                    try:
+                        cleaned = systemctl(unit, [action], log, timeout=15)
+                        result["unit_cleanup"][action + "_exit_status"] = cleaned.returncode
+                        attempts.append({"attempt": attempt, "exit_status": cleaned.returncode})
+                        if cleaned.returncode and action == "stop":
+                            result["errors"].append("unit_stop_failed")
+                        break
+                    except subprocess.TimeoutExpired:
+                        attempts.append({"attempt": attempt, "control_timeout": True, "at": utc_now()})
+                        if attempt == 2:
+                            result["errors"].append("unit_" + action + "_failed")
+                    except OSError:
+                        attempts.append({"attempt": attempt, "control_io_error": True})
+                        result["errors"].append("unit_" + action + "_failed")
+                        break
+                result["unit_cleanup"][action + "_attempts"] = attempts
         result["unit_exit"] = {key: state.get(key) for key in
             ("ActiveState", "SubState", "Result", "ExecMainCode", "ExecMainStatus")}
         result["systemd_accounting"] = {key: int(state[key]) for key in
@@ -540,10 +593,13 @@ def execute_trial(args, query, trial, session, wrapper):
             any(memory_events.get(key, 0) > 0 for key in ("oom_kill", "oom_group_kill")))
         start_us = int(state.get("ExecMainStartTimestampMonotonic", "0") or "0")
         exit_us = int(state.get("ExecMainExitTimestampMonotonic", "0") or "0")
+        result["query_exit_status_verified"] = exit_us > 0 or state.get("ActiveState") == "failed"
         result["cli_process_seconds_including_wrapper_and_fsync"] = (exit_us - start_us) / 1e6 if exit_us >= start_us > 0 else None
     try:
         if artifact.is_file() and not artifact.is_symlink():
-            result["failed_query_published_output"] = result["state"] != "completed"
+            result["output_published_with_unverified_exit_status"] = not result["query_exit_status_verified"]
+            result["failed_query_published_output"] = (result["query_exit_status_verified"] and
+                (state.get("ExecMainCode") != "1" or state.get("ExecMainStatus") != "0" or state.get("Result") != "success"))
             hash_started = time.monotonic()
             result["artifact"] = {"path": str(artifact), **hash_file(artifact)}
             result["artifact_hash_seconds_outside_query_timing"] = time.monotonic() - hash_started
@@ -616,6 +672,7 @@ retained. Only Arrow byte hashes/EOS are checked; decode and compare separately.
     with os.fdopen(fd, "w") as output:
         output.write(WRAPPER)
     report = {"schema_version": 1, "started_at": utc_now(), "state": "running",
+        "harness_sha256": hash_file(Path(__file__).resolve())["sha256"],
         "binary_sha256": hash_file(args.binary)["sha256"],
         "launcher_sha256": hash_file(args.launcher)["sha256"],
         "config_sha256": hash_file(args.config)["sha256"],
@@ -640,8 +697,12 @@ retained. Only Arrow byte hashes/EOS are checked; decode and compare separately.
             "Host steal time, MemAvailable and filesystem free space include unrelated host activity.",
             "Service wall time includes scheduling, the environment wrapper and CLI fsync; hashing runs after the query timing.",
             "Service status is polled every 500 ms; wall time includes polling delay. The headline CLI time uses systemd process start/exit timestamps.",
+            "Status-command timeouts are recorded and retried only inside the original query observation deadline; they do not establish query failure or OOM.",
+            "If the final status read is unavailable, the report flags uncertainty and retains the last observed state; a previously verified exit remains valid.",
+            "Exact-unit cleanup retries a timed-out control command once; cleanup remains outside query timings.",
             "The CLI is explicitly configured with --sandbox; NoNewPrivs and Seccomp observations alone do not verify the complete Landlock policy.",
             "Federation rows/bytes are fetched Arrow data, not remote database storage rows/bytes scanned.",
+            "Source wire bytes count supported adapters' encoded response body bytes consumed; federation excludes discovery, and HTTP/TLS framing is excluded.",
             "No caches are dropped. Trials execute sequentially in query order and retain all completed and failed artifacts."]}
     write_json(args.output, report, 0o644)
     interrupted = False
