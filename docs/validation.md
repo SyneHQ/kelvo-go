@@ -2,6 +2,39 @@
 
 Status: a tested developer preview. Cluster, sandbox, connector and failure-handling acceptance is described below. These checks do not certify a production multi-tenant service, establish capacity for every database, or replace deployment-specific security and recovery testing.
 
+## Oracle micro VM and opt-in result compression
+
+The [Oracle micro VM capacity record](oracle-micro-capacity.md) covers actual
+remote exports on `VM.Standard.E2.1.Micro` with 951 MiB visible RAM, a 640 MiB
+Kelvo service cap and ClickHouse hosted separately on Azure. In the final
+million-row comparison, ten simultaneous workers completed all 30 exports with
+each codec: **242,827 aggregate output rows/s** without result compression and
+**469,800 rows/s** with LZ4. Source LZ4 was enabled in both profiles. Each
+response matched an independently decoded reference, included Arrow completion
+and finished with API state `succeeded`.
+
+With LZ4 and explicit limits of four million rows and 128 MiB result bytes,
+all **30 four-million-row exports** also completed in three ten-worker cohorts:
+**120 million verified rows at 443,421 aggregate rows/s**. The service retained
+its 640 MiB memory cap, peaked at **423.4 MiB charged cgroup memory**, and recorded
+no OOM or task-limit events. Native SQL executed on Azure. This validates larger
+exports for the tested three-column result; it does not establish capacity for
+wide rows or local federation at the same concurrency.
+
+The guide retains the failed ten-worker federation test (cgroup OOM), the
+full-sort deadline failure, the slower federated CLI result-compression median,
+and separate CPU, RSS, cgroup and transport accounting. The remote client used
+SSH forwarding; these measurements do not establish direct HTTPS capacity or
+sustained entitlement on the burstable free shape.
+
+The [result-compression build record](evidence/oracle-micro-result-build.json)
+records all-package tests and focused race/vet checks on the Azure build VM.
+[Real cluster LZ4 acceptance](evidence/cluster-compression-acceptance.json)
+verified eight batches with exact integer, Unicode and NULL values, completion
+and encoded byte counts through node-to-gateway delivery. Compression remains
+opt-in across native, federated and accelerated result paths; the local worker
+pipe is uncompressed and output, memory and disk limits remain in effect.
+
 ## PostgreSQL/MySQL federation and NYC Taxi capacity
 
 The custom bridge now supports Go PostgreSQL and MySQL adapters alongside

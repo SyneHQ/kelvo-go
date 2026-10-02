@@ -134,9 +134,9 @@ Supported parameter types are `string`, `bool`, `int64`, `uint64`, `float64`, an
 
 ## Limits
 
-`kelvo serve -h` and `kelvo query -h` list controls for result rows, encoded bytes, duration, DuckDB memory, threads, temporary disk, concurrent workers, and retained handles. They are ceilings, not deployment sizing guidance.
+`kelvo serve -h` and `kelvo query -h` list controls for result rows, bytes, duration, DuckDB memory, threads, temporary disk, concurrent workers, and retained handles. They are ceilings, not deployment sizing guidance.
 
-Defaults allow one million rows and 256 MiB of encoded output. Limit failures return errors instead of truncating analysis. A native engine can allocate a single large value before Kelvo detects output size.
+Defaults allow one million rows. The 256 MiB byte limit applies separately to cumulative decoded Arrow buffers and encoded output, using the same configured value for each. Limit failures return errors instead of truncating analysis. A native engine can allocate a single large value before Kelvo detects output size.
 
 For federated DuckDB work, `--memory-mb` configures DuckDB memory. For native ClickHouse it configures ClickHouse `max_memory_usage` and Kelvo's local Arrow decoding allocator. Neither is a hard worker-process RSS cap; enforce process or container limits in deployment.
 
@@ -161,6 +161,8 @@ policy:
 Compression is part of the provisioned tenant policy, so gateway and node settings must match the stored policy. The per-query request cannot override it. Supported values are `none` and `lz4_frame`; an omitted or empty value means `none`. Unsupported codecs fail configuration validation before execution.
 
 This compresses the public Arrow result once. In cluster mode, the node compresses the result and the gateway relays those bytes; the local worker pipe remains uncompressed. Row limits, decoded Arrow buffer limits, and encoded result byte limits remain enforced independently. Compression uses one codec worker per output stream, but its scratch space is not a whole-process memory limit. Keep operating-system memory limits in place.
+
+Permit larger exports by explicitly raising `--max-rows` and, when necessary, `--max-bytes`; enabling LZ4 does not raise either limit. For example, 80 MiB of decoded columns still needs at least an 80 MiB byte budget even if the encoded stream is much smaller. Keep query memory, temporary disk and worker concurrency sized independently. The [Oracle micro VM measurements](oracle-micro-capacity.md) show the effect of larger result budgets on a specific narrow-row workload.
 
 Source transport remains a separate setting. For example, a ClickHouse source can opt in with `options.arrow_compression: lz4_frame` independently of result compression. Other connectors keep their source-native protocols; enabling result compression does not force LZ4 onto databases that do not support it. Benchmark the workload and network before enabling either option: reduced transfer bytes can cost CPU on a small host.
 

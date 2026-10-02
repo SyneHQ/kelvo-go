@@ -67,6 +67,8 @@ Configuration references environment-variable names, never credentials. Sources 
 
 The [validation record](docs/validation.md) separates executed checks from protocol fixtures and unvalidated live-provider paths. It includes the exact scope of the local 10-million-row ClickHouse export measurement: **1.18–1.48 million rows/s**, including file persistence, on one native VM workload. It is not a general throughput or memory guarantee.
 
+On an **Oracle Cloud Always Free micro VM** (`VM.Standard.E2.1.Micro`, 951 MiB visible RAM), ten simultaneous native exports with opt-in LZ4 completed **30 of 30 four-million-row exports: 120 million verified rows at 443,000 aggregate returned rows/s**. The service stayed within its 640 MiB memory cap. ClickHouse ran on a separate Azure VM; client delivery used SSH tunnels. Ten simultaneous federated sorts exhausted that same cap. See the [micro VM measurements, memory accounting and limits](docs/oracle-micro-capacity.md) before sizing a deployment.
+
 Native engine limits and Arrow output limits are not a hard process-RSS boundary; use deployment-level limits as well. CDC, durable exports, a Flight SQL server, and production HA certification remain outside the current release.
 
 ## Build with us
