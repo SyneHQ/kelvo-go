@@ -163,6 +163,8 @@ def main():
     parser.add_argument("--tasks-max", type=int, default=96, help="Whole-service process/thread limit, 96-256")
     parser.add_argument("--max-rows", type=int, default=1000000, help="Returned rows per query, 1-4000000")
     parser.add_argument("--max-bytes", type=int, default=33554432, help="Returned bytes per query, 1024-134217728")
+    parser.add_argument("--result-compression", choices=("none", "lz4_frame"), default="none",
+                        help="Arrow result compression; none omits the binary flag for older-binary compatibility")
     parser.add_argument("--scratch-name", default="", help="Optional safe suffix for a new runs/http-scratch-SUFFIX directory")
     args = parser.parse_args()
     try:
@@ -225,6 +227,8 @@ def main():
             "--listen", "127.0.0.1:" + str(args.port), "--concurrency", str(args.concurrency), "--max-queries", str(args.max_queries),
             "--memory-mb", "128", "--threads", "2", "--temp-mb", str(args.temp_mb), "--max-rows", str(args.max_rows),
             "--max-bytes", str(args.max_bytes), "--timeout", "180s"]
+    if args.result_compression != "none":
+        argv.extend(["--result-compression", args.result_compression])
     write_json(spec, {"binary": str(binary), "argv": argv, "manifest": str(manifest_path),
                      "environment": str(environment), "logs": str(logs), "scratch": str(scratch),
                      "home": pwd.getpwuid(os.getuid()).pw_dir})
@@ -240,12 +244,14 @@ def main():
                          "cpu_weight": 20, "concurrency": args.concurrency, "max_queries": args.max_queries,
                          "query_memory_mib": 128, "threads": 2, "query_temp_mib": args.temp_mb,
                          "query_max_rows": args.max_rows, "query_max_bytes": args.max_bytes,
+                         "result_compression": args.result_compression,
                          "query_timeout_seconds": 180, "query_handle_ttl_seconds": 300,
                          "monitor_seconds": args.runtime_seconds, "service_runtime_seconds": service_runtime_seconds},
               "scratch_name": args.scratch_name,
               "effective_cli_options": {"sandbox": True, "listen": "127.0.0.1:" + str(args.port),
                   "concurrency": args.concurrency, "max-queries": args.max_queries, "memory-mb": 128,
                   "threads": 2, "temp-mb": args.temp_mb, "max-rows": args.max_rows, "max-bytes": args.max_bytes,
+                  "result-compression": args.result_compression,
                   "timeout": "180s", "result-ttl": "5m"},
               "admission": {"submission": "POST creates a retained handle without acquiring an execution permit",
                   "execution": "GET results acquires a permit without waiting; full capacity returns HTTP 429 and leaves the handle unclaimed",

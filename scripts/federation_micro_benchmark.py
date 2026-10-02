@@ -163,9 +163,10 @@ def validate_queries(path, memory_max):
         raise BenchmarkError("queries_must_be_a_list_of_1_to_16_entries")
     required = {"name", "sql", "mode", "sources", "memory_mb", "threads",
                 "max_rows", "max_bytes", "timeout_seconds"}
+    optional = {"result_compression"}
     names = set()
     for query in entries:
-        if not isinstance(query, dict) or set(query) != required:
+        if not isinstance(query, dict) or not required.issubset(query) or set(query) - required - optional:
             raise BenchmarkError("query_fields_do_not_match_contract")
         if not isinstance(query["name"], str) or not IDENTIFIER.fullmatch(query["name"]) or query["name"] in names:
             raise BenchmarkError("query_name_invalid_or_repeated")
@@ -174,6 +175,8 @@ def validate_queries(path, memory_max):
             raise BenchmarkError("invalid_sql")
         if query["mode"] not in ("federated", "native"):
             raise BenchmarkError("invalid_query_mode")
+        if query.get("result_compression", "none") not in ("none", "lz4_frame"):
+            raise BenchmarkError("invalid_result_compression")
         sources = query["sources"]
         if not isinstance(sources, str) or not 1 <= len(sources.split(",")) <= 8:
             raise BenchmarkError("invalid_query_sources")
@@ -442,11 +445,16 @@ def execute_trial(args, query, trial, session, wrapper):
         "--out", str(artifact), "--memory-mb", str(query["memory_mb"]), "--threads", str(query["threads"]),
         "--max-rows", str(query["max_rows"]), "--max-bytes", str(query["max_bytes"]),
         "--timeout", str(query["timeout_seconds"]) + "s", "--temp-mb", str(TEMP_MIB)]
+    # Preserve compatibility with binaries from before this option existed.
+    if "result_compression" in query:
+        argv.extend(["--result-compression", query["result_compression"]])
     spec = directory / "invocation.json"
     write_json(spec, {"binary": str(args.binary), "launcher": str(args.launcher), "argv": argv,
         "environment": str(args.environment), "directory": str(directory), "scratch": str(scratch),
         "home": pwd.getpwuid(os.getuid()).pw_dir, "threads": query["threads"]})
     result = {"query": query["name"], "trial": trial, "unit": unit, "started_at": utc_now(),
+              "result_compression": query.get("result_compression", "none"),
+              "result_compression_explicit": "result_compression" in query,
               "state": "failed", "private_run_directory": str(directory),
               "private_logs": {"service": str(directory / "stderr.log"), "systemd": str(log),
                                "stdout": str(directory / "stdout.log")},
@@ -627,6 +635,8 @@ Native queries use a single sources value as --connection. Limits: 1-16 queries,
 1-5 trials, timeout 1-600 seconds, at most 6 hours of planned maximum runtimes,
 1 GiB returned bytes per query, 512 MiB temporary disk per query, 1-2 threads.
 memory_mb is 128; native source client/server budgets also allow 256 or 512.
+Optional result_compression is none (default) or lz4_frame. The CLI flag is
+passed only when that field is supplied, preserving older-binary compatibility.
 The workdir and source environment JSON must be owned by the invoking non-root
 user, with no group/world permissions. Environment JSON contains only string
 KELVO_SOURCE_* values. The output report must be new; its parent must exist.
@@ -685,6 +695,8 @@ retained. Only Arrow byte hashes/EOS are checked; decode and compare separately.
         "headline_time_metric": "cli_process_seconds_including_wrapper_and_fsync",
         "scratch_filesystem": fs_type,
         "queries": [{**{key: value for key, value in query.items() if key != "sql"},
+            "result_compression": query.get("result_compression", "none"),
+            "result_compression_explicit": "result_compression" in query,
             "sql_sha256": hashlib.sha256(query["sql"].encode()).hexdigest()} for query in queries],
         "results": [],
         "limitations": [
