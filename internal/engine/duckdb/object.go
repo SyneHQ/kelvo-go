@@ -34,7 +34,7 @@ func validateObjectCombination(sources []catalog.Source) error {
 			return err
 		}
 		object = object || source.Range != nil
-		network = network || source.Type == "postgres" || source.Type == "mysql"
+		network = network || (source.Federation == nil && (source.Type == "postgres" || source.Type == "mysql"))
 	}
 	if object && network {
 		// Those legacy database extensions need enable_external_access=true.

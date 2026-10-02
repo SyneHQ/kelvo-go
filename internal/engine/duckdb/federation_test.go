@@ -5,8 +5,11 @@ package duckdb
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
@@ -25,6 +28,47 @@ func TestRawArrowEntryPointsRemainPrivate(t *testing.T) {
 		if !containsDeniedCapability(sql) {
 			t.Fatal("raw pointer table function allowed")
 		}
+	}
+}
+
+func TestRelationalCustomFederationKeepsExternalAccessLocked(t *testing.T) {
+	for _, kind := range []string{"postgres", "mysql"} {
+		t.Run(kind, func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "unselected.txt")
+			if err := os.WriteFile(file, []byte("must remain private"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			db, err := sql.Open("duckdb", ":memory:")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			ctx := context.Background()
+			conn, err := db.Conn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			table := catalog.FederationTable{Name: "orders", Table: "orders"}
+			if kind == "postgres" {
+				table.Schema = "public"
+			} else {
+				table.Database = "analytics"
+			}
+			source := catalog.Source{ID: "db", Type: kind, DSNEnv: "KELVO_SOURCE_DB_DSN", Federation: &catalog.FederationConfig{Tables: []catalog.FederationTable{table}}}
+			workspace := t.TempDir()
+			if err := conn.Raw(func(raw any) error { return lockSourceAccess(ctx, raw, []catalog.Source{source}, workspace) }); err != nil {
+				t.Fatal(err)
+			}
+			var external bool
+			if err := conn.QueryRowContext(ctx, "SELECT current_setting('enable_external_access')").Scan(&external); err != nil || external {
+				t.Fatalf("custom source broadened DuckDB access: enabled=%v error=%v", external, err)
+			}
+			// Bypass Kelvo's SQL guard to exercise DuckDB's own file restriction.
+			if _, err := conn.ExecContext(ctx, "SELECT * FROM read_text('"+quoteLiteral(file)+"')"); err == nil {
+				t.Fatal("DuckDB opened an unselected file with custom relational source")
+			}
+		})
 	}
 }
 

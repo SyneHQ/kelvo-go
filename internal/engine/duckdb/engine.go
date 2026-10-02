@@ -265,7 +265,9 @@ func lockSourceAccess(ctx context.Context, raw any, sources []catalog.Source, te
 		case "csv", "parquet", "duckdb", "sqlite":
 			paths = append(paths, source.Path)
 		case "postgres", "mysql":
-			networkSource = true
+			// Custom adapters perform source I/O in Go; only the legacy DuckDB
+			// extensions require broader native external access.
+			networkSource = networkSource || source.Federation == nil
 		}
 	}
 	if !networkSource {

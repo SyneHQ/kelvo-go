@@ -85,6 +85,21 @@ func TestObjectRangeLockdownUsesExactPathsAndRejectsMixedNetworkAccess(t *testin
 		if err == nil || query.PublicError(err).Code != "UNSUPPORTED" || len(executor.statements) != 0 {
 			t.Fatalf("range/network combination weakened lockdown: %v", err)
 		}
+		// Go-backed relational scans do not need the legacy extension's broad
+		// external access and may share the exact object-range allowlist.
+		table := catalog.FederationTable{Name: "orders", Table: "orders"}
+		if kind == "postgres" {
+			table.Schema = "public"
+		} else {
+			table.Database = "analytics"
+		}
+		custom := catalog.Source{ID: "db", Type: kind, DSNEnv: "KELVO_SOURCE_DB_DSN", Federation: &catalog.FederationConfig{Tables: []catalog.FederationTable{table}}}
+		if err := lockSourceAccess(context.Background(), executor, []catalog.Source{source, custom}, workspace); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(strings.Join(executor.statements, "\n"), "SET enable_external_access = false") {
+			t.Fatal("custom source weakened object range lockdown")
+		}
 	}
 }
 
