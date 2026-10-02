@@ -96,7 +96,7 @@ func (b *federationBindings) stats() []query.FederationScan {
 	var out []query.FederationScan
 	for i, table := range b.tables {
 		s := table.Stats()
-		out = append(out, query.FederationScan{Source: b.identities[i][0], Table: b.identities[i][1], Scans: s.Scans, Rows: s.Rows, Bytes: s.Bytes, Batches: s.Batches})
+		out = append(out, query.FederationScan{Source: b.identities[i][0], Table: b.identities[i][1], Scans: s.Scans, Rows: s.Rows, Bytes: s.Bytes, Batches: s.Batches, SourceWireBytes: s.SourceWireBytes})
 	}
 	return out
 }

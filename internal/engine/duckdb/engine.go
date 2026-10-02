@@ -114,6 +114,9 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		closeErr := errors.Join(conn.Close(), db.Close())
 		bindings.Close()
 		stats.Federation = bindings.stats()
+		for _, scan := range stats.Federation {
+			stats.SourceWireBytes += scan.SourceWireBytes
+		}
 		// Stream-release callbacks run during query/connection teardown. A
 		// contained callback failure must prevent a successful Arrow export.
 		if err == nil {

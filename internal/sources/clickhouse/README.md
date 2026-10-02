@@ -8,12 +8,27 @@ embedded credentials, redirects, request-selected URLs, and native query paramet
 are rejected. HTTP is useful for private/local test networks; use HTTPS across
 untrusted networks.
 
+Source Arrow compression is an administrator option. Omit it for the existing
+uncompressed behavior, or set `options.arrow_compression: lz4_frame` to request
+LZ4-compressed Arrow buffers from ClickHouse. The only accepted values are `none`
+and `lz4_frame`; this does not enable HTTP compression or compress Kelvo's worker
+pipe or client response. Compression trades source encoding and Kelvo decoding
+work for fewer source response bytes, so measure it with the actual workload.
+
 The source returns ArrowStream batches directly. Kelvo decodes and delivers each
 borrowed batch synchronously, preserving the emitted Arrow types and avoiding a row-map intermediate.
-`arrow_bytes` counts delivered Arrow buffers, not network framing. Row and byte
+`arrow_bytes` counts delivered Arrow buffers, not network framing.
+`source_wire_bytes` counts HTTP 200 Arrow response body bytes consumed, including
+IPC framing and partial reads on failure, but excluding HTTP/TLS/SSH overhead.
+It remains separate from `wire_bytes`, which describes Kelvo's output. Federated
+queries report this count for each supported source scan and as a query total;
+schema-discovery requests are excluded. PostgreSQL/MySQL do not currently report
+source wire bytes. Row and byte
 limits are checked before delivery; the source also receives execution, memory,
 thread, and result limits. A separate bounded decoder protects Arrow body and
-metadata allocations. These are component budgets, not an RSS guarantee. Blocking
+metadata allocations. Compression does not relax decoded row/byte limits. Codec
+scratch allocations are additional to the Arrow allocator's budget. These are
+component budgets, not an RSS guarantee. Blocking
 source operations such as sorting can still consume source memory before output.
 
 ClickHouse's Arrow schema is not a complete description of its original database

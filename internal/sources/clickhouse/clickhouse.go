@@ -35,9 +35,10 @@ const maxErrorBytes = 4096
 // Engine is safe for concurrent executions. Configuration is immutable after
 // construction; credentials are resolved from the environment for each query.
 type Engine struct {
-	sources map[string]catalog.Source
-	limits  query.Limits
-	client  *http.Client
+	sources     map[string]catalog.Source
+	compression map[string]string
+	limits      query.Limits
+	client      *http.Client
 }
 
 func New(config catalog.Config, limits query.Limits) (*Engine, error) {
@@ -45,6 +46,7 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		return nil, query.NewError("INVALID_ARGUMENT", "Invalid ClickHouse execution limits")
 	}
 	sources := make(map[string]catalog.Source)
+	compression := make(map[string]string)
 	for _, source := range config.Sources {
 		if source.Type != "clickhouse" {
 			continue
@@ -55,18 +57,28 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		if _, exists := sources[source.ID]; exists {
 			return nil, query.NewError("INVALID_ARGUMENT", "Duplicate ClickHouse source")
 		}
+		codec, selected := source.Options["arrow_compression"]
+		if !selected {
+			codec = "none"
+		}
+		if codec != "none" && codec != "lz4_frame" {
+			return nil, query.NewError("INVALID_ARGUMENT", "ClickHouse arrow_compression must be none or lz4_frame")
+		}
 		if _, err := sourceURL(source); err != nil {
 			return nil, err
 		}
 		sources[source.ID] = source
+		// Freeze the validated option independently of the caller's options map.
+		compression[source.ID] = codec
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConns = 64
 	transport.MaxIdleConnsPerHost = 16
 	transport.DisableCompression = true
 	return &Engine{
-		sources: sources,
-		limits:  limits,
+		sources:     sources,
+		compression: compression,
+		limits:      limits,
 		client: &http.Client{
 			Transport: transport,
 			// Never forward configured credentials to an HTTP redirect destination.
@@ -128,7 +140,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	settings.Set("result_overflow_mode", "throw")
 	settings.Set("max_memory_usage", strconv.FormatInt(int64(e.limits.MemoryMB)*(1<<20), 10))
 	settings.Set("max_threads", strconv.Itoa(e.limits.Threads))
-	settings.Set("output_format_arrow_compression_method", "none")
+	settings.Set("output_format_arrow_compression_method", e.compression[source.ID])
 	settings.Set("wait_end_of_query", "0")
 	endpoint.RawQuery = settings.Encode()
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(req.SQL))
@@ -155,6 +167,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	// ClickHouse >=26.8 can override FORMAT through output_format; older supported
 	// servers only expose default_format, so no SQL rewriting is attempted here.
 	stream := &streamReader{reader: response.Body, remaining: wireLimit(e.limits.MaxBytes)}
+	defer func() { stats.SourceWireBytes = stream.bytesRead }()
 	allocator := &boundedAllocator{base: memory.NewGoAllocator(), limit: int64(e.limits.MemoryMB) * (1 << 20)}
 	framing := &boundedMessageReader{stream: stream, allocator: allocator}
 	framing.refs.Store(1)
@@ -196,7 +209,9 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	// ClickHouse may append a text exception after sending HTTP 200. An Arrow
 	// decoder stops at its end marker, so require HTTP EOF without trailing data.
 	var trailing [1]byte
-	if n, readErr := response.Body.Read(trailing[:]); n != 0 || !errors.Is(readErr, io.EOF) {
+	n, readErr := response.Body.Read(trailing[:])
+	stream.bytesRead += int64(n)
+	if n != 0 || !errors.Is(readErr, io.EOF) {
 		return stats, sourceError(ctx, "Source returned an incomplete or invalid Arrow stream")
 	}
 	if err := ctx.Err(); err != nil {
@@ -276,6 +291,7 @@ func wireLimit(resultLimit int64) int64 {
 type streamReader struct {
 	reader    io.Reader
 	remaining int64
+	bytesRead int64
 	exceeded  bool
 }
 
@@ -292,6 +308,7 @@ func (r *streamReader) Read(p []byte) (int, error) {
 	}
 	n, err := r.reader.Read(p)
 	r.remaining -= int64(n)
+	r.bytesRead += int64(n)
 	return n, err
 }
 

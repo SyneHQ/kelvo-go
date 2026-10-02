@@ -102,21 +102,27 @@ func (l Limits) Validate() error {
 
 // FederationScan reports source batches actually fetched, not rows scanned by
 // the remote database. Bytes measures logical Arrow buffers, excluding framing.
+// SourceWireBytes counts supported adapters' encoded response body bytes read,
+// including IPC framing but excluding schema discovery and HTTP/TLS headers.
 type FederationScan struct {
-	Source  string `json:"source"`
-	Table   string `json:"table"`
-	Scans   int64  `json:"scans"`
-	Rows    int64  `json:"rows_fetched"`
-	Bytes   int64  `json:"arrow_bytes_fetched"`
-	Batches int64  `json:"batches_fetched"`
+	Source          string `json:"source"`
+	Table           string `json:"table"`
+	Scans           int64  `json:"scans"`
+	Rows            int64  `json:"rows_fetched"`
+	Bytes           int64  `json:"arrow_bytes_fetched"`
+	Batches         int64  `json:"batches_fetched"`
+	SourceWireBytes int64  `json:"source_wire_bytes,omitempty"`
 }
 
+// Stats keeps encoded source response bytes separate from worker/client output.
+// Only adapters with source body accounting contribute to SourceWireBytes.
 type Stats struct {
 	Federation      []FederationScan      `json:"federation,omitempty"`
 	Rows            int64                 `json:"rows"`
 	Batches         int64                 `json:"batches"`
 	Bytes           int64                 `json:"arrow_bytes"`
 	WireBytes       int64                 `json:"wire_bytes"`
+	SourceWireBytes int64                 `json:"source_wire_bytes,omitempty"`
 	Backend         string                `json:"backend"`
 	PrepareNS       int64                 `json:"prepare_ns"`
 	DurationNS      int64                 `json:"duration_ns"`

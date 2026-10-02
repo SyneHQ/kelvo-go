@@ -314,6 +314,70 @@ func nativeTable(t *testing.T, handler http.HandlerFunc) *Table {
 	return table
 }
 
+func TestLZ4SourceWireBytesCountScansButNotSchemaDiscovery(t *testing.T) {
+	record := uintRecord(memory.DefaultAllocator, 9007199254740993, 18446744073709551615)
+	defer record.Release()
+	var encoded bytes.Buffer
+	writer := ipc.NewWriter(&encoded, ipc.WithSchema(idSchema), ipc.WithLZ4())
+	if err := writer.Write(record); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	schemaWire := arrowWire(t)
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if r.URL.Query().Get("output_format_arrow_compression_method") != "lz4_frame" {
+			t.Error("federation did not preserve source compression option")
+		}
+		body, _ := io.ReadAll(r.Body)
+		if strings.HasSuffix(string(body), " LIMIT 0") {
+			_, _ = w.Write(schemaWire)
+			return
+		}
+		_, _ = w.Write(encoded.Bytes())
+	}))
+	defer server.Close()
+	source := testSource()
+	source.Options = map[string]string{"arrow_compression": "lz4_frame"}
+	t.Setenv(source.URLEnv, server.URL)
+	table, err := New(context.Background(), source, registeredTable, query.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+	if got := table.Stats().SourceWireBytes; got != 0 {
+		t.Fatalf("schema discovery counted as a source scan: %d", got)
+	}
+	for scan := 0; scan < 2; scan++ {
+		reader, err := table.Scan(context.Background(), duckbridge.ScanPlan{Columns: []string{"id"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reader.Next() || reader.RecordBatch().NumRows() != 2 {
+			reader.Release()
+			t.Fatal("missing LZ4 source batch")
+		}
+		values := reader.RecordBatch().Column(0).(*array.Uint64)
+		if values.Value(0) != 9007199254740993 || values.Value(1) != 18446744073709551615 {
+			reader.Release()
+			t.Fatal("federated LZ4 scan lost integer precision")
+		}
+		more := reader.Next()
+		err = reader.Err()
+		reader.Release()
+		if more || err != nil {
+			t.Fatalf("source scan did not finish: %v", err)
+		}
+	}
+	stats := table.Stats()
+	if requests.Load() != 3 || stats.Scans != 2 || stats.Rows != 4 || stats.SourceWireBytes != int64(encoded.Len())*2 {
+		t.Fatalf("source scan wire accounting is incorrect: %+v requests=%d", stats, requests.Load())
+	}
+}
+
 func TestNativeHTTPSourceCancellationAndLateError(t *testing.T) {
 	schemaWire := arrowWire(t)
 	t.Run("cancellation", func(t *testing.T) {

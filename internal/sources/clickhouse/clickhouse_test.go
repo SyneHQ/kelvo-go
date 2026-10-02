@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -38,7 +39,7 @@ func (s *testSink) Write(record arrow.RecordBatch) error {
 	return nil
 }
 
-func fixture(t *testing.T) ([]byte, int64) {
+func fixture(t *testing.T, options ...ipc.Option) ([]byte, int64) {
 	t.Helper()
 	schema := arrow.NewSchema([]arrow.Field{
 		{Name: "id", Type: arrow.PrimitiveTypes.Uint64},
@@ -55,7 +56,7 @@ func fixture(t *testing.T) ([]byte, int64) {
 	record := builder.NewRecordBatch()
 	defer record.Release()
 	var out bytes.Buffer
-	writer := ipc.NewWriter(&out, ipc.WithSchema(schema))
+	writer := ipc.NewWriter(&out, append([]ipc.Option{ipc.WithSchema(schema)}, options...)...)
 	if err := writer.Write(record); err != nil {
 		t.Fatal(err)
 	}
@@ -70,14 +71,19 @@ func fixture(t *testing.T) ([]byte, int64) {
 	return out.Bytes(), expectedDecodedBytes
 }
 
-func newTestEngine(t *testing.T, endpoint string, limits query.Limits) *Engine {
+func newTestEngine(t *testing.T, endpoint string, limits query.Limits, options ...map[string]string) *Engine {
 	t.Helper()
 	t.Setenv("KELVO_TEST_CLICKHOUSE_URL", endpoint)
 	t.Setenv("KELVO_TEST_CLICKHOUSE_USER", "reader")
 	t.Setenv("KELVO_TEST_CLICKHOUSE_PASSWORD", "test-only-password")
+	var sourceOptions map[string]string
+	if len(options) != 0 {
+		sourceOptions = options[0]
+	}
 	engine, err := New(catalog.Config{Sources: []catalog.Source{{
 		ID: "analytics", Type: "clickhouse", URLEnv: "KELVO_TEST_CLICKHOUSE_URL",
 		UsernameEnv: "KELVO_TEST_CLICKHOUSE_USER", PasswordEnv: "KELVO_TEST_CLICKHOUSE_PASSWORD",
+		Options: sourceOptions,
 	}}}, limits)
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +105,23 @@ func requireCode(t *testing.T, err error, code string) {
 }
 
 func TestExecuteArrowPreservesTypesAndSourceSettings(t *testing.T) {
-	data, expectedBytes := fixture(t)
+	for _, codec := range []string{"", "none", "lz4_frame"} {
+		t.Run("compression="+codec, func(t *testing.T) { testExecuteArrowPreservesTypesAndSourceSettings(t, codec) })
+	}
+}
+
+func testExecuteArrowPreservesTypesAndSourceSettings(t *testing.T, codec string) {
+	var options map[string]string
+	var writerOptions []ipc.Option
+	if codec == "" {
+		codec = "none"
+	} else {
+		options = map[string]string{"arrow_compression": codec}
+	}
+	if codec == "lz4_frame" {
+		writerOptions = append(writerOptions, ipc.WithLZ4())
+	}
+	data, expectedBytes := fixture(t, writerOptions...)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s", r.Method)
@@ -116,7 +138,7 @@ func TestExecuteArrowPreservesTypesAndSourceSettings(t *testing.T) {
 		for key, value := range map[string]string{
 			"readonly": "1", "default_format": "ArrowStream", "max_result_rows": "1000000",
 			"max_result_bytes": "268435456", "result_overflow_mode": "throw", "max_execution_time": "30",
-			"cancel_http_readonly_queries_on_client_close": "1", "output_format_arrow_compression_method": "none",
+			"cancel_http_readonly_queries_on_client_close": "1", "output_format_arrow_compression_method": codec,
 			"wait_end_of_query": "0", "database": "reports",
 		} {
 			if params.Get(key) != value {
@@ -130,7 +152,7 @@ func TestExecuteArrowPreservesTypesAndSourceSettings(t *testing.T) {
 		_, _ = w.Write(data)
 	}))
 	defer server.Close()
-	engine := newTestEngine(t, server.URL+"?database=reports", query.DefaultLimits())
+	engine := newTestEngine(t, server.URL+"?database=reports", query.DefaultLimits(), options)
 	sink := &testSink{write: func(record arrow.RecordBatch) error {
 		for column, lengths := range [][]int{{0, 16}, {1, 12, 5}, {0, 32}, {0, 16}} {
 			buffers := record.Column(column).Data().Buffers()
@@ -164,7 +186,7 @@ func TestExecuteArrowPreservesTypesAndSourceSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sink.schema == nil || sink.writes != 1 || stats.Rows != 2 || stats.Batches != 1 || stats.Bytes != expectedBytes || stats.Backend != "clickhouse" || !stats.EngineStreaming {
+	if sink.schema == nil || sink.writes != 1 || stats.Rows != 2 || stats.Batches != 1 || stats.Bytes != expectedBytes || stats.SourceWireBytes != int64(len(data)) || stats.Backend != "clickhouse" || !stats.EngineStreaming {
 		t.Fatalf("unexpected stats or sink: %+v, writes=%d", stats, sink.writes)
 	}
 }
@@ -271,10 +293,20 @@ func TestOversizedMetadataFailsBeforeAllocation(t *testing.T) {
 }
 
 func TestMultipleBatchesAndDictionaryChanges(t *testing.T) {
+	for _, codec := range []string{"none", "lz4_frame"} {
+		t.Run(codec, func(t *testing.T) { testMultipleBatchesAndDictionaryChanges(t, codec) })
+	}
+}
+
+func testMultipleBatchesAndDictionaryChanges(t *testing.T, codec string) {
 	dictType := &arrow.DictionaryType{IndexType: arrow.PrimitiveTypes.Int8, ValueType: arrow.BinaryTypes.String}
 	schema := arrow.NewSchema([]arrow.Field{{Name: "category", Type: dictType}}, nil)
 	var stream bytes.Buffer
-	writer := ipc.NewWriter(&stream, ipc.WithSchema(schema), ipc.WithDictionaryDeltas(true))
+	options := []ipc.Option{ipc.WithSchema(schema), ipc.WithDictionaryDeltas(true)}
+	if codec == "lz4_frame" {
+		options = append(options, ipc.WithLZ4())
+	}
+	writer := ipc.NewWriter(&stream, options...)
 	values := [][]string{{"alpha", "beta"}, {"alpha", "beta"}, {"gamma", "delta"}}
 	for _, labels := range values {
 		indicesBuilder := array.NewInt8Builder(memory.DefaultAllocator)
@@ -310,7 +342,7 @@ func TestMultipleBatchesAndDictionaryChanges(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	engine := newTestEngine(t, server.URL, query.DefaultLimits())
+	engine := newTestEngine(t, server.URL, query.DefaultLimits(), map[string]string{"arrow_compression": codec})
 	batch := 0
 	sink := &testSink{write: func(record arrow.RecordBatch) error {
 		if batch >= len(values) {
@@ -330,8 +362,115 @@ func TestMultipleBatchesAndDictionaryChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if batch != 3 || stats.Batches != 3 || stats.Rows != 6 {
+	if batch != 3 || stats.Batches != 3 || stats.Rows != 6 || stats.SourceWireBytes != int64(stream.Len()) {
 		t.Fatalf("multiple batches were not delivered: %+v", stats)
+	}
+}
+
+func TestCompressionOptionRejectsUnsupportedValuesBeforeHTTP(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests.Add(1) }))
+	defer server.Close()
+	t.Setenv("KELVO_TEST_CLICKHOUSE_URL", server.URL)
+	for _, codec := range []string{"", "lz4", "zstd", "LZ4_FRAME", "lz4_frame&readonly=0", "private-invalid-value"} {
+		t.Run(codec, func(t *testing.T) {
+			_, err := New(catalog.Config{Sources: []catalog.Source{{ID: "analytics", Type: "clickhouse",
+				URLEnv: "KELVO_TEST_CLICKHOUSE_URL", Options: map[string]string{"arrow_compression": codec}}}}, query.DefaultLimits())
+			requireCode(t, err, "INVALID_ARGUMENT")
+			if strings.Contains(err.Error(), "private-invalid-value") {
+				t.Fatal("invalid option value leaked into error")
+			}
+		})
+	}
+	if requests.Load() != 0 {
+		t.Fatal("invalid compression option reached the source")
+	}
+}
+
+func TestCompressionOptionIsFrozenAtConstruction(t *testing.T) {
+	data, _ := fixture(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("output_format_arrow_compression_method") != "none" {
+			t.Error("caller mutation changed the validated compression option")
+		}
+		_, _ = w.Write(data)
+	}))
+	defer server.Close()
+	options := map[string]string{"arrow_compression": "none"}
+	engine := newTestEngine(t, server.URL, query.DefaultLimits(), options)
+	options["arrow_compression"] = "zstd"
+	if _, err := engine.Execute(context.Background(), request(), &testSink{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLZ4MalformedAndIncompleteStreamsFail(t *testing.T) {
+	data, _ := fixture(t, ipc.WithLZ4())
+	brokenCodec := append([]byte(nil), data...)
+	frame := bytes.Index(brokenCodec, []byte{0x04, 0x22, 0x4d, 0x18})
+	if frame < 0 {
+		t.Fatal("fixture has no LZ4 frame")
+	}
+	brokenCodec[frame] ^= 0xff
+	for name, body := range map[string][]byte{
+		"invalid codec frame": brokenCodec,
+		"truncated batch":     data[:len(data)/2],
+		"missing EOS":         data[:len(data)-8],
+		"trailing error":      append(append([]byte(nil), data...), []byte("private-source-error")...),
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) }))
+			defer server.Close()
+			engine := newTestEngine(t, server.URL, query.DefaultLimits(), map[string]string{"arrow_compression": "lz4_frame"})
+			stats, err := engine.Execute(context.Background(), request(), &testSink{})
+			requireCode(t, err, "QUERY_FAILED")
+			if strings.Contains(err.Error(), "private-source-error") || stats.SourceWireBytes <= 0 || stats.SourceWireBytes > int64(len(body)) {
+				t.Fatalf("incorrect failed-stream evidence: stats=%+v error=%v", stats, err)
+			}
+		})
+	}
+}
+
+func TestLZ4DecodedLimitsRemainEnforced(t *testing.T) {
+	// A small, compressible 2 MiB value exercises expansion without allocating a
+	// giant fixture. Both cases admit its encoded bytes but reject decoded data.
+	schema := arrow.NewSchema([]arrow.Field{{Name: "value", Type: arrow.BinaryTypes.String}}, nil)
+	builder := array.NewStringBuilder(memory.DefaultAllocator)
+	builder.Append(strings.Repeat("x", 2<<20))
+	column := builder.NewArray()
+	builder.Release()
+	defer column.Release()
+	record := array.NewRecordBatch(schema, []arrow.Array{column}, 1)
+	defer record.Release()
+	var encoded bytes.Buffer
+	writer := ipc.NewWriter(&encoded, ipc.WithSchema(schema), ipc.WithLZ4())
+	if err := writer.Write(record); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if encoded.Len() >= 1<<20 {
+		t.Fatal("fixture did not compress below the allocation budget")
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(encoded.Bytes()) }))
+	defer server.Close()
+	for _, limit := range []string{"decoded bytes", "decoded allocation"} {
+		t.Run(limit, func(t *testing.T) {
+			limits := query.DefaultLimits()
+			if limit == "decoded bytes" {
+				limits.MaxBytes = int64(encoded.Len()) + 1024
+			} else {
+				limits.MemoryMB = 1
+			}
+			engine := newTestEngine(t, server.URL, limits, map[string]string{"arrow_compression": "lz4_frame"})
+			sink := &testSink{}
+			stats, err := engine.Execute(context.Background(), request(), sink)
+			requireCode(t, err, "RESOURCE_EXHAUSTED")
+			if sink.writes != 0 || stats.Rows != 0 || stats.Bytes != 0 || stats.SourceWireBytes <= 0 || stats.SourceWireBytes > int64(encoded.Len()) {
+				t.Fatalf("decoded limit failed before delivery: stats=%+v writes=%d", stats, sink.writes)
+			}
+		})
 	}
 }
 

@@ -40,16 +40,20 @@ type Table struct {
 	closeDone                   chan struct{}
 	closeOnce                   sync.Once
 	rows, bytes, batches, scans atomic.Int64
+	sourceWireBytes             atomic.Int64
 }
 
 // Stats counts source batches accepted for handoff, including a batch abandoned
 // by a cancelling consumer. Describe queries and rejected batches are excluded;
 // Bytes measures Arrow buffers, not HTTP framing or source storage read bytes.
+// SourceWireBytes additionally includes encoded body bytes consumed by rejected
+// or incomplete scans; it is available after each producer finishes.
 type Stats struct {
-	Rows    int64 `json:"rows"`
-	Bytes   int64 `json:"bytes"`
-	Batches int64 `json:"batches"`
-	Scans   int64 `json:"scans"`
+	Rows            int64 `json:"rows"`
+	Bytes           int64 `json:"bytes"`
+	Batches         int64 `json:"batches"`
+	SourceWireBytes int64 `json:"source_wire_bytes,omitempty"`
+	Scans           int64 `json:"scans"`
 }
 
 func New(ctx context.Context, source catalog.Source, table catalog.FederationTable, limits query.Limits) (*Table, error) {
@@ -132,7 +136,7 @@ func newTable(ctx context.Context, source catalog.Source, table catalog.Federati
 }
 func (t *Table) Schema() *arrow.Schema { return t.schema }
 func (t *Table) Stats() Stats {
-	return Stats{Rows: t.rows.Load(), Bytes: t.bytes.Load(), Batches: t.batches.Load(), Scans: t.scans.Load()}
+	return Stats{Rows: t.rows.Load(), Bytes: t.bytes.Load(), Batches: t.batches.Load(), Scans: t.scans.Load(), SourceWireBytes: t.sourceWireBytes.Load()}
 }
 func (t *Table) Scan(ctx context.Context, plan duckbridge.ScanPlan) (array.RecordReader, error) {
 	sql, schema, err := t.compileScan(plan)

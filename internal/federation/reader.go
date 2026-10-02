@@ -42,7 +42,8 @@ func newScanReader(table *Table, parent context.Context, schema *arrow.Schema) *
 func (r *scanReader) produce(executor execution, request query.Request) {
 	defer r.table.producers.Done()
 	sink := &scanSink{reader: r}
-	_, err := executor.Execute(r.ctx, request, sink)
+	stats, err := executor.Execute(r.ctx, request, sink)
+	r.table.sourceWireBytes.Add(stats.SourceWireBytes)
 	closeErr := executor.Close()
 	if err == nil {
 		err = closeErr
