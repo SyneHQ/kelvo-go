@@ -13,9 +13,9 @@ import (
 
 const countColumn = "__kelvo_count"
 
-// ClickHouse quoted identifiers use backslash escapes. Operators select plain
-// database/table identifiers; source-provided column names are quoted separately.
-func quoteIdentifier(name string) (string, error) {
+// Operators select plain namespace/table identifiers. Source-provided columns
+// use the dialect's identifier quoting, never SQL string-literal escaping.
+func (d scanDialect) quoteIdentifier(name string) (string, error) {
 	if name == "" || len(name) > 1024 || !utf8.ValidString(name) {
 		return "", query.NewError("UNSUPPORTED", "Federation column identifier is unsupported")
 	}
@@ -24,9 +24,24 @@ func quoteIdentifier(name string) (string, error) {
 			return "", query.NewError("UNSUPPORTED", "Federation column identifier is unsupported")
 		}
 	}
-	name = strings.ReplaceAll(name, `\`, `\\`)
-	name = strings.ReplaceAll(name, "`", "\\`")
-	return "`" + name + "`", nil
+	if d == dialectClickHouse {
+		name = strings.ReplaceAll(name, `\`, `\\`)
+		name = strings.ReplaceAll(name, "`", "\\`")
+		return "`" + name + "`", nil
+	}
+	// sqlnative deliberately rejects ambiguous backslashes even in quoted
+	// identifiers. Reject them before opening a scan rather than changing names.
+	if strings.ContainsRune(name, '\\') {
+		return "", query.NewError("UNSUPPORTED", "Federation column identifier is unsupported")
+	}
+	switch d {
+	case dialectPostgres:
+		return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`, nil
+	case dialectMySQL:
+		return "`" + strings.ReplaceAll(name, "`", "``") + "`", nil
+	default:
+		return "", query.NewError("UNSUPPORTED", "Source has no native federation dialect")
+	}
 }
 
 func (t *Table) compileScan(plan duckbridge.ScanPlan) (string, *arrow.Schema, error) {
@@ -40,17 +55,28 @@ func (t *Table) compileScan(plan duckbridge.ScanPlan) (string, *arrow.Schema, er
 		if !found {
 			return "", nil, query.NewError("PERMISSION_DENIED", "Federation projection names an unavailable column")
 		}
-		quoted, err := quoteIdentifier(name)
+		quoted, err := t.dialect.quoteIdentifier(name)
 		if err != nil {
 			return "", nil, err
 		}
 		columns[i], fields[i] = quoted, field
 	}
 	if len(columns) == 0 {
-		columns = []string{"toUInt8(1) AS `" + countColumn + "`"}
-		fields = []arrow.Field{{Name: countColumn, Type: arrow.PrimitiveTypes.Uint8}}
+		if t.dialect == dialectClickHouse {
+			columns = []string{"toUInt8(1) AS `" + countColumn + "`"}
+			fields = []arrow.Field{{Name: countColumn, Type: arrow.PrimitiveTypes.Uint8}}
+		} else {
+			// Native relational adapters attach driver type metadata to each field.
+			// A real source column retains its exact schema for count-only scans.
+			field := t.schema.Field(0)
+			quoted, err := t.dialect.quoteIdentifier(field.Name)
+			if err != nil {
+				return "", nil, err
+			}
+			columns, fields = []string{quoted}, []arrow.Field{field}
+		}
 	}
-	compiler := predicateCompiler{columns: t.columns}
+	compiler := predicateCompiler{columns: t.columns, dialect: t.dialect}
 	filters := make([]string, len(plan.Filters))
 	for i, filter := range plan.Filters {
 		compiled, err := compiler.compile(filter, 0)
@@ -63,12 +89,16 @@ func (t *Table) compileScan(plan duckbridge.ScanPlan) (string, *arrow.Schema, er
 	if len(filters) != 0 {
 		sql += " WHERE " + strings.Join(filters, " AND ")
 	}
+	if t.dialect != dialectClickHouse && len(sql) > 64<<10 {
+		return "", nil, query.NewError("UNSUPPORTED", "Federation scan exceeds the native SQL size limit")
+	}
 	metadata := t.schema.Metadata()
 	return sql, arrow.NewSchema(fields, &metadata), nil
 }
 
 type predicateCompiler struct {
 	columns map[string]arrow.Field
+	dialect scanDialect
 	nodes   int
 }
 
@@ -96,7 +126,7 @@ func (p *predicateCompiler) compile(filter duckbridge.Filter, depth int) (string
 	if !found || len(filter.Children) != 0 {
 		return "", unsupported
 	}
-	column, err := quoteIdentifier(filter.Column)
+	column, err := p.dialect.quoteIdentifier(filter.Column)
 	if err != nil {
 		return "", err
 	}
@@ -116,16 +146,16 @@ func (p *predicateCompiler) compile(filter duckbridge.Filter, depth int) (string
 	if !found {
 		return "", unsupported
 	}
-	constant, err := exactConstant(filter.Type, filter.Value, field.Type)
+	constant, err := p.dialect.exactConstant(filter.Type, filter.Value, field.Type)
 	if err != nil {
 		return "", err
 	}
 	return "(" + column + " " + operator + " " + constant + ")", nil
 }
-func exactConstant(kind, value string, column arrow.DataType) (string, error) {
+func (d scanDialect) exactConstant(kind, value string, column arrow.DataType) (string, error) {
 	unsupported := query.NewError("UNSUPPORTED", "Federation predicates require exact matching integer or boolean types")
 	if kind == "bool" {
-		if column.ID() != arrow.BOOL || (value != "true" && value != "false") {
+		if column.ID() != arrow.BOOL || (value != "true" && value != "false") || d == dialectMySQL {
 			return "", unsupported
 		}
 		return value, nil
@@ -154,7 +184,24 @@ func exactConstant(kind, value string, column arrow.DataType) (string, error) {
 			return "", unsupported
 		}
 	}
+	castType := typ.sql
+	switch d {
+	case dialectClickHouse:
+	case dialectPostgres:
+		castType = map[string]string{"int16": "SMALLINT", "int32": "INTEGER", "int64": "BIGINT", "uint32": "OID"}[kind]
+		if castType == "" {
+			return "", unsupported
+		}
+	case dialectMySQL:
+		castType = "UNSIGNED"
+		if typ.signed {
+			castType = "SIGNED"
+		}
+	default:
+		return "", unsupported
+	}
 	// Validated decimal strings and typed CAST avoid any floating-literal path,
-	// including UInt64 max and Int64 min.
-	return "CAST('" + value + "' AS " + typ.sql + ")", nil
+	// including UInt64 max and Int64 min. MySQL casts to exact 64-bit integers;
+	// PostgreSQL's only native unsigned column type here is the 32-bit OID.
+	return "CAST('" + value + "' AS " + castType + ")", nil
 }

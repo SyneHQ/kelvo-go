@@ -81,7 +81,7 @@ func TestIdentifiersRemainSingleQuotedNames(t *testing.T) {
 	if err != nil || sql != "SELECT `x\\`); DROP TABLE other; --` FROM `reports`.`events`" {
 		t.Fatalf("identifier escape changed: %q %v", sql, err)
 	}
-	quoted, err := quoteIdentifier("back\\slash")
+	quoted, err := dialectClickHouse.quoteIdentifier("back\\slash")
 	if err != nil || quoted != "`back\\\\slash`" {
 		t.Fatalf("backslash escape: %q %v", quoted, err)
 	}
@@ -101,7 +101,7 @@ func TestAllExactIntegerWidths(t *testing.T) {
 		{"uint64", "9007199254740993", "CAST('9007199254740993' AS UInt64)", arrow.PrimitiveTypes.Uint64},
 	}
 	for _, test := range cases {
-		got, err := exactConstant(test.kind, test.value, test.typ)
+		got, err := dialectClickHouse.exactConstant(test.kind, test.value, test.typ)
 		if err != nil || got != test.want {
 			t.Fatalf("%s changed: %s %v", test.kind, got, err)
 		}

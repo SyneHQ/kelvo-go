@@ -10,7 +10,6 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/duckbridge"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
-	"github.com/SYNEHQ/kelvo-go/internal/sources/clickhouse"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 )
@@ -22,13 +21,14 @@ type execution interface {
 type executorFactory func(catalog.Config, query.Limits) (execution, error)
 
 // Table describes one operator-selected relation. Every concurrent scan owns
-// its native executor, HTTP response, cancellation and one Arrow batch handoff.
+// its native executor, source connection, cancellation and one Arrow batch handoff.
 type Table struct {
 	ctx                         context.Context
 	cancel                      context.CancelFunc
 	schema                      *arrow.Schema
 	columns                     map[string]arrow.Field
 	remoteName, sourceID        string
+	dialect                     scanDialect
 	limits                      query.Limits
 	config                      catalog.Config
 	factory                     executorFactory
@@ -53,9 +53,11 @@ type Stats struct {
 }
 
 func New(ctx context.Context, source catalog.Source, table catalog.FederationTable, limits query.Limits) (*Table, error) {
-	return newTable(ctx, source, table, limits, func(config catalog.Config, effective query.Limits) (execution, error) {
-		return clickhouse.New(config, effective)
-	})
+	dialect, err := dialectFor(source.Type)
+	if err != nil {
+		return nil, err
+	}
+	return newTable(ctx, source, table, limits, dialect.executor)
 }
 func newTable(ctx context.Context, source catalog.Source, table catalog.FederationTable, limits query.Limits, factory executorFactory) (*Table, error) {
 	if err := limits.Validate(); err != nil {
@@ -64,8 +66,12 @@ func newTable(ctx context.Context, source catalog.Source, table catalog.Federati
 	if err := source.ValidateFederation(); err != nil {
 		return nil, err
 	}
-	if source.Federation == nil || !catalog.ValidID(source.ID) || source.Type != "clickhouse" {
+	if source.Federation == nil || !catalog.ValidID(source.ID) {
 		return nil, query.NewError("PERMISSION_DENIED", "Source does not expose federated tables")
+	}
+	dialect, err := dialectFor(source.Type)
+	if err != nil {
+		return nil, err
 	}
 	found := false
 	for _, allowed := range source.Federation.Tables {
@@ -86,16 +92,12 @@ func newTable(ctx context.Context, source catalog.Source, table catalog.Federati
 	if err := limits.Validate(); err != nil {
 		return nil, err
 	}
-	database, err := quoteIdentifier(table.Database)
-	if err != nil {
-		return nil, err
-	}
-	name, err := quoteIdentifier(table.Table)
+	remoteName, err := dialect.tableName(table)
 	if err != nil {
 		return nil, err
 	}
 	lifetime, cancel := context.WithCancel(ctx)
-	t := &Table{ctx: lifetime, cancel: cancel, remoteName: database + "." + name, sourceID: source.ID, limits: limits, config: catalog.Config{Sources: []catalog.Source{source}}, factory: factory, active: make(map[*scanReader]struct{}), closeDone: make(chan struct{}), budget: budgetFromContext(ctx)}
+	t := &Table{ctx: lifetime, cancel: cancel, remoteName: remoteName, sourceID: source.ID, dialect: dialect, limits: limits, config: catalog.Config{Sources: []catalog.Source{source}}, factory: factory, active: make(map[*scanReader]struct{}), closeDone: make(chan struct{}), budget: budgetFromContext(ctx)}
 	executor, err := factory(t.config, limits)
 	if err != nil {
 		cancel()
@@ -120,7 +122,7 @@ func newTable(ctx context.Context, source catalog.Source, table catalog.Federati
 			cancel()
 			return nil, query.NewError("UNSUPPORTED", "Federation source has invalid or duplicate column names")
 		}
-		if _, err := quoteIdentifier(field.Name); err != nil {
+		if _, err := dialect.quoteIdentifier(field.Name); err != nil {
 			cancel()
 			return nil, err
 		}
