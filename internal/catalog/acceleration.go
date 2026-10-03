@@ -22,7 +22,7 @@ type AccelerationConfig struct {
 	ObjectStorage *ObjectStorage `json:"object_storage,omitempty" yaml:"object_storage,omitempty"`
 }
 
-// MultipartConfig bounds local immutable snapshot parts and their encoded size.
+// MultipartConfig bounds immutable snapshot parts and their encoded size.
 // Limits.MaxBytes continues to bound the complete snapshot.
 type MultipartConfig struct {
 	MaxPartBytes int64 `json:"max_part_bytes" yaml:"max_part_bytes"`
@@ -134,15 +134,12 @@ func (c *Config) validateAcceleration(base string) error {
 			return errors.New("invalid dataset refresh resource limits")
 		}
 		if d.Multipart != nil {
-			if a.ObjectStorage != nil {
-				return errors.New("multipart snapshots currently require local storage")
-			}
 			if d.Multipart.MaxParts < 2 || d.Multipart.MaxParts > 256 || d.Multipart.MaxPartBytes < 1<<20 || d.Multipart.MaxPartBytes > 4<<30 || d.Multipart.MaxPartBytes > d.Limits.MaxBytes {
 				return errors.New("invalid multipart snapshot limits")
 			}
 		}
-		if a.ObjectStorage != nil && d.Limits.MaxBytes > 4<<30 {
-			return errors.New("object snapshots currently require max_bytes at most 4 GiB")
+		if a.ObjectStorage != nil && d.Multipart == nil && d.Limits.MaxBytes > 4<<30 {
+			return errors.New("single-object snapshots require max_bytes at most 4 GiB")
 		}
 		// Refresh inputs must be real registered sources. Disallow dependencies on
 		// other accelerated datasets so freshness and permissions stay explicit.

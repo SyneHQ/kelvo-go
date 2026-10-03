@@ -77,14 +77,23 @@ func TestMultipartProcessOnlyPaths(t *testing.T) {
 	}
 }
 
-func TestMultipartRejectsObjectStorage(t *testing.T) {
+func TestMultipartObjectStorageBounds(t *testing.T) {
 	c, err := loadAccelerationFixture(t, acceleratedYAML)
 	if err != nil {
 		t.Fatal(err)
 	}
 	c.Acceleration.ObjectStorage = &ObjectStorage{ObjectLocation: ObjectLocation{Provider: "s3", Endpoint: "https://objects.example.com", Bucket: "snapshots", Prefix: "kelvo", Region: "us-east-1"}, ReadCredentials: ObjectCredentials{AccessKeyIDEnv: "KELVO_SOURCE_READER_ID", SecretAccessKeyEnv: "KELVO_SOURCE_READER_SECRET"}, WriteCredentials: ObjectCredentials{AccessKeyIDEnv: "KELVO_SOURCE_WRITER_ID", SecretAccessKeyEnv: "KELVO_SOURCE_WRITER_SECRET"}}
-	c.Acceleration.Datasets[0].Multipart = &MultipartConfig{MaxParts: 2, MaxPartBytes: 1 << 20}
-	if err := c.validateAcceleration(t.TempDir()); err == nil || !strings.Contains(err.Error(), "local storage") {
-		t.Fatalf("object multipart accepted or unrelated error: %v", err)
+	c.Acceleration.Datasets[0].Limits.MaxBytes = 8 << 30
+	c.Acceleration.Datasets[0].Multipart = &MultipartConfig{MaxParts: 16, MaxPartBytes: 1 << 30}
+	if err := c.validateAcceleration(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	c.Acceleration.Datasets[0].Multipart.MaxPartBytes = (4 << 30) + 1
+	if err := c.validateAcceleration(t.TempDir()); err == nil {
+		t.Fatal("oversized remote part accepted")
+	}
+	c.Acceleration.Datasets[0].Multipart = nil
+	if err := c.validateAcceleration(t.TempDir()); err == nil {
+		t.Fatal("oversized single object accepted")
 	}
 }

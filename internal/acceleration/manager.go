@@ -283,25 +283,41 @@ func Resolve(ctx context.Context, c catalog.Config, request query.Request) ([]ca
 			return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Accelerated dataset is missing, stale, or requires a refresh")
 		}
 		leases = append(leases, lease)
-		sources[i] = catalog.Source{ID: source.ID, Type: "parquet", Path: lease.Snapshot.Path}
-		if len(lease.Snapshot.Parts) > 0 {
-			if len(lease.Snapshot.Parts) > 256 || lease.Snapshot.Path != "" || lease.Snapshot.ObjectKey != "" {
+		snapshot := lease.Snapshot
+		if c.Acceleration.ObjectStorage != nil {
+			// Remote parts become parent-owned capability URLs below, never
+			// local paths or cloud credentials inside the query subprocess.
+			if snapshot.ObjectKey == "" && len(snapshot.Parts) == 0 {
 				closeAll()
-				return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Multipart snapshot layout is invalid")
+				return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Remote snapshot layout is invalid")
 			}
-			paths := make([]string, len(lease.Snapshot.Parts))
-			for index, part := range lease.Snapshot.Parts {
-				paths[index] = part.Path
-			}
-			sources[i] = catalog.Source{ID: source.ID, Type: "parquet", ParquetPaths: paths}
-		}
-
-		if lease.Snapshot.ObjectKey != "" {
-			if c.Acceleration.ObjectStorage == nil {
+			objects = append(objects, snapshot)
+			sources[i] = catalog.Source{ID: source.ID, Type: "parquet"}
+		} else {
+			if snapshot.ObjectKey != "" || snapshot.ObjectVersion != "" {
 				closeAll()
 				return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Object snapshot configuration is unavailable")
 			}
-			objects = append(objects, lease.Snapshot)
+			sources[i] = catalog.Source{ID: source.ID, Type: "parquet", Path: snapshot.Path}
+			if len(snapshot.Parts) > 0 {
+				if len(snapshot.Parts) > 256 || snapshot.Path != "" {
+					closeAll()
+					return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Multipart snapshot layout is invalid")
+				}
+				paths := make([]string, len(snapshot.Parts))
+				for index, part := range snapshot.Parts {
+					if part.ObjectKey != "" || part.ObjectVersion != "" {
+						closeAll()
+						return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Local snapshot part is invalid")
+					}
+					paths[index] = part.Path
+				}
+				sources[i] = catalog.Source{ID: source.ID, Type: "parquet", ParquetPaths: paths}
+				if err := sources[i].ValidateParquetPaths(); err != nil {
+					closeAll()
+					return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Local snapshot paths are invalid")
+				}
+			}
 		}
 		versions = append(versions, query.AccelerationVersion{Dataset: source.ID, Generation: lease.Snapshot.Generation, RefreshedAt: lease.Snapshot.RefreshedAt})
 	}

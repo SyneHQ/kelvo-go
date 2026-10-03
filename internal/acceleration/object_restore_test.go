@@ -304,3 +304,41 @@ func TestRemoteRestoreNoOpReleasesLeaseAndReportsReleaseFailure(t *testing.T) {
 		})
 	}
 }
+
+func TestRemoteRestoreAcrossSingleAndMultipart(t *testing.T) {
+	backend, client := recoveryObjectBackend(t)
+	ctx := context.Background()
+	first := commitRemoteRecovery(t, backend, "id", "v1")
+	committed, multipart := publishDescriptorFixture(t, backend, client, strings.Repeat("f", 32), "id")
+	state, err := backend.readState(ctx, "events", client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := nextObjectManifest(state.manifest, committed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.writeState(ctx, client, state, manifest); err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := backend.Inventory(ctx, "events")
+	if err != nil || len(inventory) != 2 || !inventory[0].Verified || !inventory[1].Verified || len(inventory[0].Snapshot.Parts) != 2 {
+		t.Fatalf("mixed inventory: %+v %v", inventory, err)
+	}
+	restored, err := backend.Restore(ctx, RestoreRequest{Dataset: "events", Generation: first.Generation, ExpectedGeneration: multipart.Generation, Fingerprint: "v1"})
+	if err != nil || restored.Generation != first.Generation || !restored.RefreshedAt.Equal(first.RefreshedAt) || len(restored.Parts) != 0 {
+		t.Fatalf("single restore: %+v %v", restored, err)
+	}
+	restored, err = backend.Restore(ctx, RestoreRequest{Dataset: "events", Generation: multipart.Generation, ExpectedGeneration: first.Generation, Fingerprint: "v1"})
+	if err != nil || restored.Generation != multipart.Generation || !restored.RefreshedAt.Equal(multipart.RefreshedAt) || len(restored.Parts) != 2 || restored.ObjectKey != "" {
+		t.Fatalf("multipart restore: %+v %v", restored, err)
+	}
+	if _, err := backend.Restore(ctx, RestoreRequest{Dataset: "events", Generation: first.Generation, ExpectedGeneration: multipart.Generation, Fingerprint: "revoked"}); !errors.Is(err, ErrFingerprintMismatch) {
+		t.Fatal("restore bypassed authorization")
+	}
+	// A retained exact-version snapshot remains readable through both pointer
+	// swaps; neither restoration permits remote object reclamation.
+	if _, err := backend.verifyObjectSnapshot(ctx, multipart); err != nil {
+		t.Fatal(err)
+	}
+}

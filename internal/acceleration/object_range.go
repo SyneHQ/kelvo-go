@@ -78,31 +78,28 @@ func openObjectRanges(parent context.Context, storage catalog.ObjectStorage, sna
 	if len(snapshots) == 0 || len(snapshots) > 64 {
 		return nil, nil, errors.New("object ranges require 1 to 64 snapshots")
 	}
-	selected := make(map[string]Snapshot, len(snapshots))
+	selected := make(map[string][]Snapshot, len(snapshots))
+	multipart := make(map[string]bool, len(snapshots))
 	tenant := ""
+	count := 0
 	for _, snapshot := range snapshots {
-		if !storeDatasetID.MatchString(snapshot.Dataset) || !storeGenerationID.MatchString(snapshot.Generation) ||
-			snapshot.Bytes <= 0 || snapshot.Bytes > objectstore.MaxUploadBytes || !storeDigest.MatchString(snapshot.SHA256) ||
-			!validObjectVersion(snapshot.ObjectVersion) {
-			return nil, nil, errors.New("object range snapshot metadata is invalid")
-		}
 		if _, duplicate := selected[snapshot.Dataset]; duplicate {
 			return nil, nil, errors.New("object range dataset is duplicated")
 		}
-		if err := storage.ObjectLocation.ValidateKey(snapshot.ObjectKey); err != nil {
-			return nil, nil, errors.New("object range key is invalid")
+		leaves, scope, err := objectRangeLeaves(storage, snapshot)
+		if err != nil {
+			return nil, nil, err
 		}
-		parts := strings.Split(strings.TrimPrefix(snapshot.ObjectKey, storage.Prefix+"/"), "/")
-		if len(parts) != 3 || !storeTenantID.MatchString(parts[0]) || parts[1] != snapshot.Dataset || parts[2] != snapshot.Generation+".parquet" ||
-			(tenant != "" && tenant != parts[0]) {
-			return nil, nil, errors.New("object range key does not match the selected snapshot")
+		if tenant != "" && tenant != scope {
+			return nil, nil, errors.New("object range tenant mismatch")
 		}
-		tenant = parts[0]
-		uri, err := storage.ObjectLocation.URI(snapshot.ObjectKey)
-		if err != nil || snapshot.Path != uri {
-			return nil, nil, errors.New("object range location does not match the selected snapshot")
+		tenant = scope
+		count += len(leaves)
+		if count > 1024 {
+			return nil, nil, errors.New("query object range capability limit exceeded")
 		}
-		selected[snapshot.Dataset] = snapshot
+		selected[snapshot.Dataset] = leaves
+		multipart[snapshot.Dataset] = len(snapshot.Parts) > 0
 	}
 	var random [32]byte
 	if _, err := rand.Read(random[:]); err != nil {
@@ -116,11 +113,24 @@ func openObjectRanges(parent context.Context, storage catalog.ObjectStorage, sna
 	lifetime, cancel := context.WithCancel(parent)
 	bridge := &objectRangeBridge{client: client, authority: listener.Addr().String(), routes: make(map[string]Snapshot, len(selected)), slots: make(chan struct{}, objectRangeConcurrency)}
 	sources := make(map[string]catalog.Source, len(selected))
-	for dataset, snapshot := range selected {
-		path := "/" + token + "/" + dataset
-		url := "http://" + bridge.authority + path
-		bridge.routes[path] = snapshot
-		sources[dataset] = catalog.Source{ID: dataset, Type: "parquet", Path: url, Range: &catalog.ObjectRange{URL: url, Bytes: snapshot.Bytes}}
+	for dataset, leaves := range selected {
+		source := catalog.Source{ID: dataset, Type: "parquet"}
+		for index, leaf := range leaves {
+			path := "/" + token + "/" + dataset
+			if multipart[dataset] {
+				path += fmt.Sprintf("/part-%04d", index)
+			}
+			url := "http://" + bridge.authority + path
+			bridge.routes[path] = leaf
+			capability := catalog.ObjectRange{URL: url, Bytes: leaf.Bytes}
+			if multipart[dataset] {
+				source.Ranges = append(source.Ranges, capability)
+			} else {
+				source.Path = url
+				source.Range = &capability
+			}
+		}
+		sources[dataset] = source
 	}
 	server := &http.Server{
 		Handler: bridge, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
@@ -156,6 +166,59 @@ func openObjectRanges(parent context.Context, storage catalog.ObjectStorage, sna
 	}()
 	ready = true
 	return sources, release, nil
+}
+
+// Convert an acquired generation into private leaf routes. Fresh copies prevent
+// caller mutation of Snapshot.Parts from changing an already authorized bridge.
+func objectRangeLeaves(storage catalog.ObjectStorage, snapshot Snapshot) ([]Snapshot, string, error) {
+	bad := func() ([]Snapshot, string, error) {
+		return nil, "", errors.New("object range snapshot metadata is invalid")
+	}
+	if !storeDatasetID.MatchString(snapshot.Dataset) || !storeGenerationID.MatchString(snapshot.Generation) || snapshot.Bytes <= 0 || !storeDigest.MatchString(snapshot.SHA256) {
+		return bad()
+	}
+	isMultipart := len(snapshot.Parts) > 0
+	if isMultipart && (len(snapshot.Parts) > 256 || snapshot.Path != "" || snapshot.ObjectKey != "" || snapshot.ObjectVersion != "" || !storeDigest.MatchString(snapshot.SchemaHash) || snapshot.Rows < 0 || snapshot.Bytes > 1<<40) {
+		return bad()
+	}
+	leaves := []Snapshot{snapshot}
+	if isMultipart {
+		leaves = make([]Snapshot, len(snapshot.Parts))
+		var rows, bytes int64
+		for i, p := range snapshot.Parts {
+			if p.Path != "" || p.Rows < 0 || p.Rows > snapshot.Rows-rows || p.Bytes <= 0 || p.Bytes > snapshot.Bytes-bytes {
+				return bad()
+			}
+			rows += p.Rows
+			bytes += p.Bytes
+			leaves[i] = Snapshot{Dataset: snapshot.Dataset, Generation: snapshot.Generation, Bytes: p.Bytes, Rows: p.Rows, SHA256: p.SHA256, ObjectKey: p.ObjectKey, ObjectVersion: p.ObjectVersion}
+		}
+		if rows != snapshot.Rows || bytes != snapshot.Bytes {
+			return bad()
+		}
+	}
+	tenant := ""
+	for i, leaf := range leaves {
+		if leaf.Bytes <= 0 || leaf.Bytes > objectstore.MaxUploadBytes || !storeDigest.MatchString(leaf.SHA256) || !validObjectVersion(leaf.ObjectVersion) || storage.ObjectLocation.ValidateKey(leaf.ObjectKey) != nil {
+			return bad()
+		}
+		parts := strings.Split(strings.TrimPrefix(leaf.ObjectKey, storage.Prefix+"/"), "/")
+		expected := snapshot.Generation + ".parquet"
+		if isMultipart {
+			expected = multipartName(snapshot.Generation, i)
+		}
+		if len(parts) != 3 || !storeTenantID.MatchString(parts[0]) || parts[1] != snapshot.Dataset || parts[2] != expected || (tenant != "" && tenant != parts[0]) {
+			return bad()
+		}
+		tenant = parts[0]
+		if !isMultipart {
+			uri, err := storage.ObjectLocation.URI(leaf.ObjectKey)
+			if err != nil || leaf.Path != uri {
+				return bad()
+			}
+		}
+	}
+	return leaves, tenant, nil
 }
 
 type objectRangeBridge struct {
