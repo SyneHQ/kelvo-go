@@ -67,6 +67,8 @@ The private directory must contain:
 
 `gateway.env` supplies `KELVO_TENANT_A_TOKEN`, `KELVO_TENANT_B_TOKEN`, `KELVO_TENANT_A_NATS_PASSWORD` and `KELVO_TENANT_B_NATS_PASSWORD`. Use independent random API tokens and NATS passwords of at least 32 characters; NATS passwords must match their provisioned users. Tenant worker env files supply their own NATS password under the same configured variable name, and only the source credentials needed by their catalog.
 
+For live gateway API-key rotation, use the separate [private key-file configuration](../docs/gateway-key-rotation.md) and mount its trusted containing directory read-only into each gateway so atomic replacements remain visible. Remove every tenant `token_env` when enabling file authentication; keep NATS credentials separate. Verify each replica and advance its startup revision floor during rollout.
+
 New source environment references use `KELVO_SOURCE_*`, such as `KELVO_SOURCE_POSTGRES_DSN`. The worker forwards only registered source references into the query subprocess. Broker passwords, API tokens and TLS credentials are not part of that allowed namespace. Do not name control-plane secrets `KELVO_SOURCE_*`.
 
 Files mounted into a service must be readable by container UID `65532`. Protect private keys with mode `0400` or `0600` and private directories with `0700`, owned by that UID. Protect environment files on the host with mode `0600`. Do not print a resolved Compose configuration containing loaded environment files; use `docker compose config --quiet` for validation.

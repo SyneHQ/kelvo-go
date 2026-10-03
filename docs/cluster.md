@@ -82,7 +82,9 @@ Certificates require CA trust, hostname verification and URI identities. Gateway
 
 The NATS example uses three file-backed replicas with per-account storage limits and a bounded pull consumer. Production operators must choose failure domains, disks, encryption, monitoring, backup/restore and broker service limits. A local three-process quorum test does not establish multi-zone HA or production durability. Use synchronized host clocks; lease expiry is evaluated from application timestamps.
 
-Remaining limitations include fixed policies, no tenant CRUD/API token rotation API, no per-user row policies, no durable result storage, no single-query distribution and no per-query cgroup. Container limits bound each tenant node. DuckDB still materializes execution before Arrow delivery with the pinned Go driver. Linux ABI 3 or newer is required; unsupported hosts fail closed.
+Optional [live gateway key rotation](gateway-key-rotation.md) supports overlapping keys, bounded per-replica revocation and cancellation of requests authenticated by removed keys. Private revisioned files replace environment-token authentication for every configured tenant; file failure makes authentication unavailable without changing tenant data policy.
+
+Remaining limitations include fixed tenant policies, no tenant enrollment or remote key-management API, no per-user row policies, no durable result storage, no single-query distribution and no per-query cgroup. Container limits bound each tenant node. DuckDB still materializes execution before Arrow delivery with the pinned Go driver. Linux ABI 3 or newer is required; unsupported hosts fail closed.
 
 Optional [dataset acceleration](acceleration.md) uses a separate bounded JetStream refresh queue in each tenant account. Workers share that tenant's immutable Parquet generations through an operator-provided POSIX volume or the opt-in [object backend](object-storage.md). Object refresh staging stays node-local; each node uses the same tenant catalog, object namespace and read identity. Query-result storage remains separate; refreshed dataset snapshots do not make query handles replayable or add single-query distribution.
 

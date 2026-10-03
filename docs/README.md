@@ -8,6 +8,7 @@ Use this index to find a setup guide, operating procedure or measured result. Ke
 
 | Guide | What you will find |
 | --- | --- |
+| [15 Colab and Jupyter notebooks](../notebooks/README.md) | Public-data lessons, executable answer checks and standalone setup |
 | [CLI and HTTP API](usage.md) | Query submission, result retrieval, parameters, cancellation and configuration |
 | [Configuration examples](../examples/) | YAML catalogs for local files, federation, acceleration and object storage |
 | [Result limits and memory](usage.md#limits) | Row, byte, timeout and engine limits, with process-memory boundaries |
@@ -50,7 +51,7 @@ Start with the [source coverage matrix](source-coverage.md) and [acceleration/fe
 | [Multipart snapshots](multipart-acceleration.md) | Bounded Parquet parts, local/remote storage and reader compatibility |
 | [Schema evolution](schema-evolution.md) | Strict defaults, optional nullable additions and conservative widening |
 | [Object storage](object-storage.md) | S3, R2, GCS and Azure Blob credentials, permissions and range reads |
-| [Local backup and recovery](snapshot-backup.md) | Verified copies into fresh roots and recovery after source/store loss |
+| [Snapshot backup and recovery](snapshot-backup.md) | Verified local copies and policy-checked remote-to-local migration into fresh roots |
 | [Retained generation restore](acceleration.md#schema-contracts-and-generation-recovery) | Local inventory, generation preconditions and freshness preservation |
 | [Remote generation restore](operations.md#remote-generation-inventory-and-restore) | Bounded remote inventory, validation and manifest upgrades |
 | [Refresh failure recovery](operations.md#source-refresh-failures-and-recovery) | Durable failure state, retry classification and operator reset |
@@ -63,8 +64,10 @@ Start with the [source coverage matrix](source-coverage.md) and [acceleration/fe
 | [Cluster lifecycle](cluster.md) | NATS JetStream dispatch, ownership, delivery, cancellation and worker loss |
 | [Resource admission](operations.md) | Shared query/refresh budgets and protected interactive capacity |
 | [Source quotas](operations.md#shared-source-quotas) | Distributed limits on concurrent source work |
+| [Passive source health](source-health.md) | Authenticated observations from actual native operations, with bounded age |
 | [Metrics and diagnostics](operations.md#diagnostics) | Authenticated worker metrics and aggregate resource state |
 | [Readiness](operations.md#dataset-diagnostics-and-required-readiness) · [Drain](operations.md#maintenance) | Required datasets, probes and bounded shutdown |
+| [Gateway API-key rotation](gateway-key-rotation.md) | Overlapping tenant keys, bounded live revocation and two-gateway rollout checks |
 | [Credential-file rotation](operations.md#file-based-source-credential-rotation) | Selected source credentials, private files and cache TTL |
 | [Execution history](operations.md#optional-execution-history) · [Lifecycle tracing](tracing.md) | Optional bounded history and OTLP/HTTP spans |
 | [Worker failure recovery](worker-failures.md) | Memory failures, quota loss and snapshot preservation |
@@ -75,6 +78,7 @@ Start with the [source coverage matrix](source-coverage.md) and [acceleration/fe
 
 | Guide | What you will find |
 | --- | --- |
+| [Production delivery checklist](production-status.md) | Implemented safeguards, open feature contracts and live release gates |
 | [Validation record](validation.md) | Executed checks, live-provider coverage and remaining acceptance work |
 | [Analytics workflow benchmarks](analytics-workflow-benchmarks.md) | NYC Taxi CTEs, joins and windows; Kelvo, DuckDB and Polars comparisons |
 | [Federation capacity](federation-capacity.md) | Multiple adapters, joins, tenant concurrency and remote transfer |
@@ -82,6 +86,7 @@ Start with the [source coverage matrix](source-coverage.md) and [acceleration/fe
 | [ClickHouse benchmark helper](benchmarking.md) | Reproducible native export fixture and measured timing boundaries |
 | [CSV buffer experiment](csv-memory.md#validation-and-measurement) | Managed-memory settings, RSS observations and exact-result checks |
 | [Backup recovery gate](snapshot-backup.md#reproduce-the-recovery-gate) | One-million-row local recovery and explicit measurement scope |
+| [Operational acceptance](operational-acceptance.md) | Repeatable mixed query/refresh load, saturation, drain, failures and cleanup |
 | [Storage release gates](storage-conformance.md) | Local/remote correctness, TLS fixtures and datasets above 4 GiB |
 
 Reports link their [raw evidence](evidence/), versions, failures and reproduction commands. The [CTE workflow plan](cte-workflow-plan.md) records the benchmark design; the measured report records its outcomes.

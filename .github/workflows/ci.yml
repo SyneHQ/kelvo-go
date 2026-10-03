@@ -38,6 +38,24 @@ jobs:
           KELVO_TEST_WORKER_BINARY="$PWD/bin/kelvo" KELVO_TEST_SANDBOX_BINARY="$PWD/bin/kelvo-landlock" \
             go test -p 2 -race -tags duckdb_arrow ./internal/cluster -run TestSandboxedWorkerFailurePreservesSnapshotAndAdmission -count=1 -timeout=5m
       - run: python3 -m pip install pyarrow==25.0.1
+      - name: Install notebook acceptance tools
+        run: python3 -m pip install -r notebooks/requirements.txt nbformat==5.10.4 nbclient==0.10.2 ipykernel==6.30.1
+      - name: Verify notebook client and execution controls
+        run: python3 -m unittest discover -s scripts -p 'test_*notebook*.py'
+      - name: Fetch pinned public notebook datasets
+        run: |
+          python3 - <<'PYDATA'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'notebooks')
+          from kelvo_notebooks import DATASETS, _download
+          cache = Path('artifacts/notebook-data')
+          cache.mkdir(parents=True, exist_ok=True)
+          for name, (url, digest, limit) in DATASETS.items():
+              _download(url, cache / name, limit, digest)
+          PYDATA
+      - name: Execute all fifteen public-data notebooks
+        run: python3 scripts/notebook_acceptance.py --binary bin/kelvo --data-cache artifacts/notebook-data --output-dir artifacts/notebook-ci
       - name: Verify CSV memory comparison evidence controls
         run: python3 -m unittest discover -s scripts -p test_csv_memory_acceptance.py
       - name: Verify opt-in CSV buffers on a sandboxed worker
@@ -60,6 +78,25 @@ jobs:
       - run: python3 scripts/cluster_fixture.py test-store --go go
       - run: python3 scripts/cluster_acceptance.py
       - run: python3 scripts/acceleration_acceptance.py --cluster
+      - name: Verify operational evidence and HTTP integrity controls
+        run: python3 -m unittest discover -s scripts -p test_operational_acceptance.py
+      - name: Verify mixed load, saturation, drain and recovery
+        run: python3 scripts/operational_acceptance.py --binary bin/kelvo --sandbox bin/kelvo-landlock --duration 30 --output artifacts/operational-ci.json
+      - name: Verify gateway key-rotation evidence controls
+        run: python3 -m unittest discover -s scripts -p test_gateway_key_rotation_acceptance.py
+      - name: Verify live overlapping keys and revocation on two gateways
+        run: python3 scripts/gateway_key_rotation_acceptance.py --binary bin/kelvo --sandbox bin/kelvo-landlock --output artifacts/gateway-key-rotation-ci.json
+      - name: Retain sanitized notebook and operational evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: acceptance-evidence
+          path: |
+            artifacts/notebook-ci/report.json
+            artifacts/operational-ci.json
+            artifacts/gateway-key-rotation-ci.json
+          if-no-files-found: warn
+          retention-days: 14
       - if: always()
         run: python3 scripts/cluster_fixture.py stop
 

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a> · <a href="#documentation">Documentation</a> · <a href="#how-kelvo-fits">Architecture</a> · <a href="#execution-and-sources">Sources</a> · <a href="#real-analytics-measured">Benchmarks</a> · <a href="#build-with-us">Contributing</a>
+  <a href="#try-it-in-a-notebook">Try in Colab</a> · <a href="#quick-start">Quick start</a> · <a href="#documentation">Documentation</a> · <a href="#how-kelvo-fits">Architecture</a> · <a href="#execution-and-sources">Sources</a> · <a href="#real-analytics-measured">Benchmarks</a> · <a href="#build-with-us">Contributing</a>
 </p>
 
 # Kelvo
@@ -32,18 +32,31 @@ Open `revenue.arrow` with [PyArrow or another Arrow IPC reader](docs/usage.md#qu
 
 [Serve the HTTP API](docs/usage.md#http-api) · [Configure your sources](docs/usage.md#configuration) · [Set limits](docs/usage.md#limits) · [Enable LZ4 results](docs/usage.md#opt-in-result-compression)
 
+## Try it in a notebook
+
+[**15 hands-on Colab and Jupyter notebooks**](notebooks/README.md) take you from a first query to joins, CTEs, windows, charts, Arrow batches, compression, accelerated snapshots and the authenticated API. Every lesson includes setup, real public data, answer checks and cleanup. Default paths need no database account or GPU.
+
+| Start here | Dataset | Open |
+| --- | --- | --- |
+| First query and typed Arrow results | 344 Palmer Penguins observations | [Google Colab](https://colab.research.google.com/github/SYNEHQ/kelvo-go/blob/cargo/notebooks/01-first-query.ipynb) |
+| Analytical SQL over millions of trips | January 2024 NYC Taxi Parquet, about 50 MB | [Google Colab](https://colab.research.google.com/github/SYNEHQ/kelvo-go/blob/cargo/notebooks/03-taxi-parquet-exploration.ipynb) |
+| Use Kelvo from your application | Authenticated loopback HTTP gateway | [Google Colab](https://colab.research.google.com/github/SYNEHQ/kelvo-go/blob/cargo/notebooks/15-authenticated-http-gateway.ipynb) |
+
+[Browse all lessons](notebooks/README.md) · [Clone for another Jupyter environment](notebooks/README.md#run-in-colab-or-another-jupyter-environment) · [Dataset sources and terms](notebooks/README.md#public-datasets-and-attribution)
+
 ## Documentation
 
 Choose a starting point below, or browse the [complete documentation index](docs/README.md) for individual source guides, recovery procedures and validation tools.
 
 | I want to… | Start here |
 | --- | --- |
+| Try real analytical workflows | [15 runnable notebooks](notebooks/README.md) · [Colab quick start](https://colab.research.google.com/github/SYNEHQ/kelvo-go/blob/cargo/notebooks/01-first-query.ipynb) |
 | Query a database or integrate the API | [CLI and HTTP API](docs/usage.md) · [YAML examples](examples/) · [Source setup guides](docs/usage.md#source-guides) |
 | Join data across sources | [Source capabilities](docs/source-coverage.md#acceleration-and-federation-capabilities) · [Native federation](docs/federation.md) · [Query examples](examples/federation-relational.yml) |
 | Reuse datasets between source refreshes | [Acceleration](docs/acceleration.md) · [Multipart snapshots](docs/multipart-acceleration.md) · [Schema evolution](docs/schema-evolution.md) · [Backup and recovery](docs/snapshot-backup.md) |
 | Deploy and operate workers | [Deployment](deploy/README.md) · [Cluster lifecycle](docs/cluster.md) · [Resource controls and operations](docs/operations.md) · [Tracing](docs/tracing.md) |
-| Evaluate performance and reliability | [Validation record](docs/validation.md) · [Analytics benchmarks](docs/analytics-workflow-benchmarks.md) · [Micro VM capacity](docs/oracle-micro-capacity.md) · [Storage release gates](docs/storage-conformance.md) |
-| Build an adapter or contribute | [Adapter guide](docs/federation-adapters.md) · [Contributing](CONTRIBUTING.md) · [DuckDB upgrades](docs/upgrading-duckdb.md) · [Roadmap](docs/production-roadmap.md) |
+| Evaluate performance and reliability | [Validation record](docs/validation.md) · [Analytics benchmarks](docs/analytics-workflow-benchmarks.md) · [Micro VM capacity](docs/oracle-micro-capacity.md) · [Storage release gates](docs/storage-conformance.md) · [Operational acceptance](docs/operational-acceptance.md) |
+| Build an adapter or contribute | [Adapter guide](docs/federation-adapters.md) · [Contributing](CONTRIBUTING.md) · [DuckDB upgrades](docs/upgrading-duckdb.md) · [Roadmap](docs/production-roadmap.md) · [Production checklist](docs/production-status.md) |
 
 ## How Kelvo fits
 
@@ -95,7 +108,7 @@ Source catalogs name credential references. Workers resolve selected source cred
 `serve` operates within one trust domain. Cluster mode uses tenant-bound worker pools, NATS JetStream admission and mTLS result delivery. It distributes independent queries; each SQL plan stays on one node. Tenant catalog authorization does not create per-user row or column policies. Start with the [security model](SECURITY.md), [deployment example](deploy/README.md) and [cluster lifecycle](docs/cluster.md).
 
 - **Control load:** configure [node resource reservations](docs/operations.md), [shared source quotas](docs/operations.md#shared-source-quotas), query deadlines and output limits. [CSV buffer options](docs/csv-memory.md) help tune supported inputs on constrained workers.
-- **Observe work:** collect authenticated [metrics and resource diagnostics](docs/operations.md#diagnostics), opt into bounded [execution history](docs/operations.md#optional-execution-history), or export sampled [OpenTelemetry lifecycle traces](docs/tracing.md).
+- **Observe work:** collect authenticated [metrics and resource diagnostics](docs/operations.md#diagnostics), inspect [passive native-source observations](docs/source-health.md), opt into bounded [execution history](docs/operations.md#optional-execution-history), or export sampled [OpenTelemetry lifecycle traces](docs/tracing.md).
 - **Maintain workers:** use [graceful drain](docs/operations.md#maintenance) and [required-dataset readiness](docs/operations.md#dataset-diagnostics-and-required-readiness). Diagnose [worker failures](docs/worker-failures.md) and [classified source errors](docs/native-error-classification.md) before resetting failed refreshes.
 
 ## Real analytics, measured

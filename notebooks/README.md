@@ -158,4 +158,8 @@ changes; the package's checksum and the runner's results are separate checks.
 Add `--public-bootstrap` to execute dependency installation, the pinned helper
 download and a fresh verified release install in every kernel. The published
 record uses that mode. It certifies the public notebook setup on the named Linux
-runtime; it does not claim execution inside a managed Google Colab session.
+runtime. A separate managed Google Colab check on 3 October 2026 ran all five
+code cells of notebook 01, including the public installer, exact species counts
+(Adelie 152, Chinstrap 68, Gentoo 124) and cleanup. The other 14 lessons have
+Linux Jupyter execution evidence; they have not individually been run in managed
+Colab.

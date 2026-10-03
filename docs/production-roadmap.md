@@ -89,9 +89,24 @@ The sandboxed recovery runner deletes only its generated source and live store,
 then compares every recovered Arrow value, type and NULL. This is a local
 correctness gate; cross-host replication and service failover remain separate.
 
+Opt-in [passive source observations](source-health.md) now record bounded native
+operation outcomes behind worker mTLS diagnostics, expiring to unknown without
+coupling source failures to gateway readiness. [Local worker phase timing](tracing.md)
+separates reached validation, admission, prepare, execution/delivery and cleanup
+intervals. First decoded record and cumulative sink callbacks have explicit,
+overlapping scope; distributed queue and remote compute timings remain separate.
+The [delivery checklist](production-status.md) makes the remaining feature families
+and release gates explicit.
+
+Explicit [remote-to-local snapshot migration](snapshot-backup.md#migrate-a-current-object-snapshot-to-local-storage) now verifies exact object versions, checksums and Parquet metadata before publishing into a fresh local root. Matching catalog policies fence authorization changes; original generation and refresh time preserve data age. The four-provider signed TLS fixture passed 40 migration/recovery checks, including sandboxed reads after source and object access removal. This does not establish live cloud-provider acceptance or service failover.
+
+Cluster result requests now use separately bounded queued waiters so queued jobs cannot occupy every active HTTP permit. A complete result under the [durable EOS protocol](cluster.md#results-and-errors) certifies committed success even when its status slot has already been reused. Truncated HTTP or Arrow streams never certify completion.
+
+Optional [live gateway key rotation](gateway-key-rotation.md) now supports overlapping tenant keys, bounded reload/expiry, revision fences and cancellation for removed keys. A real two-gateway fixture passed overlap, per-replica revocation, invalid-file recovery, restart-floor and parked/active request cancellation checks. File propagation and restart floors remain operator responsibilities; this is not globally atomic revocation or TLS rotation.
+
 Provider-wide conformance/rotation coverage, full queue/stage timing,
 export-specific admission, safe remote GC,
-remote backup recovery and sustained fault/capacity gates remain pending. The validation
+remote-destination backup recovery and sustained fault/capacity gates remain pending. The validation
 records in [operations](operations.md) identify their tested runtime commits;
 implementation status does not extend those results to later unvalidated changes.
 No new throughput results are claimed.
