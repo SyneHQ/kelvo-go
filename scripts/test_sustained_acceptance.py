@@ -74,8 +74,11 @@ class SustainedControls(unittest.TestCase):
                 self.assertEqual(command[-2:], ["--nats-archive", "/fixture/nats.tar.gz"])
                 for property_value in ("Delegate=yes", "PrivateNetwork=yes", "CPUQuota=200%", "MemoryMax=6G",
                                        "MemorySwapMax=0", "TasksMax=512", "NoNewPrivileges=yes",
-                                       "CapabilityBoundingSet=", "AmbientCapabilities="):
-                    self.assertIn("--property=" + property_value, command)
+                                       "CapabilityBoundingSet=", "AmbientCapabilities=", "TimeoutStopSec=20",
+                                       "KillMode=control-group", "SendSIGKILL=yes"):
+                    property_name = property_value.split("=", 1)[0]
+                    self.assertEqual([part for part in command if part.startswith("--property=" + property_name + "=")],
+                                     ["--property=" + property_value])
 
     def test_broker_gate_requires_completed_lease_supervision(self):
         for evidence in (None, {}, recovered_evidence()):

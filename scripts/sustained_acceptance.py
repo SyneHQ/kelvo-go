@@ -807,6 +807,7 @@ def service_command(args, unit, artifact):
                "--property=Delegate=yes", "--property=PrivateNetwork=yes", "--property=CPUQuota=200%", "--property=MemoryMax=6G", "--property=MemorySwapMax=0",
                "--property=TasksMax=512", "--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=",
                "--property=AmbientCapabilities=", "--property=RuntimeMaxSec=" + str(math.ceil(args.duration + 300)),
+               "--property=TimeoutStopSec=20", "--property=KillMode=control-group", "--property=SendSIGKILL=yes",
                "--collect", "--wait", "--pipe", sys.executable, str(Path(__file__).resolve()),
                "--inside", "--unit", unit, "--artifact", str(artifact), "--mode", args.mode, "--duration", str(args.duration),
                "--expected-revision", args.expected_revision,
