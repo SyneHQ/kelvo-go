@@ -1,6 +1,6 @@
 # Row and column access
 
-Use this with [principal keys](principal-access.md) to restrict callback federation tables and [local accelerated snapshots](guarded-snapshots.md) before SQL runs. Kelvo hides unlisted tables and columns, then filters Arrow rows before joins, CTEs, aggregates and windows.
+Use this with [principal keys](principal-access.md) to restrict callback federation tables and [local/object accelerated snapshots](guarded-snapshots.md) before SQL runs. Kelvo hides unlisted tables and columns, then filters Arrow rows before joins, CTEs, aggregates and windows.
 
 ## Configure a grant
 
@@ -44,13 +44,13 @@ Projected columns support flat Arrow types, including decimals and timestamps. N
 ## Boundaries
 
 - Restrictions apply to selected callback federation sources. Missing tables are denied; sources with explicit whole-source grants keep that authority.
-- Restricted sources cannot also have native SQL grants. Restricted queries cannot mix direct attachments, raw files or object readers; scan diagnostics are disabled. Local snapshots require their own explicit dataset-ID policy and the [guarded reader](guarded-snapshots.md).
+- Restricted sources cannot also have native SQL grants. Restricted queries cannot mix direct attachments, raw files or unguarded object readers; scan diagnostics are disabled. Snapshots require their own dataset-ID policy and the [guarded reader](guarded-snapshots.md).
 - Policies come from authenticated, versioned operator configuration. Public query fields cannot supply or override them. Each worker checks the authority digest and the child checks its trusted policy envelope before source setup.
 - Source adapters receive required columns without filters. Kelvo applies policy and optimizer filters locally, so an adapter ignoring pushdown cannot bypass the boundary. This can increase source traffic.
 - Raw source budgets still apply, even when few rows are authorized. Filtering adds a mask and selected-column buffers per batch. Timing and resource usage can reflect raw data; this is not a timing-isolation guarantee.
 - Equivalent views, aliases and snapshots need their own grants. Kelvo does not infer data lineage between separately granted sources.
 
-Native SQL, object-backed snapshots, export redownloads and cache policy integration remain in [#28](https://github.com/SyneHQ/kelvo-go/issues/28). Standalone `query`/`serve` do not authenticate these cluster principal grants.
+Native SQL, export redownloads and cache policy integration remain in [#28](https://github.com/SyneHQ/kelvo-go/issues/28). Standalone `query`/`serve` do not authenticate these cluster principal grants.
 
 ## Change or revoke access
 
