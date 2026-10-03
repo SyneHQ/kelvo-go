@@ -136,8 +136,11 @@ def parse_status(data):
     """
     text = data.decode()
     result = {}
+    indentation = re.search(r"^snapshot:\s*\n([ \t]+)\S", text, re.MULTILINE)
+    require(indentation is not None, "CLI status is missing snapshot fields")
     for key in ("ready", "generation", "fingerprint", "sha256", "rows", "bytes", "refreshed_at"):
-        match = re.search(r"^\s*" + key + r":\s*([^\n]+)$", text, re.MULTILINE)
+        prefix = "" if key == "ready" else re.escape(indentation.group(1))
+        match = re.search(r"^" + prefix + key + r":\s*([^\n]+)$", text, re.MULTILINE)
         require(match is not None, "CLI status is missing " + key)
         raw = match.group(1).strip()
         if raw.startswith('"'):

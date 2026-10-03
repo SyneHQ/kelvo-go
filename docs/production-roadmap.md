@@ -32,6 +32,15 @@ provide distributed trace continuity or full queue/stage timings. Focused tracin
 credential-rotation and protocol-fixture checks are development correctness gates,
 not capacity measurements or provider-wide validation.
 
+An additional implementation slice adds opt-in [local multipart acceleration](multipart-acceleration.md):
+bounded immutable Parquet parts, one atomic generation manifest, exact-file
+DuckDB/sandbox consumption and existing schema/recovery integration. Local writes
+remain version 1 unless multipart is enabled; version 2 multipart generations
+require coordinated reader/writer upgrades. Remote multipart, incremental refresh
+and remote GC are not included. Integrated ordinary/bridge, crash-recovery, sandbox
+and over-4-GiB development gates passed; the linked evidence states their scope.
+These checks do not establish general production capacity.
+
 Schema evolution policies, provider-wide conformance/rotation coverage, full
 queue/stage timing, export-specific admission, safe remote GC,
 backup recovery and sustained fault/capacity gates remain pending. The validation

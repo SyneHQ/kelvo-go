@@ -1,0 +1,36 @@
+{
+  "passed": true,
+  "checked_at": "2026-10-03T02:29:09.211773+00:00",
+  "checks": [
+    {
+      "test": "multipart_generation_bounds_and_full_verification",
+      "passed": true,
+      "rows": 100000,
+      "parts": 28,
+      "encoded_bytes": 13456527,
+      "max_part_bytes": 1048576
+    },
+    {
+      "test": "sandboxed_cross_source_join_reads_all_parts_exactly",
+      "passed": true
+    },
+    {
+      "test": "sandboxed_multipart_full_values_match_source",
+      "passed": true,
+      "checked_rows": 100000
+    },
+    {
+      "test": "single_and_multipart_generations_restore_without_freshness_changes",
+      "passed": true
+    },
+    {
+      "test": "part_count_exhaustion_preserves_complete_previous_generation",
+      "passed": true
+    },
+    {
+      "test": "nonfirst_part_corruption_fails_full_verification",
+      "passed": true
+    }
+  ],
+  "scope": "Local real-process multipart correctness; no remote storage or capacity claim"
+}

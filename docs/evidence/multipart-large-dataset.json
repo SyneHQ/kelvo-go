@@ -1,0 +1,25 @@
+{
+  "passed": true,
+  "runtime_milestone": "e09dfea",
+  "rows": 4456448,
+  "encoded_bytes": 4600321235,
+  "parts": 138,
+  "max_part_bytes": 67108864,
+  "gate_elapsed": "1m28.311s",
+  "test_process_peak_rss_kib": 220980,
+  "source": "Bounded deterministic synthetic Arrow producer, 8192 rows per batch with 1024-byte binary payloads",
+  "checks": [
+    "encoded dataset exceeds 4 GiB",
+    "complete-generation checksum/schema/row verification",
+    "DuckDB count and ID sum",
+    "DuckDB SHA-256 comparison for every payload against deterministic reference hashes",
+    "per-part encoded ceilings"
+  ],
+  "scope": "Local component release gate; includes publication, verification and DuckDB aggregation; no remote source ingestion or transport throughput claim",
+  "limits": [
+    "Peak RSS excludes filesystem cache and other processes",
+    "Not a cgroup memory or concurrency measurement",
+    "Unrelated regression tests shared the VM during part of this run",
+    "Final no-current orphan recovery fix was race- and bridge-suite tested separately after this large test binary was compiled"
+  ]
+}
