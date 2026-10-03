@@ -183,5 +183,16 @@ profiles, so lower cgroup memory alone does not prove a smaller process footprin
 Report both, including sampling gaps and host steal time. A small metrics delta
 within trial variability does not establish a meaningful memory or speed gain.
 
+The corrected observer captures its final resource sample after node and worker
+shutdown, before verifying the final configuration, executable and input hashes.
+Those checks still decide acceptance, but their reads and allocations are outside
+the active/shutdown sampling interval and its reported cgroup counters and peaks.
+Startup setup remains included in whole-cgroup counters. Identity hashing uses
+bounded 1 MiB reads. [Observer regression evidence](evidence/node-capacity-observer-regressions.json)
+verifies the ordering, read bound and failure propagation; it does not establish
+a successful capacity campaign. Reports from the previous observer must not be
+pooled with pairs from the corrected observer. Preserve every earlier failed or
+incomplete campaign and start new matched pairs with recorded observer fingerprints.
+
 This profile does not replace [sustained mixed-load acceptance](sustained-acceptance.md),
 provider conformance, multihost availability or production deployment validation.
