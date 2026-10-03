@@ -16,8 +16,21 @@ workspace leases and safe crash reclamation. Real [process-loss acceptance](proc
 passed gateway, node and one-broker faults with exact queued results and cleanup.
 The [release upgrade matrix](release-upgrades.md) compares the immutable preview
 with the recorded candidate across 20 local/signed-object scenarios. These are
-scoped release gates; CA/trust rotation, rolling cluster upgrades and sustained
-provider/fault campaigns remain separate tickets.
+scoped release gates; rolling cluster upgrades and sustained provider/fault
+campaigns remain separate tickets.
+
+Opt-in [TLS trust rotation and peer revocation](tls-trust-rotation.md) adds bounded
+private trust documents, epoch floors, CA overlap and per-request verification
+of reused inbound/outbound connections. Real two-gateway/two-worker loopback TLS
+tests and the full cluster race suite passed. Document propagation, persistent
+configuration floors and certificate-manager deployment remain operator duties;
+this does not supply globally atomic revocation.
+
+The [durable export storage primitive](export-storage.md) stores immutable Arrow
+parts and YAML manifests with tenant/owner/authorization binding, conservative
+cross-process reservations, crash recovery and verified per-part reads. Package
+race, corruption and process-crash tests passed. It is a contributor API; durable
+export jobs and authorized downloads remain separate, unimplemented features.
 
 The first operational slice adds optional shared node query/refresh reservations,
 bounded worker execution telemetry and protected resource diagnostics, independent

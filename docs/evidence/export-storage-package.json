@@ -1,0 +1,45 @@
+{
+  "scope": "internal/exports storage package only; no query, HTTP, cluster, or release binary integration claim",
+  "validated_at_utc": "2026-10-03T07:26:10.456939+00:00",
+  "source_commit": "34ee0cf595b0a87660647a1edd728e9b89505e48",
+  "go_version": "go version go1.26.8 linux/amd64",
+  "platform": "linux/amd64",
+  "checks": [
+    {
+      "command": "GOMAXPROCS=2 go test -race -count=1 -p 2 ./internal/exports",
+      "exit_code": 0,
+      "elapsed_seconds": 20.392,
+      "output": "ok  \tgithub.com/SYNEHQ/kelvo-go/internal/exports\t19.089s\n",
+      "output_sha256": "d89cc7baee6ff372d71665db7895f1ea1f4457a63a4d6d77bde0067d441fff89"
+    },
+    {
+      "command": "GOMAXPROCS=2 go vet -p 2 ./internal/exports",
+      "exit_code": 0,
+      "elapsed_seconds": 0.172,
+      "output": "",
+      "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "files_sha256": {
+    "internal/exports/files_linux.go": "58a1d9d0049dfa93e2aeee4882f918d342a6cd7e6dc9aa9ab2e7d8894ad8963a",
+    "internal/exports/ipc.go": "edbbe3cdd97e3952f0c09e33d2757939d7162b9d5da87e78d78adb62a0d4aff0",
+    "internal/exports/ipc_test.go": "d49709fa53d0ed93a224c38482aec41a1f1ce71332a7d069e708e580893418c8",
+    "internal/exports/reader_linux.go": "3d33f527cb973b2f48445ab9faa6d35a413607b4076201d7cc3bd5bf53f66766",
+    "internal/exports/store_linux.go": "c2e81d65cc4a245dcdc31a489b240b2574e49565c2ea6089b5ce3ee0138ca592",
+    "internal/exports/store_linux_test.go": "e1e0a6224089cfc7d2cb50112256c35a403945982812ad99ace7cb5f1241fab4",
+    "internal/exports/store_other.go": "3105eb95dcc4006e46aea1ea4581aacc35c947b4d7c1710f9ef6f18584677608",
+    "internal/exports/types.go": "580784ec32e0c3709162565f1a5bb3ebd2615330ffbe21dac34544c9f6e61d3b",
+    "internal/exports/writer_linux.go": "f062852b93cebab52efc4f47633f24e2d15a138192dc57d5074bac094b92909b"
+  },
+  "dependency_files_sha256": {
+    "go.mod": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+    "go.sum": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "documentation_sha256": {
+    "docs/export-storage.md": "5605c0ce4fc9de243a764ef0e34a8ae7da63fab06331f1f3b95a07cf6b84d08b"
+  },
+  "source_binding": "All recorded package, test, dependency and documentation hashes match the committed Git blobs.",
+  "shared_source_files_sha256": {
+    "internal/arrowipc/metadata.go": "81f05e33bd68b9014c3c0e0a762a54e364b32e93bab86fc9831d98882862b242"
+  }
+}
