@@ -499,6 +499,9 @@ func TestAuditRefreshFailurePreservesPublishedGenerationAndStopsAutomaticRetry(t
 func TestAuditNodeOpensBeforeProbeAndLeavesSharedJournalToLifecycleOwner(t *testing.T) {
 	cfg := serviceAuditConfig(t)
 	cfg.Directory = t.TempDir()
+	if err := os.Chmod(cfg.Directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	store := &nodeTestStore{p: testPolicy(), jobs: map[string]Snapshot{}, queue: make(chan Delivery, 8)}
 	source := &auditSource{}
 	if n, err := newNode(NodeConfig{Policy: store.p, WorkerID: "a1", Audit: cfg}, store, source); err == nil {
