@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -361,7 +362,7 @@ func TestGatewayExportRejectsUntrustedSubmissionFields(t *testing.T) {
 }
 
 func TestGatewayExportSupervisorOutlivesSubmitAndNeverReplays(t *testing.T) {
-	for _, mode := range []string{"success", "lost-response", "receipt-mismatch", "gateway-close", "key-revocation", "ready-cas-revocation"} {
+	for _, mode := range []string{"success", "lost-response", "receipt-mismatch", "gateway-close", "gateway-close-after-read", "key-revocation", "ready-cas-revocation"} {
 		t.Run(mode, func(t *testing.T) {
 			g, store, auth := exportGatewayFixture(t, "none")
 			store.assign = true
@@ -384,19 +385,38 @@ func TestGatewayExportSupervisorOutlivesSubmitAndNeverReplays(t *testing.T) {
 				case <-r.Context().Done():
 					return
 				}
-				current, err := store.GetExport(r.Context(), exportGatewayID)
-				if err != nil {
-					return
+				var stored ExportJob
+				for range 8 {
+					current, err := store.GetExport(r.Context(), exportGatewayID)
+					if err != nil || current.Job.State == ExportCancelled {
+						return
+					}
+					if current.Job.State != ExportClaimed || current.Job.Claim != r.Header.Get("X-Kelvo-Claim") {
+						t.Error("execute did not own one claim")
+						w.WriteHeader(409)
+						return
+					}
+					if mode == "gateway-close-after-read" {
+						g.cancel()
+						awaitExportGatewayState(t, store, ExportCancelled)
+					}
+					candidate := exportGatewayStored(t, store, current, wire, stats)
+					// A worker completion must not overwrite a concurrent
+					// withdrawal or authority renewal in this CAS fixture.
+					_, err = store.CompareAndSwapExport(r.Context(), current, candidate)
+					if errors.Is(err, ErrExportConflict) {
+						continue
+					}
+					if err != nil {
+						return
+					}
+					stored = candidate
+					break
 				}
-				if current.Job.State != ExportClaimed || current.Job.Claim != r.Header.Get("X-Kelvo-Claim") {
-					t.Error("execute did not own one claim")
+				if stored.State != ExportStored {
 					w.WriteHeader(409)
 					return
 				}
-				stored := exportGatewayStored(t, store, current, wire, stats)
-				store.mu.Lock()
-				store.job = ExportSnapshot{Job: stored, Revision: store.job.Revision + 1}
-				store.mu.Unlock()
 				if mode == "lost-response" {
 					connection, _, err := w.(http.Hijacker).Hijack()
 					if err != nil {
