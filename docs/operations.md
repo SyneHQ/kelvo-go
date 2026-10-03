@@ -206,3 +206,9 @@ Regression fixes covered same-generation restore lease cleanup and tracing resou
 Azure ordinary/bridge/race/strict-cgo checks, vet/builds and [four sandboxed failure cases](evidence/worker-failure-acceptance.json) passed. The same binary passed [36 single-object](evidence/snapshot-verification-object-acceptance.json), [20 multipart TLS](evidence/snapshot-verification-multipart-acceptance.json) checks and the [12-case CSV experiment](evidence/csv-memory-acceptance.json). Temporary CAs/directories were removed.
 
 These use protocol storage and injected in-memory quota/retry failures. They add no live-cloud, broker-failover, WAN, sustained-capacity or Oracle micro-VM result.
+
+## Optional aggregate metrics
+
+Node metrics default to enabled. Set `metrics: {enabled: false}` in node YAML to skip aggregate lifecycle collection and disable `/metrics`. Resource admission and `/resources` remain active. Tracing, history, source-health observations and audit have separate controls; disabling metrics does not disable them.
+
+Measure off/on with the same binary, limits, data and query order before attributing a capacity change to instrumentation.
