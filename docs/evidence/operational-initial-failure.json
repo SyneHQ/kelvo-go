@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "passed": false,
+  "checked_at": "2026-10-03T05:41:33.361827+00:00",
+  "checks": [
+    {
+      "test": "startup",
+      "passed": true,
+      "seconds": 2.772,
+      "workers": 2,
+      "tenants": 2,
+      "broker_replicas": 3,
+      "source_rows_per_tenant": 100000,
+      "dataset": "Deterministic synthetic Parquet with nullable integers and tenant markers"
+    },
+    {
+      "test": "oversized_reservation_rejected",
+      "passed": true,
+      "seconds": 0.014,
+      "boundary": "node startup rejects query reservation larger than configured resources"
+    },
+    {
+      "test": "mixed_query_refresh",
+      "passed": true,
+      "seconds": 300.125,
+      "requested_seconds": 300.0,
+      "observed_seconds": 300.119,
+      "completed_queries": 7253,
+      "concurrent_clients": 4,
+      "client_query_counts": [
+        1826,
+        1810,
+        1805,
+        1812
+      ],
+      "reclaimed_status_after_certified_delivery": 143,
+      "completion_protocol": "durable-eos-v1",
+      "successful_refresh_deltas": {
+        "a1": 30,
+        "b1": 30
+      },
+      "query_refresh_overlap_samples": 121,
+      "maximum_observed_reservations": 2,
+      "correctness": "All returned groups, counts, nullable sums, tenant labels and Arrow types checked"
+    },
+    {
+      "test": "saturated_liveness_and_recovery",
+      "passed": false,
+      "category": "CONDITION_DEADLINE",
+      "seconds": 3.09
+    },
+    {
+      "test": "accepted_query_during_node_drain",
+      "passed": false,
+      "category": "DEPENDENCY_FAILED"
+    },
+    {
+      "test": "sandboxed_resource_and_source_lease_failures",
+      "passed": true,
+      "seconds": 2.168,
+      "subtests": 4,
+      "native_worker_memory_failure": "real sandboxed worker",
+      "source_quota_loss": "in-memory coordination failure injection, real worker IPC",
+      "verified": "single/multipart prior-generation retention, permit/scratch cleanup and exact recovered Arrow values"
+    },
+    {
+      "test": "cleanup",
+      "passed": true,
+      "seconds": 2.132,
+      "forced_application_kills": 0,
+      "observed_live_descendants": 0,
+      "worker_scratch_directories": 0,
+      "broker_processes_untouched": true,
+      "original_configurations_untouched": true
+    }
+  ],
+  "requested_duration_seconds": 300.0,
+  "scope": "Local synthetic lifecycle acceptance, not source-provider conformance, WAN capacity or production certification",
+  "script_sha256": "04c6642fc8490559671b887808255a541bb55426efea8e466454ef52e7dec573",
+  "fixture_script_sha256": "30b2700d53d9770f1cb6b5a448fc46306e43fe6e89c443b202ea357e58b12c76",
+  "fault_test_sha256": "6b9971623a2d86e66f64aafc5c03e383645ef20b68deeb4d3ed237bee310a41f",
+  "binary_sha256": "cebfd1326ef0a6db5312f2a3f00e33bc81acbb238dbde0176c2b44d4c1b49fd7",
+  "sandbox_sha256": "cb09cd6b1bcf29a50b7436e02f3aebc9c2f47b1cca74a27c4fe5a7b9ec2bfb6f",
+  "interrupted": false,
+  "sampling": {
+    "interval_ms": 50,
+    "samples": 5869,
+    "process_tree_rss_available": true,
+    "sampled_process_tree_rss_peak_bytes": 837578752,
+    "rss_scope": "Owned application parents, separate fault-test process and observed descendants after startup; excludes brokers and Python client. Sampling can miss brief peaks.",
+    "cgroup_v2_memory_available": true,
+    "cgroups": [
+      {
+        "samples": 5869,
+        "peak_current_bytes": 403423232,
+        "memory_event_deltas": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0
+        }
+      }
+    ],
+    "cgroup_scope": "Observed cgroups may be shared with unowned workloads; counters are not Kelvo-only usage or enforced reservations.",
+    "missed_counter_categories": [
+      "PROCESS_SAMPLE_UNAVAILABLE"
+    ]
+  },
+  "elapsed_seconds": 310.424
+}
