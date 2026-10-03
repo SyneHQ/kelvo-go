@@ -56,6 +56,15 @@ Versioned policy fingerprints fence configuration changes, and actual drift erro
 now stop durable retries as permanent schema failures. The eight-case sandboxed
 CLI acceptance and four storage/layout publication paths passed development checks.
 
+The [storage release runner](storage-conformance.md) passed its complete opt-in
+matrix: named correctness checks, both larger-than-4-GiB datasets and 56 TLS
+protocol checks, with stable source-input hashes and completed cleanup.
+[Native error classification](native-error-classification.md) now preserves typed
+PostgreSQL/MySQL access failures and trusted sink errors; isolated real TLS tests
+confirmed that authentication and revoked-grant refresh failures preserve prior
+snapshots. Unsupported native result types stop as permanent configuration
+failures. These additions do not establish live coverage for every adapter.
+
 Provider-wide conformance/rotation coverage, full queue/stage timing,
 export-specific admission, safe remote GC,
 backup recovery and sustained fault/capacity gates remain pending. The validation

@@ -281,6 +281,42 @@ connections, gateway API tokens or TLS certificates, and is not a cloud secret
 manager integration.
 
 
+
+## Source refresh failures and recovery
+
+PostgreSQL and MySQL-family native adapters classify known errors from typed
+protocol metadata and return fixed public messages. Authentication and permission
+failures stop scheduled refresh immediately; invalid queries, bad configuration
+and unsupported result types are also permanent failures. Unknown driver errors
+remain retryable within the five-failure budget, with jitter capped at five
+minutes. See the [exact mappings and limits](native-error-classification.md).
+
+Inspect the dataset's durable state before changing it:
+
+```sh
+kelvo refresh-status --config worker.yml --dataset sales_snapshot
+```
+
+Repair the source credentials, permissions, query, result types or configuration
+identified by the failure category. Then reset the current catalog fingerprint:
+
+```sh
+kelvo refresh-reset --config worker.yml --dataset sales_snapshot \
+  --expected-fingerprint CURRENT_CATALOG_FINGERPRINT
+```
+
+Reset requires operator NATS authority. It is sequence-fenced against old
+messages and does not repair the underlying source. Permanent suppression survives
+worker restarts. These commands concern cluster scheduled refreshes; standalone
+`accelerate watch` has no durable cluster retry state.
+
+Failed refreshes retain the last committed snapshot. Revoking source grants or
+breaking source authentication does not revoke readers' access to that snapshot.
+For revocation, bump the dataset's `authorization_version` and propagate the
+catalog update to all serving nodes; old snapshots then fail the new fingerprint
+check. Credential rotation and retry reset alone do not perform this revocation.
+
+
 ## Optional execution history
 
 ```yaml
