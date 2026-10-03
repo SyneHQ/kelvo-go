@@ -163,7 +163,9 @@ func (c *s3Client) Put(ctx context.Context, key string, body io.ReadSeeker, size
 	if size == 0 {
 		r.Body = http.NoBody
 	} else {
-		r.Body = io.NopCloser(io.LimitReader(body, size))
+		upload := newUploadBody(body, size)
+		r.Body = upload
+		defer upload.wait()
 	}
 	resp, err := c.do(r, digest)
 	if err != nil {
@@ -243,6 +245,11 @@ func (c *s3Client) do(r *http.Request, digest string) (*http.Response, error) {
 		region = "auto"
 	}
 	if err := c.signer.SignHTTP(r.Context(), c.credentials, r, digest, "s3", region, time.Now(), func(o *v4.SignerOptions) { o.DisableURIPathEscaping = true }); err != nil {
+		// HTTP has not taken ownership. In particular, Put must not wait for a
+		// transport Close that cannot arrive after request signing fails.
+		if r.Body != nil {
+			_ = r.Body.Close()
+		}
 		return nil, errors.New("object request signing failed")
 	}
 	resp, err := c.http.Do(r)
