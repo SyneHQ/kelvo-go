@@ -5,6 +5,20 @@ baseline; proposals remain pending unless listed in delivery status.
 
 ## Delivery status
 
+Current work is organized on the [production board](https://github.com/orgs/SyneHQ/projects/3)
+under [delivery tracker #32](https://github.com/SyneHQ/kelvo-go/issues/32), with
+priorities, dependencies, review/validation states and explicit acceptance criteria.
+See the [delivery process](delivery-process.md) for the completion rules.
+
+The latest foundation batch adds opt-in [TLS identity rotation](tls-identity-rotation.md)
+and Linux [managed worker scratch](worker-scratch.md), including inherited
+workspace leases and safe crash reclamation. Real [process-loss acceptance](process-loss-acceptance.md)
+passed gateway, node and one-broker faults with exact queued results and cleanup.
+The [release upgrade matrix](release-upgrades.md) compares the immutable preview
+with the recorded candidate across 20 local/signed-object scenarios. These are
+scoped release gates; CA/trust rotation, rolling cluster upgrades and sustained
+provider/fault campaigns remain separate tickets.
+
 The first operational slice adds optional shared node query/refresh reservations,
 bounded worker execution telemetry and protected resource diagnostics, independent
 probes and phased cluster drain. See [operations](operations.md) for configuration,

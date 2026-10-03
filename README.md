@@ -56,7 +56,7 @@ Choose a starting point below, or browse the [complete documentation index](docs
 | Reuse datasets between source refreshes | [Acceleration](docs/acceleration.md) · [Multipart snapshots](docs/multipart-acceleration.md) · [Schema evolution](docs/schema-evolution.md) · [Backup and recovery](docs/snapshot-backup.md) |
 | Deploy and operate workers | [Deployment](deploy/README.md) · [Cluster lifecycle](docs/cluster.md) · [Resource controls and operations](docs/operations.md) · [Tracing](docs/tracing.md) |
 | Evaluate performance and reliability | [Validation record](docs/validation.md) · [Analytics benchmarks](docs/analytics-workflow-benchmarks.md) · [Micro VM capacity](docs/oracle-micro-capacity.md) · [Storage release gates](docs/storage-conformance.md) · [Operational acceptance](docs/operational-acceptance.md) |
-| Build an adapter or contribute | [Adapter guide](docs/federation-adapters.md) · [Contributing](CONTRIBUTING.md) · [DuckDB upgrades](docs/upgrading-duckdb.md) · [Roadmap](docs/production-roadmap.md) · [Production checklist](docs/production-status.md) |
+| Build an adapter or contribute | [Adapter guide](docs/federation-adapters.md) · [Contributing](CONTRIBUTING.md) · [DuckDB upgrades](docs/upgrading-duckdb.md) · [Roadmap](docs/production-roadmap.md) · [Production checklist](docs/production-status.md) · [Delivery board](https://github.com/orgs/SyneHQ/projects/3) · [Contribution workflow](docs/delivery-process.md) |
 
 ## How Kelvo fits
 

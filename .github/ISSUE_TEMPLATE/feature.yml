@@ -1,0 +1,35 @@
+name: Feature proposal
+description: Propose a bounded capability with verifiable acceptance.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and workload
+      description: Describe who needs this, their data sources, and the workflow it enables.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Proposed behavior and scope
+      description: Include configuration, defaults, compatibility, and what is outside this proposal.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable correctness, security, resource, and recovery requirements.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and validation access
+      description: Link existing tickets and identify required provider fixtures without sharing credentials.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and supporting measurements
+      description: Link standards, existing interfaces, or reproducible experiments that inform the design.

@@ -86,6 +86,27 @@ jobs:
         run: python3 -m unittest discover -s scripts -p test_gateway_key_rotation_acceptance.py
       - name: Verify live overlapping keys and revocation on two gateways
         run: python3 scripts/gateway_key_rotation_acceptance.py --binary bin/kelvo --sandbox bin/kelvo-landlock --output artifacts/gateway-key-rotation-ci.json
+      - name: Verify process-loss acceptance controls
+        run: python3 -m unittest discover -s scripts -p test_process_loss_acceptance.py
+      - name: Verify gateway, worker and broker crash recovery
+        run: python3 scripts/process_loss_acceptance.py --binary bin/kelvo --sandbox bin/kelvo-landlock --fixture artifacts/cluster-private --managed-scratch --output artifacts/process-loss-ci.json
+      - name: Verify release compatibility controls
+        run: python3 -m unittest discover -s scripts -p test_release_upgrade_acceptance.py
+      - name: Install checksum-pinned previous release fixture
+        run: |
+          python3 - <<'PYPREVIEW'
+          import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'notebooks')
+          from kelvo_notebooks import install_binary
+          os.environ.pop('KELVO_BINARY', None)
+          root = Path('artifacts/preview-fixture')
+          root.mkdir(parents=True, exist_ok=False)
+          install_binary(root)
+          PYPREVIEW
+      - name: Verify preview and candidate snapshot compatibility
+        run: python3 scripts/release_upgrade_acceptance.py --previous-binary artifacts/preview-fixture/kelvo --candidate-binary bin/kelvo --candidate-revision "$GITHUB_SHA" --launcher bin/kelvo-landlock --output artifacts/release-upgrades-ci.json
       - name: Retain sanitized notebook and operational evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -95,6 +116,8 @@ jobs:
             artifacts/notebook-ci/report.json
             artifacts/operational-ci.json
             artifacts/gateway-key-rotation-ci.json
+            artifacts/process-loss-ci.json
+            artifacts/release-upgrades-ci.json
           if-no-files-found: warn
           retention-days: 14
       - if: always()
