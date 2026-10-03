@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 )
@@ -235,5 +236,38 @@ func TestServeClusterSignalPreservesHTTPDuringGrace(t *testing.T) {
 	case <-resultDone:
 	case <-time.After(time.Second):
 		t.Fatal("result HTTP request did not finish")
+	}
+}
+
+func TestRefreshReservationWaitsForProcessCustodyAfterPublication(t *testing.T) {
+	pool, err := admission.New(admission.Limits{MaxConcurrent: 1, MemoryBytes: 2 << 30, ScratchBytes: 2 << 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := query.DefaultLimits()
+	limits.MemoryMB = 64
+	limits.MaxTempMB = 16
+	limits.MaxBytes = 1 << 20
+	var releaseProcess func()
+	err = withRefreshReservation(context.Background(), pool, 64<<20, limits, nil, func(ctx context.Context) error {
+		custody := containment.FromContext(ctx)
+		if custody == nil {
+			t.Fatal("refresh did not carry custody to source executor")
+		}
+		releaseProcess, err = custody.Hold()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pool.Snapshot().Active != 1 {
+			t.Fatal("reservation did not span publication")
+		}
+		return nil
+	})
+	if err != nil || pool.Snapshot().Active != 1 {
+		t.Fatal("reservation released despite unresolved native child", err)
+	}
+	releaseProcess()
+	if pool.Snapshot().Active != 0 {
+		t.Fatal("verified process cleanup did not release reservation")
 	}
 }
