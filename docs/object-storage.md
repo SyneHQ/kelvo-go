@@ -84,7 +84,7 @@ Readers need exact-object reads/metadata. Publishers need reads and conditional 
 
 ## Run a refresh and query
 
-Provision matching signed `httpfs` on the designated host; queries never install extensions. This path does not use DuckDB's Azure extension.
+Unrestricted reads need matching signed `httpfs` on the designated host; queries never install extensions. [Principal-guarded snapshots](guarded-snapshots.md) use the Go reader and need no `httpfs`. Neither path uses DuckDB's Azure extension.
 
 ```sh
 python3 scripts/provision_extensions.py artifacts/extensions --extensions httpfs
@@ -130,7 +130,9 @@ The bridge serves HEAD from acquired metadata and GET only for explicit single c
 
 Cancellation stops the listener/upstream requests and waits for cleanup. DuckDB's allowlist independently restricts selected capabilities.
 
-Range reads do not recompute every payload hash. `accelerate verify` streams all pinned payloads and validates bounded footer rows plus original Arrow schema for both layouts. Custom backends require `objectstore.RangeClient` or return `ErrRecoveryUnsupported`; built-ins implement it. Legacy snapshots without schema hashes remain readable but still require valid footer metadata/rows. Preserve immutability; changed revisions fail.
+Unrestricted range reads do not recompute every payload hash. `accelerate verify` streams all pinned payloads and checks footer rows and original Arrow schema. [Guarded reads](guarded-snapshots.md) hash each part at discovery and before every scan, adding network I/O. Both depend on immutable provider versions after verification.
+
+Custom backends require `objectstore.RangeClient` or return `ErrRecoveryUnsupported`; built-ins implement it. Legacy schema-less snapshots remain readable only without row/column restrictions. Preserve immutability; changed revisions fail.
 
 ## Limits and retention
 

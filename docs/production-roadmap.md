@@ -10,7 +10,7 @@ Kelvo remains a developer preview. The board tracks owners, dependencies and acc
 | --- | --- |
 | Query/refresh admission, source quotas, diagnostics, readiness and drain | [Operations](operations.md) |
 | Key, TLS identity and TLS trust rotation | [API keys](gateway-key-rotation.md) · [TLS identity](tls-identity-rotation.md) · [Trust/revocation](tls-trust-rotation.md) |
-| Principal keys and callback/local-snapshot policies | [Authority](principal-access.md) · [Table restrictions](row-column-access.md) · [Local snapshots](guarded-snapshots.md); native/object-snapshot/export/cache paths remain open |
+| Principal keys and callback/local/object-snapshot policies | [Authority](principal-access.md) · [Table restrictions](row-column-access.md) · [Snapshots](guarded-snapshots.md); native/export/cache paths remain open |
 | Parent-only cloud secrets and bounded local audit | [Cloud secrets](cloud-secrets.md) · [Audit contract and measured cost](durable-audit.md) |
 | Managed Linux worker scratch | [Ownership and recovery](worker-scratch.md) |
 | Opt-in Linux process-tree memory, CPU and PID limits | [Containment](process-containment.md) · [18-gate evidence](evidence/process-containment-publication.json) |
@@ -93,7 +93,7 @@ Start PostgreSQL/MySQL CDC after storage maintenance and recovery. Define keys, 
 
 **Gate:** every data/checkpoint/ACK crash boundary, duplicates, key changes, failover and expired source history. An unavailable cursor must require explicit bootstrap.
 
-Principal source/handle grants, callback and local-snapshot row/column policies, and bounded local audit are implemented. Enterprise deployments still need policy support for other execution paths, enrollment, coordinated revocation, audit archival and tested rollout contracts. Secret-manager credentials remain in the trusted parent.
+Principal source/handle grants, callback and local/object-snapshot row/column policies, and bounded local audit are implemented. Enterprise deployments still need policy support for other execution paths, enrollment, coordinated revocation, audit archival and tested rollout contracts. Secret-manager credentials remain in the trusted parent.
 
 ## Release gates and delivery order
 

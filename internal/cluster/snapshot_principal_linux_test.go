@@ -120,6 +120,14 @@ func verifySnapshotPrincipalIPC(t *testing.T, data []byte) {
 // the production gateway authentication and relay. Metadata CAS is a controlled
 // in-memory fixture, so this does not claim broker or distributed revocation HA.
 func TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS(t *testing.T) {
+	runSnapshotPrincipalRealWorkerRevocation(t, nil)
+}
+
+// configure replaces only the trusted, already resolved fixture sources. The
+// authenticated gateway, real worker, principal checks, and four EOS modes are
+// shared so local and object snapshots exercise the same authority boundary.
+func runSnapshotPrincipalRealWorkerRevocation(t *testing.T, configure func(*testing.T, catalog.Config) catalog.Config) {
+	t.Helper()
 	binary, launcher := os.Getenv("KELVO_TEST_SNAPSHOT_BINARY"), os.Getenv("KELVO_TEST_SNAPSHOT_SANDBOX")
 	if binary == "" || launcher == "" {
 		t.Skip("set KELVO_TEST_SNAPSHOT_BINARY and KELVO_TEST_SNAPSHOT_SANDBOX for real guarded-snapshot principal acceptance")
@@ -127,6 +135,9 @@ func TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS(t *testing.T) {
 	for _, mode := range []string{"success", "active-key-revocation", "commit-key-revocation", "commit-document-expiry"} {
 		t.Run(mode, func(t *testing.T) {
 			config, p := snapshotPrincipalFixture(t)
+			if configure != nil {
+				config = configure(t, config)
+			}
 			engine, err := worker.New(config, p.Limits)
 			if err != nil {
 				t.Fatal(err)
@@ -276,18 +287,33 @@ func TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS(t *testing.T) {
 					t.Fatal("authorized snapshot did not complete", result, final.Job.State)
 				}
 			} else {
+				store.mu.Lock()
+				commitAttempts := store.commitAttempts
+				store.mu.Unlock()
+				if mode == "active-key-revocation" {
+					if final.Job.State == Succeeded || commitAttempts != 0 {
+						t.Fatal("active revocation reached durable success", final.Job.State, commitAttempts)
+					}
+				} else if final.Job.State != Succeeded || commitAttempts != 1 {
+					// These hooks revoke inside the controlled CAS after its
+					// pre-check. Durable completion may win that race, while
+					// the final authority check must still withhold client EOS.
+					t.Fatal("commit-race fixture did not exercise durable completion", final.Job.State, commitAttempts)
+				}
 				if !errors.Is(errorFromSnapshotPanic(result), http.ErrAbortHandler) || bytes.HasSuffix(output.Body.Bytes(), []byte{255, 255, 255, 255, 0, 0, 0, 0}) {
 					t.Fatal("revoked principal received successful EOS", result)
 				}
 				if output.Body.Len() == 0 {
 					t.Fatal("revocation did not exercise active delivery")
 				}
-				r := httptest.NewRequest("GET", "/v1/queries/snapshot-result", nil)
-				r.Header.Set("Authorization", "Bearer "+rotationOld)
-				w := httptest.NewRecorder()
-				g.ServeHTTP(w, r)
-				if w.Code != 401 {
-					t.Fatal("expired/revoked principal remained authenticated", w.Code)
+				for _, route := range []struct{ method, path string }{{"GET", "/v1/queries/snapshot-result"}, {"POST", "/v1/queries/snapshot-result/cancel"}, {"GET", "/v1/queries/snapshot-result/results"}} {
+					r := httptest.NewRequest(route.method, route.path, nil)
+					r.Header.Set("Authorization", "Bearer "+rotationOld)
+					w := httptest.NewRecorder()
+					g.ServeHTTP(w, r)
+					if w.Code != 401 {
+						t.Fatal("expired/revoked principal remained authenticated", route.path, w.Code)
+					}
 				}
 			}
 		})

@@ -216,4 +216,4 @@ RSS samples every 20ms can miss peaks. Separate process peaks exclude source/cli
 
 ## Remaining acceptance work
 
-Track current work in [production status](production-status.md): deployment review, multi-zone recovery, provider acceptance and representative sustained/memory capacity remain separate gates. Callback federation has per-user row/column policies; other execution paths and coordinated policy lifecycle remain open. Export jobs/downloads, result caching, CDC, a Flight SQL server and cross-node execution of one SQL plan remain absent. The pinned DuckDB path materializes execution before Arrow delivery.
+Track current work in [production status](production-status.md): deployment review, multi-zone recovery, provider acceptance and representative sustained/memory capacity remain separate gates. Callback federation and guarded local/object snapshots have per-user row/column policies; native SQL and coordinated policy lifecycle remain open. Export jobs/downloads, result caching, CDC, a Flight SQL server and cross-node execution of one SQL plan remain absent. The pinned DuckDB path materializes execution before Arrow delivery.

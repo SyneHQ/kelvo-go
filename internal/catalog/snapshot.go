@@ -65,7 +65,7 @@ func (s Source) ValidateLocalSnapshot() error {
 	bad := errors.New("invalid trusted local snapshot source")
 	if s.Type != "parquet" || !ValidID(s.ID) || read.Dataset != s.ID || !snapshotGeneration.MatchString(read.Generation) ||
 		(read.SchemaSHA256 != "" && !snapshotDigest.MatchString(read.SchemaSHA256)) || s.Federation != nil || s.Adapter != "" ||
-		s.Object != nil || s.Range != nil || s.Ranges != nil || s.DSNEnv != "" || s.URLEnv != "" || s.UsernameEnv != "" ||
+		s.ObjectSnapshot != nil || s.Object != nil || s.Range != nil || s.Ranges != nil || s.DSNEnv != "" || s.URLEnv != "" || s.UsernameEnv != "" ||
 		s.PasswordEnv != "" || s.TokenEnv != "" || len(s.Options) != 0 {
 		return bad
 	}

@@ -1,8 +1,8 @@
-# Guarded local snapshots
+# Guarded snapshots
 
 Cluster principals can query an accelerated dataset through a row and column grant. One immutable snapshot is shared by readers; Kelvo filters Arrow batches before they enter DuckDB. SQL keeps the dataset name, such as `main.orders_fast`.
 
-This path requires Linux, the pinned DuckDB bridge build, local acceleration storage, and a snapshot carrying its original Arrow schema. Refresh a legacy schema-less snapshot before granting restricted reads. Unrestricted reads of existing snapshots keep their previous behavior. Object snapshots and arbitrary native SQL remain unsupported under a row and column policy.
+This path requires Linux, the pinned DuckDB bridge build, and a snapshot carrying its original Arrow schema. It supports local storage and [object-backed generations](object-storage.md). Refresh a legacy schema-less snapshot before granting restricted reads. Arbitrary native SQL remains unsupported under a row and column policy.
 
 ## Grant the dataset relation
 
@@ -26,7 +26,7 @@ row_column_policy:
 
 With this grant, `SELECT SUM(amount) FROM main.orders_fast` sees only account 42. `account_id` is available to the policy evaluator and absent from the SQL schema. Schema and field metadata are removed. Use the same versioned [principal policy](principal-access.md) on gateways and workers.
 
-Guarded datasets may join other guarded local datasets and callback federation tables. Restricted queries cannot mix raw file aliases, legacy native attachments or object readers. Every selected local snapshot needs its own explicit dataset policy. Unsupported rules or a missing grant fail closed.
+Guarded datasets may join other guarded local/object datasets and callback federation tables. Every selected snapshot needs its own dataset policy. Raw file aliases, legacy native attachments and unguarded object readers are rejected.
 
 ## Separate scanning from returned results
 
@@ -53,11 +53,15 @@ The reader uses sequential Parquet column readers and batches of at most 256 row
 
 ## Integrity, lifecycle and cost
 
-The trusted worker envelope binds the dataset, generation, ordered part sizes, row counts, digests, original Arrow schema and scan allowance. Public YAML cannot supply this envelope. The child revalidates it and checks private, worker-owned, single-link, non-writable regular files without following symlinks.
+The trusted worker envelope binds the dataset, generation, ordered part sizes, row counts, digests, original Arrow schema and scan allowance. Public YAML cannot supply this envelope. Local reads require private, worker-owned, single-link, non-writable files without symlinks. Object reads bind each part to its exact parent-minted range capability.
 
-Guarded reads hash every part at relation discovery and again before each scan, including `LIMIT` queries. Each full scan also reads projected Parquet columns. This intentionally adds disk reads; it is not a zero-overhead path or a throughput claim. Measure workloads with their actual projection, part sizes, joins, cache state and storage. Integrity checks can consume the query deadline before its first result.
+Guarded reads hash every part at relation discovery and again before each scan, including `LIMIT` queries. Each scan also reads projected Parquet columns. This adds disk or network I/O and can consume the query deadline before its first result. Measure actual projections, part sizes, joins and storage before sizing a deployment.
 
-DuckDB receives only guarded callback relations. Raw snapshot paths are excluded from its file allowlist and no raw `read_parquet` view is registered. The Go reader receives exact OS file grants and holds a shared payload lease while reading. Existing parent generation leases remain held until query callbacks and the child have closed. Refreshes may publish a new generation while an existing query stays pinned to its original one.
+DuckDB receives only guarded callback relations; raw snapshot paths and capability URLs are excluded from its file allowlist. Local readers hold a shared payload lease. Parent generation leases remain held until callbacks and the child close, so refresh can publish while an existing query stays pinned.
+
+Object guards use Go range reads and need no `httpfs` extension. Only the parent holds cloud credentials and checks provider versions. The child accepts exact, uncompressed `206` ranges with matching size and digest identity; redirects, proxies and full-download fallback are disabled. Its 64 KiB cache and 32 KiB hashing buffer share the decoder allocation budget. Cancellation closes active requests.
+
+Full hashes plus pinned immutable versions protect these reads; individual ranges are not independently authenticated against a provider that changes bytes without changing its version. Remote pruning still deletes nothing: process-local reader leases do not make distributed garbage collection safe.
 
 Missing, corrupt, inconsistent or unsupported data fails the query. Raw resource exhaustion fails before delivering the offending batch. Errors during result delivery prevent successful final completion; consuming an incomplete stream is not a successful query.
 
@@ -67,10 +71,12 @@ Follow the [drained principal-policy cutover](principal-access.md). Deploy suppo
 
 Before rollback, stop new admission, drain or cancel jobs, restore a compatible catalog and policy, and then restore the earlier binaries. Do not remove a restrictive grant merely to make an older binary accept it. No snapshot manifest migration or per-principal stored copy is introduced.
 
-Native SQL policies, object-backed snapshot guards, public export/download integration, result-cache authorization and coordinated live policy updates remain tracked in [#28](https://github.com/SyneHQ/kelvo-go/issues/28).
+Native SQL policies, public export/download integration, result-cache authorization and coordinated live policy updates remain tracked in [#28](https://github.com/SyneHQ/kelvo-go/issues/28). Object guard implementation and acceptance are tracked in [#69](https://github.com/SyneHQ/kelvo-go/issues/69).
 
 [Reader and admission validation](evidence/guarded-snapshot-reader.json) records the focused development checks; production and transport capacity require their separate acceptance evidence.
 
 [Integration evidence](evidence/guarded-snapshot-integration.json) records race/vet checks, real sandbox execution, generation cleanup, key revocation and EOS refusal, plus earlier failed trials and remaining gates.
 
 [Fixture permission regression](evidence/guarded-snapshot-fixture-umask.json) retains the initial CI failure and verifies explicit private test directories under both `0022` and `0077` umasks. The production file-permission checks remain unchanged.
+
+[Object integration](evidence/guarded-object-integration.json) covers full ordinary/bridge suites, race checks, mixed joins, real workers, principal revocation and cleanup. It retains optional skips and links the [exact source](evidence/guarded-object-source.json). [Boundary trials](evidence/guarded-object-boundaries.json), [older-worker refusal](evidence/guarded-object-rollback.json) and [response identity checks](evidence/object-response-identity.json) preserve earlier failures and component evidence. Live-provider and capacity acceptance remain separate.

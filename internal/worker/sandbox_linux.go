@@ -63,6 +63,9 @@ func SandboxCommand(binary, jobdir string, cfg catalog.Config, limits query.Limi
 		return nil
 	}
 	for _, source := range cfg.Sources {
+		if err := source.ValidateObjectSnapshot(); err != nil {
+			return nil, err
+		}
 		if err := source.ValidateParquetPaths(); err != nil {
 			return nil, err
 		}

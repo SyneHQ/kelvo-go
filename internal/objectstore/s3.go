@@ -257,6 +257,14 @@ func (c *s3Client) do(r *http.Request, digest string) (*http.Response, error) {
 
 func (c *s3Client) readInfo(resp *http.Response, upload bool) (Info, error) {
 	info := Info{}
+	headers, err := strictS3ResponseHeaders(resp.Header)
+	if err != nil {
+		return info, err
+	}
+	// Custom transports may use noncanonical map keys. Keep a private canonical
+	// copy so all later consumers, including range validation, see the same
+	// unambiguous fields without mutating the transport's original header map.
+	resp.Header = headers
 	info.ServerTime, _ = http.ParseTime(resp.Header.Get("Date"))
 	switch resp.StatusCode {
 	case http.StatusNotFound:
@@ -276,6 +284,12 @@ func (c *s3Client) readInfo(resp *http.Response, upload bool) (Info, error) {
 	if !upload && (resp.ContentLength < 0 || resp.ContentLength > MaxUploadBytes) {
 		return info, errors.New("object storage returned an invalid length")
 	}
+	if values, present := resp.Header["Content-Length"]; present {
+		length, err := strconv.ParseUint(values[0], 10, 63)
+		if err != nil || resp.ContentLength < 0 || int64(length) != resp.ContentLength {
+			return info, errors.New("object storage returned an invalid length")
+		}
+	}
 	info.Size = resp.ContentLength
 	if c.location.Provider == "gcs" {
 		info.Version = resp.Header.Get("x-goog-generation")
@@ -294,6 +308,26 @@ func (c *s3Client) readInfo(resp *http.Response, upload bool) (Info, error) {
 		return info, errors.New("object storage returned invalid digest metadata")
 	}
 	return info, nil
+}
+
+// Identity, integrity and framing fields have singleton semantics. Header.Get
+// alone accepts duplicates and can overlook mixed-case keys from an explicit
+// transport. Reject even identical duplicates before trusting a provider clock,
+// version, digest or length; other HTTP fields retain their normal multiplicity.
+func strictS3ResponseHeaders(headers http.Header) (http.Header, error) {
+	canonical := make(http.Header, len(headers))
+	for name, values := range headers {
+		key := http.CanonicalHeaderKey(name)
+		switch key {
+		case "Date", "Content-Length", "Content-Encoding", "Content-Range", "Etag",
+			"X-Amz-Meta-Kelvo-Sha256", "X-Goog-Generation", "X-Goog-Meta-Kelvo-Sha256":
+			if len(values) != 1 || len(canonical[key]) != 0 || len(values[0]) > 1024 || strings.ContainsAny(values[0], "\r\n\x00") {
+				return nil, errors.New("object storage returned invalid or duplicate response headers")
+			}
+		}
+		canonical[key] = append(canonical[key], values...)
+	}
+	return canonical, nil
 }
 
 func validETag(tag string) bool {

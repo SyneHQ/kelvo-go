@@ -109,7 +109,7 @@ Object reads cannot share a query with legacy PostgreSQL/MySQL DuckDB extensions
 
 Local storage normally retains current plus one previous generation. Leases, staging and replacement data need extra space; per-refresh limits are not volume quotas. A post-publication fsync failure reports uncertain durability.
 
-Acquisition checks identity, policy, permissions and size. Unrestricted reads use `verify` for full hashing. [Guarded local snapshot reads](guarded-snapshots.md) additionally hash parts during relation discovery and before each scan. Keep directories and writers trusted and private.
+Acquisition checks identity, policy, permissions and size. Unrestricted reads use `verify` for full hashing. [Guarded snapshot reads](guarded-snapshots.md) additionally hash parts during relation discovery and before each scan. Keep directories and writers trusted and private.
 
 ## Tenant and cluster operation
 
