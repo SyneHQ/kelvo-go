@@ -341,7 +341,7 @@ class ObjectAcceptance(Acceptance):
         environment = dict(self.env)
         # Status, verification and selected snapshot queries must work without
         # publisher credentials, even in the parent CLI process.
-        if args[:2] != ["accelerate", "refresh"]:
+        if args[:2] not in (["accelerate", "refresh"], ["accelerate", "restore"]):
             for name in self.writer_names:
                 environment.pop(name, None)
         scratch = private_directory(self.directory / ("process-" + str(self.command_number)))
@@ -600,7 +600,7 @@ class ObjectAcceptance(Acceptance):
         with state.lock:
             manifest = state.objects[manifest_key]
             invalid = copy.deepcopy(manifest)
-            invalid["body"] = re.sub(rb"^version: 2", b"version: 999", manifest["body"])
+            invalid["body"] = re.sub(rb"^version: [0-9]+$", b"version: 999", manifest["body"], count=1, flags=re.MULTILINE)
             require(invalid["body"] != manifest["body"], "manifest format fixture did not change")
             invalid["digest"] = digest(invalid["body"])
             state.objects[manifest_key] = invalid
@@ -636,14 +636,14 @@ class ObjectAcceptance(Acceptance):
                 require(not self.ca_destination.exists(), "temporary fixture trust was not removed")
 
 
-def main():
+def main(acceptance_class=ObjectAcceptance, evidence=EVIDENCE):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, default=BIN)
     parser.add_argument("--extension-directory", type=Path, required=True)
     parser.add_argument("--install-test-ca", action="store_true")
     parser.add_argument("--provider", choices=PROVIDERS, action="append", help="Limit a diagnostic run; default is all four")
     args = parser.parse_args()
-    acceptance = ObjectAcceptance(args)
+    acceptance = acceptance_class(args)
     outcome = {"schema_version": 1, "passed": False, "mode": "tls_protocol_fixtures",
                "checked_at": datetime.now(timezone.utc).isoformat(), "providers": args.provider or list(PROVIDERS),
                "checks": acceptance.checks, "scope": "Local TLS protocol acceptance only; no real cloud, throughput or production-readiness claim"}
@@ -679,8 +679,8 @@ def main():
             outcome["cleanup_failure"] = {"type": type(error).__name__}
             write_private(acceptance.directory / "cleanup-failure.log", acceptance.redact(traceback.format_exc().encode()))
             result = 1
-        EVIDENCE.parent.mkdir(parents=True, exist_ok=True)
-        EVIDENCE.write_text(json.dumps(outcome, indent=2) + "\n")
+        evidence.parent.mkdir(parents=True, exist_ok=True)
+        evidence.write_text(json.dumps(outcome, indent=2) + "\n")
     return result
 
 

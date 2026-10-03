@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "runtime_milestone": "71f3390",
+  "rows": 4456448,
+  "encoded_bytes": 4600321235,
+  "parts": 138,
+  "max_part_bytes": 67108864,
+  "gate_elapsed": "1m13.278s",
+  "test_process_peak_rss_kib": 467868,
+  "source": "Bounded deterministic synthetic Arrow producer, 8192 rows per batch with 1024-byte binary payloads",
+  "storage": "Disk-backed immutable object fixture with conditional publication and parent-owned loopback range reads",
+  "checks": [
+    "encoded dataset exceeds 4 GiB",
+    "each sealed part uploaded and local staging removed before continuing",
+    "complete-generation checksum/schema/row verification",
+    "DuckDB count and ID sum through signed HTTPFS",
+    "DuckDB SHA-256 comparison for every payload against deterministic reference hashes",
+    "per-part encoded ceilings"
+  ],
+  "scope": "Component release gate; includes ingestion, immutable object publication, full verification and real DuckDB HTTPFS aggregation; not a cloud-provider or WAN throughput benchmark",
+  "limits": [
+    "Peak RSS includes the synthetic source, storage fixture and in-process DuckDB; excludes filesystem cache and other processes",
+    "Not native database ingestion, a cgroup memory bound, micro-VM sizing or a concurrency measurement",
+    "Elapsed time covers several phases and does not isolate transfer or query throughput",
+    "Storage fixture shares the process and host; actual cloud latencies, quotas and credentials require separate acceptance"
+  ]
+}

@@ -21,7 +21,7 @@ background refreshes; authenticated dataset metadata diagnostics and opt-in
 required-dataset readiness; and verified remote restore using a bounded retained
 manifest catalog. Remote history retains at most 16 previous generations plus
 current, subject to the manifest byte limit. It does not list or delete objects.
-Remote writes upgrade manifests from v2 to v3 at the first writer action, requiring
+Current remote writes emit v4 at the first writer action, requiring
 coordinated readers/writers and preventing rollback to older binaries afterward.
 Required readiness checks cached metadata, not payload integrity or source health.
 
@@ -32,14 +32,22 @@ provide distributed trace continuity or full queue/stage timings. Focused tracin
 credential-rotation and protocol-fixture checks are development correctness gates,
 not capacity measurements or provider-wide validation.
 
-An additional implementation slice adds opt-in [local multipart acceleration](multipart-acceleration.md):
-bounded immutable Parquet parts, one atomic generation manifest, exact-file
-DuckDB/sandbox consumption and existing schema/recovery integration. Local writes
-remain version 1 unless multipart is enabled; version 2 multipart generations
-require coordinated reader/writer upgrades. Remote multipart, incremental refresh
-and remote GC are not included. Integrated ordinary/bridge, crash-recovery, sandbox
-and over-4-GiB development gates passed; the linked evidence states their scope.
-These checks do not establish general production capacity.
+An additional implementation slice adds opt-in [multipart acceleration](multipart-acceleration.md)
+for local and remote storage: bounded immutable Parquet parts, one atomic
+generation pointer, exact-file or isolated-range DuckDB consumption and schema/
+recovery integration. Local single-file manifests remain v1; local multipart uses
+v2. Remote readers accept v2/v3/v4, and every writer action emits v4, including the
+first lease claim before extraction. Coordinated upgrades are required; disabling
+multipart does not enable rollback to older remote readers.
+
+The local ordinary/bridge, crash-recovery, sandbox and over-4-GiB development gates
+passed; linked evidence states their scope. Remote multipart also passed its
+[20-check TLS fixture matrix](evidence/object-multipart-acceptance.json), legacy
+object regressions and [over-4-GiB component gate](evidence/object-multipart-large-dataset.json),
+including real DuckDB/HTTPFS reads. Remote multipart stages/uploads one part at a time and publishes
+a bounded descriptor/root reference; it adds no incremental refresh or remote GC.
+These checks do not establish actual cloud-provider acceptance or general
+production capacity.
 
 Schema evolution policies, provider-wide conformance/rotation coverage, full
 queue/stage timing, export-specific admission, safe remote GC,

@@ -145,27 +145,56 @@ GC remain separate, unimplemented operations.
 
 Restore uses the same renewable writer lease and conditional publication as
 refresh, and rejects a changed `--expected-generation`. It preserves the original
-refresh timestamp, checksum and object version: restored data can remain stale.
+refresh timestamp, checksum and immutable object/descriptor versions: restored
+data can remain stale.
 Immutable reader versions remain usable. A corrupt current payload cannot be
 repaired through this restore path because current-schema verification is
 required; use a separately validated backup or source recovery procedure.
-Inventory marks unreadable or corrupt entries unverified rather than treating
-them as usable generations. This is not a complete backup/disaster-recovery system
+Payload verification failures mark entries unverified when their manifest and
+descriptor remain readable. An unreadable or invalid root/descriptor prevents
+inventory from constructing a trustworthy entry and can fail the request. This is not a complete backup/disaster-recovery system
 or a measured RTO/RPO guarantee.
 
 ### Remote manifest upgrade
 
-New code reads legacy remote manifest **v2** and current **v3**. Every new writer
-action emits v3, including the first lease claim or renewal, even if extraction
-later fails or is aborted. Local manifest versions are unchanged. A legacy
-manifest begins with no historical catalog; subsequent publication can retain its
-previous current generation.
+New code reads remote manifests **v2, v3 and v4**. Every remote writer action now
+emits **v4**, including the first lease claim or renewal, even when multipart is
+disabled or extraction later fails or is aborted. Version 4 adds immutable
+multipart descriptor references; version 3's bounded retained catalog remains.
+A legacy v2 manifest starts without historical entries; later publication can
+retain its previous current generation.
 
-Coordinate upgrades of all readers and writers before allowing a new writer to
-act. Older binaries reject v3; mixed-version operation and binary rollback after
-that first writer action are unsupported. Drain old workers and preserve a
-verified operational recovery plan before crossing this boundary. Do not edit a
-version number to downgrade a manifest containing newer metadata.
+Coordinate all readers and writers before permitting a new writer action. Older
+binaries reject v4; mixed-version operation and binary rollback after the first
+lease claim are unsupported. Drain old workers and preserve a verified recovery
+plan before crossing this boundary. Do not edit a version number to downgrade
+newer metadata. Local versions are separate: v1 is single-file, v2 is multipart.
+
+### Remote multipart operation
+
+[Multipart acceleration](multipart-acceleration.md) is optional for local or remote
+storage. Remote refresh stages and uploads one part at a time, confirms the exact
+version and metadata, then publishes a versioned descriptor and one conditional
+root update. The descriptor is at most 2 MiB; the root remains at most 64 KiB and
+retains current plus at most 16 historical entries. At most 256 parts of up to
+4 GiB each fit within the configured 1 TiB aggregate ceiling. Actual achievable
+capacity can be lower because of row, metadata, part-count and resource limits.
+
+Queries use exact immutable versions through a parent-owned loopback range
+bridge shared across all selected parts. Its four upstream request slots and
+1,024-capability query ceiling remain bounded; cloud credentials never enter
+query subprocesses. Descriptor/part identity and totals are checked before use.
+Full payload hashes, row counts and schemas are checked by verification/recovery.
+No remote listing or garbage collection is added: orphaned or retired objects
+remain until a safe operator-managed cleanup procedure removes them.
+
+The [20-check multipart TLS matrix](evidence/object-multipart-acceptance.json),
+[36-check legacy object regression](evidence/object-multipart-legacy-acceptance.json)
+and [remote over-4-GiB component gate](evidence/object-multipart-large-dataset.json)
+passed at runtime milestone `71f3390`. The large gate used a synthetic Arrow
+producer and disk-backed object fixture, with real DuckDB/HTTPFS reads. These
+checks establish neither actual cloud-account acceptance nor WAN throughput,
+concurrent tenant capacity or a general memory bound.
 
 ## Validation boundaries
 
