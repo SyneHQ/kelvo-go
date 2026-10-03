@@ -1,0 +1,15 @@
+# Cancellation during blocked TLS delivery
+
+Cancelling an operation must release a blocked response write before it can release its download slot and upstream body. The shared `httpstream` helper enforces this across gateway query results, gateway export downloads, worker query results, worker export downloads, and standalone HTTP query results.
+
+The original one-shot deadline update failed a real slow-reader regression. On a write error, Go's HTTP/1 chunk writer closes the TLS connection; TLS close-notify replaces the expired deadline with a fresh five-second deadline. The handler can consequently remain inside its original `Write` after cancellation. The fix keeps reasserting an expired deadline every 25 milliseconds until the handler finishes writing. Cleanup joins the watcher before the response writer becomes invalid and clears the deadline only when the operation has not been cancelled. Worker exports use the retained part's context so cancellation includes publication withdrawal. Writers without deadline support retain their existing limitations.
+
+## Verified transport behavior
+
+The [sanitized receipt](evidence/tls-stream-cancellation-64e5956.json) pins the tested source, prior failures, selected test outcomes, and report hashes. The passing stage used Go 1.26.8 on Linux and ran offline in a non-root service limited to one CPU and 3 GiB with no swap, no capabilities, a private network namespace, and a 20-minute outer limit. Race tests produced 69 passing events: 4 helper, 39 gateway export, and 26 standalone HTTP API events. No tests failed or skipped; vet passed. The service exited successfully and its cgroup was empty afterward.
+
+The real HTTP/1 TLS gate opens ten concurrent clients for a retained Arrow part larger than 15 MiB. Two download slots admit exactly two clients and reject eight with HTTP 429. Both admitted readers stop after headers; the test observes actual response writes blocked for at least 50 milliseconds. Independent status and cancel requests remain available.
+
+Cancellation, initiating-key revocation, and key-document expiry each make the blocked handlers exit within two seconds, while the ordinary deadline still has more than five seconds remaining. Clients receive partial bodies with errors and without complete Arrow EOS. Upstream handlers and download slots are reclaimed. A separate real HTTP/2 test revokes a flow-control-blocked download, then verifies fresh-key status requests still succeed on the exact same TCP connection before and after cancellation. The fix does not close that shared connection.
+
+Stages 02 and 03 failed the two-second bound before the fix; those artifacts remain retained. Stage 04 passed without relaxing that bound. The direct socket regressions cover gateway export delivery with a controlled durable metadata fixture. Shared-helper and existing package tests cover its integration points; these receipts do not certify real broker behavior, source providers, WAN performance, sustained throughput, or every deployment's recovery time. Combined release acceptance remains separate evidence.
