@@ -361,8 +361,12 @@ func TestExportClusterActualWorkerLifecycle(t *testing.T) {
 	if state := engine.ResourcePool.Snapshot(); state.Active != 0 {
 		t.Fatal("export reservations leaked", state.Active)
 	}
-	if entries, err := os.ReadDir(config.ScratchDirectory); err != nil || len(entries) != 0 {
-		t.Fatal("sandbox scratch leaked", err, len(entries))
+	if reclaimed, err := scratch.Reclaim(); err != nil || reclaimed != 0 {
+		t.Fatal("sandbox retained scratch ownership", reclaimed, err)
+	}
+	entries, err := os.ReadDir(config.ScratchDirectory)
+	if err != nil || len(entries) != 1 || entries[0].Name() != ".kelvo-scratch.lock" || !entries[0].Type().IsRegular() {
+		t.Fatal("sandbox scratch leaked", err, entries)
 	}
 }
 
