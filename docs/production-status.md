@@ -8,13 +8,13 @@ Status reviewed 3 October 2026. This is a capability checklist, not production c
 | --- | --- |
 | Shared query/refresh budgets, interactive reserves and source quotas | Export dispatch integration and sustained capacity gates |
 | Opt-in Linux process-tree memory, CPU and PID limits | Deployment-specific headroom, restart recovery and sustained fault/load validation |
-| Independent probes, dataset readiness, phased drain and an [exact rolling application pair](rolling-upgrades.md) | Newer policy/audit and broker/client upgrade matrices; multi-hour fault/load campaigns |
+| Independent probes, dataset readiness, phased drain and [application](rolling-upgrades.md) and [broker/client](nats-compatibility.md) upgrade matrices | Deployment-specific rollout and multi-hour fault/load campaigns |
 | Metrics opt-out, bounded history, tracing, source observations and [local audit](durable-audit.md) | Distributed attribution, audit archival and combined workload-cost measurements |
 | Selected-secret forwarding, files, opt-in cloud secrets, API-key and TLS rotation | Live-provider IAM/rotation coverage and coordinated enrollment/revocation |
 | Managed Linux scratch with inherited leases | Deployment-specific disk capacity and recovery validation |
 | CI, 15 executed notebooks, process-loss and snapshot-upgrade gates | Recurring real-provider tests on each release candidate |
 
-See [operations](operations.md), [process containment](process-containment.md), [process-loss acceptance](process-loss-acceptance.md), [snapshot upgrades](release-upgrades.md), [rolling applications](rolling-upgrades.md) [worker scratch](worker-scratch.md) and [runtime recovery](runtime-recovery.md).
+See [operations](operations.md), [process containment](process-containment.md), [process-loss acceptance](process-loss-acceptance.md), [snapshot upgrades](release-upgrades.md), [rolling applications](rolling-upgrades.md), [broker/client compatibility](nats-compatibility.md), [worker scratch](worker-scratch.md) and [runtime recovery](runtime-recovery.md).
 
 Admission reserves budgets; optional containment enforces native process-tree limits. Parent allocations still need host/container limits and measured headroom. DuckDB materializes before Arrow delivery.
 
