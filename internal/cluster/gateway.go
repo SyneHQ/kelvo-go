@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -32,21 +33,22 @@ type workerEndpoint struct {
 	client *http.Client
 }
 type Gateway struct {
-	tenants       map[string]gatewayTenant
-	tokens        map[[32]byte]string
-	auth          *gatewayAuthenticator
-	permits       chan struct{}
-	resultWaiters chan struct{}
-	ctx           context.Context
-	cancel        context.CancelFunc
-	wg            sync.WaitGroup
-	handlers      sync.WaitGroup
-	mu            sync.RWMutex
-	reconcileOK   map[string]bool
-	reconcileErr  error
-	draining      bool
-	closed        bool
-	once          sync.Once
+	tenants        map[string]gatewayTenant
+	tokens         map[[32]byte]string
+	auth           *gatewayAuthenticator
+	workerIdentity *tlsIdentity
+	permits        chan struct{}
+	resultWaiters  chan struct{}
+	ctx            context.Context
+	cancel         context.CancelFunc
+	wg             sync.WaitGroup
+	handlers       sync.WaitGroup
+	mu             sync.RWMutex
+	reconcileOK    map[string]bool
+	reconcileErr   error
+	draining       bool
+	closed         bool
+	once           sync.Once
 }
 
 func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
@@ -58,6 +60,20 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 	}
 	gctx, cancel := context.WithCancel(context.Background())
 	g := &Gateway{tenants: map[string]gatewayTenant{}, tokens: map[[32]byte]string{}, permits: make(chan struct{}, cfg.MaxHTTPRequests), resultWaiters: make(chan struct{}, cfg.MaxHTTPRequests), ctx: gctx, cancel: cancel, reconcileOK: map[string]bool{}}
+	if cfg.WorkerTLS.IdentityFile != "" {
+		var err error
+		g.workerIdentity, err = newTLSIdentity(cfg.WorkerTLS, GatewayIdentity, x509.ExtKeyUsageClientAuth, nil)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+	}
+	started := false
+	defer func() {
+		if !started && g.workerIdentity != nil {
+			g.workerIdentity.close()
+		}
+	}()
 	for _, tc := range cfg.Tenants {
 		tenant := tc.Policy.TenantID
 		st := stores[tenant]
@@ -90,7 +106,7 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 				cancel()
 				return nil, errors.New("cluster gateway: duplicate worker endpoint")
 			}
-			tlsCfg, err := BuildClientTLS(cfg.WorkerTLS, "spiffe://kelvo/tenant/"+tenant+"/worker/"+ep.ID)
+			tlsCfg, err := buildClientTLS(cfg.WorkerTLS, "spiffe://kelvo/tenant/"+tenant+"/worker/"+ep.ID, g.workerIdentity)
 			if err != nil {
 				cancel()
 				return nil, err
@@ -101,7 +117,11 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 			transport.TLSHandshakeTimeout = 5 * time.Second
 			transport.ResponseHeaderTimeout = tc.Policy.Limits.Timeout
 			transport.DisableCompression = true
-			gt.workers[ep.ID] = workerEndpoint{url: u, client: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+			var roundTripper http.RoundTripper = transport
+			if g.workerIdentity != nil {
+				roundTripper = &tlsIdentityTransport{Transport: transport, identity: g.workerIdentity}
+			}
+			gt.workers[ep.ID] = workerEndpoint{url: u, client: &http.Client{Transport: roundTripper, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 		}
 		g.tenants[tenant] = gt
 	}
@@ -126,6 +146,7 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 		g.wg.Add(1)
 		go g.reconcile(tenant)
 	}
+	started = true
 	return g, nil
 }
 
@@ -152,6 +173,9 @@ func (g *Gateway) Close() error {
 		g.cancel()
 		if g.auth != nil {
 			g.auth.close()
+		}
+		if g.workerIdentity != nil {
+			g.workerIdentity.close()
 		}
 		g.handlers.Wait()
 		g.wg.Wait()
@@ -204,6 +228,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(ctx)
 	if r.Method == http.MethodGet && r.URL.Path == "/health" {
 		g.json(w, 200, map[string]string{"status": "ok"})
+		return
+	}
+	if g.workerIdentity != nil && !g.workerIdentity.ready() {
+		g.err(w, http.StatusServiceUnavailable, "UNAVAILABLE", "Service unavailable")
 		return
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/ready" {
