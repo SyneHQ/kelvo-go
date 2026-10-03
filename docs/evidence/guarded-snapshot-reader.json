@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "scope": "Guarded local snapshot reader and policy-admission development validation; engine/cluster integration is separate",
+  "passed": true,
+  "base_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+  "foundation_commit": "9d20621",
+  "reader_commit": "f8bbd55",
+  "admission_commit": "417cf36",
+  "test_command": "GOMAXPROCS=1 GOPROXY=off GOTOOLCHAIN=local go test -p 1 -race -mod=readonly -modfile=artifacts/guards.mod -tags duckdb_arrow,duckbridge ./internal/federation ./internal/access -count=1 -timeout=4m -json",
+  "vet_passed": true,
+  "source_unchanged": true,
+  "source_file_count": 808,
+  "source_manifest_sha256": "1b4382e9c17c997ae5144e65971773d2ef57a780228ea1e1302cee718fc5a91f",
+  "test_pass_events": 163,
+  "packages": {
+    "github.com/SYNEHQ/kelvo-go/internal/federation": "pass",
+    "github.com/SYNEHQ/kelvo-go/internal/access": "pass"
+  },
+  "focused_snapshot_pass_events": 46,
+  "source_file_sha256": {
+    "internal/federation/budget.go": "0f39b0fa833a774be3fbeddbde41b9fea40211b93b156e03189f6a26891980a2",
+    "internal/federation/reader.go": "212cfb207b3ed74c7c1b377ac430568f1b23e37cc3c728685a7270d121df8e0f",
+    "internal/federation/table.go": "954f8b61909a20bf2db7c65244fbeef11a52d509eee233a9e73da7e8451821e1",
+    "internal/federation/snapshot.go": "bcf6fadd70fd27eae59412bfb72deb5f0a72818d716a092d6b638e3fb7dad0b1",
+    "internal/federation/snapshot_memory.go": "aacf790e7934f47cd480ac38429072ca41e16ba342dbe0feabe522042c18964c",
+    "internal/federation/snapshot_file_linux.go": "4c123a63db386c2e74d305cb1342d7c8a6bd234803eb6d94126e5ce4fd6f0495",
+    "internal/federation/snapshot_file_other.go": "2685b1952ed88534b90288fca094494e0bb6a8d3d780f337e242f4cdcc761701",
+    "internal/federation/snapshot_test.go": "f7220e2df5c0b5fbd10920ea88fc89b70e8292f57a9d3cb3f4c5f47ad2f30177",
+    "internal/access/policy.go": "51bd231418660e0bc4e5ef6fb60ca1afa56ba00ad150f1a8f34ee6053e540383",
+    "internal/access/snapshot_policy_test.go": "b5db082d2fe5c3bd6ffe295cd045f88b29613f0e8c68745c0336a8bef2bda984"
+  },
+  "vm_budget": {
+    "cpu_percent": 100,
+    "memory_bytes": 3221225472,
+    "swap_bytes": 0
+  },
+  "real_worker_sandbox_tested": false,
+  "limitations": [
+    "Direct unit/race validation only; not throughput or production acceptance",
+    "Integrity hashing rereads whole parts at discovery and each scan",
+    "Decoder counter excludes guard/result allocations and process memory"
+  ],
+  "retained_prior_failures": [
+    {
+      "candidate": "reader-03",
+      "finding": "Pinned Arrow record-reader constructor spawned background goroutines even with Parallel false; decoder cap panic escaped recovery",
+      "resolution": "Use public sequential column readers; cap, partial-allocation cap and panic cleanup controls pass"
+    }
+  ]
+}

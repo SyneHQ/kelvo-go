@@ -105,3 +105,36 @@ func TestSnapshotScanDefaultsAndExplicitBudgets(t *testing.T) {
 		}
 	}
 }
+
+func TestSnapshotScanYAMLDoesNotChangeContentIdentity(t *testing.T) {
+	base, err := loadAccelerationFixture(t, acceleratedYAML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := base.DatasetFingerprint("orders_fast")
+	if err != nil {
+		t.Fatal(err)
+	}
+	configured, err := loadAccelerationFixture(t, acceleratedYAML+"      scan:\n        max_rows: 5000000\n        max_bytes: 1073741824\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := configured.DatasetFingerprint("orders_fast")
+	if err != nil || got != want {
+		t.Fatal("raw scan allowance changed snapshot identity", got, want, err)
+	}
+	dataset, _ := configured.Dataset("orders_fast")
+	limits, err := dataset.EffectiveSnapshotScanLimits()
+	if err != nil || limits.MaxRows != 5_000_000 || limits.MaxBytes != 1<<30 {
+		t.Fatal("YAML scan allowance was lost", limits, err)
+	}
+	for _, raw := range []string{
+		"      scan:\n        max_rows: -1\n",
+		"      scan:\n        max_bytes: 1023\n",
+		"      scan:\n        unknown: 1\n",
+	} {
+		if _, err := loadAccelerationFixture(t, acceleratedYAML+raw); err == nil {
+			t.Fatal("invalid scan config accepted")
+		}
+	}
+}
