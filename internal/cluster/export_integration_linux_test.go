@@ -43,11 +43,21 @@ func TestExportClusterActualWorkerLifecycle(t *testing.T) {
 	}
 	natsConfig := NATSConfig{URL: brokerURL, CAFile: os.Getenv("KELVO_TEST_EXPORT_E2E_NATS_CA_FILE"),
 		Username: os.Getenv("KELVO_TEST_EXPORT_E2E_NATS_USER"), PasswordEnv: "KELVO_TEST_EXPORT_E2E_NATS_PASSWORD"}
+	runtimeNATS := func(role string) NATSConfig {
+		config := natsConfig
+		prefix := "KELVO_TEST_EXPORT_E2E_NATS_" + role
+		config.Username, config.PasswordEnv = os.Getenv(prefix+"_USER"), prefix+"_PASSWORD"
+		if config.Username == "" || len(os.Getenv(config.PasswordEnv)) < 32 {
+			t.Fatalf("missing separate %s broker identity", role)
+		}
+		return config
+	}
+	workerNATS, gatewayNATS := runtimeNATS("WORKER"), runtimeNATS("GATEWAY")
 	catalogue, policy := snapshotPrincipalFixture(t)
 	config := runtimeExportConfigFixture(t)
 	policy.Exports = config.Policy.Exports
 	policy.Exports.Limits.Compression = "lz4_frame"
-	config.Policy, config.WorkerID, config.NATS, config.SandboxPath = policy, "a1", natsConfig, launcher
+	config.Policy, config.WorkerID, config.NATS, config.SandboxPath = policy, "a1", workerNATS, launcher
 	if err := os.Mkdir(config.ScratchDirectory, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +94,7 @@ func TestExportClusterActualWorkerLifecycle(t *testing.T) {
 	_ = initialize.Close()
 	var node atomic.Pointer[Node]
 	startWorker := func(t *testing.T) {
-		store, err := OpenStore(ctx, natsConfig, policy, false)
+		store, err := OpenStore(ctx, workerNATS, policy, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -161,14 +171,14 @@ func TestExportClusterActualWorkerLifecycle(t *testing.T) {
 		return set
 	}
 	writeKeys(t, 1, []string{rotationOld, rotationNew})
-	gatewayStore, err := OpenStore(ctx, natsConfig, policy, false)
+	gatewayStore, err := OpenStore(ctx, gatewayNATS, policy, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	gateway, err := NewGateway(GatewayConfig{WorkerTLS: gatewayTLS, MaxHTTPRequests: 8,
 		Authentication: &GatewayAuthenticationConfig{KeysFile: keyFile, ReloadInterval: time.Second},
 		Exports:        &GatewayExportConfig{MaxSupervisors: 2, MaxDownloads: 2},
-		Tenants:        []TenantConfig{{Policy: policy, NATS: natsConfig, Workers: []Endpoint{{ID: "a1", URL: workerServer.URL}}}},
+		Tenants:        []TenantConfig{{Policy: policy, NATS: gatewayNATS, Workers: []Endpoint{{ID: "a1", URL: workerServer.URL}}}},
 	}, map[string]Store{"a": gatewayStore})
 	if err != nil {
 		_ = gatewayStore.Close()
