@@ -252,9 +252,26 @@ func Lookup(ctx context.Context, sourceID, tableAlias string) (TablePolicy, bool
 }
 
 // ValidateRequest must run before snapshot resolution or credential access in
-// the trusted parent, and again before selecting an executor in the child.
-// Callback-only sources prevent direct SQL readers bypassing a guarded view.
+// the trusted parent. Local accelerated dataset IDs may be unresolved here;
+// the child and engine must use ValidateResolvedRequest after lease acquisition.
 func ValidateRequest(ctx context.Context, config catalog.Config, request query.Request) error {
+	return validateRequest(ctx, config, request, true)
+}
+
+// ValidateResolvedRequest rejects unresolved dataset aliases at the worker
+// envelope boundary. Every guarded snapshot must carry exact leased provenance.
+func ValidateResolvedRequest(ctx context.Context, config catalog.Config, request query.Request) error {
+	return validateRequest(ctx, config, request, false)
+}
+
+// GuardedSnapshot identifies paths reserved for the private Arrow reader. Never
+// register these paths as SQL views or place them in DuckDB's file allowlist.
+// Admission and NewSnapshot separately verify the exact dataset grant.
+func GuardedSnapshot(ctx context.Context, source catalog.Source) bool {
+	return source.LocalSnapshot != nil && Restricted(ctx)
+}
+
+func validateRequest(ctx context.Context, config catalog.Config, request query.Request, unresolved bool) error {
 	p, active := ctx.Value(policyKey{}).(Policy)
 	if !active {
 		return nil
@@ -269,15 +286,37 @@ func ValidateRequest(ctx context.Context, config catalog.Config, request query.R
 	selected := make(map[string]bool, len(sources))
 	names := make(map[string]bool, len(sources))
 	for _, source := range sources {
-		if source.Federation == nil || source.Adapter != "" || source.Path != "" || source.Object != nil || source.Range != nil || len(source.Ranges) != 0 || len(source.ParquetPaths) != 0 {
-			return unsupported()
-		}
 		folded := strings.ToLower(source.ID)
 		if names[folded] {
 			return denied()
 		}
 		names[folded] = true
 		selected[source.ID] = true
+		if source.Type == "accelerated" || source.LocalSnapshot != nil {
+			if source.Type == "accelerated" {
+				if !unresolved || config.Acceleration == nil || config.Acceleration.ObjectStorage != nil {
+					return unsupported()
+				}
+				if _, exists := config.Dataset(source.ID); !exists || source.Path != "" || source.LocalSnapshot != nil {
+					return unsupported()
+				}
+			} else if source.ValidateLocalSnapshot() != nil || source.LocalSnapshot.SchemaSHA256 == "" {
+				return unsupported()
+			}
+			// A dataset owns one relation in main with the dataset ID as its
+			// policy table alias. Refresh-source grants do not imply this grant.
+			rule, granted := p.Sources[source.ID]
+			if !granted || len(rule.Tables) != 1 {
+				return denied()
+			}
+			if _, granted = rule.Tables[source.ID]; !granted {
+				return denied()
+			}
+			continue
+		}
+		if source.Federation == nil || source.Adapter != "" || source.Path != "" || source.Object != nil || source.Range != nil || len(source.Ranges) != 0 || len(source.ParquetPaths) != 0 {
+			return unsupported()
+		}
 		aliases := make(map[string]bool, len(source.Federation.Tables))
 		foldedAliases := make(map[string]bool, len(source.Federation.Tables))
 		for _, table := range source.Federation.Tables {
