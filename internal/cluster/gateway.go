@@ -297,6 +297,25 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if authContext != nil {
+		r = r.WithContext(context.WithValue(r.Context(), keyAuthorizationContext{}, keyAuthorization{g.auth, authContext}))
+	}
+	principalID := ""
+	if authContext != nil {
+		principalID, _ = authContext.Value(keyPrincipalID{}).(string)
+	}
+	policy := g.tenants[tenant].store.Policy()
+	if policy.Access != nil {
+		authority, permitted := authorityForPrincipal(policy, principalID)
+		if !permitted {
+			g.err(w, 401, "UNAUTHENTICATED", "Authentication required")
+			return
+		}
+		r = r.WithContext(context.WithValue(r.Context(), jobAuthorityKey{}, authority))
+	} else if principalID != "" {
+		g.err(w, 401, "UNAUTHENTICATED", "Authentication required")
+		return
+	}
 	p := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(p) < 2 || p[0] != "v1" || p[1] != "queries" {
 		g.err(w, 404, "NOT_FOUND", "Not found")
@@ -354,6 +373,10 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant
 		g.err(w, 400, "INVALID_ARGUMENT", "Invalid query request")
 		return
 	}
+	if _, err := submissionAuthority(r.Context(), t.store.Policy(), req); err != nil {
+		g.err(w, 403, "PERMISSION_DENIED", "Query access denied")
+		return
+	}
 	s, e := t.store.Submit(r.Context(), req)
 	if errors.Is(e, ErrCapacity) {
 		g.err(w, 429, "RESOURCE_EXHAUSTED", "Query capacity unavailable")
@@ -369,7 +392,7 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant
 	g.json(w, 201, map[string]string{"id": s.Job.ID, "state": s.Job.State})
 }
 func (g *Gateway) status(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string) {
-	s, e := t.store.Get(r.Context(), id)
+	s, e := principalSnapshot(r.Context(), t, id)
 	if e != nil {
 		if errors.Is(e, ErrNotFound) {
 			g.err(w, 404, "NOT_FOUND", "Query not found")
@@ -382,7 +405,7 @@ func (g *Gateway) status(w http.ResponseWriter, r *http.Request, t gatewayTenant
 }
 func (g *Gateway) cancelJob(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string) {
 	for range 8 {
-		s, e := t.store.Get(r.Context(), id)
+		s, e := principalSnapshot(r.Context(), t, id)
 		if errors.Is(e, ErrNotFound) {
 			g.err(w, 404, "NOT_FOUND", "Query not found")
 			return
@@ -415,7 +438,7 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 	poll := time.NewTicker(50 * time.Millisecond)
 	defer poll.Stop()
 	for {
-		s, e = t.store.Get(r.Context(), id)
+		s, e = principalSnapshot(r.Context(), t, id)
 		if e != nil {
 			if errors.Is(e, ErrNotFound) {
 				g.err(w, 404, "NOT_FOUND", "Query not found")
@@ -527,7 +550,7 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 		g.fail(t, s, "Arrow stream failed")
 		panic(http.ErrAbortHandler)
 	}
-	if !tail.validEOS() || g.commitResult(ctx, t, s) != nil || tail.FlushEOS() != nil {
+	if !tail.validEOS() || requestAuthorityErr(ctx) != nil || g.commitResult(ctx, t, s) != nil || requestAuthorityErr(ctx) != nil || tail.FlushEOS() != nil {
 		g.fail(t, s, "Arrow stream incomplete")
 		panic(http.ErrAbortHandler)
 	}
@@ -537,7 +560,7 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 // Only then is it terminal and reusable by a subsequent submission.
 func (g *Gateway) commitResult(ctx context.Context, t gatewayTenant, claimed Snapshot) error {
 	for range 8 {
-		final, err := t.store.Get(ctx, claimed.Job.ID)
+		final, err := principalSnapshot(ctx, t, claimed.Job.ID)
 		if err != nil {
 			return err
 		}

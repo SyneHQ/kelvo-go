@@ -137,6 +137,17 @@ func (n *Node) dispatch() {
 			<-n.permits
 			continue
 		}
+		if err := validateJobAuthority(n.cfg.Policy, s.Job.Authority, s.Job.Request); err != nil {
+			next := s.Job
+			next.State, next.Error = Failed, query.PublicError(err)
+			if _, updateErr := n.store.CompareAndSwap(n.ctx, s, next); updateErr == nil || errors.Is(updateErr, ErrConflict) {
+				_ = d.Ack(n.ctx)
+			} else {
+				_ = d.Retry(n.ctx)
+			}
+			<-n.permits
+			continue
+		}
 		ctx, cancel := context.WithDeadline(n.ctx, s.Job.ExpiresAt)
 		r := &reservation{ctx: ctx, cancel: cancel, done: make(chan struct{})}
 		n.mu.Lock()
@@ -437,9 +448,13 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer n.release(id, reserved)
 	claim := r.Header.Get("X-Kelvo-Claim")
 	var request query.Request
+	var authority *JobAuthority
 	err := n.mutate(r.Context(), id, func(j *Job) error {
 		if j.State != Claimed || len(claim) != 32 || subtle.ConstantTimeCompare([]byte(j.Claim), []byte(claim)) != 1 {
 			return ErrConflict
+		}
+		if err := validateJobAuthority(n.cfg.Policy, j.Authority, j.Request); err != nil {
+			return err
 		}
 		if err := query.ValidateRequest(j.Request); err != nil {
 			return err
@@ -447,6 +462,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		j.State = Running
 		j.HeartbeatAt = time.Now().UTC()
 		request = j.Request
+		authority = j.Authority
 		return nil
 	})
 	if err != nil {
@@ -455,6 +471,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(reserved.ctx, n.cfg.Policy.Limits.Timeout)
+	if authority != nil {
+		ctx = context.WithValue(ctx, jobAuthorityKey{}, *authority)
+	}
 	stopClient := context.AfterFunc(r.Context(), cancel)
 	defer func() { stopClient(); cancel() }()
 	controller := http.NewResponseController(w)

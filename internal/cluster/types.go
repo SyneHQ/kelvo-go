@@ -38,17 +38,19 @@ var (
 // Static tenant budgets partition cluster capacity; there is no shared mutable
 // quota counter. One durable KV slot atomically contains admission AND job state.
 type Policy struct {
-	SourceQuotas  map[string]int `json:"source_quotas,omitempty" yaml:"source_quotas,omitempty"`
-	TenantID      string         `json:"tenant_id" yaml:"tenant_id"`
-	MaxQueries    int            `json:"max_queries" yaml:"max_queries"`
-	JobTTL        time.Duration  `json:"job_ttl" yaml:"job_ttl"`
-	LeaseDuration time.Duration  `json:"lease_duration" yaml:"lease_duration"`
-	Replicas      int            `json:"replicas" yaml:"replicas"`
-	Limits        query.Limits   `json:"limits" yaml:"limits"`
-	Workers       map[string]int `json:"workers" yaml:"workers"`
+	Access        *PrincipalPolicy `json:"access,omitempty" yaml:"access,omitempty"`
+	SourceQuotas  map[string]int   `json:"source_quotas,omitempty" yaml:"source_quotas,omitempty"`
+	TenantID      string           `json:"tenant_id" yaml:"tenant_id"`
+	MaxQueries    int              `json:"max_queries" yaml:"max_queries"`
+	JobTTL        time.Duration    `json:"job_ttl" yaml:"job_ttl"`
+	LeaseDuration time.Duration    `json:"lease_duration" yaml:"lease_duration"`
+	Replicas      int              `json:"replicas" yaml:"replicas"`
+	Limits        query.Limits     `json:"limits" yaml:"limits"`
+	Workers       map[string]int   `json:"workers" yaml:"workers"`
 }
 
 type Job struct {
+	Authority   *JobAuthority `json:"authority,omitempty"`
 	ID          string        `json:"id"`
 	TenantID    string        `json:"tenant_id"`
 	State       string        `json:"state"`

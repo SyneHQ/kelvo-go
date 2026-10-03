@@ -53,6 +53,9 @@ func validateGatewayAuthentication(c *GatewayConfig) error {
 		c.Authentication = &normalized
 	}
 	for _, tenant := range c.Tenants {
+		if tenant.Policy.Access != nil && c.Authentication == nil {
+			return errGatewayAuthConfig
+		}
 		if (c.Authentication == nil) != (tenant.TokenEnv != "") {
 			return errGatewayAuthConfig
 		}
@@ -61,15 +64,17 @@ func validateGatewayAuthentication(c *GatewayConfig) error {
 }
 
 type gatewayKeySet struct {
-	revision uint64
-	digest   [32]byte
-	keys     map[[32]byte]string
+	revision   uint64
+	digest     [32]byte
+	keys       map[[32]byte]string
+	principals map[[32]byte]string
 }
 
 type gatewayKeyDocument struct {
-	Version  int                 `yaml:"version"`
-	Revision uint64              `yaml:"revision"`
-	Tenants  map[string][]string `yaml:"tenants"`
+	Version    int                            `yaml:"version"`
+	Revision   uint64                         `yaml:"revision"`
+	Tenants    map[string][]string            `yaml:"tenants,omitempty"`
+	Principals map[string]map[string][]string `yaml:"principals,omitempty"`
 }
 
 // Parse only a small plain YAML tree. Aliases/anchors/merge keys are unnecessary
@@ -103,10 +108,16 @@ func parseGatewayKeys(raw []byte, tenants map[string]bool, minimum uint64) (gate
 	var document gatewayKeyDocument
 	decoder := yaml.NewDecoder(bytes.NewReader(raw))
 	decoder.KnownFields(true)
-	if decoder.Decode(&document) != nil || decoder.Decode(new(any)) != io.EOF || document.Version != 1 || document.Revision == 0 || document.Revision < minimum || len(document.Tenants) != len(tenants) {
+	if decoder.Decode(&document) != nil || decoder.Decode(new(any)) != io.EOF || (document.Version != 1 && document.Version != 2) || document.Revision == 0 || document.Revision < minimum {
 		return bad()
 	}
-	result := gatewayKeySet{revision: document.Revision, digest: sha256.Sum256(raw), keys: make(map[[32]byte]string)}
+	result := gatewayKeySet{revision: document.Revision, digest: sha256.Sum256(raw), keys: make(map[[32]byte]string), principals: make(map[[32]byte]string)}
+	if document.Version == 2 {
+		return parsePrincipalKeys(document, tenants, result)
+	}
+	if document.Principals != nil || len(document.Tenants) != len(tenants) {
+		return bad()
+	}
 	for tenant, keys := range document.Tenants {
 		if !tenants[tenant] || keys == nil || len(keys) > gatewayMaxTenantKeys {
 			return bad()
