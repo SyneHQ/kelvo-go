@@ -32,7 +32,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Rotate credentials | [API keys](gateway-key-rotation.md) · [Source files](operations.md#file-based-source-credential-rotation) · [TLS identity](tls-identity-rotation.md) · [TLS trust](tls-trust-rotation.md) |
 | Inspect query/refresh outcomes | [Tracing](tracing.md) · [Passive source health](source-health.md) · [Native errors](native-error-classification.md) |
 | Recover failed workers and scratch | [Worker failures](worker-failures.md) · [Managed scratch](worker-scratch.md) |
-| Understand internal export storage | [Export contributor API](export-storage.md) |
+| Understand internal export controls | [Storage API](export-storage.md) · [Workload admission](workload-admission.md) |
 
 ## Evaluate and reproduce results
 

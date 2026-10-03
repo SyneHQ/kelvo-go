@@ -17,6 +17,7 @@ var (
 	ErrOversize = errors.New("resource reservation exceeds capacity")
 	ErrBusy     = errors.New("resource capacity unavailable")
 	ErrDraining = errors.New("resource admission is draining")
+	ErrDisabled = errors.New("workload class is disabled")
 )
 
 // Limits are usable workload capacity after baseline runtime headroom.
@@ -30,9 +31,17 @@ type Limits struct {
 	ReservedSlots        int
 	ReservedMemoryBytes  int64
 	ReservedScratchBytes int64
+	// Classes supplies optional per-class ceilings. Interactive and refresh
+	// inherit global capacity when absent. Export is disabled unless explicitly
+	// configured. New copies this bounded map; later mutation has no effect.
+	Classes map[Class]ClassLimits
 }
 
 type Request struct {
+	Class Class
+	// Background is retained for existing callers: without Class, false means
+	// interactive and true means refresh. With Class, true is valid only for
+	// ClassRefresh. Both exports and refreshes share protected-background limits.
 	Background   bool
 	MemoryBytes  int64
 	ScratchBytes int64
@@ -47,6 +56,9 @@ type Snapshot struct {
 	Active           int
 	Waiting          int
 	Draining         bool
+	// Classes always contains the three fixed classes, including disabled export.
+	// This map and Limits.Classes are independent copies owned by the caller.
+	Classes map[Class]ClassSnapshot
 }
 
 type Pool struct {
@@ -57,6 +69,7 @@ type Pool struct {
 	used             Request
 	active           int
 	waiting          int
+	classes          [classCount]ClassSnapshot
 	draining         bool
 	changed          chan struct{}
 }
@@ -66,49 +79,83 @@ func New(limits Limits) (*Pool, error) {
 	if limits.MaxConcurrent < 1 || limits.MemoryBytes <= 0 || limits.ScratchBytes < 0 || limits.ReservedSlots < 0 || limits.ReservedSlots >= limits.MaxConcurrent || limits.ReservedMemoryBytes < 0 || limits.ReservedMemoryBytes > limits.MemoryBytes || limits.ReservedScratchBytes < 0 || limits.ReservedScratchBytes > limits.ScratchBytes {
 		return nil, ErrInvalid
 	}
-	return &Pool{limits: limits, changed: make(chan struct{})}, nil
+	if len(limits.Classes) > classCount {
+		return nil, ErrInvalid
+	}
+	limits.Classes = cloneClassLimits(limits.Classes)
+	p := &Pool{limits: limits, changed: make(chan struct{})}
+	global := ClassLimits{MaxConcurrent: limits.MaxConcurrent, MemoryBytes: limits.MemoryBytes, ScratchBytes: limits.ScratchBytes}
+	p.classes[interactiveIndex] = ClassSnapshot{Enabled: true, Limits: global}
+	p.classes[refreshIndex] = ClassSnapshot{Enabled: true, Limits: global}
+	for class, ceiling := range limits.Classes {
+		index, err := classIndex(class)
+		if err != nil || !ceiling.validWithin(limits) {
+			return nil, ErrInvalid
+		}
+		p.classes[index] = ClassSnapshot{Enabled: true, Limits: ceiling}
+	}
+	return p, nil
 }
 
 type Reservation struct {
 	pool    *Pool
 	request Request
+	class   int
 	once    sync.Once
 }
 
-func (p *Pool) validate(r Request) error {
+func (p *Pool) validate(r Request) (int, error) {
+	class, err := requestClass(r)
+	if err != nil {
+		return 0, err
+	}
 	if r.MemoryBytes <= 0 || r.ScratchBytes < 0 {
-		return ErrInvalid
+		return 0, ErrInvalid
+	}
+	ceiling := p.classes[class]
+	if !ceiling.Enabled {
+		return 0, ErrDisabled
 	}
 	if r.MemoryBytes > p.limits.MemoryBytes || r.ScratchBytes > p.limits.ScratchBytes {
-		return ErrOversize
+		return 0, ErrOversize
 	}
-	if r.Background && (r.MemoryBytes > p.limits.MemoryBytes-p.limits.ReservedMemoryBytes || r.ScratchBytes > p.limits.ScratchBytes-p.limits.ReservedScratchBytes) {
-		return ErrOversize
+	if r.MemoryBytes > ceiling.Limits.MemoryBytes || r.ScratchBytes > ceiling.Limits.ScratchBytes {
+		return 0, ErrOversize
 	}
-	return nil
+	if class != interactiveIndex && (r.MemoryBytes > p.limits.MemoryBytes-p.limits.ReservedMemoryBytes || r.ScratchBytes > p.limits.ScratchBytes-p.limits.ReservedScratchBytes) {
+		return 0, ErrOversize
+	}
+	return class, nil
 }
 
-func (p *Pool) fits(r Request) bool {
+func (p *Pool) fits(r Request, class int) bool {
 	// Subtraction avoids signed overflow for capacities near MaxInt64.
 	if p.active >= p.limits.MaxConcurrent || r.MemoryBytes > p.limits.MemoryBytes-p.used.MemoryBytes || r.ScratchBytes > p.limits.ScratchBytes-p.used.ScratchBytes {
 		return false
 	}
-	if !r.Background {
+	ceiling := p.classes[class]
+	if ceiling.Active >= ceiling.Limits.MaxConcurrent || r.MemoryBytes > ceiling.Limits.MemoryBytes-ceiling.Used.MemoryBytes || r.ScratchBytes > ceiling.Limits.ScratchBytes-ceiling.Used.ScratchBytes {
+		return false
+	}
+	if class == interactiveIndex {
 		return true
 	}
 	return p.backgroundActive < p.limits.MaxConcurrent-p.limits.ReservedSlots && r.MemoryBytes <= p.limits.MemoryBytes-p.limits.ReservedMemoryBytes-p.backgroundUsed.MemoryBytes && r.ScratchBytes <= p.limits.ScratchBytes-p.limits.ReservedScratchBytes-p.backgroundUsed.ScratchBytes
 }
 
-func (p *Pool) reserve(r Request) *Reservation {
+func (p *Pool) reserve(r Request, class int) *Reservation {
 	p.active++
 	p.used.MemoryBytes += r.MemoryBytes
 	p.used.ScratchBytes += r.ScratchBytes
-	if r.Background {
+	p.classes[class].Active++
+	p.classes[class].Used.MemoryBytes += r.MemoryBytes
+	p.classes[class].Used.ScratchBytes += r.ScratchBytes
+	if class != interactiveIndex {
 		p.backgroundActive++
 		p.backgroundUsed.MemoryBytes += r.MemoryBytes
 		p.backgroundUsed.ScratchBytes += r.ScratchBytes
 	}
-	return &Reservation{pool: p, request: r}
+	return &Reservation{pool: p, request: r, class: class}
 }
 
 // Acquire waits for capacity or cancellation. No ordering/fairness is promised;
@@ -117,13 +164,15 @@ func (p *Pool) reserve(r Request) *Reservation {
 func (p *Pool) Acquire(ctx context.Context, r Request) (*Reservation, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if err := p.validate(r); err != nil {
+	class, err := p.validate(r)
+	if err != nil {
 		return nil, err
 	}
 	waiting := false
 	defer func() {
 		if waiting {
 			p.waiting--
+			p.classes[class].Waiting--
 		}
 	}()
 	for {
@@ -133,11 +182,12 @@ func (p *Pool) Acquire(ctx context.Context, r Request) (*Reservation, error) {
 		if p.draining {
 			return nil, ErrDraining
 		}
-		if p.fits(r) {
-			return p.reserve(r), nil
+		if p.fits(r, class) {
+			return p.reserve(r, class), nil
 		}
 		if !waiting {
 			p.waiting++
+			p.classes[class].Waiting++
 			waiting = true
 		}
 		changed := p.changed
@@ -154,16 +204,17 @@ func (p *Pool) Acquire(ctx context.Context, r Request) (*Reservation, error) {
 func (p *Pool) TryAcquire(r Request) (*Reservation, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if err := p.validate(r); err != nil {
+	class, err := p.validate(r)
+	if err != nil {
 		return nil, err
 	}
 	if p.draining {
 		return nil, ErrDraining
 	}
-	if !p.fits(r) {
+	if !p.fits(r, class) {
 		return nil, ErrBusy
 	}
-	return p.reserve(r), nil
+	return p.reserve(r, class), nil
 }
 
 func (p *Pool) notify() { close(p.changed); p.changed = make(chan struct{}) }
@@ -180,7 +231,10 @@ func (r *Reservation) Release() {
 		p.active--
 		p.used.MemoryBytes -= r.request.MemoryBytes
 		p.used.ScratchBytes -= r.request.ScratchBytes
-		if r.request.Background {
+		p.classes[r.class].Active--
+		p.classes[r.class].Used.MemoryBytes -= r.request.MemoryBytes
+		p.classes[r.class].Used.ScratchBytes -= r.request.ScratchBytes
+		if r.class != interactiveIndex {
 			p.backgroundActive--
 			p.backgroundUsed.MemoryBytes -= r.request.MemoryBytes
 			p.backgroundUsed.ScratchBytes -= r.request.ScratchBytes
@@ -224,5 +278,12 @@ func (p *Pool) Wait(ctx context.Context) error {
 func (p *Pool) Snapshot() Snapshot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return Snapshot{BackgroundActive: p.backgroundActive, BackgroundUsed: p.backgroundUsed, Limits: p.limits, Used: p.used, Active: p.active, Waiting: p.waiting, Draining: p.draining}
+	limits := p.limits
+	limits.Classes = cloneClassLimits(limits.Classes)
+	classes := map[Class]ClassSnapshot{
+		ClassInteractive: p.classes[interactiveIndex],
+		ClassExport:      p.classes[exportIndex],
+		ClassRefresh:     p.classes[refreshIndex],
+	}
+	return Snapshot{BackgroundActive: p.backgroundActive, BackgroundUsed: p.backgroundUsed, Limits: limits, Used: p.used, Active: p.active, Waiting: p.waiting, Draining: p.draining, Classes: classes}
 }

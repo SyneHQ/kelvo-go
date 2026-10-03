@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -76,7 +77,7 @@ func TestNodeResourcesSnapshotAndMethods(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot != n.cfg.RuntimeResources.Snapshot() {
+	if !reflect.DeepEqual(snapshot, n.cfg.RuntimeResources.Snapshot()) {
 		t.Fatalf("incorrect snapshot: %+v", snapshot)
 	}
 	w = httptest.NewRecorder()
