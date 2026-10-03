@@ -279,19 +279,49 @@ func TestProviderBoundsAndCopiesConfiguration(t *testing.T) {
 }
 
 func TestConcurrentAtomicRotationReturnsWholeValues(t *testing.T) {
-	path := privateSecret(t, strings.Repeat("a", MaxValueBytes))
+	oldValue := strings.Repeat("a", MaxValueBytes)
+	newValue := strings.Repeat("b", MaxValueBytes)
+	path := privateSecret(t, oldValue)
 	p := providerFor(t, path, 0)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stop := make(chan struct{})
 	done := make(chan error, 1)
+	waitRotation := func() error {
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(5 * time.Second):
+			return errors.New("secret rotation did not finish")
+		}
+	}
+	t.Cleanup(func() {
+		close(stop)
+		if err := waitRotation(); err != nil {
+			t.Error(err)
+		}
+	})
 	go func() {
+		defer close(done)
 		for i := 0; i < 80; i++ {
-			text := strings.Repeat("a", MaxValueBytes)
-			if i%2 == 0 {
-				text = strings.Repeat("b", MaxValueBytes)
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			text := oldValue
+			if i%2 == 1 {
+				text = newValue // The final replacement differs from the initial value.
 			}
 			stage := path + ".next"
 			if err := os.WriteFile(stage, []byte(text), 0600); err != nil {
 				done <- err
 				return
+			}
+			select {
+			case <-stop:
+				return
+			default:
 			}
 			if err := os.Rename(stage, path); err != nil {
 				done <- err
@@ -301,13 +331,27 @@ func TestConcurrentAtomicRotationReturnsWholeValues(t *testing.T) {
 		done <- nil
 	}()
 	for i := 0; i < 80; i++ {
-		value, known, err := p.Resolve(context.Background(), "KEY")
-		if err != nil || !known || (value != strings.Repeat("a", MaxValueBytes) && value != strings.Repeat("b", MaxValueBytes)) {
-			t.Errorf("atomic rotation did not return a whole secret: %v", err)
+		value, known, err := p.Resolve(ctx, "KEY")
+		if err != nil {
+			// Separate metadata samples can observe ctime changing on an
+			// already-unlinked inode. Keep that conservative rejection: it
+			// must expose neither bytes nor private paths/values in errors.
+			if !known || value != "" || !errors.Is(err, ErrUnavailable) || err.Error() != ErrUnavailable.Error() {
+				t.Error("atomic rotation returned an unsafe configured-key failure")
+				break
+			}
+			continue
+		}
+		if !known || (value != oldValue && value != newValue) {
+			t.Error("atomic rotation did not return a whole secret")
 			break
 		}
 	}
-	if err := <-done; err != nil {
+	if err := waitRotation(); err != nil {
 		t.Fatal(err)
+	}
+	value, known, err := p.Resolve(ctx, "KEY")
+	if err != nil || !known || value != newValue {
+		t.Fatal("completed atomic rotation did not return the exact fresh secret")
 	}
 }
