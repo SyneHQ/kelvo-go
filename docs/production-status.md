@@ -6,7 +6,7 @@ Status reviewed 3 October 2026. This is a capability checklist, not production c
 
 | Available | Still needed |
 | --- | --- |
-| Shared query/refresh budgets, interactive reserves and source quotas | Export dispatch integration and sustained capacity gates |
+| Shared query/export/refresh budgets, interactive reserves and source quotas | Sustained mixed-workload capacity gates |
 | Opt-in Linux process-tree memory, CPU and PID limits | Deployment-specific headroom, restart recovery and sustained fault/load validation |
 | Independent probes, dataset readiness, phased drain and [application](rolling-upgrades.md) and [broker/client](nats-compatibility.md) upgrade matrices | Deployment-specific rollout and multi-hour fault/load campaigns |
 | Metrics opt-out, bounded history, tracing, source observations and [local audit](durable-audit.md) | Distributed attribution, audit archival and combined workload-cost measurements |
@@ -35,13 +35,13 @@ Remote pruning intentionally deletes nothing. Protect current, retained, pinned,
 | Capability | Status |
 | --- | --- |
 | Arrow delivery and optional LZ4 | Available; decoded limits remain unchanged |
-| Durable exports | [Internal store](export-storage.md) tested; jobs, API and downloads pending |
+| Durable exports | [Opt-in federated jobs and repeat downloads](exports.md) implemented; integrated fault and capacity acceptance in progress |
 | Result cache | Pending authorization/generation keys, bounded fills and revocation fencing |
 | Eight federation adapters | Available; live Oracle/warehouse gates remain open |
 | Automatic remote joins/aggregates | Pending bound-plan integration and parity checks |
 | Flight SQL | Client available; read-only server pending |
 | PostgreSQL/MySQL CDC | Pending checkpoint/publication and replay contracts |
-| Principal access | [Keys and handle ownership](principal-access.md), plus [callback](row-column-access.md) and [local/object snapshot policies](guarded-snapshots.md); native/export/cache policy paths remain open |
+| Principal access | [Keys and handle ownership](principal-access.md), [callback](row-column-access.md), [local/object snapshot policies](guarded-snapshots.md) and [federated exports](exports.md); native row policies, cache and coordinated revocation remain open |
 | Single-query distribution | Outside this design; workers distribute independent queries |
 
 ## Gates that can run on the dedicated test hosts

@@ -72,7 +72,7 @@ Multipart full refresh is available. Next: partition replacement, part reuse, in
 
 ## Durable exports and result caching are different features
 
-The local export store exists; jobs, dispatch and authorized repeat downloads are pending. Publish only complete, verified parts, with tenant/owner/authorization binding and expiry. Reserve storage before execution.
+[Durable exports](exports.md) provide opt-in federated jobs and authorized repeat downloads. They reserve storage before SQL and publish only complete, verified parts bound to the principal and policy. Finish the [acceptance gates](production-status.md) before claiming deployment readiness.
 
 Start caching with immutable accelerated generations. Keys must include SQL, typed parameters, tenant, effective authorization, generations and relevant versions. Fence fills against refresh/revocation; bound entries, bytes and concurrent fills.
 
