@@ -46,10 +46,11 @@ An uncooperative provider retains acquisition capacity until its actual method,
 body cleanup and cancellation callback return. Closing a successful lease is
 bounded; `Quiesced()` may remain open after that bounded call returns.
 
-Future callers need a bounded owner that keeps custody alive until actual
-consumer cleanup, applies the original request deadline to execution, and closes
-every acquired lease. They must check the pin again before exposing success.
-Neither a bare lease pointer nor its execution context supplies that ownership
+The [private owner and guard](reader-owner.md) now provide tested groundwork for
+bounded custody. Production query, range, subprocess and maintenance consumers
+remain unwired. Integration must preserve the original execution deadline,
+retain pins through actual consumer cleanup and check them before exposing
+success. Neither a bare lease pointer nor its execution context supplies that
 protocol. Missing metadata, expiry, cancellation, restart and local quiescence
 never authorize deletion.
 

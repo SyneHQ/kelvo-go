@@ -1,0 +1,198 @@
+{
+  "schema": 1,
+  "passed": true,
+  "scope": "Private reader owner and guard state machine, custody API and immutable binding regression checks. No production resource construction, consumer wiring, live provider, garbage collection or performance certification.",
+  "source_revision": "43af914669b61c7f809c56b304dbda5460c2f4a3",
+  "source_manifest_sha256": "99bd60b34635bb16b2dade3adadbbcccf56df40fe5b848e70bdfdb3cefa95e1e",
+  "source_file_count": 954,
+  "selected_component_and_module_files": {
+    "go.mod": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+    "go.sum": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb",
+    "internal/acceleration/object_reader_binding.go": "49b77ab1b6387e2c3f9919003569efc8cee8e99f7bb75d8d7485358d1b3cf5c9",
+    "internal/acceleration/object_reader_binding_test.go": "d7ae4b42334a82e5d5e32d5a9ed91e6d7e1c15f00238edb40e97beeb5a787369",
+    "internal/acceleration/reader_guard.go": "3003af9cb36fe643cd1a75c476d12d825209140c65959d0b490af5b3f278c6f2",
+    "internal/acceleration/reader_guard_test.go": "579959fcee270a80cf2f855bf1d56bfac819af3fedb2dfb643676e1ab7ed75ce",
+    "internal/acceleration/reader_lifetime.go": "8fe923e71bcfb4e52d2d73fdd82d05d93de32763017341e346ba6b55ec405ab5",
+    "internal/acceleration/reader_lifetime_test.go": "0bb642097dd92235c64b324ac88889c585fbb609fc3e295708554b4f0b1e254e",
+    "internal/acceleration/reader_owner.go": "68275e825e518704828265425c8264d6bf017012a1ce3f5ee37b20216b0613f9",
+    "internal/acceleration/reader_owner_test.go": "4051c79cb343dfc93017ddf9578e61f42a9633b4f4c577629175359deee8534e",
+    "internal/readerlease/codec.go": "8efa89400fd60fd4b1fc53daea37dbb97a92d96a53ee5fcf5c95d568d1c8fa41",
+    "internal/readerlease/doc.go": "aacb66ccea964e6c32b209ba692fe53ff944bec9c2dd071a921a68db9bb643c8",
+    "internal/readerlease/lease.go": "ea36d9fd6a7ceb7fcea12bd8a4232356e05211a35732940b00b329f5db57bae9",
+    "internal/readerlease/lease_test.go": "722620b339971ab2c153ab8ac46fba0e3005543b6a6ee0a8c1b09132a88d7e34",
+    "internal/readerlease/lifetime_test.go": "b9e288b3c8e3ac04d6f85304fd7bbde674229e7b75be840883080014cb18e658",
+    "internal/readerlease/objectstore.go": "9d8597761547628d4f38f38704b24195ced9a399e213e24ccffd75a2b0d9f66d",
+    "internal/readerlease/objectstore_test.go": "0c1988d1c6290bcf775e07e5814ed2269784478c7e9cec5e5e5a1302dc7f1db4",
+    "internal/readerlease/registry.go": "09f8de498e0f65f98b8e154524a7184ccf2ef82efe20297926e0a7f7bac521ea",
+    "internal/readerlease/registry_test.go": "a42d6c513e5295b4ac22988c53cbc0df84d8399cd27a9dceaabdc66fa0333e22",
+    "internal/readerlease/types.go": "ec763719a469c5174d632aed292e7396335d3c71c72e10afc6e1e711f3a7a2d0",
+    "scripts/duckbridge-driver.patch": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485"
+  },
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "offline": true,
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "compiler_lanes": 1,
+  "checks": {
+    "external-modfile": {
+      "exit_code": 0,
+      "seconds": 0.007,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "race-tests": {
+      "exit_code": 0,
+      "seconds": 22.606,
+      "log_sha256": "03e62d22f1601989b3ced8dd939facec1d6869a755a12d56060e5e2033b0f889"
+    },
+    "vet": {
+      "exit_code": 0,
+      "seconds": 12.488,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "service_exit_code": 0,
+  "component_test_counts": {
+    "private_owner_and_guard": 23,
+    "reader_registry": 37,
+    "immutable_binding": 7
+  },
+  "test_gate": {
+    "required_top_level_count": 67,
+    "passed_top_level_count": 67,
+    "passed_events_including_subtests": 290,
+    "failures_or_skips": 0,
+    "packages": {
+      "github.com/SYNEHQ/kelvo-go/internal/readerlease": {
+        "required_top_level_tests": [
+          "TestReaderLeaseAcquireLateCommitDoesNotGrantExpiredReader",
+          "TestReaderLeaseAcquisitionContextEndsWithoutEndingCustody",
+          "TestReaderLeaseCheckAndRenewalPublicationAreSerialized",
+          "TestReaderLeaseCloseBoundsStuckReleaseAndDoesNotExposeErrorText",
+          "TestReaderLeaseLifetimeConcurrentCloseAndCustodyLossReleaseOnce",
+          "TestReaderLeaseLifetimeQuiescenceWaitsForProviderReadAndClose",
+          "TestReaderLeaseParentCancellationAndDeadline",
+          "TestReaderLeaseRenewPreservesOtherReadersAndExtendsConservativeCutoff",
+          "TestReaderLeaseRenewalLossCancelsWithoutResurrection",
+          "TestReaderLeaseRestartCannotAdoptOrReleaseOldIncarnation",
+          "TestReaderLeaseWatchdogAndCloseBoundStuckRenewal",
+          "TestReaderObjectStoreCancellationAtGetAndCloseBoundariesCannotExposeBody",
+          "TestReaderObjectStoreCancellationJoinsReadAndCloseBeforeReturningCapacity",
+          "TestReaderObjectStoreCancelsReturnedMemoryBodyAndPreCancelledIO",
+          "TestReaderObjectStoreCloseFailureCannotConfirmAbsence",
+          "TestReaderObjectStoreCopiesWriteAndEnforcesExactPrecondition",
+          "TestReaderObjectStoreOnlyMapsDefiniteProviderOutcomes",
+          "TestReaderObjectStoreRegistryRoundTripAndAmbiguousPin",
+          "TestReaderObjectStoreRejectsForeignAndNonRegistryKeysBeforeIO",
+          "TestReaderObjectStoreRejectsInvalidWriteConfirmationWithoutRetry",
+          "TestReaderObjectStoreValidatesCompleteBodyBeforeExposure",
+          "TestReaderRegistryBlockedAcquireReservesCapacityBeforeProviderIO",
+          "TestReaderRegistryConcurrentCASAndCapacityPreservePins",
+          "TestReaderRegistryConstructorTimingAndScope",
+          "TestReaderRegistryEncodedByteCapacityCannotBeBypassed",
+          "TestReaderRegistryLifetimeCancellationDuringProviderWorkRetainsCapacity",
+          "TestReaderRegistryLifetimeFailureJoinsCancellationBeforeReleasingCapacity",
+          "TestReaderRegistryLifetimeHonorsEarlierCustodyDeadline",
+          "TestReaderRegistryLifetimeJoinsStartedCancellationBeforeTransfer",
+          "TestReaderRegistryLifetimeRejectsInvalidAndCancelledContextsBeforeIO",
+          "TestReaderRegistryLocalCapacityCoversDifferentGenerations",
+          "TestReaderRegistryRawENOENTCannotCreateProtectionMetadata",
+          "TestReaderRegistryRejectsScalarCoercionAndNoncanonicalFences",
+          "TestReaderRegistrySealRaceCannotChangeContent",
+          "TestReaderRegistryStagesSealsAndFencesImmutableBinding",
+          "TestReaderRegistryStrictPayloadAndProviderIdentity",
+          "TestReaderRegistryUnknownAcquireOutcomeRetainsPinWithoutReader"
+        ],
+        "passed_top_level_count": 37,
+        "passed_events_including_subtests": 136,
+        "package_passed": true
+      },
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration": {
+        "required_top_level_tests": [
+          "TestObjectReaderBindingAcceptedBoundaries",
+          "TestObjectReaderBindingCanonicalTimeAndNoMutation",
+          "TestObjectReaderBindingCanonicalVectors",
+          "TestObjectReaderBindingEveryIdentityField",
+          "TestObjectReaderBindingRejectsInvalidCommit",
+          "TestObjectReaderBindingRejectsInvalidReferenceAndLocation",
+          "TestObjectReaderBindingStringFraming",
+          "TestReadGuardAcquisitionOnceAndLatePinRetained",
+          "TestReadGuardAdoptsPinReturnedWithError",
+          "TestReadGuardCancellationRetainsRenewalUntilConsumerProof",
+          "TestReadGuardCheckOnlyFailureIsStickyAndSealsConsumers",
+          "TestReadGuardConcurrentCloseRegistrationAndProof",
+          "TestReadGuardCopiesBindingsBeforeAcquire",
+          "TestReadGuardFourLifetimeTokensAndIdempotentProof",
+          "TestReadGuardLateSuccessSeparatesExplicitCloseFromOwnerDrain",
+          "TestReadGuardNormalCloseAndLastBoundaryLoss",
+          "TestReadGuardOwnerBookkeepingPrecedesCapacityAndQuiescence",
+          "TestReadGuardOwnerDrainAfterFinalCheckCannotBecomeSuccess",
+          "TestReadGuardOwnerDrainTerminalHandoffCannotLoseFailure",
+          "TestReadGuardPartialAcquisitionKeepsEntireReservation",
+          "TestReadGuardPinCloseAndQuiescenceRemainCharged",
+          "TestReadGuardPinLossCancelsExecutionButRetainsConsumer",
+          "TestReadGuardRequestCancellationAfterCallbackJoinRemainsFailure",
+          "TestReaderBudgetBoundsGuardRecordsAcrossOwners",
+          "TestReaderBudgetSharedAcrossOwnerRotations",
+          "TestReaderGuardRejectsBindingsBeforeResourcesOrCapacity",
+          "TestReaderOwnerOpeningAndInvalidCloseCannotAdmitConsumers",
+          "TestReaderOwnerResourceCloseRetainsRotationCapacity",
+          "TestReaderOwnerResourceFailureSeparateFromQuiescence",
+          "TestReaderOwnerSpecImmutableAndRejectsInvalidScope"
+        ],
+        "passed_top_level_count": 30,
+        "passed_events_including_subtests": 154,
+        "package_passed": true
+      }
+    }
+  },
+  "native_bridge": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b",
+    "unchanged_after": true
+  },
+  "external_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb",
+    "unchanged_after": true,
+    "source_module_files_unchanged": true,
+    "replacement": "Only github.com/duckdb/duckdb-go/v2 was replaced with the pre-existing patched driver. No dependency downloads or source-module edits."
+  },
+  "enforced_isolation": {
+    "effective_uid": 1000,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "memory_max": 3221225472,
+    "swap_max": 0,
+    "tasks_max": 256,
+    "private_network": true,
+    "network_interface_source": "/proc/self/net/dev",
+    "network_interfaces": [
+      "lo"
+    ],
+    "non_root": true,
+    "zero_capabilities": true,
+    "no_new_privileges": true
+  },
+  "cleanup": {
+    "owned_service_unloaded": true,
+    "owned_service_inactive": true,
+    "owned_main_pid_zero": true,
+    "owned_cgroup_absent": true
+  },
+  "helper_sha256": {
+    "stage.py": "02d2ca5659b8eda2f68681ce55f6d40820dc16e0240b527883dfebf6e45ff495",
+    "launch.py": "518a1e5c68f6528ccc245fa40a93a1e37739528d89932bfb0e6052ccdf6d9b34",
+    "validate.py": "a19797c8801ada14d115848952c84a47aed1d4b07ce9531f5be4cb4b7174c704",
+    "collect.py": "cc99301afc0c5cb222977905e958f156fb956a0ceee7b43730c4bfb0396208c6"
+  },
+  "validation_report_sha256": "b9570cce1a87d13607032f4b4fd505c3496ef43ead506be3e1d9034b8638aa1c",
+  "launch_report_sha256": "da290d229772452de4dd5963d4e62bc580e406ea1230d4d1186e165e182fd1f6",
+  "private_receipt_sha256": "6d273d2138231f1487df2f27e370beefff62342d1d273b9217ec566cbbc30cfc",
+  "source_bundle_sha256": "bbb70dde8edb1b68809dfc7091586ecaa161c4af5651b3ebdff2bf46651321e9"
+}
