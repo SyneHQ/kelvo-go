@@ -233,6 +233,12 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 // The parent retains cloud reader and writer credentials. Query children only
 // receive a range capability with no provider identity or upstream object URL.
 func sourceEnvironmentNames(source catalog.Source) ([]string, error) {
+	if err := source.ValidateObjectRanges(); err != nil {
+		return nil, query.NewError("CONFIGURATION_ERROR", "Invalid isolated object range capabilities")
+	}
+	if source.Ranges != nil {
+		return nil, nil
+	}
 	if source.Object != nil {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Cloud object credentials cannot enter the query worker")
 	}

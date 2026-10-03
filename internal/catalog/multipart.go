@@ -13,7 +13,7 @@ func (s Source) ValidateParquetPaths() error {
 	if s.ParquetPaths == nil {
 		return nil
 	}
-	if s.Type != "parquet" || s.Path != "" || s.Adapter != "" || s.Federation != nil || s.Object != nil || s.Range != nil || s.DSNEnv != "" || s.URLEnv != "" || s.UsernameEnv != "" || s.PasswordEnv != "" || s.TokenEnv != "" || len(s.Options) != 0 || len(s.ParquetPaths) == 0 || len(s.ParquetPaths) > 256 {
+	if s.Type != "parquet" || s.Path != "" || s.Adapter != "" || s.Federation != nil || s.Object != nil || s.Range != nil || s.Ranges != nil || s.DSNEnv != "" || s.URLEnv != "" || s.UsernameEnv != "" || s.PasswordEnv != "" || s.TokenEnv != "" || len(s.Options) != 0 || len(s.ParquetPaths) == 0 || len(s.ParquetPaths) > 256 {
 		return errors.New("invalid multipart parquet source")
 	}
 	seen := make(map[string]bool, len(s.ParquetPaths))

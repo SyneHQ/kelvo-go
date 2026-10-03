@@ -20,6 +20,7 @@ func ValidID(s string) bool { return identifier.MatchString(s) }
 
 // Source holds public metadata and references to secret environment variables.
 type Source struct {
+	Ranges []ObjectRange `json:"object_ranges,omitempty" yaml:"-"`
 	// ParquetPaths is set only by trusted snapshot resolution, never YAML input.
 	ParquetPaths []string          `json:"parquet_paths,omitempty" yaml:"-"`
 	Federation   *FederationConfig `json:"federation,omitempty" yaml:"federation,omitempty"`
@@ -191,6 +192,9 @@ func (c Config) Select(ids []string) ([]Source, error) {
 				return nil, fmt.Errorf("unknown source")
 			}
 		}
+	}
+	if err := ValidateRangeSelection(out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

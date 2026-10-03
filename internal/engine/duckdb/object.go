@@ -13,6 +13,9 @@ import (
 )
 
 func validateObjectSource(source catalog.Source) error {
+	if err := source.ValidateObjectRanges(); err != nil {
+		return query.NewError("CONFIGURATION_ERROR", "Invalid isolated multipart object ranges")
+	}
 	if source.Object != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Cloud object credentials are unavailable to the query engine")
 	}
@@ -28,12 +31,15 @@ func validateObjectSource(source catalog.Source) error {
 }
 
 func validateObjectCombination(sources []catalog.Source) error {
+	if err := catalog.ValidateRangeSelection(sources); err != nil {
+		return err
+	}
 	object, network := false, false
 	for _, source := range sources {
 		if err := validateObjectSource(source); err != nil {
 			return err
 		}
-		object = object || source.Range != nil
+		object = object || source.Range != nil || source.Ranges != nil
 		network = network || (source.Federation == nil && (source.Type == "postgres" || source.Type == "mysql"))
 	}
 	if object && network {
@@ -52,7 +58,7 @@ func prepareObjectRange(ctx context.Context, exec driver.ExecerContext, source c
 	if err := validateObjectSource(source); err != nil {
 		return err
 	}
-	if source.Range == nil {
+	if source.Range == nil && source.Ranges == nil {
 		return errors.New("object range capability is required")
 	}
 	if err := loadApprovedExtension(ctx, exec, "httpfs", extensionDir, tempDir); err != nil {

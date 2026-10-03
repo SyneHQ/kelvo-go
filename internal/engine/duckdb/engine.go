@@ -33,6 +33,9 @@ type Engine struct {
 }
 
 func New(config catalog.Config, limits query.Limits) (*Engine, error) {
+	if err := catalog.ValidateRangeSelection(config.Sources); err != nil {
+		return nil, err
+	}
 	if limits.MaxRows < 1 || limits.MaxBytes < 1 || limits.Timeout <= 0 || limits.MemoryMB < 1 || limits.Threads < 1 || limits.MaxTempMB < 1 {
 		return nil, query.NewError("INVALID_ARGUMENT", "Invalid DuckDB execution limits")
 	}
@@ -216,12 +219,18 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 		case "csv":
 			statement = "CREATE VIEW " + id + " AS SELECT * FROM read_csv_auto('" + quoteLiteral(source.Path) + "')"
 		case "parquet":
-			if source.Range != nil {
+			if source.Range != nil || source.Ranges != nil {
 				if err := prepareObjectRange(ctx, exec, source, extensionDir, tempDir); err != nil {
 					return err
 				}
 			}
-			if len(source.ParquetPaths) > 0 {
+			if len(source.Ranges) > 0 {
+				paths := make([]string, len(source.Ranges))
+				for i, r := range source.Ranges {
+					paths[i] = "'" + quoteLiteral(r.URL) + "'"
+				}
+				statement = "CREATE VIEW " + id + " AS SELECT * FROM read_parquet([" + strings.Join(paths, ",") + "])"
+			} else if len(source.ParquetPaths) > 0 {
 				paths := make([]string, len(source.ParquetPaths))
 				for i, path := range source.ParquetPaths {
 					paths[i] = "'" + quoteLiteral(path) + "'"
@@ -289,7 +298,11 @@ func lockSourceAccess(ctx context.Context, raw any, sources []catalog.Source, te
 		}
 		switch source.Type {
 		case "csv", "parquet", "duckdb", "sqlite":
-			if len(source.ParquetPaths) > 0 {
+			if len(source.Ranges) > 0 {
+				for _, r := range source.Ranges {
+					paths = append(paths, r.URL)
+				}
+			} else if len(source.ParquetPaths) > 0 {
 				paths = append(paths, source.ParquetPaths...)
 			} else {
 				paths = append(paths, source.Path)

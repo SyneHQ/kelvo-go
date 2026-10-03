@@ -19,6 +19,9 @@ import (
 // The caller runs SandboxPath with these arguments. It must not append source
 // credentials or any other parent environment to the worker process.
 func SandboxCommand(binary, jobdir string, cfg catalog.Config, limits query.Limits) ([]string, error) {
+	if err := catalog.ValidateRangeSelection(cfg.Sources); err != nil {
+		return nil, err
+	}
 	if err := limits.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid sandbox limits: %w", err)
 	}
@@ -71,7 +74,7 @@ func SandboxCommand(binary, jobdir string, cfg catalog.Config, limits query.Limi
 			}
 			continue
 		}
-		if source.Object != nil || source.Range != nil {
+		if source.Object != nil || source.Range != nil || source.Ranges != nil {
 			if _, err := sourceEnvironmentNames(source); err != nil {
 				return nil, err
 			}
