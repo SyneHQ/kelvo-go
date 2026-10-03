@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -22,6 +23,8 @@ const scratchInventoryLimit = 4096
 const scratchMutationName = ".kelvo-scratch.lock"
 const scratchPrefix = "kelvo-worker-"
 const scratchLeasePrefix = ".kelvo-lease-"
+const scratchLeaseGrace = time.Second
+const scratchLeasePoll = 5 * time.Millisecond
 
 var errScratchUnsafe = errors.New("managed worker scratch ownership is invalid")
 
@@ -323,7 +326,15 @@ func (s *ScratchRoot) allocate() (*scratchWorkspace, error) {
 		cleanup: func() error { return s.release(name, record, lease) }}, nil
 }
 
-func (s *ScratchRoot) release(name, record string, lease *os.File) error {
+func (s *ScratchRoot) release(name, record string, lease *os.File) (resultErr error) {
+	// Carry a fixed diagnostic stage to the caller, which drains admission
+	// before writing logs. Logging backpressure must not delay quarantine.
+	stage := "root_lock"
+	defer func() {
+		if resultErr != nil {
+			resultErr = &scratchCleanupError{stage: stage, cause: resultErr}
+		}
+	}()
 	if err := s.lock(); err != nil {
 		// The complete ownership record remains for later recovery. Never
 		// remove paths without the root mutation lock.
@@ -338,30 +349,83 @@ func (s *ScratchRoot) release(name, record string, lease *os.File) error {
 	// Drop only the parent's reference. A descendant might still retain its
 	// inherited descriptor after its leader has exited and Wait has returned.
 	// Acquire a NEW description: our old shared lock cannot prove child exit.
+	stage = "parent_lease_close"
 	if err := lease.Close(); err != nil {
 		return errors.New("managed worker scratch parent lease closure failed")
 	}
+	stage = "lease_reopen"
 	independent, err := s.openPrivate(record, unix.O_RDWR, 0)
 	if err != nil {
 		return errScratchUnsafe
 	}
 	defer independent.Close()
-	if unix.Flock(int(independent.Fd()), unix.LOCK_EX|unix.LOCK_NB) != nil {
+	stage = "child_lease_lock"
+	waited, err := acquireScratchLease(independent)
+	if err != nil {
+		if errors.Is(err, unix.EWOULDBLOCK) {
+			stage = "child_lease_held"
+		}
 		return errors.New("managed worker scratch child lease remains active")
 	}
+	if waited {
+		// An unrelated concurrent fork can briefly inherit a CLOEXEC lease
+		// before exec closes it. While waiting, retain the root mutation lock
+		// and all ownership files; never adopt a replacement lease pathname.
+		stage = "lease_revalidate"
+		current, err := s.openPrivate(record, unix.O_RDWR, 0)
+		if err != nil {
+			return errScratchUnsafe
+		}
+		var held, named unix.Stat_t
+		valid := unix.Fstat(int(independent.Fd()), &held) == nil && unix.Fstat(int(current.Fd()), &named) == nil &&
+			held.Dev == named.Dev && held.Ino == named.Ino
+		current.Close()
+		if !valid {
+			return errScratchUnsafe
+		}
+	}
 	id := strings.TrimPrefix(name, scratchPrefix)
+	stage = "lease_record_read"
 	raw, err := io.ReadAll(io.LimitReader(independent, int64(len(leaseRecord(id))+1)))
 	if err != nil || string(raw) != leaseRecord(id) {
 		return errScratchUnsafe
 	}
 	var st unix.Stat_t
+	stage = "workspace_verify"
 	if unix.Fstatat(s.fd, name, &st, unix.AT_SYMLINK_NOFOLLOW) != nil || !privateDirectory(&st) {
 		return errScratchUnsafe
 	}
+	stage = "workspace_remove"
 	if err := s.root.RemoveAll(name); err != nil {
 		return errors.New("managed worker scratch cleanup failed")
 	}
+	stage = "lease_record_remove"
 	return s.root.Remove(record)
+}
+
+// acquireScratchLease never releases an inherited open-description lock. The
+// common path is one nonblocking flock. Only contention receives a monotonic,
+// bounded grace period; every other kernel error fails immediately.
+func acquireScratchLease(file *os.File) (bool, error) {
+	err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+	if !errors.Is(err, unix.EWOULDBLOCK) {
+		return false, err
+	}
+	deadline := time.Now().Add(scratchLeaseGrace)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return true, err
+		}
+		time.Sleep(min(remaining, scratchLeasePoll))
+		if time.Until(deadline) <= 0 {
+			return true, err
+		}
+		err = unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
+		if !errors.Is(err, unix.EWOULDBLOCK) {
+			return true, err
+		}
+	}
 }
 
 // Close requires all local executors to have finished. A child inherits another
