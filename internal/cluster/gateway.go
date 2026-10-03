@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
+	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
@@ -604,19 +605,8 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 	// released after durable Succeeded CAS. Partial/aborted bodies prove nothing.
 	w.Header().Set("Kelvo-Result-Completion", "durable-eos-v1")
 	w.WriteHeader(200)
-	controller := http.NewResponseController(w)
-	_ = controller.SetWriteDeadline(time.Now().Add(t.store.Policy().Limits.Timeout))
-	done := make(chan struct{})
-	watcherDone := make(chan struct{})
-	go func() {
-		defer close(watcherDone)
-		select {
-		case <-ctx.Done():
-			_ = controller.SetWriteDeadline(time.Now())
-		case <-done:
-		}
-	}()
-	defer func() { close(done); <-watcherDone; _ = controller.SetWriteDeadline(time.Time{}) }()
+	stopWrites := httpstream.WatchWriteDeadline(ctx, w, time.Now().Add(t.store.Policy().Limits.Timeout))
+	defer stopWrites()
 	limited := io.LimitReader(resp.Body, t.store.Policy().Limits.MaxBytes+1)
 	// Arrow IPC EOS is the final eight bytes. Keep it local until durable
 	// state confirms success: clients treat EOS as a complete result even if

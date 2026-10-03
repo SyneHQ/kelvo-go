@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
+	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 	"github.com/apache/arrow-go/v18/arrow"
@@ -701,20 +702,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer op.abort(ctx)
-	controller := http.NewResponseController(w)
 	deadline, _ := ctx.Deadline()
-	_ = controller.SetWriteDeadline(deadline)
-	done := make(chan struct{})
-	stopWrite := make(chan struct{})
-	go func() {
-		defer close(done)
-		select {
-		case <-ctx.Done():
-			_ = controller.SetWriteDeadline(time.Now())
-		case <-stopWrite:
-		}
-	}()
-	defer func() { close(stopWrite); <-done; _ = controller.SetWriteDeadline(time.Time{}) }()
+	stopWrites := httpstream.WatchWriteDeadline(ctx, w, deadline)
+	defer stopWrites()
 	tail := &arrowEOSTail{w: w}
 	sink := &nodeSink{w: w, sink: worker.NewIPCSink(tail, n.cfg.Policy.Limits)}
 	defer sink.sink.Abort()

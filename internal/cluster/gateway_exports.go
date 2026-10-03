@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
+	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
@@ -705,18 +706,8 @@ func (g *Gateway) exportPart(w http.ResponseWriter, r *http.Request, store Expor
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Kelvo-Result-Completion", "durable-eos-v1")
 	w.WriteHeader(http.StatusOK)
-	controller := http.NewResponseController(w)
-	_ = controller.SetWriteDeadline(minTime(snapshot.Job.ExpiresAt, time.Now().Add(store.Policy().Limits.Timeout)))
-	writeDone, writeWatcherDone := make(chan struct{}), make(chan struct{})
-	go func() {
-		defer close(writeWatcherDone)
-		select {
-		case <-ctx.Done():
-			_ = controller.SetWriteDeadline(time.Now())
-		case <-writeDone:
-		}
-	}()
-	defer func() { close(writeDone); <-writeWatcherDone; _ = controller.SetWriteDeadline(time.Time{}) }()
+	stopWrites := httpstream.WatchWriteDeadline(ctx, w, minTime(snapshot.Job.ExpiresAt, time.Now().Add(store.Policy().Limits.Timeout)))
+	defer stopWrites()
 	tail, digest := &arrowEOSTail{w: w}, sha256.New()
 	written, err := io.CopyBuffer(tail, io.TeeReader(io.LimitReader(response.Body, part.EncodedBytes+1), digest), make([]byte, 32<<10))
 	if err != nil || written != part.EncodedBytes || hex.EncodeToString(digest.Sum(nil)) != part.SHA256 || !tail.validEOS() || requestAuthorityErr(ctx) != nil {

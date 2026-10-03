@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
@@ -289,22 +290,9 @@ func (s *Server) results(w http.ResponseWriter, r *http.Request, id string) {
 	e.cancel = cancel
 	request := e.request
 	s.mu.Unlock()
-	controller := http.NewResponseController(w)
-	_ = controller.SetWriteDeadline(time.Now().Add(s.opts.Limits.Timeout))
-	stopWriteDeadline := make(chan struct{})
-	writeDeadlineDone := make(chan struct{})
-	go func() {
-		defer close(writeDeadlineDone)
-		select {
-		case <-ctx.Done():
-			_ = controller.SetWriteDeadline(time.Now())
-		case <-stopWriteDeadline:
-		}
-	}()
+	stopWrites := httpstream.WatchWriteDeadline(ctx, w, time.Now().Add(s.opts.Limits.Timeout))
 	defer func() {
-		close(stopWriteDeadline)
-		<-writeDeadlineDone
-		_ = controller.SetWriteDeadline(time.Time{})
+		stopWrites()
 		cancel()
 		<-s.permits
 	}()

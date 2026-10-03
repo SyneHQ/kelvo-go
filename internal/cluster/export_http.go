@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
+	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
@@ -103,20 +104,9 @@ func (r *ExportRuntime) serveExportPart(w http.ResponseWriter, req *http.Request
 	}
 	defer part.Close()
 	info := s.Job.Receipt.Manifest.Parts[index]
-	controller := http.NewResponseController(w)
 	deadline := minTime(s.Job.ExpiresAt, time.Now().Add(r.cfg.Policy.Limits.Timeout))
-	_ = controller.SetWriteDeadline(deadline)
-	stopWrite := make(chan struct{})
-	writeDone := make(chan struct{})
-	go func() {
-		defer close(writeDone)
-		select {
-		case <-part.ctx.Done():
-			_ = controller.SetWriteDeadline(time.Now())
-		case <-stopWrite:
-		}
-	}()
-	defer func() { close(stopWrite); <-writeDone; _ = controller.SetWriteDeadline(time.Time{}) }()
+	stopWrites := httpstream.WatchWriteDeadline(part.ctx, w, deadline)
+	defer stopWrites()
 	w.Header().Set("Content-Type", "application/vnd.apache.arrow.stream")
 	w.Header().Set("Content-Length", strconv.FormatInt(info.EncodedBytes, 10))
 	w.Header().Set("ETag", `"`+info.SHA256+`"`)
