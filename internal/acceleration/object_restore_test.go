@@ -129,8 +129,8 @@ func TestRemoteRecoveryLegacyMigrationRestoreAndPinnedVersions(t *testing.T) {
 	}
 	second := commitRemoteRecovery(t, backend, "id", "v1")
 	state, err = backend.readState(context.Background(), "events", client)
-	if err != nil || state.manifest.Version != 3 || len(state.manifest.History) != 1 {
-		t.Fatal("legacy commit did not migrate to v3 history")
+	if err != nil || state.manifest.Version != 4 || len(state.manifest.History) != 1 {
+		t.Fatal("legacy commit did not migrate to v4 history")
 	}
 	pinned, err := backend.Acquire(context.Background(), "events", "v1", 0)
 	if err != nil {
@@ -263,7 +263,7 @@ func TestRemoteManifestHistoryValidationAndByteBudget(t *testing.T) {
 		t.Fatal("byte budget not enforced")
 	}
 	for _, mutate := range []func(*objectManifest){
-		func(m *objectManifest) { m.Version = 4 },
+		func(m *objectManifest) { m.Version = 5 },
 		func(m *objectManifest) { m.History = []*objectCommitted{m.Committed} },
 		func(m *objectManifest) { m.History = []*objectCommitted{nil} },
 		func(m *objectManifest) { m.Version = 2; m.History = previous.History[:1] },

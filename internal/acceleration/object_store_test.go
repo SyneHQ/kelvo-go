@@ -598,7 +598,7 @@ func TestObjectBackendRejectsMalformedManifests(t *testing.T) {
 				case "generation":
 					manifest.Committed.Generation = "../../other-tenant"
 				case "version":
-					manifest.Version = 4
+					manifest.Version = 5
 				case "dataset":
 					manifest.Dataset = "other"
 				case "bytes":
@@ -615,7 +615,7 @@ func TestObjectBackendRejectsMalformedManifests(t *testing.T) {
 			object := objects.objects[key]
 			switch fault {
 			case "missing-version":
-				object.data = bytes.Replace(object.data, []byte("version: 3\n"), nil, 1)
+				object.data = bytes.Replace(object.data, []byte("version: 4\n"), nil, 1)
 			case "missing-dataset":
 				object.data = bytes.Replace(object.data, []byte("dataset: events\n"), nil, 1)
 			case "null":

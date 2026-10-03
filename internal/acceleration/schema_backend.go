@@ -76,23 +76,11 @@ func (tx *objectTransaction) PreviousSchema() (*arrow.Schema, error) {
 	if committed == nil {
 		return nil, ErrNotFound
 	}
-	client, ok := tx.backend.reader.(objectstore.RangeClient)
-	if !ok {
-		return nil, errors.New("schema verification requires object range reads")
-	}
-	snapshot, err := tx.backend.snapshot(tx.dataset, committed, reference)
+	snapshot, err := tx.backend.loadObjectSnapshot(tx.ctx, tx.dataset, committed, reference, tx.backend.reader)
 	if err != nil {
 		return nil, err
 	}
-	reader := &schemaObjectReader{ctx: tx.ctx, client: client, snapshot: snapshot}
-	schema, err := ReadParquetSchema(reader, snapshot.Bytes)
-	if err != nil {
-		return nil, err
-	}
-	if err = verifySchemaHash(schema, committed.SchemaHash); err != nil {
-		return nil, err
-	}
-	return schema, nil
+	return tx.backend.objectSnapshotSchema(tx.ctx, snapshot, false)
 }
 
 func (tx *objectTransaction) SetSchema(schema *arrow.Schema) error {

@@ -49,14 +49,15 @@ type objectManifest struct {
 }
 
 type objectCommitted struct {
-	SchemaHash    string    `yaml:"schema_hash,omitempty"`
-	Generation    string    `yaml:"generation"`
-	Fingerprint   string    `yaml:"fingerprint"`
-	SHA256        string    `yaml:"sha256"`
-	Rows          int64     `yaml:"rows"`
-	Bytes         int64     `yaml:"bytes"`
-	RefreshedAt   time.Time `yaml:"refreshed_at"`
-	ObjectVersion string    `yaml:"object_version"`
+	Descriptor    *objectDescriptorRef `yaml:"descriptor,omitempty"`
+	SchemaHash    string               `yaml:"schema_hash,omitempty"`
+	Generation    string               `yaml:"generation"`
+	Fingerprint   string               `yaml:"fingerprint"`
+	SHA256        string               `yaml:"sha256"`
+	Rows          int64                `yaml:"rows"`
+	Bytes         int64                `yaml:"bytes"`
+	RefreshedAt   time.Time            `yaml:"refreshed_at"`
+	ObjectVersion string               `yaml:"object_version,omitempty"`
 }
 
 type objectWriterLease struct {
@@ -90,8 +91,14 @@ func newObjectBackend(config catalog.AccelerationConfig, client objectstore.Clie
 		return nil, err
 	}
 	for _, dataset := range config.Datasets {
-		if dataset.Limits.MaxBytes > objectstore.MaxUploadBytes {
+		if dataset.Multipart == nil && dataset.Limits.MaxBytes > objectstore.MaxUploadBytes {
 			return nil, errors.New("object snapshot byte limit exceeds the supported single-upload limit")
+		}
+		if dataset.Multipart != nil {
+			options := MultipartOptions{MaxParts: dataset.Multipart.MaxParts, MaxPartBytes: dataset.Multipart.MaxPartBytes, MaxTotalBytes: dataset.Limits.MaxBytes}
+			if err := validateObjectMultipartOptions(options); err != nil {
+				return nil, err
+			}
 		}
 	}
 	config.ObjectStorage = &storage
@@ -129,7 +136,7 @@ func (backend *objectBackend) key(dataset, filename string) string {
 }
 
 func (backend *objectBackend) readState(ctx context.Context, dataset string, client objectstore.Client) (objectState, error) {
-	state := objectState{manifest: objectManifest{Version: 3, Dataset: dataset}}
+	state := objectState{manifest: objectManifest{Version: 4, Dataset: dataset}}
 	body, info, err := client.Get(ctx, backend.key(dataset, storeManifestName), "")
 	state.info, state.receivedAt = info, time.Now()
 	if errors.Is(err, objectstore.ErrNotFound) {
@@ -171,13 +178,16 @@ func (backend *objectBackend) readState(ctx context.Context, dataset string, cli
 }
 
 func validateObjectManifest(manifest objectManifest, dataset string) error {
-	if (manifest.Version != 2 && manifest.Version != 3) || manifest.Dataset != dataset {
+	if (manifest.Version != 2 && manifest.Version != 3 && manifest.Version != 4) || manifest.Dataset != dataset {
 		return fmt.Errorf("%w: remote manifest identity mismatch", ErrCorrupt)
 	}
 	if manifest.Version == 2 && (len(manifest.History) != 0 || manifest.HistoryTruncated) {
 		return fmt.Errorf("%w: retained catalog requires manifest version 3", ErrCorrupt)
 	}
 	if manifest.Committed != nil {
+		if manifest.Version < 4 && manifest.Committed.Descriptor != nil {
+			return fmt.Errorf("%w: multipart descriptor requires manifest version 4", ErrCorrupt)
+		}
 		if err := validateObjectCommit(manifest.Committed); err != nil {
 			return err
 		}
@@ -190,6 +200,9 @@ func validateObjectManifest(manifest objectManifest, dataset string) error {
 		seen[manifest.Committed.Generation] = true
 	}
 	for _, generation := range manifest.History {
+		if generation != nil && manifest.Version < 4 && generation.Descriptor != nil {
+			return fmt.Errorf("%w: multipart descriptor requires manifest version 4", ErrCorrupt)
+		}
 		if err := validateObjectCommit(generation); err != nil {
 			return err
 		}
@@ -209,7 +222,7 @@ func validObjectVersion(version string) bool {
 }
 
 func (backend *objectBackend) writeState(ctx context.Context, client objectstore.Client, state objectState, manifest objectManifest) (objectState, error) {
-	manifest.Version = 3
+	manifest.Version = 4
 	data, err := yaml.Marshal(manifest)
 	if err != nil {
 		return state, err
@@ -238,6 +251,9 @@ func (backend *objectBackend) snapshot(dataset string, committed *objectCommitte
 	if committed == nil {
 		return Snapshot{}, ErrNotFound
 	}
+	if committed.Descriptor != nil {
+		return Snapshot{}, errors.New("multipart snapshot requires descriptor resolution")
+	}
 	key := backend.key(dataset, committed.Generation+".parquet")
 	uri, err := backend.config.ObjectStorage.ObjectLocation.URI(key)
 	if err != nil {
@@ -257,15 +273,11 @@ func (backend *objectBackend) status(ctx context.Context, dataset string) (Snaps
 	if err != nil {
 		return Snapshot{}, 0, err
 	}
-	snapshot, err := backend.snapshot(dataset, state.manifest.Committed, state.now())
+	snapshot, err := backend.loadObjectSnapshot(ctx, dataset, state.manifest.Committed, state.now(), backend.reader)
 	if err != nil {
 		return Snapshot{}, 0, err
 	}
-	info, err := backend.reader.Head(ctx, snapshot.ObjectKey, snapshot.ObjectVersion)
-	if err != nil {
-		return Snapshot{}, 0, fmt.Errorf("%w: snapshot object is unavailable: %w", ErrCorrupt, err)
-	}
-	if err := validateSnapshotObject(snapshot, info); err != nil {
+	if err := backend.headObjectSnapshot(ctx, snapshot); err != nil {
 		return Snapshot{}, 0, err
 	}
 	// Refresh timestamps and maximum age use the same storage-service clock;
@@ -308,6 +320,12 @@ func (backend *objectBackend) Verify(ctx context.Context, dataset string) (Snaps
 	snapshot, _, err := backend.status(ctx, dataset)
 	if err != nil {
 		return Snapshot{}, err
+	}
+	if len(snapshot.Parts) > 0 {
+		if _, err := backend.verifyObjectSnapshot(ctx, snapshot); err != nil {
+			return Snapshot{}, err
+		}
+		return snapshot, nil
 	}
 	return backend.verifyObjectBytes(ctx, snapshot)
 }
@@ -552,6 +570,22 @@ func (tx *objectTransaction) Commit(fingerprint string, rows int64) (snapshot Sn
 	if confirmed.Size != info.Size() || confirmed.Version != uploaded.Version || confirmed.SHA256 != digest {
 		return Snapshot{}, fmt.Errorf("%w: uploaded snapshot metadata mismatch", ErrCorrupt)
 	}
+	committed := &objectCommitted{SchemaHash: tx.schemaHash, Generation: tx.local.generation, Fingerprint: fingerprint, SHA256: digest, Rows: rows, Bytes: info.Size(), ObjectVersion: uploaded.Version}
+	return tx.publishCommitted(committed, nil)
+}
+
+// publishCommitted joins renewal and fences one root CAS. Caller holds finishMu,
+// owns cleanup, and has already confirmed every immutable object being exposed.
+func (tx *objectTransaction) publishCommitted(committed *objectCommitted, prepared *Snapshot) (Snapshot, error) {
+	snapshotAt := func(reference time.Time) (Snapshot, error) {
+		if prepared != nil {
+			snapshot := *prepared
+			snapshot.RefreshedAt = committed.RefreshedAt
+			return snapshot.observeClock(reference), nil
+		}
+		return tx.backend.snapshot(tx.dataset, committed, reference)
+	}
+
 	// An interrupted renewal may have succeeded remotely. Re-read the same key
 	// after joining the renewer, then publish only against this owner's revision.
 	tx.stopRenewal()
@@ -565,8 +599,7 @@ func (tx *objectTransaction) Commit(fingerprint string, rows int64) (snapshot Sn
 	if state.manifest.Writer == nil || state.manifest.Writer.Owner != tx.owner || !state.manifest.Writer.ExpiresAt.After(state.now()) {
 		return Snapshot{}, ErrLeaseLost
 	}
-	committed := &objectCommitted{SchemaHash: tx.schemaHash, Generation: tx.local.generation, Fingerprint: fingerprint, SHA256: digest,
-		Rows: rows, Bytes: info.Size(), RefreshedAt: state.now(), ObjectVersion: uploaded.Version}
+	committed.RefreshedAt = state.now()
 	manifest, err := nextObjectManifest(state.manifest, committed)
 	if err != nil {
 		return Snapshot{}, err
@@ -583,18 +616,18 @@ func (tx *objectTransaction) Commit(fingerprint string, rows int64) (snapshot Sn
 		defer cancel()
 		current, readErr := tx.backend.readState(reconcile, tx.dataset, tx.client)
 		if readErr == nil && sameObjectCommit(current.manifest.Committed, committed) {
-			return tx.backend.snapshot(tx.dataset, committed, current.now())
+			return snapshotAt(current.now())
 		}
 		return Snapshot{}, fmt.Errorf("%w: %w", ErrPublicationUnknown, errors.Join(err, readErr))
 	}
 	tx.owned = false
-	return tx.backend.snapshot(tx.dataset, committed, published.now())
+	return snapshotAt(published.now())
 }
 
 func sameObjectCommit(left, right *objectCommitted) bool {
 	return left != nil && right != nil && left.Generation == right.Generation && left.Fingerprint == right.Fingerprint &&
 		left.SchemaHash == right.SchemaHash && left.SHA256 == right.SHA256 && left.Rows == right.Rows && left.Bytes == right.Bytes &&
-		left.RefreshedAt.Equal(right.RefreshedAt) && left.ObjectVersion == right.ObjectVersion
+		left.RefreshedAt.Equal(right.RefreshedAt) && left.ObjectVersion == right.ObjectVersion && sameObjectDescriptor(left.Descriptor, right.Descriptor)
 }
 
 func (tx *objectTransaction) Abort() error {
@@ -645,3 +678,10 @@ func objectSHA256(data []byte) string {
 
 var _ Backend = (*objectBackend)(nil)
 var _ RefreshWriter = (*objectTransaction)(nil)
+
+func sameObjectDescriptor(left, right *objectDescriptorRef) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
+}

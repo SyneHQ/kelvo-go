@@ -51,10 +51,12 @@ type Store struct {
 // SnapshotPart is one immutable Parquet payload in an ordered generation.
 // Path is an exact local filename, never a wildcard or an object prefix.
 type SnapshotPart struct {
-	Path   string `yaml:"path"`
-	Rows   int64  `yaml:"rows"`
-	Bytes  int64  `yaml:"bytes"`
-	SHA256 string `yaml:"sha256"`
+	ObjectKey     string `yaml:"object_key,omitempty"`
+	ObjectVersion string `yaml:"object_version,omitempty"`
+	Path          string `yaml:"path"`
+	Rows          int64  `yaml:"rows"`
+	Bytes         int64  `yaml:"bytes"`
+	SHA256        string `yaml:"sha256"`
 }
 
 // Snapshot describes an immutable generation. Query code must hold its Lease

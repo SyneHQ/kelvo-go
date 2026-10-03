@@ -18,13 +18,23 @@ const ObjectHistoryLimit = 16
 const objectHistoryLeaseReserve = 1024
 
 func validateObjectCommit(snapshot *objectCommitted) error {
-	if snapshot == nil || (snapshot.SchemaHash != "" && !storeDigest.MatchString(snapshot.SchemaHash)) || !storeGenerationID.MatchString(snapshot.Generation) || snapshot.Fingerprint == "" || len(snapshot.Fingerprint) > storeFingerprintLimit || !storeDigest.MatchString(snapshot.SHA256) || snapshot.Rows < 0 || snapshot.Bytes <= 0 || snapshot.Bytes > objectstore.MaxUploadBytes || snapshot.RefreshedAt.IsZero() || !validObjectVersion(snapshot.ObjectVersion) {
+	if snapshot == nil || (snapshot.SchemaHash != "" && !storeDigest.MatchString(snapshot.SchemaHash)) || !storeGenerationID.MatchString(snapshot.Generation) || snapshot.Fingerprint == "" || len(snapshot.Fingerprint) > storeFingerprintLimit || !storeDigest.MatchString(snapshot.SHA256) || snapshot.Rows < 0 || snapshot.Bytes <= 0 || snapshot.RefreshedAt.IsZero() {
 		return fmt.Errorf("%w: invalid remote snapshot fields", ErrCorrupt)
+	}
+	if snapshot.Descriptor == nil {
+		if snapshot.Bytes > objectstore.MaxUploadBytes || !validObjectVersion(snapshot.ObjectVersion) {
+			return fmt.Errorf("%w: invalid remote single-file snapshot", ErrCorrupt)
+		}
+	} else {
+		ref := snapshot.Descriptor
+		if snapshot.ObjectVersion != "" || snapshot.Bytes > 1<<40 || !storeDigest.MatchString(snapshot.SchemaHash) || !validObjectVersion(ref.ObjectVersion) || ref.Bytes <= 0 || ref.Bytes > objectDescriptorLimit || ref.PartCount < 1 || ref.PartCount > 256 {
+			return fmt.Errorf("%w: invalid remote multipart snapshot", ErrCorrupt)
+		}
 	}
 	return nil
 }
 func nextObjectManifest(previous objectManifest, next *objectCommitted) (objectManifest, error) {
-	manifest := objectManifest{Version: 3, Dataset: previous.Dataset, Committed: next, HistoryTruncated: previous.HistoryTruncated}
+	manifest := objectManifest{Version: 4, Dataset: previous.Dataset, Committed: next, HistoryTruncated: previous.HistoryTruncated}
 	if err := validateObjectCommit(next); err != nil {
 		return manifest, err
 	}
@@ -60,25 +70,12 @@ func nextObjectManifest(previous objectManifest, next *objectCommitted) (objectM
 }
 
 func (backend *objectBackend) verifyObjectGeneration(ctx context.Context, dataset string, committed *objectCommitted, reference time.Time) (Snapshot, *arrow.Schema, error) {
-	snapshot, err := backend.snapshot(dataset, committed, reference)
+	snapshot, err := backend.loadObjectSnapshot(ctx, dataset, committed, reference, backend.reader)
 	if err != nil {
 		return Snapshot{}, nil, err
 	}
-	if _, err = backend.verifyObjectBytes(ctx, snapshot); err != nil {
-		return Snapshot{}, nil, err
-	}
-	ranges, ok := backend.reader.(objectstore.RangeClient)
-	if !ok {
-		return Snapshot{}, nil, ErrRecoveryUnsupported
-	}
-	schema, err := ReadParquetSchema(&schemaObjectReader{ctx: ctx, client: ranges, snapshot: snapshot}, snapshot.Bytes)
+	schema, err := backend.verifyObjectSnapshot(ctx, snapshot)
 	if err != nil {
-		return Snapshot{}, nil, err
-	}
-	if err = verifySchemaHash(schema, committed.SchemaHash); err != nil {
-		return Snapshot{}, nil, err
-	}
-	if err = ctx.Err(); err != nil {
 		return Snapshot{}, nil, err
 	}
 	return snapshot, schema, nil
@@ -106,7 +103,7 @@ func (backend *objectBackend) Inventory(ctx context.Context, dataset string) ([]
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		snapshot, err := backend.snapshot(dataset, candidate, state.now())
+		snapshot, err := backend.loadObjectSnapshot(ctx, dataset, candidate, state.now(), backend.reader)
 		if err != nil {
 			return nil, err
 		}
@@ -169,7 +166,7 @@ func (backend *objectBackend) Restore(ctx context.Context, request RestoreReques
 	if target.Fingerprint != request.Fingerprint || current.Fingerprint != request.Fingerprint {
 		return Snapshot{}, ErrFingerprintMismatch
 	}
-	_, targetSchema, err := backend.verifyObjectGeneration(tx.ctx, request.Dataset, target, initial.now())
+	targetSnapshot, targetSchema, err := backend.verifyObjectGeneration(tx.ctx, request.Dataset, target, initial.now())
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -201,7 +198,7 @@ func (backend *objectBackend) Restore(ctx context.Context, request RestoreReques
 	// our lease and reports any release failure; an unchanged pointer cannot
 	// prove that an attempted publication/release actually reached storage.
 	if current.Generation == target.Generation {
-		return backend.snapshot(request.Dataset, target, state.now())
+		return targetSnapshot.observeClock(state.now()), nil
 	}
 	manifest, err := nextObjectManifest(state.manifest, target)
 	if err != nil {
@@ -217,10 +214,10 @@ func (backend *objectBackend) Restore(ctx context.Context, request RestoreReques
 		defer cancel()
 		latest, readErr := backend.readState(reconcile, request.Dataset, tx.client)
 		if readErr == nil && sameObjectCommit(latest.manifest.Committed, target) {
-			return backend.snapshot(request.Dataset, target, latest.now())
+			return targetSnapshot.observeClock(latest.now()), nil
 		}
 		return Snapshot{}, fmt.Errorf("%w: %w", ErrPublicationUnknown, errors.Join(err, readErr))
 	}
 	tx.owned = false
-	return backend.snapshot(request.Dataset, target, published.now())
+	return targetSnapshot.observeClock(published.now()), nil
 }

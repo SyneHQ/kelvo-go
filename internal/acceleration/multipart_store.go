@@ -49,7 +49,7 @@ func validateManifestParts(m storeManifest) error {
 	}
 	var rows, bytes int64
 	for i, p := range m.Parts {
-		if p.Path != multipartName(m.Generation, i) || p.Rows < 0 || p.Bytes <= 0 || !storeDigest.MatchString(p.SHA256) || p.Rows > m.Rows-rows || p.Bytes > m.Bytes-bytes {
+		if p.ObjectKey != "" || p.ObjectVersion != "" || p.Path != multipartName(m.Generation, i) || p.Rows < 0 || p.Bytes <= 0 || !storeDigest.MatchString(p.SHA256) || p.Rows > m.Rows-rows || p.Bytes > m.Bytes-bytes {
 			return bad()
 		}
 		rows += p.Rows
