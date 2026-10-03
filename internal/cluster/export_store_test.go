@@ -442,3 +442,15 @@ func TestExportStoreHeartbeatAuthorityAndReadyCASContention(t *testing.T) {
 		t.Fatal("stale publication revived withdrawal", err)
 	}
 }
+
+type overdueExportContext struct{ context.Context }
+
+func (overdueExportContext) Deadline() (time.Time, bool) { return time.Now().Add(-time.Second), true }
+
+func TestExportDispatchOverdueDeadlineNeverReturnsNilSuccess(t *testing.T) {
+	f := newExportStoreFixture(t)
+	delivery, err := f.store.NextExport(overdueExportContext{context.Background()})
+	if delivery != nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("overdue dispatcher produced nil-success", delivery, err)
+	}
+}
