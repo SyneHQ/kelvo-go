@@ -1,8 +1,9 @@
 # Arrow Flight SQL source
 
-Kelvo supports the **Arrow Flight SQL** protocol for native, read-only SQL queries. It does not treat arbitrary Arrow Flight services as SQL endpoints: a plain Flight service remains unsupported until a separate no-SQL adapter is implemented.
+Read typed Arrow results from a Flight SQL service. Plain Flight services need a separate adapter and are not accepted as SQL endpoints.
 
-Configure an `arrow_flight` source with `protocol: flightsql`, an environment variable containing a TLS endpoint, and an environment variable containing the bearer token:
+1. Provision a read-only service account and bearer token.
+2. Register the Flight SQL endpoint:
 
 ```yaml
 sources:
@@ -14,12 +15,12 @@ sources:
       protocol: flightsql
 ```
 
-`KELVO_SOURCE_FLIGHTSQL_URL` must be exactly a secure `grpcs://host:port` endpoint. User information, paths, query strings, fragments, plaintext transport, and endpoints without an explicit port are rejected. Kelvo verifies the TLS certificate and hostname, with TLS 1.2 as the minimum version. The token is resolved for each query and sent only as the gRPC `authorization: Bearer …` metadata; it is never added to URLs or errors.
+3. Set the URL to `grpcs://host:port`, then submit native SQL for `warehouse_flight`.
 
-Use an account that is read-only at the Flight SQL service. Kelvo also applies its conservative read-only SQL guard, but database permissions are the authorization boundary. Results use the source Arrow schema and batches directly. The connector enforces query deadlines plus row, byte, and Arrow-memory limits while delivering borrowed batches synchronously.
+The endpoint requires an explicit port, TLS 1.2+ and verified hostname/certificate. Userinfo, paths, queries, fragments and plaintext are rejected. Each query resolves its token and sends it only as gRPC `authorization: Bearer …` metadata.
 
-A Flight SQL `FlightInfo` must contain exactly one result endpoint. It may omit endpoint locations, which means the configured server. Any supplied location must identify that same configured TLS host and port. Cross-endpoint and external locations are rejected, so credentials are never forwarded to a server selected by a result response.
+Results retain their Arrow schema and use synchronous borrowed batches under deadline, row, byte and Arrow-memory limits. Service grants remain the read-only boundary alongside Kelvo's conservative SQL guard.
 
-This connector has no writes or ingest, metadata browser, transactions, prepared statements, CDC, or user-exposed action APIs.
+`FlightInfo` must contain exactly one endpoint. Locations must be absent or match the configured TLS host and port; external locations cannot redirect credentials.
 
-When a local deadline, cancellation, limit, or delivery error occurs after Flight SQL has returned a `FlightInfo`, Kelvo makes a bounded best-effort `CancelFlightInfo` request to the same source. Servers may not implement that optional action, so cancellation cannot be guaranteed remotely; source-side read-only resource quotas remain required.
+Writes, ingest, metadata browsing, transactions, prepared statements, CDC and user-exposed actions are unsupported. After `FlightInfo` arrives, failures trigger bounded best-effort `CancelFlightInfo`; servers may not implement it, so provider quotas remain necessary. The [worker cancellation grace](usage.md#native-cancellation-and-remote-cleanup) can end before remote cleanup finishes.

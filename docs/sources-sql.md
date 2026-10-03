@@ -1,13 +1,9 @@
 # SQL Server and Oracle sources
 
-Kelvo supports native, single-source read queries against Microsoft SQL Server
-and Oracle through Go `database/sql` drivers. SQL Server uses the official
-pure-Go `github.com/microsoft/go-mssqldb` driver (BSD-3-Clause); Oracle uses
-pure-Go `github.com/sijms/go-ora/v2` (MIT). Neither connector needs an Oracle
-client library or native runtime.
+Query SQL Server or Oracle through pure-Go `database/sql` drivers: `go-mssqldb` (BSD-3-Clause) and `go-ora/v2` (MIT). No Oracle client runtime is required.
 
-Use a `dsn_env` source configuration. The DSN stays in an environment variable
-and never appears in the catalog or query responses.
+1. Provision credentials with only the intended SELECT grants.
+2. Keep DSNs in environment variables:
 
 ```yaml
 sources:
@@ -19,42 +15,18 @@ sources:
     dsn_env: KELVO_SOURCE_ORACLE_DSN
 ```
 
-Run these through native mode with `connection_id` set to the configured source
-ID. SQL Server accepts the driver’s `sqlserver://` URL or ADO/ODBC-style DSN;
-set `encrypt=true` (or `strict`) with verified TLS 1.2 or newer. Connections
-without encryption or with `TrustServerCertificate=true` are rejected. Use
-`ApplicationIntent=ReadOnly` when connecting to an Availability Group; it is a
-routing hint, not an authorization policy. Oracle accepts the `oracle://` DSN
-supported by go-ora and requires TCPS (`SSL=enable`, `SSL VERIFY=true`). Server
-certificates must chain to trusted runtime CA roots. Custom CA/wallet files need
-an explicitly designed sandbox provisioning path and are not enabled here.
+3. Submit native SELECT/WITH with the source's `connection_id`. Bind typed values in order using SQL Server `@pN` or Oracle `:N` markers.
 
-Provision database credentials with only the required `SELECT` permissions.
-The connector accepts one SELECT or WITH statement, rejects write and
-session-control statements, and creates a bounded one-connection pool per
-execution. Oracle additionally sends `SET TRANSACTION READ ONLY`. SQL Server
-does not have an equivalent session command, so its database grants and any
-read-only routing policy are the enforcement boundary.
+SQL Server accepts `sqlserver://` or ADO/ODBC DSNs with `encrypt=true` or `strict`, verified TLS 1.2+, and no `TrustServerCertificate=true`. `ApplicationIntent=ReadOnly` can route Availability Group reads; grants still enforce access.
 
-Context cancellation is passed through connection, transaction, and query
-operations. Result conversion supports nulls, strings, binary values, signed
-and unsigned integers, floats, booleans, dates, timestamps, and decimal values
-within Arrow’s precision bounds. Naive DATE/DATETIME/TIMESTAMP values preserve
-wall-clock components; Oracle DATE retains its time component. Nanosecond values
-outside Arrow's representable range, per-value timezone offsets, standalone
-TIME, unknown decimal precision/scale, and decimal values already decoded into
-floating point are rejected. Source errors are returned without DSNs or driver
-diagnostics.
+Oracle uses `oracle://` with TCPS (`SSL=enable`, `SSL VERIFY=true`). Certificates must chain to runtime CA roots. Custom CA/wallet provisioning is not supported.
 
-Use the driver’s documented parameter markers: SQL Server normally uses named
-`@pN` parameters; Oracle normally uses `:N` bind parameters. Kelvo passes the
-request’s typed parameter values directly to `database/sql` in order.
+Each execution uses a bounded one-connection pool and rollback-only transaction. Oracle sends `SET TRANSACTION READ ONLY`; SQL Server relies on database grants. Writes and session-control statements are rejected. Context cancellation covers connection, transaction and query operations, subject to the [worker cancellation grace](usage.md#native-cancellation-and-remote-cleanup) and provider cleanup behavior.
 
+Results preserve NULLs, strings, binary, integer widths, floats, Boolean, dates, timestamps and supported exact decimals. Naive temporal values keep wall-clock components; Oracle DATE keeps its time component. Unsupported nanosecond ranges, per-value timezone offsets, standalone TIME, unusable decimal metadata and decimals already rounded through float fail. Public errors omit DSNs and driver diagnostics.
+
+For cross-source joins, configure the [selected-table federation bridge](federation-adapters.md).
 
 ## Validation status
 
-The connector packages are development-validated with focused unit tests for
-Arrow conversion, request validation, and the conservative SQL syntax envelope.
-They have not been verified against a live SQL Server or Oracle instance in this
-repository; validate driver-specific DSNs, permissions, TLS, and bind markers
-in the target environment before production use.
+[Live SQL Server 2022 acceptance](evidence/federation-sqlserver.json) covers typed values, TLS, permissions and cross-source joins; [the validation record](validation.md#expanded-federation-and-public-adapter-sdk) gives its scope. Oracle has development tests but still needs live TCPS, permissions and bind-marker acceptance in the target environment.

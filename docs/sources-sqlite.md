@@ -1,15 +1,9 @@
 # SQLite sources
 
-SQLite federation uses DuckDB's signed `sqlite` extension from the configured,
-version-matched extension directory. Kelvo attaches only the selected canonical
-source path with `TYPE SQLITE, READ_ONLY`; arbitrary extension names, paths,
-and write SQL remain unavailable.
+Query selected SQLite files through DuckDB's signed `sqlite` extension. Kelvo attaches canonical paths with `TYPE SQLITE, READ_ONLY` and rejects arbitrary paths, extensions and write SQL.
 
-This requires the DuckDB Arrow build and a provisioned extension matching
-pinned DuckDB 1.5.6. Its official artifact is named
-`sqlite_scanner.duckdb_extension`; load it from the approved extension directory.
-The [Linux amd64 acceptance fixture](evidence/sqlite-acceptance.json) verified
-the exact integer `9007199254740993`, text, binary bytes, NULLs, write denial,
-and rejection of an unselected file. The fixture also records the official
-download URL and artifact checksum. This is a functional check, not a throughput
-or concurrent-access benchmark.
+1. Use the DuckDB Arrow build pinned to DuckDB 1.5.6.
+2. Provision the matching `sqlite_scanner.duckdb_extension` in the approved extension directory.
+3. Select the configured source in a federated query.
+
+[Linux amd64 acceptance](evidence/sqlite-acceptance.json) records the artifact URL/checksum and checks exact integers, text, binary, NULLs, write denial and unselected-file rejection. Concurrent access and throughput were not benchmarked.
