@@ -47,3 +47,9 @@ Only fixed kind/outcome attributes and `service.name=kelvo` are exported. SQL, p
 ## Still unmeasured
 
 JetStream queue time, assignment-to-claim delay and separate child setup/source/compute/delivery phases remain unknown. Admission rejections remain metrics rather than execution spans. DuckDB materializes before Arrow delivery. Distributed tracing overhead and deployment capacity need workload measurements; [#24](https://github.com/SyneHQ/kelvo-go/issues/24) tracks those gates.
+
+## Validation
+
+[Azure receipt](evidence/distributed-tracing-f2b9793.json), source `f2b9793`: 52 tests plus parser fuzz seeds, 106 test/subtest pass events, race checks, vet and build passed. No failures or skips. CI also runs the tracing package with the race detector.
+
+Coverage includes principal/claim isolation, forged context, optional-state compatibility, local sampling limits, stalled exporter shutdown and durable Arrow completion. The private-network fixture used 1 CPU/3 GiB; its service and cgroup cleanup were independently verified. Its [recorded overlap](evidence/distributed-tracing-overlap-f2b9793.json) with the separate `0544d5f` sustained campaign lasted 53.926 seconds. This is component evidence; real multi-process OTLP continuity and workload overhead remain unmeasured.

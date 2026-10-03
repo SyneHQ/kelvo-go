@@ -11,7 +11,7 @@ Status reviewed 4 October 2026. This is a capability checklist, not production c
 | [Pinned worker-capacity gate (#8)](node-capacity.md): five metrics on/off pairs and 130 exact workload queries on `d144a43` | Revalidate after runtime changes; worker-only warm-cache evidence does not establish sustained or deployment-wide capacity |
 | Opt-in Linux process-tree memory, CPU and PID limits | Deployment-specific headroom, restart recovery and sustained fault/load validation |
 | Independent probes, dataset readiness, phased drain and [application](rolling-upgrades.md) and [broker/client](nats-compatibility.md) upgrade matrices | Deployment-specific rollout and multi-hour fault/load campaigns |
-| Metrics opt-out, bounded history, tracing, source observations and [local audit](durable-audit.md) | Distributed attribution, audit archival and combined workload-cost measurements |
+| Metrics opt-out, bounded history, [authorized query trace continuity](tracing.md), source observations and [local audit](durable-audit.md) | Full distributed attribution, real multi-process OTLP acceptance, audit archival and workload-cost measurements |
 | Selected-secret forwarding, files, opt-in cloud secrets, API-key and TLS rotation | Live-provider IAM/rotation coverage and coordinated enrollment/revocation |
 | Managed Linux scratch with inherited leases | Deployment-specific disk capacity and recovery validation |
 | CI, 15 executed notebooks, process-loss and snapshot-upgrade gates | Recurring real-provider tests on each release candidate |
