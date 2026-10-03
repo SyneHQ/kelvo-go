@@ -321,6 +321,26 @@ func Resolve(ctx context.Context, c catalog.Config, request query.Request) ([]ca
 				}
 			}
 		}
+		if c.Acceleration.ObjectStorage == nil {
+			scan, err := d.EffectiveSnapshotScanLimits()
+			if err != nil {
+				closeAll()
+				return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Snapshot scan limits are unavailable")
+			}
+			parts := []catalog.LocalSnapshotPart{{Rows: snapshot.Rows, Bytes: snapshot.Bytes, SHA256: snapshot.SHA256}}
+			if len(snapshot.Parts) > 0 {
+				parts = make([]catalog.LocalSnapshotPart, len(snapshot.Parts))
+				for index, part := range snapshot.Parts {
+					parts[index] = catalog.LocalSnapshotPart{Rows: part.Rows, Bytes: part.Bytes, SHA256: part.SHA256}
+				}
+			}
+			sources[i].LocalSnapshot = &catalog.LocalSnapshotRead{Dataset: source.ID, Generation: snapshot.Generation,
+				SchemaSHA256: snapshot.SchemaHash, Parts: parts, Scan: scan}
+			if err := sources[i].ValidateLocalSnapshot(); err != nil {
+				closeAll()
+				return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Local snapshot provenance is unavailable")
+			}
+		}
 		versions = append(versions, query.AccelerationVersion{Dataset: source.ID, Generation: lease.Snapshot.Generation, RefreshedAt: lease.Snapshot.RefreshedAt})
 	}
 	if len(objects) > 0 {
