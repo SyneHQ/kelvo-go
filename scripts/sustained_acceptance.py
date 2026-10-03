@@ -801,6 +801,22 @@ def inside(args):
     return 0 if not report.get("failure") and all(item.get("passed") is True for item in report["checks"]) else 1
 
 
+def service_command(args, unit, artifact):
+    """Keep the owned service bounded even if its outer controller exits."""
+    command = ["sudo", "-n", "systemd-run", "--unit=" + unit, "--uid=" + pwd.getpwuid(os.geteuid()).pw_name,
+               "--property=Delegate=yes", "--property=PrivateNetwork=yes", "--property=CPUQuota=200%", "--property=MemoryMax=6G", "--property=MemorySwapMax=0",
+               "--property=TasksMax=512", "--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=",
+               "--property=AmbientCapabilities=", "--property=RuntimeMaxSec=" + str(math.ceil(args.duration + 300)),
+               "--collect", "--wait", "--pipe", sys.executable, str(Path(__file__).resolve()),
+               "--inside", "--unit", unit, "--artifact", str(artifact), "--mode", args.mode, "--duration", str(args.duration),
+               "--expected-revision", args.expected_revision,
+               "--binary", str(Path(args.binary).resolve()), "--sandbox", str(Path(args.sandbox).resolve()), "--go", args.go,
+               "--output", str(args.output)]
+    if args.nats_archive:
+        command.extend(["--nats-archive", str(Path(args.nats_archive).resolve())])
+    return command
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", default=str(ROOT / "bin/kelvo"))
@@ -849,16 +865,7 @@ def main():
             ops.require(smoke.get("mode") == "smoke" and smoke.get("passed") is True and reconcile(smoke, args.expected_revision)
                         and smoke["source"] == report["source"] and smoke["binary_sha256"] == report["binary_sha256"], "MATCHED_PASSING_SMOKE_REQUIRED")
             report["prerequisite_smoke_sha256"] = identity.digest(args.smoke_report)
-        command = ["sudo", "-n", "systemd-run", "--unit=" + unit, "--uid=" + pwd.getpwuid(os.geteuid()).pw_name,
-                   "--property=Delegate=yes", "--property=PrivateNetwork=yes", "--property=CPUQuota=200%", "--property=MemoryMax=6G", "--property=MemorySwapMax=0",
-                   "--property=TasksMax=512", "--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=",
-                   "--property=AmbientCapabilities=", "--collect", "--wait", "--pipe", sys.executable, str(Path(__file__).resolve()),
-                   "--inside", "--unit", unit, "--artifact", str(artifact), "--mode", args.mode, "--duration", str(args.duration),
-                   "--expected-revision", args.expected_revision,
-                   "--binary", str(Path(args.binary).resolve()), "--sandbox", str(Path(args.sandbox).resolve()), "--go", args.go,
-                   "--output", str(args.output)]
-        if args.nats_archive:
-            command.extend(["--nats-archive", str(Path(args.nats_archive).resolve())])
+        command = service_command(args, unit, artifact)
         with (artifact / "service.log").open("w") as log:
             process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
             print(json.dumps({"unit": unit, "control_pid": process.pid, "private_artifact": str(artifact), "started_monotonic": started, "requested_seconds": args.duration}), flush=True)

@@ -57,6 +57,26 @@ def valid_report():
 
 
 class SustainedControls(unittest.TestCase):
+    def test_owned_service_watchdog_bounds_controller_loss_without_shortening_workload(self):
+        for duration, mode, watchdog in ((60., "smoke", 360), (600., "smoke", 900),
+                                        (600.1, "smoke", 901), (7200., "sustained", 7500),
+                                        (14400., "sustained", 14700)):
+            with self.subTest(duration=duration, mode=mode):
+                args = fixture.argparse.Namespace(duration=duration, mode=mode, expected_revision=REVISION,
+                    binary="/fixture/bin/kelvo", sandbox="/fixture/bin/kelvo-landlock", go="/fixture/go",
+                    output=Path("/fixture/report.json"), nats_archive="/fixture/nats.tar.gz")
+                command = fixture.service_command(args, "kelvo-sustained-fixture", Path("/fixture/artifacts"))
+                self.assertEqual([part for part in command if part.startswith("--property=RuntimeMaxSec=")],
+                                 [f"--property=RuntimeMaxSec={watchdog}"])
+                self.assertEqual(command[command.index("--duration") + 1], str(duration))
+                self.assertEqual(command[command.index("--mode") + 1], mode)
+                self.assertEqual(command[command.index("--expected-revision") + 1], REVISION)
+                self.assertEqual(command[-2:], ["--nats-archive", "/fixture/nats.tar.gz"])
+                for property_value in ("Delegate=yes", "PrivateNetwork=yes", "CPUQuota=200%", "MemoryMax=6G",
+                                       "MemorySwapMax=0", "TasksMax=512", "NoNewPrivileges=yes",
+                                       "CapabilityBoundingSet=", "AmbientCapabilities="):
+                    self.assertIn("--property=" + property_value, command)
+
     def test_broker_gate_requires_completed_lease_supervision(self):
         for evidence in (None, {}, recovered_evidence()):
             report = valid_report()
