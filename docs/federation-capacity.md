@@ -1,54 +1,16 @@
-# Federation capacity testing
+# Federation capacity
 
-The capacity fixture uses real NYC TLC Yellow Taxi records, the official taxi
-zone lookup, and three custom Go adapters: ClickHouse, PostgreSQL and MySQL.
-Use these workload-specific measurements to size a deployment. They are not a
-general throughput guarantee or a production multi-tenant certification.
+Real NYC TLC data exercises ClickHouse, PostgreSQL and MySQL adapters. **14/14 capacity checks and 224/224 sustained cluster jobs passed.** These are workload-specific sizing measurements, not a production multi-tenant, HA or multi-host scaling certification.
 
-## Data and correctness
+## Fixture and validation
 
-[Provenance](evidence/federation-capacity-provenance.json) records the original
-download URLs, sizes, hashes, import settings and transformations. January–March
-2019 contain **22,612,607 trips**. The official lookup contains **265 zones**.
-The first million physical January records are projected into all three databases
-for large join inputs. They are real records, not generated fact rows.
+[Provenance](evidence/federation-capacity-provenance.json): **22,612,607 January–March 2019 trips**, **265 zones**, and the first million physical January rows copied to all three databases. Stable `trip_id` combines source month/row ordinal. Original Float64 amounts/anomalies remain; half-even `fare_cents` is derived, not TLC exact-decimal money.
 
-The original floating-point amounts are preserved. `fare_cents` is a separately
-documented derived metric using half-to-even rounding; it is not an exact decimal
-representation supplied by TLC. `trip_id` combines the source month and physical
-row ordinal, giving the copied relations a stable join key. Source anomalies are
-not silently dropped.
+Every successful export must match [native ClickHouse references](evidence/federation-capacity-references.json) by exact values and NULL validity, independent of batching/integer width, and include Arrow EOS. Failures must not publish completed files.
 
-[Native reference results](evidence/federation-capacity-references.json) are
-computed in ClickHouse over the same relations. Validation hashes exact column
-values and NULL validity independently of Arrow batch boundaries and physical
-integer width. Every successful measured export must match its native reference
-and include the Arrow completion marker. Failed queries must not publish a
-completed output file.
+## CLI results — 2026-10-02
 
-## Workloads
-
-- A full fact scan joined to the taxi zone lookup, followed by grouped aggregates.
-- The 22.6-million-row base relation joined to a one-million-row projection in
-  ClickHouse, PostgreSQL or MySQL. Runtime filters can reduce fetched rows; the
-  report records actual source rows instead of assuming the whole base was read.
-- A three-adapter join with separately declared scan/thread limits.
-- A full 22.6-million-row sort and export with 128 MiB and 256 MiB DuckDB budgets.
-- ClickHouse transfer through a fixed-destination relay with 50 ms application
-  delay and a shared 10 MiB/s response-body limit. PostgreSQL/MySQL traffic stays
-  on its ordinary same-VM path in these mixed-source runs.
-- A paced HTTP consumer, cancellation and subsequent single-slot recovery.
-- Repeated queries through tenant-scoped NATS workers and two gateways.
-- A real remote client over SSH forwarding with inner verified TLS.
-
-## Measured CLI results — 2026-10-02
-
-[All 14 capacity checks passed](evidence/federation-capacity.json) on the
-[recorded image binary](evidence/federation-capacity-build.json). These are single
-timed runs per CLI configuration, with warm/uncontrolled caches on four logical
-Xeon Platinum 8573C CPUs and approximately 31.3 GiB physical memory. All 11 CLI
-results and both HTTP exports matched the native reference values. The remaining
-check exercised cancellation and admission recovery.
+[Capacity report](evidence/federation-capacity.json), [binary](evidence/federation-capacity-build.json): one timed run per configuration, warm/uncontrolled caches, four Xeon Platinum 8573C logical CPUs, approximately 31.3 GiB RAM. All 11 CLI results and both HTTP exports matched references; the remaining check covered cancellation/recovery.
 
 | Workload | DuckDB budget | Seconds | Sampled worker RSS | Peak allocated scratch |
 | --- | ---: | ---: | ---: | ---: |
@@ -62,41 +24,19 @@ check exercised cancellation and admission recovery.
 | Full sort and 22.6M-row export | 128 MiB | 7.835 | 717 MiB | 232 MiB |
 | Full sort and 22.6M-row export | 256 MiB | 7.738 | 834 MiB | 162 MiB |
 
-The three-adapter query used four threads/active scan slots; other CLI runs used
-two. Every fact scan fetched all **22,612,607 rows**. The million-row joins fetched
-another million rows and returned 253 groups; the zone and three-adapter joins
-returned eight groups. These describe relation sizes, not an EXPLAIN-verified
-physical build side. Scratch peaks include observed DuckDB temporary files; the
-physical plan was not captured.
+Three-adapter runs used four threads/active scan slots; others used two. Every fact scan fetched all 22,612,607 rows. Million-row joins fetched another million and returned 253 groups; zone/three-adapter joins returned eight. No physical plan/build side was captured.
 
-Each full-sort export contained **454,902,480 bytes** and all 22,612,607 rows,
-giving **2.886–2.922 million output rows/s**. Source scan response bodies contained
-458,044,512 bytes, excluding schema discovery and HTTP headers. Coordinator RSS
-was separately about 61 MiB. The **717–834 MiB worker RSS**
-is a sizing constraint: these host-process runs did not prove the workload fits
-inside a 128, 256 or 512 MiB container. No memory setting in this matrix failed;
-that does not establish a minimum viable memory budget.
+Full sorts returned 22,612,607 rows and 454,902,480 bytes: **2.886–2.922 million output rows/s**. Source bodies were 458,044,512 bytes excluding discovery/headers; coordinator RSS was about 61 MiB. Worker RSS of **717–834 MiB** means the 128/256 MiB DuckDB settings did not prove fit in 128, 256 or 512 MiB containers or establish a minimum budget.
 
-With the ClickHouse hop delayed by 50 ms and capped at 10 MiB/s, the zone join
-took **28.635 s**, and the PostgreSQL join took **36.275 s**. PostgreSQL traffic
-was not paced. Complete ordered million-row HTTP exports took **0.247 s** without
-pacing and **19.288 s** at a client read rate of 1 MiB/s; worker RSS was about
-156/161 MiB. These loopback transfers are separate from the remote-client test.
-
-Cancelling an active result stream recovered the single execution slot for a
-real zone-count query in **0.093 s**. One transient HTTP 429 occurred while
-asynchronous worker teardown still held the permit; the harness records it and
-retries the unclaimed replacement within a bounded deadline. Cancellation
-acknowledgment is not a promise that resource cleanup has already finished.
+| Transport/control check | Observed result |
+| --- | --- |
+| ClickHouse relay: 50 ms application delay, shared 10 MiB/s body limit | Zone join 28.635 s; PostgreSQL join 36.275 s. PostgreSQL/MySQL stayed on their ordinary same-VM path. |
+| Ordered million-row loopback HTTP export | 0.247 s unpaced; 19.288 s with 1 MiB/s reader; worker RSS about 156/161 MiB. |
+| Cancel active stream, then real zone-count query | Slot recovered in 0.093 s. One transient HTTP 429 while teardown retained the permit; bounded retry succeeded. Cancellation acknowledgment is not cleanup completion. |
 
 ## Sustained tenant concurrency
 
-[All 224 cluster jobs passed](evidence/federation-cluster-capacity.json) exact
-reference checks with **zero errors**, using two tenants, two gateways, three
-nodes and three NATS brokers on the same four-CPU VM. Each concurrency level ran
-for a 120-second submission window. Jobs alternated between PostgreSQL/MySQL
-zone and million-row joins; each fetched all 22,612,607 fact rows. Across the
-suite that was **5,065,223,968 fact rows fetched**, not that many rows exported.
+[224 exact-validated jobs, zero errors](evidence/federation-cluster-capacity.json): two tenants, two gateways, three nodes and three NATS brokers on one four-CPU VM. Each level used one 120-second submission window. Alternating PostgreSQL/MySQL joins fetched **5,065,223,968 fact rows** across the suite; those are fetched, not exported rows.
 
 | Concurrent clients | Successful jobs including drain | Completions/s within window | p50 latency | p95 latency |
 | ---: | ---: | ---: | ---: | ---: |
@@ -104,40 +44,17 @@ suite that was **5,065,223,968 fact rows fetched**, not that many rows exported.
 | 2 | 80/80 | 0.650 | 3.053 s | 3.944 s |
 | 4 | 86/86 | 0.683 | 5.634 s | 7.590 s |
 
-Rates count only the 57/78/82 successful completions inside each submission
-window. Remaining jobs completed during drain. Latencies and closed-loop pacing
-include result verification and client HTTP/TLS setup. There is one interval per
-concurrency level, with no confidence interval or long-duration soak claim.
-Tenant counts were balanced 29/29, 40/40 and 43/43. Maximum observed simultaneous
-query workers matched 1/2/4, and no query worker remained after any interval.
+Rates count 57/78/82 in-window completions; remaining jobs finished during drain. Tenant counts were 29/29, 40/40 and 43/43. Latencies/closed-loop pacing include verification and new HTTP/TLS setup. No query workers remained; maximum overlapping workers were 1/2/4.
 
-The largest sampled worker used **449.7 MiB RSS**. During the four-client interval,
-all query workers together reached a **simultaneously sampled 1.34 GiB RSS**;
-source databases, nodes, gateways and brokers are separate. Shared pages can be
-counted in multiple process RSS values. The configured DuckDB budget was 256 MiB
-per query with two threads; tenant A had two one-slot nodes and tenant B a
-two-slot node. Tenant admission remained 16 nonterminal jobs, with four total
-execution slots. No limits were raised between trials.
+Largest worker RSS: **449.7 MiB**; simultaneous worker sum at four clients: **1.34 GiB**. Source databases, nodes, gateways and brokers are separate. Each query had 256 MiB DuckDB/two threads; tenant A used two one-slot nodes, tenant B one two-slot node. Admission stayed at 16 nonterminal jobs and four execution slots throughout.
 
-Throughput barely increased from two to four clients while p95 nearly doubled.
-The four-client window recorded roughly 3.9 CPU cores of sampled process work
-across the four-core host. This indicates little headroom for this co-located
-workload; it does not measure scaling workers across separate machines.
+At four clients, approximately 3.9 sampled CPU cores were busy. Throughput barely improved over two clients while p95 nearly doubled. This co-located workload had little headroom; one short interval per level is not a soak test or cross-machine scaling measurement.
 
-[Separate preflight checks](evidence/federation-capacity-preflight.json) verified
-tenant markers, cross-gateway retrieval, foreign-handle denial even with forged
-tenant headers, and HTTP 429 when tenant A filled its 16 nonterminal handles.
-Tenant B still completed a query. These admission negatives were excluded from
-the sustained query rates. Public taxi copies in both tenants do not themselves
-prove isolation; the independent identity and network controls supply that evidence.
+[Separate preflight](evidence/federation-capacity-preflight.json) checked tenant markers, cross-gateway retrieval, foreign-handle denial with forged headers, and 429 at tenant A's 16-handle limit while tenant B succeeded. These negatives are excluded from query rates. Identical public data alone does not prove isolation; [container/network acceptance](evidence/federation-capacity-container.json) is separate from the host-process Landlock/mTLS load topology.
 
 ## Actual remote-client transfer
 
-[Three remote trials](evidence/federation-wan.json) streamed the same ordered
-million-row result from the VM to the macOS client: **20,117,616 bytes** each.
-Every complete body matched the exact SHA-256 of an independently decoded and
-value-checked VM reference. The client retained only its rolling hash, byte count
-and completion marker; no result file or Arrow dependency was needed locally.
+[Three remote trials](evidence/federation-wan.json) delivered the same ordered million-row result (**20,117,616 bytes** each) over SSH forwarding with inner verified TLS. Each complete body matched the SHA-256 of an independently decoded VM reference. The macOS client retained only a rolling hash/count/EOS check, without local Arrow decoding or result storage.
 
 | Trial | Complete export | First 64 KiB | Output rows/s | Response body MB/s |
 | --- | ---: | ---: | ---: | ---: |
@@ -145,54 +62,19 @@ and completion marker; no result file or Arrow dependency was needed locally.
 | 2 | 5.364 s | 1.812 s | 186,435 | 3.751 |
 | 3 | 5.765 s | 1.799 s | 173,462 | 3.490 |
 
-This is a real remote path with SSH forwarding and inner verified TLS. SSH,
-network conditions, query execution and a new HTTPS connection per request are
-included. It is not direct HTTPS capacity or an engine-only throughput figure.
-Health requests took 0.834–0.843 s including TLS/server overhead; that is not a
-pure RTT measurement. Final successful query-state verification followed the
-export interval and is recorded separately.
+Times include SSH, network, SQL and new HTTPS connection setup; final query-state verification follows the export interval. Health requests took 0.834–0.843 s including TLS/server overhead, not pure RTT. This is not direct HTTPS or engine-only capacity. The initial fixture CA failed strict macOS OpenSSL checks for missing key usage; reissuing its certificate with the same key fixed it without disabling verification or rotating a service key.
 
-The macOS client's stricter OpenSSL verification rejected the fixture CA's
-missing key-usage extension. The fixture generator now explicitly sets CA key
-usage and constraints. Reissuing that private test CA certificate with the same
-key fixed validation; no verification flag was disabled and no service key was
-rotated.
+## Measurement limits
 
-## Read the measurements correctly
+Output rows/s includes startup, execution and complete delivery; CLI also includes fsync. Reference calculation/value validation are outside timing. Fetched rows are not database rows examined, and a small aggregate can fetch millions.
 
-`rows_fetched` counts rows delivered to Kelvo, not rows examined by the database.
-An aggregate can fetch millions of rows and return only a handful. Export rows/s
-uses the final output row count and includes query startup, execution and complete
-delivery. The CLI export interval also includes file synchronization; reference
-calculation and value verification are outside that interval.
+DuckDB materializes before Arrow delivery. Its memory setting and bounded source handoffs do not bound whole-process joins/sorts/results. Use deployment memory/disk controls. Simultaneous RSS may count shared pages twice; sampled RSS/scratch can miss short peaks. Never sum independent peaks as simultaneous use.
 
-The Go DuckDB driver materializes execution before Arrow delivery. A source's
-bounded handoff does not bound the memory needed for joins, sorting or materialized
-results. `memory_mb` configures DuckDB; it is not a whole-process RSS limit. Use
-container memory and disk quotas in deployment. Sampled RSS/spill peaks can miss
-short peaks and must not be treated as exact maxima. Do not sum independent
-per-process peak measurements as if they occurred simultaneously.
+The relay models application delay/body bandwidth only, not packet loss, jitter, geographic routing or TCP. Caches were warm/uncontrolled, and sources/brokers shared the VM. These trials do not certify multi-zone HA or production tenancy.
 
-The controlled relay is an application-level experiment. It does not simulate
-packet loss, jitter, geographic routing or TCP behavior. The actual remote-client
-test includes SSH encryption/buffering plus TLS, so it does not establish direct
-HTTPS WAN capacity. Cache state is warm or uncontrolled, and the four-CPU test VM
-also hosts the source databases and brokers.
+## Reproduce
 
-Cluster capacity runs use tenant-bound host processes with Landlock and mTLS.
-Separate container/network enforcement is checked by
-[container acceptance](evidence/federation-capacity-container.json); the
-load fixture itself is not a production container topology or multi-zone HA test.
-
-## Reproduce on the test host
-
-Use a Linux amd64 host with Landlock ABI 3+, Docker, Python/pyarrow and a
-bridge-enabled image. Keep dataset import, image compilation and timed tests in
-separate CPU windows. The fixture needs private scratch storage and a pre-existing
-ClickHouse container named `kelvo-clickhouse`; PostgreSQL/MySQL use cached official
-images. It never replaces the existing `kelvo_bench.fact_events` dataset.
-
-The scripts separate data preparation from measurement:
+Use a dedicated Linux amd64 test host with Landlock ABI 3+, Docker, Python/PyArrow and a bridge-enabled image. Provision private scratch, existing `kelvo-clickhouse`, and cached official PostgreSQL/MySQL images. Keep imports/builds separate from timing; preserve existing `kelvo_bench.fact_events`.
 
 | Script | Responsibility |
 | --- | --- |
@@ -202,15 +84,12 @@ The scripts separate data preparation from measurement:
 | [federation_cluster_load.py](../scripts/federation_cluster_load.py) | Sustained cluster query/concurrency trials |
 | [federation_wan_client.py](../scripts/federation_wan_client.py) | Remote export verification using a VM-decoded reference; no local result storage |
 
-Run each script's `--help` for its action-specific arguments. Retain the private
-fixture manifest until all dependent tests finish. Source credentials and temporary
-CA material stay in private VM files; public reports contain measurements and
-hashes. Stop only recorded fixture processes afterward, preserving the taxi data
-for subsequent comparisons.
+```sh
+python3 scripts/federation_capacity.py --help
+python3 scripts/federation_capacity_cluster.py --help
+python3 scripts/federation_cluster_load.py --help
+```
 
-After this run, [cluster cleanup](evidence/federation-capacity-cleanup.json) stopped
-all owned app/broker processes, and [relational cleanup](evidence/federation-relational-cleanup.json)
-removed only the disposable source fixtures. The main ClickHouse server, all
-22,612,607 trips, the million-row projection, the 265 zones and the original
-100-million-row benchmark remained intact. Dataset files were preserved. Create
-fresh relational fixtures and refresh their private source manifest for a rerun.
+Keep private fixture manifests until dependent tests finish; credentials/CA material stay private. Publish measurements/hashes and retain failures. Stop only recorded fixture processes.
+
+[Cluster cleanup](evidence/federation-capacity-cleanup.json) and [relational cleanup](evidence/federation-relational-cleanup.json) removed disposable services/fixtures while preserving ClickHouse, all 22,612,607 trips, million-row projection, 265 zones, original 100-million-row fixture and dataset files. Reruns need fresh relational fixtures and source manifests.
