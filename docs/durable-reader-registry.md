@@ -44,6 +44,11 @@ The [object-store adapter and immutable binding components](reader-objectstore.m
 now have focused race/vet coverage. They remain unwired; the integration gates
 below still apply.
 
+The [acquisition and custody lifetime API](reader-custody.md) also has focused
+race/vet coverage. It separates request cancellation from confirmed-pin renewal
+and exposes local quiescence without claiming consumer cleanup or remote release.
+Production owner/guard wiring remains an integration gate.
+
 ## A pin does not authorize access
 
 The caller must compute a complete canonical immutable-commit digest; the

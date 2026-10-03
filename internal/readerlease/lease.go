@@ -9,8 +9,9 @@ import (
 	"time"
 )
 
-// Lease must not be copied. Its context is the lifetime for every protected
-// request and consumer. Call Check again before exposing success. Close must
+// Lease must not be copied. Its context controls pin custody. Consumers must
+// also preserve their original execution context when AcquireWithLifetime uses
+// a separate custody context. Call Check again before exposing success. Close must
 // follow consumer/bridge shutdown and must be called even after cancellation.
 // It never waits indefinitely for a provider. An uncooperative provider retains
 // local capacity until its work actually exits, preventing unbounded growth.
@@ -42,6 +43,12 @@ func newLease(parent context.Context, r *Registry, binding Binding, reader entry
 }
 
 func (l *Lease) Context() context.Context { return l.ctx }
+
+// Quiesced closes after Close has joined all local renewal, watchdog and provider
+// work and returned this lease's Registry capacity. Context cancellation and a
+// bounded Close return do not establish quiescence. This does not prove remote
+// release succeeded, that a consumer exited, or that deletion is safe.
+func (l *Lease) Quiesced() <-chan struct{} { return l.quiesced }
 
 func (l *Lease) Check() error {
 	if err := context.Cause(l.ctx); err != nil {
