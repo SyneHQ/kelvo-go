@@ -149,7 +149,7 @@ Only selected-source references are resolved into the selected child's environme
 
 Use service-owned regular files in trusted directories and atomic replacement. Symlinks, hardlinks, unsafe modes, NULs and values over 16 KiB fail. Preserve exact bytes without unwanted newlines. Limits: 128 files, 2 MiB retained bytes, TTL ≤5m; zero TTL disables retention. Buffer wiping is best effort.
 
-This does not rotate existing query credentials, parent object clients, NATS, gateway tokens or TLS, and adds no cloud secret-manager integration.
+This does not rotate existing query credentials, parent object clients, NATS, gateway tokens or TLS, or provider master credentials. For explicit AWS, Azure and GCP mappings, use [cloud source secrets](cloud-secrets.md).
 
 ## Source refresh failures and recovery
 

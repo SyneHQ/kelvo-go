@@ -129,7 +129,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	if cfg.Secrets != nil {
 		provider, err := secrets.New(*cfg.Secrets)
 		if err != nil {
-			return query.NewError("CONFIGURATION_ERROR", "File secret provider is unavailable")
+			return query.NewError("CONFIGURATION_ERROR", "Source secret provider is unavailable")
 		}
 		defer provider.Close()
 		executor.Secrets = provider
