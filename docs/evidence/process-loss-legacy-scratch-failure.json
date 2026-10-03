@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "passed": false,
+  "checks": [
+    {
+      "test": "startup",
+      "passed": true,
+      "seconds": 7.02,
+      "workers": 2,
+      "tenants": 2,
+      "broker_replicas": 3,
+      "source_rows_per_tenant": 100000,
+      "dataset": "Deterministic synthetic Parquet with nullable integers and tenant markers",
+      "gateways": 2,
+      "max_http_requests_per_gateway": 8,
+      "fault_signals": "SIGKILL of exact owned identities",
+      "original_configuration_count": 12
+    },
+    {
+      "test": "gateway_loss_under_admitted_load",
+      "passed": true,
+      "seconds": 1.231,
+      "running_before_fault": 2,
+      "queued_before_fault": 2,
+      "surviving_tenant_exact_result": true,
+      "failed_attempt_result_rejected": true,
+      "queued_handles_preserved": true,
+      "replay_scope": "Original failed handles remain terminal and reject result requests before and after recovery; no exactly-once source execution claim",
+      "replacement_gateway_ready": true,
+      "surviving_gateway": 2
+    },
+    {
+      "test": "worker_loss_under_admitted_load",
+      "passed": true,
+      "seconds": 4.545,
+      "running_before_fault": 2,
+      "queued_before_fault": 2,
+      "surviving_tenant_exact_result": true,
+      "failed_attempt_result_rejected": true,
+      "queued_handles_preserved": true,
+      "replay_scope": "Original failed handles remain terminal and reject result requests before and after recovery; no exactly-once source execution claim",
+      "same_worker_identity_recovered": true,
+      "running_crash_children": 0,
+      "scratch_directories_after_crash": 1,
+      "scratch_reclamation_checked_at_cleanup": true
+    },
+    {
+      "test": "broker_loss_under_admitted_load",
+      "passed": true,
+      "seconds": 5.286,
+      "running_before_fault": 2,
+      "queued_before_fault": 2,
+      "surviving_tenant_exact_result": true,
+      "failed_attempt_result_rejected": true,
+      "queued_handles_preserved": true,
+      "replay_scope": "Original failed handles remain terminal and reject result requests before and after recovery; no exactly-once source execution claim",
+      "unavailable_brokers_during_delivery": 1,
+      "current_replicas_after_rejoin": 3,
+      "post_rejoin_queries_correct": true
+    },
+    {
+      "test": "cleanup",
+      "passed": false,
+      "category": "OWNED_PROCESS_OR_SCRATCH_LEAK",
+      "seconds": 2.089
+    }
+  ],
+  "checked_at": "2026-10-03T06:33:36.352144+00:00",
+  "scope": "Bounded single-host process termination under admitted mixed jobs; not multi-host HA, snapshot publication loss, provider faults or sustained capacity",
+  "script_sha256": "62f3a4ebba304c8a993821f086047f22d3dc406fc871abf7c2e5dec6a24bda65",
+  "operational_script_sha256": "e6fb9917e65688f849c49b683b610a14eadc8129fede537dbf833ed0ae68e202",
+  "fixture_script_sha256": "30b2700d53d9770f1cb6b5a448fc46306e43fe6e89c443b202ea357e58b12c76",
+  "binary_sha256": "aab2b5530d78d31fcee200f66e1d155c938e5a26773662de429afc5268c4cf48",
+  "sandbox_sha256": "cb09cd6b1bcf29a50b7436e02f3aebc9c2f47b1cca74a27c4fe5a7b9ec2bfb6f",
+  "interrupted": false,
+  "elapsed_seconds": 20.299,
+  "crash_scratch_directories_observed": 1,
+  "worker_scratch_directories_after_cleanup": 1,
+  "cleanup_observations": {
+    "scratch_directories_after_crash": 1,
+    "worker_scratch_directories": 1,
+    "original_configurations_verified": true,
+    "all_owned_brokers_healthy": true
+  }
+}
