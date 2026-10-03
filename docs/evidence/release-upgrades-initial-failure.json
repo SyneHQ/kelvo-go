@@ -1,0 +1,108 @@
+{
+  "artifacts": {
+    "candidate_binary_sha256": "aab2b5530d78d31fcee200f66e1d155c938e5a26773662de429afc5268c4cf48",
+    "launcher_sha256": "cb09cd6b1bcf29a50b7436e02f3aebc9c2f47b1cca74a27c4fe5a7b9ec2bfb6f",
+    "previous_binary_sha256": "087ca86d2f56c8a0d3ff612ed955f390e75f0111cc1e4bd38211256f8c31a016",
+    "scripts": {
+      "acceleration_acceptance.py": "15e3b7299b0103c6ef9c0b1a25f855683a15d08ec9f14f96708d49c30cd9d0b3",
+      "backup_acceptance.py": "053810143642a94ab40025a322af9077726b9ef4281e206b0c753f35175c1383",
+      "object_acceleration_acceptance.py": "1b08217a615299a6626c132dd53ea45311994a17120fbc358718c1bf15702eec",
+      "object_migration_acceptance.py": "1e6c7fa43b07812e83225052cf4ff46d4545d662df9073fd80d9c51cef75882a",
+      "release_upgrade_acceptance.py": "d4ee20aaa3228539766eccad67fb501f8032a5c02d66ab0fcdaba2c40fc8b454"
+    }
+  },
+  "candidate_revision": "c98104c5894e92aed9008e76cf827271d53e75bd",
+  "candidate_revision_provenance": "operator-supplied; binary hash authoritative",
+  "checked_at": "2026-10-03T06:31:41.731583+00:00",
+  "checks": [
+    {
+      "backup_rollback_preserves_identity_and_age": true,
+      "exact_values_types_nulls": true,
+      "failed_refresh_preserves_snapshot": true,
+      "layout": "single",
+      "manifest_version": 1,
+      "new_writer_old_reader": true,
+      "old_writer_new_reader": true,
+      "parts_before_upgrade": 1,
+      "passed": true,
+      "provider": "local",
+      "readers_preserve_store_bytes": true,
+      "rollback_enforces_age_and_authorization": true,
+      "rows_after_upgrade": 100007,
+      "rows_before_upgrade": 100000,
+      "unknown_format_rejected_without_overwrite": true
+    },
+    {
+      "backup_rollback_preserves_identity_and_age": true,
+      "exact_values_types_nulls": true,
+      "failed_refresh_preserves_snapshot": true,
+      "layout": "multipart",
+      "manifest_version": 2,
+      "new_writer_old_reader": true,
+      "old_writer_new_reader": true,
+      "parts_before_upgrade": 15,
+      "passed": true,
+      "provider": "local",
+      "readers_preserve_store_bytes": true,
+      "rollback_enforces_age_and_authorization": true,
+      "rows_after_upgrade": 100007,
+      "rows_before_upgrade": 100000,
+      "unknown_format_rejected_without_overwrite": true
+    },
+    {
+      "backup_rollback_preserves_identity_and_age": true,
+      "exact_values_types_nulls": true,
+      "failed_refresh_preserves_snapshot": true,
+      "layout": "single_empty",
+      "manifest_version": 1,
+      "new_writer_old_reader": true,
+      "old_writer_new_reader": true,
+      "parts_before_upgrade": 1,
+      "passed": true,
+      "provider": "local",
+      "readers_preserve_store_bytes": true,
+      "rollback_enforces_age_and_authorization": true,
+      "rows_after_upgrade": 7,
+      "rows_before_upgrade": 0,
+      "unknown_format_rejected_without_overwrite": true
+    },
+    {
+      "backup_rollback_preserves_identity_and_age": true,
+      "exact_values_types_nulls": true,
+      "failed_refresh_preserves_snapshot": true,
+      "layout": "multipart_empty",
+      "manifest_version": 2,
+      "new_writer_old_reader": true,
+      "old_writer_new_reader": true,
+      "parts_before_upgrade": 1,
+      "passed": true,
+      "provider": "local",
+      "readers_preserve_store_bytes": true,
+      "rollback_enforces_age_and_authorization": true,
+      "rows_after_upgrade": 7,
+      "rows_before_upgrade": 0,
+      "unknown_format_rejected_without_overwrite": true
+    }
+  ],
+  "commands": 126,
+  "failure": {
+    "code": "UNEXPECTED_CLI_STATUS",
+    "last_command": {
+      "command": "accelerate",
+      "returncode": 1,
+      "role": "previous",
+      "subcommand": "refresh"
+    },
+    "stage": "s3/single"
+  },
+  "forced_kills": 0,
+  "kernel_release": "6.12.95+deb12-cloud-amd64",
+  "machine": "x86_64",
+  "passed": false,
+  "previous_revision": "73a8eb44b7b00f6416f7bbefcdd6434fa7dbce0e",
+  "previous_tag": "v0.1.0-preview.1",
+  "private_fixture_cleanup": true,
+  "pyarrow_version": "25.0.1",
+  "schema_version": 1,
+  "scope": "Linux amd64 local single/multipart snapshot upgrade and preserved-backup rollback; signed loopback S3/R2/GCS/Azure manifest verification and remote-to-local migration. Both binaries already use remote v4. No pre-v4 binary rollback, direct remote DuckDB query, real cloud, cluster rolling upgrade, throughput or production-readiness claim."
+}
