@@ -7,6 +7,26 @@ standalone deployment fits in the micro VM's memory.
 
 ## Current candidate rerun: 2026-10-03
 
+Two [fresh preflights](evidence/node-capacity-observer-gap-refusals.json) subsequently
+passed all three correctness queries each, but failed the unchanged resource
+observer gate: maximum sampling gaps were **2.635 s and 2.986 s**, above its
+2-second limit. Neither attempt launched a paired profile. The one retry reused
+verified executable inodes to reduce duplicate file-cache pressure; that did not
+resolve the refusal. These failures remain part of the evidence even if a later
+observer implementation succeeds.
+
+The frozen observer hashes the executable and inputs synchronously between its
+periodic loop and shutdown sampling. Its ordering needs correction and validation;
+the receipts do not establish that hashing explains every part of either gap.
+Worker exits were zero with no OOMs or leaked processes. Independent cleanup
+verified removal of both temporary source accounts, forwarding keys, services and
+cgroups before the unchanged 18:43:57 UTC deadline. Fixture controllers retained
+exit 143 from their explicit SIGTERM cleanup handler; that status is preserved.
+Each temporary Azure control fixture was capped at 1 CPU / 1 GiB. The existing
+ClickHouse source container remained separate, unchanged and excluded from that
+cap and from the Oracle worker measurements. **Five-pair acceptance remains
+blocked by observer evidence; no threshold was relaxed or further retry made.**
+
 The [bounded candidate rerun](evidence/node-capacity-b09f2da.json) completed
 **91/91 workload queries**, plus a separate **3/3 correctness preflight**.
 Seven profiles produced three complete metrics-disabled/enabled pairs and one
