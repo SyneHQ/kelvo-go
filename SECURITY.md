@@ -8,7 +8,9 @@ Cluster worker startup fails if Landlock ABI 3 or newer is unavailable. The nati
 
 Each tenant must have a separate NATS account without cross-account imports/exports, restricted users and storage limits. Gateway and node credentials are trusted control-plane credentials for that tenant. NATS holds SQL, parameters and job metadata, so broker storage/backup access and encryption belong to the security boundary. Arrow results and registered database credentials do not enter NATS. API tokens authorize the whole tenant catalog; per-user row/column policies and external identity/KMS integration remain future work.
 
-Source secrets are resolved from explicitly configured environment-variable names in the allowed source namespace. Legacy PostgreSQL/MySQL extension attachments use temporary redacted DuckDB secrets instead of embedding credentials in metadata paths; custom Go adapters resolve only their selected source credentials. Custom credential-file mounts require explicit future support; the sandbox fails closed rather than allowing all private configuration paths. Never include secrets or customer data in issues.
+Source secrets use explicitly configured environment-variable references in the allowed source namespace. Cluster nodes can optionally map those references to [private credential files](docs/operations.md#file-based-source-credential-rotation). The trusted parent resolves only selected source references and forwards their values in each new query or refresh subprocess's environment. Provider paths are not forwarded, and credential files are not added to sandbox grants. Configured file failures never fall back to environment values. This supports source credential rotation for new processes; custom CA/wallet mounts and other private-file access still require explicit support.
+
+Legacy PostgreSQL/MySQL extension attachments use temporary redacted DuckDB secrets instead of embedding credentials in metadata paths; custom Go adapters resolve only their selected source credentials. The sandbox continues to reject unsupported private-file access. Never include secrets or customer data in issues.
 
 Accelerated datasets are durable copies of source data. Give each tenant a separate private snapshot volume or object-storage namespace and matching catalog identity. Only trusted refresh processes may publish snapshots; query subprocesses receive selected immutable files or short-lived loopback range capabilities. Object readers and publishers use separate explicitly named environment credentials. Provider redirects, full-download fallbacks, unselected keys and changed object versions are rejected. Cloud credentials remain in the trusted parent, and no object listing or deletion API is exposed. Object query capabilities are private to the tenant process/network boundary; restrict same-tenant process visibility and network access. See [object storage](docs/object-storage.md). Increment the required `authorization_version` when source credentials or grants change, because a copied dataset cannot inherit database revocations automatically. Apply encryption, storage quotas, backup access controls and retired-copy deletion policies at deployment. NATS refresh envelopes contain dataset identifiers and fingerprints only. See [acceleration boundaries](docs/acceleration.md).
 
@@ -20,8 +22,10 @@ operator-selected tables in a disposable database; pointer-bearing views must
 never persist. Required source predicates are applied exactly or rejected, and
 scan admission is bounded per query. This native code remains inside the tenant
 worker boundary and does not replace filesystem, network or cgroup controls.
-Its ClickHouse, PostgreSQL and MySQL adapters perform source I/O in Go while
-DuckDB external access remains disabled. PostgreSQL/MySQL configurations without
+Its ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and
+Databricks adapters perform source I/O in Go while DuckDB external access remains
+disabled. See [adapter configuration and limits](docs/federation-adapters.md).
+PostgreSQL/MySQL configurations without
 custom table registrations retain the legacy signed-extension behavior. Native
 relational credentials require verified TLS and operator-provisioned system CA
 trust; caller-selected trust files and insecure TLS modes are not accepted.

@@ -69,7 +69,7 @@ sources:
     password_env: KELVO_CLICKHOUSE_PASSWORD
 ```
 
-Catalog entries contain environment-variable names, never credentials. Each database requires a dedicated read-only account with appropriate grants and source-side timeouts.
+Catalog entries contain environment-variable names, never credentials. Cluster nodes may map these references to [private credential files](operations.md#file-based-source-credential-rotation); the trusted parent passes only selected source values to each new query or refresh process. Each database requires a dedicated read-only account with appropriate grants and source-side timeouts.
 
 Native PostgreSQL and MySQL use their DSN environment variables. With the optional
 `duckbridge` build, an explicit `federation.tables` registration reuses that native
@@ -100,7 +100,7 @@ Native requests use `mode: "native"`, one `connection_id`, and source-specific S
 {"mode":"native","connection_id":"events","sql":"SELECT count() FROM events"}
 ```
 
-Native streams are not automatically available for live DuckDB cross-source joins. The optional [Go/C++ federation bridge](federation.md) exposes operator-selected ClickHouse tables and reuses its native Arrow connector. [Dataset acceleration](acceleration.md) can materialize a configured native query into a Parquet alias backed by local files or [object storage](object-storage.md) that DuckDB can join. Independent sources do not share an atomic snapshot. See [source coverage](source-coverage.md), [optional adapters](sources-adapters.md), and the source guides below for connector behavior and validation boundaries.
+Native streams are not automatically available for live DuckDB cross-source joins. The optional [Go/C++ federation bridge](federation.md) exposes operator-selected tables from ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and Databricks through their existing native connectors. See [what runs where](federation.md#what-runs-where) for source projection and filter limits. [Dataset acceleration](acceleration.md) can materialize a configured native query into a Parquet alias backed by local files or [object storage](object-storage.md) that DuckDB can join. Independent sources do not share an atomic snapshot. See [source coverage](source-coverage.md), [optional adapters](sources-adapters.md), and the source guides below for connector behavior and validation boundaries.
 
 ## Source guides
 

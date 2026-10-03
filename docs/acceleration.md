@@ -188,7 +188,10 @@ types, nullability and schema/field metadata must match. Optional dataset
 [`schema_evolution`](schema-evolution.md) flags permit append-only nullable fields
 and conservative widening independently. Existing nullability, metadata, renames,
 removals and timestamp changes remain protected; no implicit casts are performed.
-The new policy's integrated validation is pending.
+The [recorded development validation](schema-evolution.md#development-validation)
+passed eight sandboxed CLI acceptance cases and publication checks across local
+and remote single-file and multipart paths. These correctness checks do not
+establish live-provider acceptance or production capacity.
 
 A mismatch returns `SCHEMA_MISMATCH` and preserves the previous generation.
 Within a generation, all batches and parts still require one exact schema.
