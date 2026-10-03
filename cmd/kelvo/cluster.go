@@ -114,6 +114,17 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 		return err
 	}
 	executor.SandboxPath = cfg.SandboxPath
+	if cfg.ScratchDirectory != "" {
+		executor.ScratchRoot, err = worker.OpenScratchRoot(cfg.ScratchDirectory)
+		if err != nil {
+			return query.NewError("CONFIGURATION_ERROR", "Managed worker scratch is unavailable")
+		}
+		defer func() {
+			if err := executor.ScratchRoot.Close(); err != nil {
+				fmt.Fprintln(os.Stderr, "Managed worker scratch cleanup did not complete")
+			}
+		}()
+	}
 	if cfg.Secrets != nil {
 		provider, err := secrets.New(*cfg.Secrets)
 		if err != nil {
@@ -233,7 +244,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 	if refreshQueue != nil {
 		refreshDone = make(chan error, 1)
 		go func() {
-			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeSourceHealth, cfg.RuntimeTracing)
+			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeSourceHealth, executor.ScratchRoot, cfg.RuntimeTracing)
 			stop()
 		}()
 	}
