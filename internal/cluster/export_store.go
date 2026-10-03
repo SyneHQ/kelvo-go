@@ -267,6 +267,7 @@ func (s *natsExportStore) CompareAndSwapExport(ctx context.Context, old ExportSn
 	if cur.Revision != old.Revision {
 		return ExportSnapshot{}, ErrExportConflict
 	}
+	requested := next
 	now := s.now()
 	next, role, err := exportTransition(s.policy, cur.Job, next, now)
 	if err != nil {
@@ -286,12 +287,21 @@ func (s *natsExportStore) CompareAndSwapExport(ctx context.Context, old ExportSn
 			return ExportSnapshot{}, err
 		}
 	}
+	// Lease I/O may cross an authority, queue or execution deadline. Validate
+	// again and stamp worker progress with the time after that I/O.
+	next, _, err = exportTransition(s.policy, cur.Job, requested, s.now())
+	if err != nil {
+		return ExportSnapshot{}, err
+	}
 	raw, err := encodeExportJob(s.policy, next)
 	if err != nil {
 		return ExportSnapshot{}, ErrExportConflict
 	}
 	if err = requestAuthorityErr(ctx); err != nil {
 		return ExportSnapshot{}, err
+	}
+	if role != exportStopMutation && !exportDeadlinesValid(cur.Job, s.now()) {
+		return ExportSnapshot{}, ErrExportConflict
 	}
 	n, _ := exportSlot(next.ID)
 	rev, err := s.kv.Update(ctx, exportKey(n), raw, cur.Revision)
@@ -367,7 +377,6 @@ func (s *natsExportStore) NextExport(ctx context.Context) (Delivery, error) {
 }
 
 func (s *natsExportStore) ReconcileExports(ctx context.Context) error {
-	now := s.now()
 	for n := 0; n < s.policy.Exports.MaxJobs; n++ {
 		entry, err := s.kv.Get(ctx, exportKey(n))
 		if errors.Is(err, jetstream.ErrKeyNotFound) {
@@ -383,7 +392,8 @@ func (s *natsExportStore) ReconcileExports(ctx context.Context) error {
 		if !exportActive(j) {
 			continue
 		}
-		lost := !now.Before(j.ExpiresAt) || !now.Before(j.AuthorityUntil) || (j.State == ExportQueued && !now.Before(j.QueueDeadline)) || (j.State != ExportQueued && (j.HeartbeatAt.After(now) || now.Sub(j.HeartbeatAt) >= s.policy.LeaseDuration)) || (j.State == ExportRunning && !now.Before(j.ExecutionDeadline))
+		now := s.now()
+		lost := !exportDeadlinesValid(j, now) || (j.State != ExportQueued && (j.HeartbeatAt.After(now) || now.Sub(j.HeartbeatAt) >= s.policy.LeaseDuration))
 		if lost {
 			next := j
 			next.State = ExportFailed

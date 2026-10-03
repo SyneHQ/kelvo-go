@@ -14,6 +14,22 @@ const (
 	exportStopMutation
 )
 
+func exportDeadlinesValid(job ExportJob, now time.Time) bool {
+	if !exportActive(job) || !now.Before(job.ExpiresAt) || !now.Before(job.AuthorityUntil) {
+		return false
+	}
+	switch job.State {
+	case ExportQueued, ExportAssigned, ExportClaimed:
+		return now.Before(job.QueueDeadline)
+	case ExportRunning:
+		return now.Before(job.ExecutionDeadline)
+	default:
+		// Stored data may be published after SQL's execution deadline, while
+		// its supervisor authority and retention window remain valid.
+		return true
+	}
+}
+
 // Store-owned timestamps prevent supervisor renewals from keeping a lost
 // worker alive. Callers preserve timestamps; a same-state/no-change CAS is a
 // worker heartbeat, while a sole AuthorityUntil change is a supervisor renewal.
@@ -39,7 +55,7 @@ func exportTransition(p Policy, cur, next ExportJob, now time.Time) (ExportJob, 
 		}
 		return next, exportStopMutation, nil
 	}
-	if !exportActive(cur) || !now.Before(cur.ExpiresAt) || !now.Before(cur.AuthorityUntil) || (cur.State == ExportQueued && !now.Before(cur.QueueDeadline)) || (!cur.ExecutionDeadline.IsZero() && !now.Before(cur.ExecutionDeadline) && cur.State != ExportStored) {
+	if !exportDeadlinesValid(cur, now) {
 		return bad()
 	}
 	if !next.AuthorityUntil.Equal(cur.AuthorityUntil) {
