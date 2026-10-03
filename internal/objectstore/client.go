@@ -34,7 +34,9 @@ type Condition struct {
 }
 
 // Client implements only exact-key operations. Put must honor its precondition
-// atomically or fail; no operation lists or deletes snapshots.
+// atomically or fail. It borrows the upload reader until returning, including
+// all transport body reads and closure, and never closes the caller's reader.
+// No operation lists or deletes snapshots.
 type Client interface {
 	Get(context.Context, string, string) (io.ReadCloser, Info, error)
 	Head(context.Context, string, string) (Info, error)

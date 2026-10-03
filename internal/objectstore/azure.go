@@ -208,7 +208,9 @@ func (c *azureClient) Put(ctx context.Context, key string, body io.ReadSeeker, s
 	} else {
 		// The caller owns the staging file. Closing an HTTP request must not close
 		// it, and the request may never consume more than the declared payload.
-		request.Body = io.NopCloser(io.LimitReader(body, size))
+		upload := newUploadBody(body, size)
+		request.Body = upload
+		defer upload.wait()
 	}
 	request.ContentLength = size
 	request.Header.Set("Content-Type", "application/octet-stream")
