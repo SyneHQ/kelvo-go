@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "checks": [
+    {
+      "test": "legacy_and_file_startup",
+      "passed": true,
+      "seconds": 5.078,
+      "workers": 2,
+      "tenants": 2,
+      "broker_replicas": 3,
+      "source_rows_per_tenant": 100000,
+      "dataset": "Deterministic synthetic Parquet with nullable integers and tenant markers",
+      "gateways": 2,
+      "legacy_then_live_file_mode": true,
+      "unchanged_environment_token_is_not_a_fallback": true
+    },
+    {
+      "test": "overlap_on_both_gateways",
+      "passed": true,
+      "seconds": 1.093,
+      "old_and_new_keys_on_each_gateway": true,
+      "tenant_header_cannot_override_key": true,
+      "typed_queries_on_each_tenant_and_gateway": 4
+    },
+    {
+      "test": "per_replica_revocation",
+      "passed": true,
+      "seconds": 1.148,
+      "old_keys_rejected_by_both_replicas": true,
+      "deliberate_propagation_window_observed": true,
+      "rollout_seconds": 1.148
+    },
+    {
+      "test": "fail_closed_and_recovery",
+      "passed": true,
+      "seconds": 13.572,
+      "failure_modes": [
+        "missing",
+        "permissions",
+        "symlink",
+        "malformed",
+        "duplicate",
+        "rollback",
+        "equivocation"
+      ],
+      "unaffected_replica_remains_usable": true,
+      "no_environment_fallback": true,
+      "same_valid_revision_recovers_transient_failure": true
+    },
+    {
+      "test": "restart_revision_floor",
+      "passed": true,
+      "seconds": 4.309,
+      "below_floor_startup_rejected": true,
+      "both_replicas_restarted_at_new_floor": true
+    },
+    {
+      "test": "parked_cancellation",
+      "passed": true,
+      "seconds": 2.939,
+      "parked_requests_canceled": 2,
+      "waiter_rejection_source": "parked_waiter_pool",
+      "unclaimed_handles_remain_tenant_owned": true,
+      "replacement_key_recovers_capacity": true
+    },
+    {
+      "test": "active_cancellation",
+      "passed": true,
+      "seconds": 2.094,
+      "running_request_canceled": true,
+      "no_completed_arrow_result": true,
+      "subsequent_typed_queries_correct_on_both_replicas": true
+    },
+    {
+      "test": "cleanup",
+      "passed": true,
+      "seconds": 2.119,
+      "forced_application_kills": 0,
+      "observed_live_descendants": 0,
+      "worker_scratch_directories": 0,
+      "broker_processes_untouched": true,
+      "original_configurations_untouched": true,
+      "original_configurations_verified": true
+    }
+  ],
+  "checked_at": "2026-10-03T05:59:46.223455+00:00",
+  "scope": "Local two-gateway credential rollout; not global atomic revocation, tenant policy changes or TLS rotation",
+  "script_sha256": "9081bfa4d419bb9062d5ccdb0db1774b677f61851911d96f749a15af40d10562",
+  "shared_runner_sha256": "e6fb9917e65688f849c49b683b610a14eadc8129fede537dbf833ed0ae68e202",
+  "binary_sha256": "aab2b5530d78d31fcee200f66e1d155c938e5a26773662de429afc5268c4cf48",
+  "sandbox_sha256": "cb09cd6b1bcf29a50b7436e02f3aebc9c2f47b1cca74a27c4fe5a7b9ec2bfb6f",
+  "interrupted": false,
+  "sampling": {
+    "interval_ms": 50,
+    "samples": 538,
+    "process_tree_rss_available": true,
+    "sampled_process_tree_rss_peak_bytes": 381837312,
+    "rss_scope": "Owned application parents, separate fault-test process and observed descendants after startup; excludes brokers and Python client. Sampling can miss brief peaks.",
+    "cgroup_v2_memory_available": true,
+    "cgroups": [
+      {
+        "samples": 538,
+        "peak_current_bytes": 258523136,
+        "memory_event_deltas": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0
+        }
+      }
+    ],
+    "cgroup_scope": "Observed cgroups may be shared with unowned workloads; counters are not Kelvo-only usage or enforced reservations.",
+    "missed_counter_categories": []
+  },
+  "elapsed_seconds": 32.481
+}
