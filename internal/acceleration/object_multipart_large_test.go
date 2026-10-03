@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
-	"github.com/SYNEHQ/kelvo-go/internal/engine/duckdb"
 	"github.com/SYNEHQ/kelvo-go/internal/objectstore"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
@@ -29,7 +28,8 @@ import (
 // Parquet data through a disk-backed object fixture. The source is a bounded
 // synthetic Arrow producer; this is not a cloud-provider or native driver
 // benchmark. The read/aggregate phase uses the real DuckDB engine.
-func TestObjectMultipartDatasetLargerThanFourGiB(t *testing.T) {
+func RunObjectMultipartLargeFixture(t *testing.T, newEngine func(catalog.Config, query.Limits) (query.Executor, error)) {
+	t.Helper()
 	if os.Getenv("KELVO_TEST_OBJECT_MULTIPART_LARGE") != "1" {
 		t.Skip("requires explicit large-dataset gate on a provisioned test VM")
 	}
@@ -110,7 +110,7 @@ func TestObjectMultipartDatasetLargerThanFourGiB(t *testing.T) {
 		t.Fatalf("checked %d seals for %d parts", checked.sealed, len(snapshot.Parts))
 	}
 	readLimits := query.Limits{MaxRows: 10, MaxBytes: 1 << 20, Timeout: 10 * time.Minute, MemoryMB: 256, Threads: 2, MaxTempMB: 512}
-	engine, err := duckdb.New(catalog.Config{Sources: sources, ExtensionDirectory: extensionDirectory}, readLimits)
+	engine, err := newEngine(catalog.Config{Sources: sources, ExtensionDirectory: extensionDirectory}, readLimits)
 	if err != nil {
 		t.Fatal(err)
 	}
