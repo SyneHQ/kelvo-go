@@ -16,7 +16,7 @@ audit:
   write_timeout: 2s
 ```
 
-Omit `audit` to disable it. All limits are explicit. Configuration loading and `cluster-init` do not open journals. Audit and managed scratch directories must be disjoint; keep audit storage separate from query data.
+Omit `audit` to disable it. All limits are explicit. Configuration loading and `cluster-init` do not open journals. Audit, export and managed scratch directories must be disjoint; keep audit storage separate from query data.
 
 | Setting | Allowed values |
 | --- | --- |
@@ -40,6 +40,7 @@ Size by **receipts/second × retention seconds + active headroom**, not rows. A 
 | Worker execution | Durable start, execution and validated IPC completion, durable outcome, result-ready transition, Arrow EOS |
 | Direct worker cancellation | Durable start for the verified gateway service role, cancellation, durable outcome, acknowledgement |
 | Scheduled refresh | Durable start, extraction/publication/pruning, durable outcome |
+| Export submit/cancel/execution/results | Durable start and outcome around the local operation; Ready publication and download EOS require their own final authority checks |
 | Authentication denial in a handler | Attempt fixed denial record; still deny when audit storage is unavailable |
 
 Bindings come from authenticated context and provisioned policy. Tenant-only API keys remain `unknown` principals with an empty policy digest. Startup `SELECT 1` probes and scheduled refreshes use the provisioned service identity. Direct worker cancellation identifies the authenticated `gateway` role; its TLS identity cannot distinguish gateway replicas or identify the initiating user.
@@ -47,6 +48,8 @@ Bindings come from authenticated context and provisioned policy. Tenant-only API
 A successful receipt observes local execution or relay. The later job-state CAS or client delivery can still fail. An external change or immutable publication can also succeed before the terminal audit write fails. These receipts assert neither rollback nor cross-system atomicity.
 
 TLS handshake rejection, pre-authentication HTTP capacity rejection, query-status/diagnostic reads, standalone CLI queries and unsupervised `serve` execution are outside this contract. [Tracing](tracing.md) and [execution history](operations.md#optional-execution-history) remain separate telemetry.
+
+Export-status reads are also outside the journal. Older audit readers reject export action kinds; upgrade shared readers before enabling exports.
 
 ## Failure behavior
 

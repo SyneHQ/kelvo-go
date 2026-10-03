@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
+	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 	"github.com/apache/arrow-go/v18/arrow"
@@ -31,6 +32,7 @@ type reservation struct {
 }
 
 type Node struct {
+	exports        *ExportRuntime
 	audit          *ServiceAudit
 	ownAudit       bool
 	closeErr       error
@@ -70,6 +72,9 @@ func NewNode(cfg NodeConfig, store Store, executor *worker.Executor) (*Node, err
 	if executor.Config.Acceleration != nil && executor.Config.Acceleration.TenantID != cfg.Policy.TenantID {
 		return nil, errors.New("acceleration tenant must match worker tenant")
 	}
+	if err := ValidateExportCatalog(cfg, executor.Config); err != nil {
+		return nil, err
+	}
 	return newNode(cfg, store, executor)
 }
 
@@ -78,6 +83,9 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 		return nil, err
 	}
 	if err := ValidatePolicy(cfg.Policy); err != nil {
+		return nil, err
+	}
+	if err := validateNodeExports(cfg); err != nil {
 		return nil, err
 	}
 	if store == nil || executor == nil || !reflect.DeepEqual(store.Policy(), cfg.Policy) || cfg.Policy.Workers[cfg.WorkerID] < 1 {
@@ -130,6 +138,34 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 	if err = store.ClaimWorker(probe, cfg.WorkerID, owner); err != nil {
 		cancel()
 		return nil, errors.New("worker identity is already active or its store is unavailable")
+	}
+	if cfg.Exports != nil {
+		jobs := cfg.RuntimeExportStore
+		if jobs == nil {
+			base, ok := store.(*NATSStore)
+			if !ok {
+				cancel()
+				return nil, errors.New("exports require a retained tenant job store")
+			}
+			jobs, err = OpenExportStore(probe, base, false)
+			if err != nil {
+				cancel()
+				return nil, err
+			}
+		}
+		native, ok := executor.(*worker.Executor)
+		if !ok {
+			cancel()
+			return nil, errors.New("exports require the sandboxed worker executor")
+		}
+		exportConfig := cfg
+		exportConfig.RuntimeAudit = n.audit
+		n.exports, err = NewExportRuntime(exportConfig, jobs, native, owner)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		context.AfterFunc(n.ctx, n.exports.Stop)
 	}
 	n.wg.Add(2)
 	go n.dispatch()
@@ -453,6 +489,9 @@ func (n *Node) BeginDrain() {
 	n.draining = true
 	n.dispatchCancel()
 	n.mu.Unlock()
+	if n.exports != nil {
+		n.exports.BeginDrain()
+	}
 }
 
 // Drain waits for reservations, including unclaimed results, to finish. The
@@ -463,6 +502,11 @@ func (n *Node) Drain(ctx context.Context) error {
 	case <-n.dispatchDone:
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+	if n.exports != nil {
+		if err := n.exports.Drain(ctx); err != nil {
+			return err
+		}
 	}
 	tick := time.NewTicker(20 * time.Millisecond)
 	defer tick.Stop()
@@ -489,8 +533,11 @@ func (n *Node) Close() error {
 		n.mu.Unlock()
 		n.wg.Wait()
 		n.streams.Wait()
+		if n.exports != nil {
+			n.closeErr = n.exports.Close()
+		}
 		if n.ownAudit {
-			n.closeErr = n.audit.CloseBounded()
+			n.closeErr = errors.Join(n.closeErr, n.audit.CloseBounded())
 		}
 		_ = n.store.Close()
 	})
@@ -551,6 +598,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		n.mu.Lock()
 		ready := !n.draining && n.ctx.Err() == nil && n.audit.Ready()
 		n.mu.Unlock()
+		if ready && n.exports != nil {
+			ready = n.exports.Ready()
+		}
 		if ready && !n.cfg.RuntimeDatasets.hasRequired(n.cfg.RequiredDatasets) {
 			ready = false
 		}
@@ -562,6 +612,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			_, _ = w.Write([]byte("ready\n"))
 		}
+		return
+	}
+	if n.exports != nil && n.exports.ServeHTTP(w, r) {
 		return
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -649,20 +702,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer op.abort(ctx)
-	controller := http.NewResponseController(w)
 	deadline, _ := ctx.Deadline()
-	_ = controller.SetWriteDeadline(deadline)
-	done := make(chan struct{})
-	stopWrite := make(chan struct{})
-	go func() {
-		defer close(done)
-		select {
-		case <-ctx.Done():
-			_ = controller.SetWriteDeadline(time.Now())
-		case <-stopWrite:
-		}
-	}()
-	defer func() { close(stopWrite); <-done; _ = controller.SetWriteDeadline(time.Time{}) }()
+	stopWrites := httpstream.WatchWriteDeadline(ctx, w, deadline)
+	defer stopWrites()
 	tail := &arrowEOSTail{w: w}
 	sink := &nodeSink{w: w, sink: worker.NewIPCSink(tail, n.cfg.Policy.Limits)}
 	defer sink.sink.Abort()

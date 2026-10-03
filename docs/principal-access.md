@@ -64,7 +64,8 @@ Never reuse a key for another identity. A gateway retains up to 8,192 token-to-i
 - Native SQL and federation are checked before durable admission and again on the worker. Only selected source credentials enter query children.
 - Jobs retain an immutable principal and policy digest. Another key for the same principal can use its unconsumed handles; another principal cannot.
 - The digest identifies the source policy, not a signature. Gateway/worker processes, operator configuration and NATS state writers remain trusted.
-- Scheduled refreshes use operator service authority. Standalone `serve`, export/cache policy integration and coordinated global revocation remain separate capabilities.
+- [Federated exports](exports.md) bind fills to the initiating key and recheck current principal authority for downloads. Scheduled refreshes use operator service authority.
+- Standalone `serve`, native row policies, cache integration and coordinated global revocation remain separate capabilities.
 
 [Validation record](evidence/principal-authority.json) covers package/race and TLS relay fixtures; real broker/provider rollout gates remain separate.
 

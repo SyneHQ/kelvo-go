@@ -70,6 +70,11 @@ func runCluster(args []string) error {
 			if _, err = s.OpenRefreshQueue(ctx, true); err != nil {
 				return query.NewError("CONFIGURATION_ERROR", "Acceleration dispatch could not be initialized")
 			}
+			if tenant.Policy.Exports != nil {
+				if _, err = cluster.OpenExportStore(ctx, s, true); err != nil {
+					return query.NewError("CONFIGURATION_ERROR", "Export dispatch could not be initialized")
+				}
+			}
 		}
 	}
 	if args[0] == "cluster-init" {
@@ -133,6 +138,9 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	}
 	if catalogue.Acceleration != nil && catalogue.Acceleration.TenantID != cfg.Policy.TenantID {
 		return query.NewError("CONFIGURATION_ERROR", "Acceleration tenant must match worker tenant")
+	}
+	if err := cluster.ValidateExportCatalog(cfg, catalogue); err != nil {
+		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
 	executor, err := worker.New(catalogue, cfg.Policy.Limits)
 	if err != nil {

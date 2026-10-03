@@ -1,6 +1,6 @@
 # Durable export storage foundation
 
-Use `internal/exports` to store immutable Arrow IPC parts with a committed YAML manifest. **This internal package is not exposed by a current CLI, HTTP endpoint or cluster job**; dispatch, download authorization, retention policy and clients remain separate work.
+`internal/exports` stores immutable Arrow IPC parts with a committed YAML manifest. For configuration, authenticated jobs and repeat downloads, use the [durable export guide](exports.md). This page describes the storage package's contracts.
 
 Manifests bind tenant/owner/authorization, creation/expiry, writer fence, schema and ordered part digests, rows, and encoded/decoded totals. Each part is a complete Arrow stream with schema and EOS; an empty export has one schema-only part. Types, metadata, NULLs and values are preserved.
 
@@ -63,7 +63,7 @@ IPC decoding validates allocation-critical metadata, body/decompression sizes an
 
 ## Retention and crash recovery
 
-`Cleanup` is explicit and removal-count bounded; there is no background collector. It considers incomplete intents immediately, otherwise cancelled/expired entries, and needs a nonblocking exclusive lease. Live or leaked handles keep data charged.
+The package's `Cleanup` is explicit and removal-count bounded; the worker runtime schedules it. It considers incomplete intents immediately, otherwise cancelled/expired entries, and needs a nonblocking exclusive lease. Live or leaked handles keep data charged.
 
 Deletion first syncs an immutable root marker identifying the exact entry/reservation. It validates all remaining names, types, permissions and sizes, removes the entry, syncs root, removes the marker and syncs again. A later cleanup resumes interrupted deletion even after state/directory loss. Unknown files, malformed state or conflicting markers stop deletion. Failed initialization/recovery can remain charged for retry or investigation.
 
@@ -82,4 +82,4 @@ GOMAXPROCS=2 go vet -p 2 ./internal/exports
 
 [Earlier package evidence](evidence/export-storage-package.json) covers exact Arrow data, LZ4, limits, independent leases, cross-process admission, cancellation/publication races, crash cutpoints, sync uncertainty, strict recovery, filesystem safety and schema/IPC bounds.
 
-Runtime jobs, authenticated HTTP downloads, cluster loss and workload-sized capacity still need acceptance before durable exports are user-facing.
+Runtime acceptance and workload-sized capacity are tracked separately in [production status](production-status.md).

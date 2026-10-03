@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
+	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
@@ -34,25 +35,29 @@ type workerEndpoint struct {
 	client *http.Client
 }
 type Gateway struct {
-	audit          *ServiceAudit
-	closeErr       error
-	tenants        map[string]gatewayTenant
-	tokens         map[[32]byte]string
-	auth           *gatewayAuthenticator
-	workerIdentity *tlsIdentity
-	workerTrust    *tlsTrust
-	permits        chan struct{}
-	resultWaiters  chan struct{}
-	ctx            context.Context
-	cancel         context.CancelFunc
-	wg             sync.WaitGroup
-	handlers       sync.WaitGroup
-	mu             sync.RWMutex
-	reconcileOK    map[string]bool
-	reconcileErr   error
-	draining       bool
-	closed         bool
-	once           sync.Once
+	exports           map[string]ExportStore
+	exportSupervisors chan struct{}
+	exportDownloads   chan struct{}
+	exportOwner       string
+	audit             *ServiceAudit
+	closeErr          error
+	tenants           map[string]gatewayTenant
+	tokens            map[[32]byte]string
+	auth              *gatewayAuthenticator
+	workerIdentity    *tlsIdentity
+	workerTrust       *tlsTrust
+	permits           chan struct{}
+	resultWaiters     chan struct{}
+	ctx               context.Context
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
+	handlers          sync.WaitGroup
+	mu                sync.RWMutex
+	reconcileOK       map[string]bool
+	reconcileErr      error
+	draining          bool
+	closed            bool
+	once              sync.Once
 }
 
 func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
@@ -181,6 +186,18 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 			return nil, err
 		}
 	}
+	if err := g.initExports(cfg); err != nil {
+		cancel()
+		if g.auth != nil {
+			g.auth.close()
+		}
+		for _, tenant := range g.tenants {
+			for _, endpoint := range tenant.workers {
+				endpoint.client.CloseIdleConnections()
+			}
+		}
+		return nil, err
+	}
 	for tenant := range g.tenants {
 		g.wg.Add(1)
 		go g.reconcile(tenant)
@@ -236,7 +253,13 @@ func (g *Gateway) reconcile(tenant string) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
-		if err := g.tenants[tenant].store.Reconcile(g.ctx); err != nil && !errors.Is(err, context.Canceled) {
+		err := g.tenants[tenant].store.Reconcile(g.ctx)
+		if err == nil && g.exports[tenant] != nil {
+			ctx, stop := context.WithTimeout(g.ctx, g.tenants[tenant].store.Policy().LeaseDuration)
+			err = g.exports[tenant].ReconcileExports(ctx)
+			stop()
+		}
+		if err != nil && !errors.Is(err, context.Canceled) {
 			g.mu.Lock()
 			g.reconcileOK[tenant] = false
 			g.reconcileErr = err
@@ -341,6 +364,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(p) >= 2 && p[0] == "v1" && p[1] == "exports" {
+		g.serveExportHTTP(w, r, tenant, p)
+		return
+	}
 	if len(p) < 2 || p[0] != "v1" || p[1] != "queries" {
 		g.err(w, 404, "NOT_FOUND", "Not found")
 		return
@@ -578,19 +605,8 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 	// released after durable Succeeded CAS. Partial/aborted bodies prove nothing.
 	w.Header().Set("Kelvo-Result-Completion", "durable-eos-v1")
 	w.WriteHeader(200)
-	controller := http.NewResponseController(w)
-	_ = controller.SetWriteDeadline(time.Now().Add(t.store.Policy().Limits.Timeout))
-	done := make(chan struct{})
-	watcherDone := make(chan struct{})
-	go func() {
-		defer close(watcherDone)
-		select {
-		case <-ctx.Done():
-			_ = controller.SetWriteDeadline(time.Now())
-		case <-done:
-		}
-	}()
-	defer func() { close(done); <-watcherDone; _ = controller.SetWriteDeadline(time.Time{}) }()
+	stopWrites := httpstream.WatchWriteDeadline(ctx, w, time.Now().Add(t.store.Policy().Limits.Timeout))
+	defer stopWrites()
 	limited := io.LimitReader(resp.Body, t.store.Policy().Limits.MaxBytes+1)
 	// Arrow IPC EOS is the final eight bytes. Keep it local until durable
 	// state confirms success: clients treat EOS as a complete result even if

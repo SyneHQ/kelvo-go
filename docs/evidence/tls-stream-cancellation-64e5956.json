@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "runtime_commit": "64e59563e4688a34ebdfec61bebd7d3165e41693",
+  "validation_base": "52c9584",
+  "scope": "HTTP response lifetime and export transport regression using real local TCP/TLS servers and controlled durable metadata. Not live-provider, broker, WAN, multi-host, or maximum-throughput acceptance.",
+  "passed": true,
+  "source_unchanged": true,
+  "validation_report_sha256": "b8cbcc9368842dbf2bfe26d619699f9a27c6958ddd151aa83fd5e8aae8d113f9",
+  "isolated_service": {
+    "uid_nonroot": true,
+    "private_network": true,
+    "private_tmp": true,
+    "no_new_privileges": true,
+    "capabilities": [],
+    "cpu_percent": 100,
+    "memory_bytes": 3221225472,
+    "swap_bytes": 0,
+    "tasks_max": 256,
+    "runtime_limit_seconds": 1200,
+    "result": "success",
+    "active_state": "inactive",
+    "sub_state": "dead",
+    "cgroup_empty": true
+  },
+  "validation": {
+    "helper_race": {
+      "passed_test_events": 4,
+      "seconds": 1.718,
+      "log_sha256": "e50b8efb328bf90675d2c0d46c4ed40a5c92e12c47058af6433ee4f292c89575"
+    },
+    "gateway_race": {
+      "passed_test_events": 39,
+      "seconds": 16.449,
+      "log_sha256": "be124ac24b83c90b95c390edb2d1726e180ef5b24d2895fc4820e9fe1a65024d"
+    },
+    "httpapi_race": {
+      "passed_test_events": 26,
+      "seconds": 2.421,
+      "log_sha256": "10227b5f5c75b98e29c470460634c2a4a610c5c5b6c868eef0a5d4fd6514bc74"
+    },
+    "vet": {
+      "exit_code": 0,
+      "seconds": 5.276,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "failed_test_events": 0,
+    "skipped_test_events": 0
+  },
+  "http1_tls": {
+    "withdrawal_modes": [
+      "cancel",
+      "key_revocation",
+      "key_document_expiry"
+    ],
+    "concurrent_clients_per_mode": 10,
+    "download_slots": 2,
+    "admitted_per_mode": 2,
+    "http_429_per_mode": 8,
+    "part_rows": 128,
+    "minimum_part_bytes": 15728640,
+    "blocked_write_observation_seconds": 0.05,
+    "handler_exit_bound_seconds_after_withdrawal": 2,
+    "ordinary_deadline_remaining_at_withdrawal_min_seconds": 5,
+    "control_requests_remain_available": true,
+    "partial_body_is_error": true,
+    "complete_arrow_eos_withheld": true,
+    "upstream_and_permits_reclaimed": true
+  },
+  "http2_tls": {
+    "same_tcp_connection_verified": true,
+    "blocked_download_revoked": true,
+    "handler_exit_bound_seconds_after_withdrawal": 2,
+    "fresh_key_control_requests_before_and_after": true,
+    "partial_body_is_error": true,
+    "complete_arrow_eos_withheld": true,
+    "upstream_and_permits_reclaimed": true
+  },
+  "prior_failures": [
+    {
+      "stage": "02",
+      "failed_modes": [
+        "cancel",
+        "key_revocation",
+        "key_document_expiry"
+      ],
+      "failure": "Authority withdrawal did not interrupt blocked TLS writes within two seconds.",
+      "report_sha256": "eebd29b23f497b1ffa8432a19e494f281fcfa8ad16dd6a9447e20915d37b4d82",
+      "log_sha256": "b12f1ee2a01aba0ccc8d27127640ec2be8bbf2e4052b1c6227ef64cc2fb57047"
+    },
+    {
+      "stage": "03",
+      "failed_modes": [
+        "cancel"
+      ],
+      "failure": "The same bound failed with deadline instrumentation. Go TLS close-notify replaced the expired write deadline with a new five-second deadline."
+    }
+  ],
+  "failed_artifacts_retained": true,
+  "source_files_sha256": {
+    "internal/httpstream/deadline.go": "cafc44ae485a96af1e15d947ddfc24c29f918a5e0c73a93ed14da751bf0ee89e",
+    "internal/httpstream/deadline_test.go": "c5fbf74a7e7173c7b991899614c4756ca41857e4df2928fa4ce3bfc8108f664f",
+    "internal/cluster/gateway.go": "85865fb5ae84be66a5b2132a61369b8fac91fd825ae18db94c632dd392af336e",
+    "internal/cluster/gateway_exports.go": "d56a5fd45e7630e8ee3e89df512f832768308ae1de0d44af2128be3c5ffdfad1",
+    "internal/cluster/node.go": "1c45a8ca5f1e2bcb7b735f296770b62bda8b6d2aa91977d0547b627a2b35f47d",
+    "internal/cluster/export_http.go": "d872cf2614d3d10f1953f655829205d8d7b691fe5aeacce0feed715345657649",
+    "internal/transport/httpapi/httpapi.go": "78312db43da26a107c6cd9487f3894da8d72657d2a35e9b6713e67d97cbad7e9",
+    "internal/cluster/gateway_export_http_test.go": "e9b4bb9d6a57dcc674fd4c61cd45071d8d7f37d66c0b0bd896e9b4ae92cfdd4e"
+  },
+  "go_version": "go1.26.8 linux/amd64"
+}
