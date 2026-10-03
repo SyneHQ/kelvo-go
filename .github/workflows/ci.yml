@@ -174,9 +174,25 @@ jobs:
         run: |
           export CGO_CXXFLAGS="-I${GITHUB_WORKSPACE}/artifacts/duckbridge/headers"
           KELVO_TEST_EXPORT_BINARY="$PWD/bin/kelvo" KELVO_TEST_EXPORT_SANDBOX="$PWD/bin/kelvo-landlock" \
-            go test -p 2 -race -count=1 -timeout=5m -modfile artifacts/duckbridge/duckbridge.mod \
+            go test -json -p 2 -race -count=1 -timeout=5m -modfile artifacts/duckbridge/duckbridge.mod \
             -tags duckdb_arrow,duckbridge ./internal/cluster \
-            -run '^TestExportWorker(UsesSandboxAndExternalCustody|CancellationReapsSandboxAndReservations|SourceQuotaRejectsBeforeChildStart|SourceQuotaRevocationReapsChild|CrashAcrossLocalCommit)$'
+            -run '^TestExportWorker(UsesSandboxAndExternalCustody|CancellationReapsSandboxAndReservations|SourceQuotaRejectsBeforeChildStart|SourceQuotaRevocationReapsChild|CrashAcrossLocalCommit)$' \
+            | tee artifacts/export-workers.log
+          python3 - <<'PYWORKERS'
+          import json
+          from pathlib import Path
+          required = {'TestExportWorker' + name for name in (
+              'UsesSandboxAndExternalCustody', 'CancellationReapsSandboxAndReservations',
+              'SourceQuotaRejectsBeforeChildStart', 'SourceQuotaRevocationReapsChild',
+              'CrashAcrossLocalCommit')}
+          events = [json.loads(line) for line in Path('artifacts/export-workers.log').read_text().splitlines()]
+          passed = {event.get('Test') for event in events if event.get('Action') == 'pass'}
+          rejected = [event.get('Test', event.get('Package')) for event in events if event.get('Action') in ('fail', 'skip')]
+          report = {'missing_required_tests': sorted(required - passed), 'failed_or_skipped': rejected}
+          report['passed'] = not report['missing_required_tests'] and not rejected
+          Path('artifacts/export-worker-gates.json').write_text(json.dumps(report, indent=2) + '\n')
+          assert report['passed'], report
+          PYWORKERS
       - name: Fetch checksum-pinned export brokers
         run: |
           python3 - <<'PYBROKER'
