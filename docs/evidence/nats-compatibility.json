@@ -3,6 +3,25 @@
   "passed": true,
   "runtime_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
   "scope": "Exact application and broker/client pairs in fresh single-host isolated services; not a deployment or throughput certification",
+  "ordered_transition_reverification": {
+    "regression_tests": 80,
+    "retained_actual_reports_verified": 3,
+    "ordered_steps_checked": true,
+    "exact_cumulative_peer_maps_checked": true,
+    "exact_cumulative_role_maps_checked": true,
+    "integer_key_revision_floor_checked": true,
+    "matrix_revalidated": true,
+    "runtime_rerun": false,
+    "runtime_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+    "original_runtime_harness_hashes_unchanged": true,
+    "reconciliation_script_sha256": "51d8527a249155f41422cc97a6848c3d9a5a3308294309e12f68cb2d93b74065",
+    "mutation_test_sha256": "dca612184a4ae00b8bcfff5aac8bc7b08705423c6c2b151d935c41b54a2f3350",
+    "retained_report_sha256": {
+      "broker-stage3-evidence.json": "c600e3bde9a5225e78b449dd91718ed0a559df57bac465c8daeb52592a5cc54d",
+      "client-2147-evidence.json": "75d451617b93dc45c48906a2b361776c3e17ae415a016a1d88f54e59c3864008",
+      "client-2150-evidence.json": "bdfccc5ffa40da0d00991de2c9f18ddef02a6b87fafdb18879a73b99df4f971e"
+    }
+  },
   "final_verification": {
     "final_regression_tests": 73,
     "final_reconciliation_passed": true,

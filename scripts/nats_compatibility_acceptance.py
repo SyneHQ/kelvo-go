@@ -58,13 +58,26 @@ def expected_steps(mode):
 
 
 def reconcile(report):
+    if not isinstance(report, dict):
+        return False
     mode = report.get("mode")
     if mode not in ("broker", "client") or report.get("interrupted") is not False:
         return False
+    matrix = report.get("matrix")
+    try:
+        validate_matrix(matrix)
+    except (ops.AcceptanceError, AttributeError, KeyError, TypeError, ValueError):
+        return False
+    start = report.get("start_server_version")
+    if matrix["mode"] != mode or start not in SERVERS or (mode == "broker" and start != SERVERS[0]):
+        return False
     checks = report.get("checks", [])
-    if (len(checks) != len(expected_steps(mode)) or {c.get("test") for c in checks} != set(expected_steps(mode))
+    if (not isinstance(checks, list) or not all(isinstance(c, dict) for c in checks)
+            or [c.get("test") for c in checks] != list(expected_steps(mode))
             or not all(c.get("passed") is True for c in checks)):
         return False
+    peers = dict.fromkeys(ops.cf.BROKER_NAMES.values(), start)
+    roles = dict.fromkeys(roll.APP_ROLES, "old")
     for item in checks:
         name = item["test"]
         if name.startswith(("broker_", "client_")) or name.endswith("_pair"):
@@ -74,30 +87,34 @@ def reconcile(report):
                                 "one_observed_source_request_per_marker", "foreign_handles_hidden"))):
                 return False
         if name.startswith("broker_"):
+            peer = ops.cf.BROKER_NAMES["nats-"+name.rsplit("_", 1)[1]]
+            before = peers[peer]
+            destination = SERVERS[1] if name.startswith("broker_upgrade_") else SERVERS[0]
+            peers[peer] = destination
             if (item.get("one_broker_at_a_time") is not True or item.get("surviving_broker_identities_preserved") is not True
                     or type(item.get("post_rejoin_new_queries")) is not int or item["post_rejoin_new_queries"] != 2
                     or item.get("revoked_keys_denied") is not True
-                    or (item.get("broker_version_before"), item.get("broker_version_after")) !=
-                       (SERVERS if name.startswith("broker_upgrade_") else tuple(reversed(SERVERS)))
-                    or set(item.get("expected_peer_versions", {})) != set(ops.cf.BROKER_NAMES.values())
-                    or any(v not in SERVERS for v in item["expected_peer_versions"].values())):
+                    or (item.get("broker_version_before"), item.get("broker_version_after")) != (before, destination)
+                    or item.get("expected_peer_versions") != peers):
                 return False
         if name.endswith("_pair"):
-            destination = "new" if name == "upgraded_pair" else "old"
-            expected_client = report.get("matrix", {}).get(destination, {}).get("nats_client")
-            if (item.get("roles") != dict.fromkeys(roll.APP_ROLES, destination)
-                    or expected_client not in CLIENTS
-                    or item.get("client_versions") != dict.fromkeys(roll.APP_ROLES, expected_client)
-                    or item.get("expected_peer_versions") != dict.fromkeys(ops.cf.BROKER_NAMES.values(), report.get("start_server_version"))
-                    or report.get("start_server_version") not in SERVERS
+            if (item.get("roles") != roles
+                    or item.get("client_versions") != {role: matrix[version]["nats_client"] for role, version in roles.items()}
+                    or item.get("expected_peer_versions") != peers
                     or item.get("revoked_keys_denied") is not True):
                 return False
         if name.startswith("client_"):
-            if not all(item.get(k) is True for k in ("readiness_rejected_during_drain", "graceful_exit", "revoked_keys_denied")):
+            prefix = "client_upgrade_" if name.startswith("client_upgrade_") else "client_rollback_"
+            role = name[len(prefix):]
+            destination = "new" if prefix == "client_upgrade_" else "old"
+            roles[role] = destination
+            if (item.get("role") != role or item.get("destination") != destination
+                    or item.get("roles_after_transition") != roles
+                    or not all(item.get(k) is True for k in ("readiness_rejected_during_drain", "graceful_exit", "revoked_keys_denied"))):
                 return False
     clean = next(c for c in checks if c["test"] == "cleanup")
     rotation = next(c for c in checks if c["test"] == "key_rotation_and_floor")
-    return (rotation.get("both_replica_floors") == 3
+    return (type(rotation.get("both_replica_floors")) is int and rotation["both_replica_floors"] == 3
             and rotation.get("overlap_and_revocation_on_both_replicas") is True
             and rotation.get("rollback_requires_current_keys_and_policy") is True
             and all(type(clean.get(k)) is int and clean[k] == 0 for k in

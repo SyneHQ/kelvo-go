@@ -56,6 +56,8 @@ The [sanitized evidence](evidence/nats-compatibility.json) contains full digests
 - An offline build-manifest preflight that tried to enumerate unused module-graph entries absent from the cache. The final build records actual embedded dependencies and validates effective Require/Replace sets; both full binaries compiled offline.
 - Final positive/refusal controls, broker/client campaigns, 73 passing regression controls and successful report reconciliation. All original runtime-harness hashes were rechecked after execution.
 
+A subsequent verifier review tightened exact step order, each wave's cumulative broker/role map, matrix validation and integer key-revision floors. **80 controls passed**, including mutations of the retained valid runtime reports. All three actual reports passed the stricter verifier without a runtime rerun; their original harness hashes and application revision remain unchanged.
+
 ## Reproduction
 
 Use an isolated test VM with the qualified Go toolchain, native bridge, PyArrow/PyYAML, verified source archive and cached official NATS archives. Never point these scripts at an existing application cluster. The harness uses generated local secrets and private state; publish only its sanitized evidence.
