@@ -12,9 +12,10 @@ import (
 // MemoryMB includes baseline headroom. OverheadMB covers allocations outside
 // DuckDB for each job. Operators must size both using workload measurements.
 type ResourceConfig struct {
-	QueryReserveSlots     int   `yaml:"query_reserve_slots,omitempty"`
-	QueryReserveMemoryMB  int64 `yaml:"query_reserve_memory_mb,omitempty"`
-	QueryReserveScratchMB int64 `yaml:"query_reserve_scratch_mb,omitempty"`
+	Export                *ResourceClassConfig `yaml:"export,omitempty"`
+	QueryReserveSlots     int                  `yaml:"query_reserve_slots,omitempty"`
+	QueryReserveMemoryMB  int64                `yaml:"query_reserve_memory_mb,omitempty"`
+	QueryReserveScratchMB int64                `yaml:"query_reserve_scratch_mb,omitempty"`
 
 	MaxConcurrent int   `yaml:"max_concurrent"`
 	MemoryMB      int64 `yaml:"memory_mb"`
@@ -27,7 +28,37 @@ func (c ResourceConfig) NewPool() (*admission.Pool, error) {
 	if c.QueryReserveMemoryMB < 0 || c.QueryReserveMemoryMB > 1<<30 || c.QueryReserveScratchMB < 0 || c.QueryReserveScratchMB > 1<<30 || c.MemoryMB <= 0 || c.MemoryMB > 1<<30 || c.BaselineMB <= 0 || c.BaselineMB >= c.MemoryMB || c.OverheadMB <= 0 || c.OverheadMB > c.MemoryMB-c.BaselineMB || c.ScratchMB < 1 || c.ScratchMB > 1<<30 || c.MaxConcurrent < 1 || c.MaxConcurrent > 64 {
 		return nil, errors.New("invalid node resource budgets")
 	}
-	return admission.New(admission.Limits{ReservedSlots: c.QueryReserveSlots, ReservedMemoryBytes: c.QueryReserveMemoryMB << 20, ReservedScratchBytes: c.QueryReserveScratchMB << 20, MaxConcurrent: c.MaxConcurrent, MemoryBytes: (c.MemoryMB - c.BaselineMB) << 20, ScratchBytes: c.ScratchMB << 20})
+	limits := admission.Limits{ReservedSlots: c.QueryReserveSlots, ReservedMemoryBytes: c.QueryReserveMemoryMB << 20, ReservedScratchBytes: c.QueryReserveScratchMB << 20, MaxConcurrent: c.MaxConcurrent, MemoryBytes: (c.MemoryMB - c.BaselineMB) << 20, ScratchBytes: c.ScratchMB << 20}
+	if c.Export != nil {
+		if c.Export.MaxConcurrent < 1 || c.Export.MaxConcurrent > 64 || c.Export.MemoryMB < 1 || c.Export.MemoryMB > 1<<30 || c.Export.ScratchMB < 0 || c.Export.ScratchMB > 1<<30 {
+			return nil, errors.New("invalid export resource budgets")
+		}
+		limits.Classes = map[admission.Class]admission.ClassLimits{admission.ClassExport: {
+			MaxConcurrent: c.Export.MaxConcurrent, MemoryBytes: c.Export.MemoryMB << 20, ScratchBytes: c.Export.ScratchMB << 20,
+		}}
+	}
+	return admission.New(limits)
+}
+
+// ResourceClassConfig narrows background work within the shared node capacity.
+// It neither adds capacity nor bypasses protected interactive reservations.
+type ResourceClassConfig struct {
+	MaxConcurrent int   `yaml:"max_concurrent"`
+	MemoryMB      int64 `yaml:"memory_mb"`
+	ScratchMB     int64 `yaml:"scratch_mb"`
+}
+
+func (c ResourceConfig) FitsExport(l query.Limits) bool {
+	if l.Validate() != nil || c.Export == nil {
+		return false
+	}
+	if _, err := c.NewPool(); err != nil {
+		return false
+	}
+	memory := int64(l.MemoryMB) + c.OverheadMB
+	return c.Export.MaxConcurrent <= c.MaxConcurrent-c.QueryReserveSlots &&
+		memory <= c.Export.MemoryMB && memory <= c.MemoryMB-c.BaselineMB-c.QueryReserveMemoryMB &&
+		int64(l.MaxTempMB) <= c.Export.ScratchMB && int64(l.MaxTempMB) <= c.ScratchMB-c.QueryReserveScratchMB
 }
 
 // Fits fails closed for invalid limits. Node startup checks every dataset in

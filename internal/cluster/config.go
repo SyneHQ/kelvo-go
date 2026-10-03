@@ -80,6 +80,9 @@ func LoadGateway(path string) (GatewayConfig, error) {
 	if totalQueries > c.MaxQueries || totalConcurrent > c.MaxConcurrent {
 		return c, errors.New("tenant budgets exceed the configured cluster capacity")
 	}
+	if err := validateGatewayExports(c); err != nil {
+		return c, err
+	}
 	return c, nil
 }
 
@@ -165,6 +168,9 @@ func LoadNode(path string) (NodeConfig, error) {
 	if err = ValidatePolicy(c.Policy); err != nil {
 		return c, err
 	}
+	if err = validateNodeExports(c); err != nil {
+		return c, err
+	}
 	if c.Listen == "" || c.Policy.Workers[c.WorkerID] < 1 || c.CatalogFile == "" || c.SandboxPath == "" {
 		return c, errors.New("node requires a listener, provisioned identity, catalog and sandbox launcher")
 	}
@@ -194,7 +200,7 @@ func ValidatePolicy(p Policy) error {
 			return errors.New("invalid worker capacity")
 		}
 	}
-	return nil
+	return validateExportPolicy(p)
 }
 
 func validEndpoint(raw string) bool {

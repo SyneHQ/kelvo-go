@@ -38,6 +38,7 @@ var (
 // Static tenant budgets partition cluster capacity; there is no shared mutable
 // quota counter. One durable KV slot atomically contains admission AND job state.
 type Policy struct {
+	Exports       *ExportPolicy    `json:"exports,omitempty" yaml:"exports,omitempty"`
 	Access        *PrincipalPolicy `json:"access,omitempty" yaml:"access,omitempty"`
 	SourceQuotas  map[string]int   `json:"source_quotas,omitempty" yaml:"source_quotas,omitempty"`
 	TenantID      string           `json:"tenant_id" yaml:"tenant_id"`
@@ -127,18 +128,22 @@ type TenantConfig struct {
 }
 
 type GatewayConfig struct {
-	Audit           *ServiceAuditConfig          `yaml:"audit,omitempty"`
-	Authentication  *GatewayAuthenticationConfig `yaml:"authentication,omitempty"`
-	Listen          string                       `yaml:"listen"`
-	TLS             TLSConfig                    `yaml:"tls"`
-	WorkerTLS       TLSConfig                    `yaml:"worker_tls"`
-	MaxQueries      int                          `yaml:"max_queries"`
-	MaxConcurrent   int                          `yaml:"max_concurrent"`
-	MaxHTTPRequests int                          `yaml:"max_http_requests"`
-	Tenants         []TenantConfig               `yaml:"tenants"`
+	Exports             *GatewayExportConfig         `yaml:"exports,omitempty"`
+	RuntimeExportStores map[string]ExportStore       `yaml:"-"`
+	Audit               *ServiceAuditConfig          `yaml:"audit,omitempty"`
+	Authentication      *GatewayAuthenticationConfig `yaml:"authentication,omitempty"`
+	Listen              string                       `yaml:"listen"`
+	TLS                 TLSConfig                    `yaml:"tls"`
+	WorkerTLS           TLSConfig                    `yaml:"worker_tls"`
+	MaxQueries          int                          `yaml:"max_queries"`
+	MaxConcurrent       int                          `yaml:"max_concurrent"`
+	MaxHTTPRequests     int                          `yaml:"max_http_requests"`
+	Tenants             []TenantConfig               `yaml:"tenants"`
 }
 
 type NodeConfig struct {
+	Exports             *ExportNodeConfig             `yaml:"exports,omitempty"`
+	RuntimeExportStore  ExportStore                   `yaml:"-"`
 	Metrics             *MetricsConfig                `yaml:"metrics,omitempty"`
 	Audit               *ServiceAuditConfig           `yaml:"audit,omitempty"`
 	RuntimeAudit        *ServiceAudit                 `yaml:"-"`
