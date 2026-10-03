@@ -43,7 +43,7 @@ PRs state the behavior change, tests and operational impact. Use closing referen
 
 Fixtures do not prove live-provider compatibility; short trials do not prove sustained capacity. Snapshot upgrades do not prove rolling cluster upgrades. Old benchmark results belong to their recorded binaries.
 
-Release gates: [process loss](process-loss-acceptance.md), [upgrades](release-upgrades.md), [mixed load](operational-acceptance.md), [storage](storage-conformance.md), [key rotation](gateway-key-rotation.md).
+Release gates: [process loss](process-loss-acceptance.md), [snapshot upgrades](release-upgrades.md), [rolling applications](rolling-upgrades.md), [mixed load](operational-acceptance.md), [storage](storage-conformance.md), [key rotation](gateway-key-rotation.md).
 
 ## Keep tracking reproducible
 

@@ -46,7 +46,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Multi-adapter joins and small VMs | [Federation capacity](federation-capacity.md) · [Oracle micro VM](oracle-micro-capacity.md) |
 | Native export benchmark | [ClickHouse runner](benchmarking.md) |
 | Mixed load and fault recovery | [Operational acceptance](operational-acceptance.md) · [Process loss](process-loss-acceptance.md) |
-| Storage and version compatibility | [Storage gates](storage-conformance.md) · [Release upgrades](release-upgrades.md) |
+| Storage and version compatibility | [Storage gates](storage-conformance.md) · [Snapshot upgrades](release-upgrades.md) · [Rolling applications](rolling-upgrades.md) |
 
 Reports link [raw evidence](evidence/), exact revisions, failures and reproduction commands.
 
