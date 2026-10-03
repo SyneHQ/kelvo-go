@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "runtime_commit": "40965ef36eeeecb608c6c9045e6c72b013bc527c",
+  "raw_report_sha256": "86d0ffe849ba527b6051228b16aa91cecaac74df1fdc21feb87091f1644bc07b",
+  "public_receipt_sha256": "10c132736abf1203fa4eb0e4645e587912c954306050edc6e96ed58d5fb1a9f8",
+  "passed": false,
+  "scope": "Post-run read-only diagnosis of one failed smoke; no rerun or historical-cause inference.",
+  "startup": {
+    "category": "CalledProcessError",
+    "subcommand": "cluster-init",
+    "child_exit_status": 1,
+    "public_stderr": "cluster metadata unavailable",
+    "startup_seconds": 0.538,
+    "private_log_sha256": "9766da1726e76c0e942915de33d5127f941d831d8770f4cac5936434dfa07afa",
+    "stderr_log_sha256": "13df1b94a25d29b2c932fd5a2f88143cc8acf282c977d8785067c4aa0e5ebb71",
+    "source_frame": {
+      "file": "operational_acceptance.py",
+      "line": 558
+    },
+    "underlying_metadata_operation": "not_observed",
+    "worker_launch_reached": false,
+    "broker_readiness_preceded_initializer_by_source_control_flow": true
+  },
+  "cleanup_failure": {
+    "category": "FileNotFoundError",
+    "missing_fixture_component": "a1-containment",
+    "source_frame": {
+      "file": "sustained_acceptance.py",
+      "line": 749
+    },
+    "private_log_sha256": "2fe28ac8e94e0f6551f4f4d5324cdb8c8f122baff8212d34df04e7310ed470b5"
+  },
+  "independent_service_cleanup": {
+    "LoadState": "not-found",
+    "ActiveState": "inactive",
+    "SubState": "dead",
+    "MainPID": "0",
+    "ControlGroup": "",
+    "cgroup_absent": true
+  },
+  "broker_log_sha256": {
+    "0": "17ace4c3837f7f9f59996b4cc6a0e6abc0f8242219d57e4129704bce0e1d840e",
+    "1": "69625c0f6a4915fd15dc11abd4115e2debdadf897e03dceac44127f9c5e5070c",
+    "2": "277da5c739ad8c689c380b501d2cce0077dfccab594ea6d3771e411a6da3049d"
+  },
+  "broker_logs_diagnose_underlying_api_failure": false,
+  "queries_executed": 0,
+  "refreshes_completed": 0,
+  "source_and_binary_unchanged": true
+}

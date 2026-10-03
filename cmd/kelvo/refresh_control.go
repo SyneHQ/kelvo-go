@@ -51,6 +51,7 @@ func runRefreshControl(args []string) error {
 	defer cancel()
 	store, err := cluster.OpenStore(ctx, cfg.NATS, cfg.Policy, false)
 	if err != nil {
+		reportStoreMetadataDiagnostic(err)
 		return query.NewError("UNAVAILABLE", "Tenant refresh state is unavailable")
 	}
 	defer store.Close()

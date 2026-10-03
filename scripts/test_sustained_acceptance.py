@@ -60,6 +60,77 @@ def valid_report():
 
 
 class SustainedControls(unittest.TestCase):
+    def containment_campaign(self, directory):
+        campaign = fixture.Campaign.__new__(fixture.Campaign)
+        campaign.directory = directory
+        campaign.containment_states = set()
+        campaign.containment_roots = {}
+        return campaign
+
+    def test_partial_startup_containment_only_allows_never_created_directories(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            campaign = self.containment_campaign(Path(temporary))
+            self.assertEqual(campaign.remaining_containment_records(), 0)
+            state = campaign.directory / "a1-containment"
+            state.mkdir()
+            campaign.containment_states.add("a1")
+            (state / ".kelvo-containment.lock").touch()
+            self.assertEqual(campaign.remaining_containment_records(), 0)
+            (state / "pending.json").touch()
+            self.assertEqual(campaign.remaining_containment_records(), 1)
+            (state / "pending.json").unlink()
+            (state / ".kelvo-containment.lock").unlink()
+            state.rmdir()
+            with self.assertRaisesRegex(fixture.ops.AcceptanceError, "CONTAINMENT_STATE_DISAPPEARED"):
+                campaign.remaining_containment_records()
+
+    def test_partial_startup_containment_rejects_links_files_and_read_errors(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            campaign = self.containment_campaign(Path(temporary))
+            state = campaign.directory / "a1-containment"
+            state.touch()
+            with self.assertRaisesRegex(fixture.ops.AcceptanceError, "CONTAINMENT_STATE_NOT_DIRECTORY"):
+                campaign.remaining_containment_records()
+            state.unlink()
+            state.symlink_to(campaign.directory, target_is_directory=True)
+            with self.assertRaisesRegex(fixture.ops.AcceptanceError, "CONTAINMENT_STATE_NOT_DIRECTORY"):
+                campaign.remaining_containment_records()
+            state.unlink()
+            with mock.patch.object(Path, "lstat", side_effect=PermissionError()), self.assertRaises(PermissionError):
+                campaign.remaining_containment_records()
+            state.mkdir()
+            with mock.patch.object(Path, "iterdir", side_effect=FileNotFoundError()), self.assertRaises(FileNotFoundError):
+                campaign.remaining_containment_records()
+
+    def test_partial_startup_cleanup_still_stops_owned_brokers_and_samples_cgroup(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            campaign = self.containment_campaign(Path(temporary))
+            campaign.stop_clients = fixture.threading.Event()
+            campaign.monitor_stop = fixture.threading.Event()
+            campaign.monitor_thread = None
+            campaign.group = campaign.directory
+            campaign.initial_events = {"oom": 0, "oom_kill": 0}
+            campaign.resource_samples = {"peak_cgroup_bytes": 0}
+            (campaign.group / "memory.events").write_text("oom 0\noom_kill 0\n")
+            (campaign.group / "memory.peak").write_text("1024\n")
+            (campaign.group / "cpu.stat").write_text("usage_usec 100\n")
+            campaign.brokers = [{"pid": 123}]
+            campaign.broker_alive = mock.Mock(return_value=True)
+            campaign.wait = lambda predicate, timeout: self.assertTrue(predicate())
+            with mock.patch.object(fixture.loss.LossAcceptance, "cleanup", return_value={"parent_cleanup": True}), \
+                    mock.patch.object(fixture.ops, "proc_identity", side_effect=[(123, "456"), None]), \
+                    mock.patch.object(fixture.ops, "signal_owned") as signal_owned, \
+                    mock.patch.object(fixture.os, "waitpid", return_value=(123, 0)):
+                result = campaign.cleanup()
+            signal_owned.assert_called_once_with((123, "456"), fixture.signal.SIGTERM)
+            self.assertEqual(result, {"parent_cleanup": True, "remaining_containment_records": 0,
+                                      "all_owned_brokers_stopped": True})
+            self.assertTrue(campaign.resource_samples["final_cgroup_sample_after_shutdown"])
+            self.assertEqual(campaign.resource_samples["peak_cgroup_bytes"], 1024)
+            report = valid_report()
+            next(check for check in report["checks"] if check["test"] == "startup")["passed"] = False
+            self.assertFalse(fixture.reconcile(report, REVISION))
+
     def test_owned_service_watchdog_bounds_controller_loss_without_shortening_workload(self):
         for duration, mode, watchdog in ((60., "smoke", 360), (600., "smoke", 900),
                                         (600.1, "smoke", 901), (7200., "sustained", 7500),

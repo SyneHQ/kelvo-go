@@ -106,49 +106,9 @@ func OpenStore(parent context.Context, c NATSConfig, p Policy, initialize bool) 
 	if err != nil {
 		return fail(errors.New("JetStream unavailable"))
 	}
-	raw, _ := json.Marshal(p)
-	meta, err := js.KeyValue(ctx, metaBucket)
+	meta, err := openClusterMetadata(ctx, js, p, initialize)
 	if err != nil {
-		if !initialize {
-			return fail(errors.New("cluster metadata is missing"))
-		}
-		meta, err = js.CreateKeyValue(ctx, jetstream.KeyValueConfig{Bucket: metaBucket, History: 1, MaxBytes: 1 << 20, Replicas: p.Replicas})
-		if err != nil {
-			return fail(errors.New("cluster metadata unavailable"))
-		}
-	}
-	// A non-initializer must reject direct KV reads before it can read metadata.
-	// The initializer verifies existing metadata first, then is the only caller
-	// allowed to make the compatible direct-access hardening update.
-	if !initialize {
-		if err := configureKVDirect(ctx, js, metaBucket, false); err != nil {
-			return fail(err)
-		}
-	}
-	entry, err := meta.Get(ctx, metadataKey)
-	missingMetadata := errors.Is(err, jetstream.ErrKeyNotFound)
-	if err != nil && !missingMetadata {
-		return fail(errors.New("cluster metadata unavailable"))
-	}
-	if !missingMetadata && string(entry.Value()) != string(raw) {
-		return fail(errors.New("cluster metadata mismatch"))
-	}
-	if missingMetadata && !initialize {
-		return fail(errors.New("cluster metadata is missing"))
-	}
-	if initialize {
-		if err := configureKVDirect(ctx, js, metaBucket, true); err != nil {
-			return fail(err)
-		}
-		meta, err = js.KeyValue(ctx, metaBucket) // refresh cached direct-read behavior
-		if err != nil {
-			return fail(errors.New("cluster metadata unavailable"))
-		}
-		if missingMetadata {
-			if _, err = meta.Create(ctx, metadataKey, raw); err != nil {
-				return fail(errors.New("cluster metadata unavailable"))
-			}
-		}
+		return fail(err)
 	}
 	kv, err := js.KeyValue(ctx, jobsBucket)
 	if err != nil {

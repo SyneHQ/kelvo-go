@@ -19,6 +19,7 @@ import pwd
 import re
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -381,6 +382,7 @@ class Campaign(loss.LossAcceptance):
         self.window_counts = []
         self.progress_started = None
         self.containment_roots = {}
+        self.containment_states = set()
 
     def start_process(self, name, command):
         if name in ("a1", "b1"):
@@ -391,6 +393,7 @@ class Campaign(loss.LossAcceptance):
             text = ops.replace_field(text, "resources", resources)
             state = self.directory / (name + "-containment")
             state.mkdir(mode=0o700, exist_ok=True)
+            self.containment_states.add(name)
             root = self.group / (name + "-jobs")
             root.mkdir(mode=0o755, exist_ok=True)
             self.containment_roots[name] = root
@@ -738,6 +741,21 @@ class Campaign(loss.LossAcceptance):
                     "client_failures": list(self.client_failures), "progress_windows": json.loads(json.dumps(self.window_counts)), "process_sampling": self.samples.evidence(),
                     "checks": list(self.checks), "phase": self.phase}
 
+    def remaining_containment_records(self):
+        remaining = 0
+        for name in ("a1", "b1"):
+            state = self.directory / (name + "-containment")
+            try:
+                mode = state.lstat().st_mode
+            except FileNotFoundError:
+                # Startup may fail before either worker has a state directory.
+                # Once created, disappearance is an evidence failure.
+                ops.require(name not in self.containment_states, "CONTAINMENT_STATE_DISAPPEARED")
+                continue
+            ops.require(stat.S_ISDIR(mode), "CONTAINMENT_STATE_NOT_DIRECTORY")
+            remaining += sum(path.name != ".kelvo-containment.lock" for path in state.iterdir())
+        return remaining
+
     def cleanup(self):
         self.phase = "cleanup"
         self.stop_clients.set()
@@ -746,7 +764,7 @@ class Campaign(loss.LossAcceptance):
             self.monitor_thread.join(timeout=8)
             ops.require(not self.monitor_thread.is_alive(), "RESOURCE_MONITOR_DID_NOT_STOP")
         detail = super().cleanup()
-        remaining = sum(path.name != ".kelvo-containment.lock" for name in ("a1", "b1") for path in (self.directory / (name + "-containment")).iterdir())
+        remaining = self.remaining_containment_records()
         ops.require(remaining == 0 and all(not list(root.iterdir()) or not any(item.is_dir() for item in root.iterdir()) for root in self.containment_roots.values()), "CONTAINMENT_CUSTODY_REMAINS")
         for broker in self.brokers:
             ops.require(self.broker_alive(broker), "BROKER_CLEANUP_IDENTITY_MISMATCH")

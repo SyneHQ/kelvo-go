@@ -60,6 +60,7 @@ func runCluster(args []string) error {
 	for _, tenant := range cfg.Tenants {
 		s, err := cluster.OpenStore(ctx, tenant.NATS, tenant.Policy, args[0] == "cluster-init")
 		if err != nil {
+			reportStoreMetadataDiagnostic(err)
 			return query.NewError("CONFIGURATION_ERROR", err.Error())
 		}
 		stores[tenant.Policy.TenantID] = s
@@ -238,6 +239,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	}
 	store, err := cluster.OpenStore(ctx, cfg.NATS, cfg.Policy, false)
 	if err != nil {
+		reportStoreMetadataDiagnostic(err)
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
 	defer store.Close()
@@ -472,4 +474,11 @@ func (n *nodeLifecycle) fence() {
 		n.pool.Drain()
 	}
 	n.stopRefresh()
+}
+
+// The usual terminal error remains the final line for callers which match it.
+func reportStoreMetadataDiagnostic(err error) {
+	if diagnostic, ok := cluster.StoreMetadataDiagnostic(err); ok {
+		fmt.Fprintln(os.Stderr, "KELVO_CLUSTER_METADATA "+diagnostic)
+	}
 }
