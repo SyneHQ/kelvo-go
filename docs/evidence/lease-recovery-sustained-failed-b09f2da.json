@@ -1,0 +1,196 @@
+{
+  "schema": 1,
+  "runtime_commit": "b09f2daad7caccf5caa7e35df5805696c9bc13ba",
+  "raw_report_sha256": "c2a7ddf4ef219a471c369a85a122d8c2e5623850bfb84ec2a3e9d720bdd76158",
+  "strict_reconciliation_passed": false,
+  "failure_gate": "process_sampling_read_errors",
+  "failure_detection_phase": "final_reconciliation",
+  "scope": "Frozen synthetic Parquet lifecycle campaign on a dedicated capped service within a shared Linux VM. All operational gates passed, but process-RSS observation errors prevent acceptance. No throughput, WAN, live-provider, multi-host or sizing certification.",
+  "source": {
+    "base_revision": "b09f2daad7caccf5caa7e35df5805696c9bc13ba",
+    "sha256": "d40a0906584ab5e89d1a316d17596cf16d54993fc0c4dade8b894fef97e4583a",
+    "file_count": 845,
+    "verified": true
+  },
+  "build_source_matches": true,
+  "checks": [
+    {
+      "broker_replicas": 3,
+      "gateways": 2,
+      "passed": true,
+      "seconds": 7.716,
+      "source_rows_per_tenant": 1000000,
+      "tenants": 2,
+      "test": "startup",
+      "workers": 2
+    },
+    {
+      "foreign_status_results_cancel_rejected": true,
+      "owner_exact_result": true,
+      "passed": true,
+      "seconds": 0.217,
+      "test": "tenant_isolation"
+    },
+    {
+      "cancel_recovered": true,
+      "passed": true,
+      "rejected_http": 429,
+      "seconds": 1.435,
+      "surviving_tenant_exact_result": true,
+      "test": "saturation"
+    },
+    {
+      "failed_attempt_result_rejected": true,
+      "passed": true,
+      "queued_before_fault": 2,
+      "queued_handles_preserved": true,
+      "replacement_gateway_ready": true,
+      "running_before_fault": 2,
+      "seconds": 1.467,
+      "surviving_tenant_exact_result": true,
+      "test": "gateway_loss"
+    },
+    {
+      "failed_attempt_result_rejected": true,
+      "passed": true,
+      "queued_before_fault": 2,
+      "queued_handles_preserved": true,
+      "running_before_fault": 2,
+      "same_worker_identity_recovered": true,
+      "seconds": 5.188,
+      "surviving_tenant_exact_result": true,
+      "test": "worker_loss"
+    },
+    {
+      "failed_attempt_result_rejected": true,
+      "passed": true,
+      "post_rejoin_queries_correct": true,
+      "queued_before_fault": 2,
+      "queued_handles_preserved": true,
+      "running_before_fault": 2,
+      "seconds": 12.949,
+      "surviving_tenant_exact_result": true,
+      "test": "broker_loss",
+      "unavailable_brokers_during_delivery": 1
+    },
+    {
+      "client_threads": 2,
+      "observed_seconds": 7200.001,
+      "pace_seconds_after_query": 0.5,
+      "passed": true,
+      "query_refresh_overlap_samples": 189,
+      "scheduled_fault_gates": 4,
+      "seconds": 7200.038,
+      "test": "mixed_load"
+    },
+    {
+      "counts": {
+        "a": 120,
+        "b": 120
+      },
+      "passed": true,
+      "seconds": 0.0,
+      "test": "slow_readers"
+    },
+    {
+      "counts": {
+        "a": 120,
+        "b": 119
+      },
+      "passed": true,
+      "seconds": 0.0,
+      "test": "cancellations"
+    },
+    {
+      "all_owned_brokers_healthy": true,
+      "all_owned_brokers_stopped": true,
+      "forced_application_kills": 0,
+      "intentional_fault_kills": 3,
+      "observed_live_descendants": 0,
+      "original_configurations_untouched": true,
+      "original_configurations_verified": true,
+      "passed": true,
+      "remaining_containment_records": 0,
+      "seconds": 2.905,
+      "test": "cleanup",
+      "worker_scratch_directories": 0
+    }
+  ],
+  "process_sampling": {
+    "interval_ms": 50,
+    "samples": 140233,
+    "process_tree_rss_available": true,
+    "sampled_process_tree_rss_peak_bytes": 741421056,
+    "disappeared_or_exited_process_or_thread_samples": 1054,
+    "read_errors": [
+      "PROCESS_IDENTITY_READ_FAILED",
+      "PROCESS_READ_FAILED"
+    ]
+  },
+  "resources": {
+    "samples": 7077,
+    "peak_cgroup_bytes": 862814208,
+    "peak_cgroup_current_bytes": 838959104,
+    "peak_scratch_bytes": 228,
+    "query_refresh_overlap_samples": 189,
+    "cgroup_memory_events_delta": {
+      "low": 0,
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0
+    },
+    "final_cgroup_sample_after_shutdown": true
+  },
+  "resource_counter_error_count": 0,
+  "resource_violation_count": 0,
+  "workload_client_failure_count": 0,
+  "control_transport_errors": {
+    "cancel_transport_error": 3,
+    "queued_status_transport_error": 0,
+    "status_transport_error": 0
+  },
+  "last_window_end_seconds": 7200.001,
+  "historical_diagnostic_limit": "The sampler retained distinct categories, without errno, operation, count per category or event timing. The exact historical cause cannot be reconstructed from this receipt.",
+  "passed": false,
+  "mode": "sustained",
+  "requested_seconds": 7200.0,
+  "elapsed_seconds": 7214.3,
+  "multi_hour_gate_passed": false,
+  "checked_at": "2026-10-03T15:22:21.836389+00:00",
+  "binary_sha256": {
+    "kelvo": "26ea84328e850116f4d5f31ab758bea1f5c57b7161eca0d61ddd63f9d714af26",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "resource_budget": {
+    "cpu_percent": 200,
+    "memory_bytes": 6442450944,
+    "swap_bytes": 0,
+    "tasks": 512
+  },
+  "interrupted": false,
+  "source_unchanged": true,
+  "service_exit_code": 0,
+  "owned_service_removed": true,
+  "owned_cgroup_removed": true,
+  "workload": {
+    "queries": {
+      "a": 9749,
+      "b": 9742
+    },
+    "slow_readers": {
+      "a": 120,
+      "b": 120
+    },
+    "cancellations": {
+      "a": 120,
+      "b": 119
+    },
+    "refreshes": {
+      "a": 480,
+      "b": 479
+    }
+  },
+  "prerequisite_smoke_sha256": "efdb5d5a92b86b37712e8a5576ce1ff5c40d2f26df36b63ed47641cf3062e4b5"
+}
