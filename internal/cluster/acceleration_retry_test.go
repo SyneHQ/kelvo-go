@@ -103,6 +103,7 @@ func TestRefreshClassificationAndBoundedJitter(t *testing.T) {
 		permanent      bool
 	}{
 		{"SCHEMA_MISMATCH", "schema", true}, {"CONFIGURATION_ERROR", "configuration", true},
+		{"UNSUPPORTED", "configuration", true}, {"NOT_SUPPORTED", "configuration", true},
 		{"PERMISSION_DENIED", "access", true}, {"RESOURCE_EXHAUSTED", "resource", true},
 		{"UNAVAILABLE", "unavailable", false}, {"QUERY_FAILED", "unknown", false},
 	} {

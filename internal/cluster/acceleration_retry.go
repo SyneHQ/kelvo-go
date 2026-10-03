@@ -31,7 +31,7 @@ func classifyRefreshFailure(err error) *RefreshFailure {
 		switch qe.Code {
 		case "SCHEMA_MISMATCH":
 			category, permanent = "schema", true
-		case "INVALID_ARGUMENT", "CONFIGURATION_ERROR", "UNIMPLEMENTED", "NOT_SUPPORTED":
+		case "INVALID_ARGUMENT", "CONFIGURATION_ERROR", "UNIMPLEMENTED", "NOT_SUPPORTED", "UNSUPPORTED":
 			category, permanent = "configuration", true
 		case "UNAUTHENTICATED", "PERMISSION_DENIED", "FORBIDDEN", "UNAUTHORIZED":
 			category, permanent = "access", true

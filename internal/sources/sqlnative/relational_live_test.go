@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/mysql"
@@ -13,7 +14,11 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/sources/sqlnative"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"net"
+	"net/url"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -154,6 +159,10 @@ func TestPostgresLiveNativeTLS(t *testing.T) {
 	}
 	_, _, err = execute(t, e, nativeQuery("SELECT pg_sleep(5)"))
 	requireCode(t, err, "DEADLINE_EXCEEDED")
+	t.Run("typed_access_and_refresh", func(t *testing.T) {
+		liveAccessFailures(t, "postgres", admin, table, "i", "KELVO_TEST_POSTGRES_READER_DSN", "KELVO_TEST_POSTGRES_BAD_DSN", postgres.New,
+			"REVOKE SELECT ON "+table+" FROM kelvo_reader", "GRANT SELECT ON "+table+" TO kelvo_reader")
+	})
 }
 
 func TestMySQLLiveNativeTLS(t *testing.T) {
@@ -218,6 +227,10 @@ func TestMySQLLiveNativeTLS(t *testing.T) {
 	}
 	_, _, err = execute(t, e, nativeQuery("SELECT SLEEP(5)"))
 	requireCode(t, err, "DEADLINE_EXCEEDED")
+	t.Run("typed_access_and_refresh", func(t *testing.T) {
+		liveAccessFailures(t, "mysql", admin, table, "s", "KELVO_TEST_MYSQL_READER_DSN", "KELVO_TEST_MYSQL_BAD_DSN", mysql.New,
+			"REVOKE SELECT ON kelvo_native_test.* FROM 'kelvo_reader'@'%'", "GRANT SELECT ON kelvo_native_test.* TO 'kelvo_reader'@'%'")
+	})
 }
 
 func TestRelationalFamilyIdentity(t *testing.T) {
@@ -239,5 +252,99 @@ func TestRelationalFamilyIdentity(t *testing.T) {
 				t.Fatal("source family identity was rewritten")
 			}
 		})
+	}
+}
+
+// This exercises actual driver errors and Manager publication using verified TLS.
+// It deliberately does not forward fixture trust into isolated worker children.
+func liveAccessFailures(t *testing.T, kind string, admin *sql.DB, table, column, readerEnv, badEnv string, constructor func(catalog.Config, query.Limits) (*sqlnative.Engine, error), revoke, grant string) {
+	t.Helper()
+	readerDSN, badDSN := os.Getenv(readerEnv), os.Getenv(badEnv)
+	if badDSN == "" {
+		t.Fatal("bad-credential TLS fixture is required for access acceptance")
+	}
+	request := nativeQuery("SELECT " + column + " FROM " + table)
+	config := nativeConfig(kind)
+	config.Acceleration = &catalog.AccelerationConfig{Directory: filepath.Join(t.TempDir(), "snapshots"), TenantID: "native-access", Datasets: []catalog.Dataset{{ID: "protected_snapshot", Query: request, AuthorizationVersion: "readers-v1", MaxAge: time.Hour, Limits: query.DefaultLimits()}}}
+	manager, err := acceleration.NewManager(config, func(c catalog.Config, l query.Limits) (query.Executor, error) { return constructor(c, l) })
+	if err != nil {
+		t.Fatal("snapshot manager setup failed")
+	}
+	defer manager.Close()
+	initial, err := manager.Refresh(context.Background(), "protected_snapshot", false)
+	if err != nil || initial.Rows != 2 {
+		t.Fatalf("initial access snapshot failed: %T", err)
+	}
+	unchanged := func(t *testing.T) {
+		t.Helper()
+		current, err := manager.Verify(context.Background(), "protected_snapshot")
+		if err != nil || current.Generation != initial.Generation || current.SHA256 != initial.SHA256 || current.Rows != initial.Rows || !current.RefreshedAt.Equal(initial.RefreshedAt) {
+			t.Fatal("failed access refresh changed the committed generation")
+		}
+	}
+	t.Run("authentication", func(t *testing.T) {
+		t.Setenv("KELVO_SOURCE_RELATIONAL_DSN", badDSN)
+		engine, err := constructor(nativeConfig(kind), query.DefaultLimits())
+		if err != nil {
+			t.Fatal("native engine setup failed")
+		}
+		_, _, err = execute(t, engine, request)
+		requirePrivateAccessError(t, err, "UNAUTHENTICATED", request.SQL, table, readerDSN, badDSN)
+		_, err = manager.Refresh(context.Background(), "protected_snapshot", false)
+		requirePrivateAccessError(t, err, "UNAUTHENTICATED", request.SQL, table, readerDSN, badDSN)
+		unchanged(t)
+	})
+	execFixture(t, admin, revoke)
+	defer execFixture(t, admin, grant)
+	t.Run("permission", func(t *testing.T) {
+		engine, err := constructor(nativeConfig(kind), query.DefaultLimits())
+		if err != nil {
+			t.Fatal("native engine setup failed")
+		}
+		_, _, err = execute(t, engine, request)
+		requirePrivateAccessError(t, err, "PERMISSION_DENIED", request.SQL, table, readerDSN, badDSN)
+		_, err = manager.Refresh(context.Background(), "protected_snapshot", false)
+		requirePrivateAccessError(t, err, "PERMISSION_DENIED", request.SQL, table, readerDSN, badDSN)
+		unchanged(t)
+	})
+}
+
+func requirePrivateAccessError(t *testing.T, err error, code, statement, table string, dsns ...string) {
+	t.Helper()
+	if err == nil || query.PublicError(err).Code != code {
+		t.Fatalf("expected sanitized %s access failure, got error type %T", code, err)
+	}
+	public := query.PublicError(err)
+	encoded, marshalErr := json.Marshal(public)
+	if marshalErr != nil {
+		t.Fatal("public error encoding failed")
+	}
+	text := strings.ToLower(string(encoded))
+	forbidden := []string{statement, table, "kelvo_reader", "kelvo_native_test", "SQLSTATE", "pgconn", "MySQLError"}
+	for _, dsn := range dsns {
+		forbidden = append(forbidden, dsn)
+		if strings.HasPrefix(dsn, "postgres://") {
+			parsed, e := url.Parse(dsn)
+			if e == nil {
+				forbidden = append(forbidden, parsed.Hostname())
+				if parsed.User != nil {
+					password, _ := parsed.User.Password()
+					forbidden = append(forbidden, parsed.User.Username(), password)
+				}
+			}
+		} else {
+			credentials, tail, ok := strings.Cut(dsn, "@tcp(")
+			if ok {
+				user, password, _ := strings.Cut(credentials, ":")
+				address, _, _ := strings.Cut(tail, ")")
+				host, _, _ := net.SplitHostPort(address)
+				forbidden = append(forbidden, user, password, host)
+			}
+		}
+	}
+	for _, value := range forbidden {
+		if value != "" && strings.Contains(text, strings.ToLower(value)) {
+			t.Fatal("public access error exposed fixture SQL, server or credentials")
+		}
 	}
 }

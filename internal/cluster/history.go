@@ -22,7 +22,7 @@ func recordNodeHistory(history *telemetry.History, id string, started time.Time,
 			switch qe.Code {
 			case "SCHEMA_MISMATCH":
 				entry.Category = "schema"
-			case "CONFIGURATION_ERROR", "INVALID_ARGUMENT", "UNIMPLEMENTED":
+			case "CONFIGURATION_ERROR", "INVALID_ARGUMENT", "UNIMPLEMENTED", "NOT_SUPPORTED", "UNSUPPORTED":
 				entry.Category = "configuration"
 			case "PERMISSION_DENIED", "UNAUTHENTICATED", "FORBIDDEN", "UNAUTHORIZED":
 				entry.Category = "access"
