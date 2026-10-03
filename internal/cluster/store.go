@@ -301,6 +301,10 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 	if err := query.ValidateRequest(r); err != nil {
 		return Snapshot{}, err
 	}
+	authority, err := submissionAuthority(ctx, s.policy, r)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	now := time.Now().UTC()
 	for n := 0; n < s.policy.MaxQueries; n++ {
 		key := fmt.Sprintf("slot.%x", n)
@@ -308,7 +312,7 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 		if err != nil {
 			return Snapshot{}, errors.New("query ID generation failed")
 		}
-		j := Job{ID: id, TenantID: s.policy.TenantID, State: Queued, Request: r, CreatedAt: now, ExpiresAt: now.Add(s.policy.JobTTL), HeartbeatAt: now}
+		j := Job{Authority: authority, ID: id, TenantID: s.policy.TenantID, State: Queued, Request: r, CreatedAt: now, ExpiresAt: now.Add(s.policy.JobTTL), HeartbeatAt: now}
 		b, err := encodeJob(j)
 		if err != nil {
 			return Snapshot{}, err
@@ -403,7 +407,7 @@ func (s *NATSStore) CompareAndSwap(ctx context.Context, old Snapshot, next Job) 
 	if cur.Revision != old.Revision || cur.Job.Terminal() || !validTransition(cur.Job.State, next.State) ||
 		next.ID != cur.Job.ID || next.TenantID != cur.Job.TenantID ||
 		!next.CreatedAt.Equal(cur.Job.CreatedAt) || !next.ExpiresAt.Equal(cur.Job.ExpiresAt) ||
-		!reflect.DeepEqual(next.Request, cur.Job.Request) {
+		!reflect.DeepEqual(next.Request, cur.Job.Request) || !sameAuthority(next.Authority, cur.Job.Authority) {
 		return Snapshot{}, ErrConflict
 	}
 	if cur.Job.State == Queued {

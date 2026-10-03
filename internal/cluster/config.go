@@ -164,6 +164,9 @@ func LoadNode(path string) (NodeConfig, error) {
 }
 
 func ValidatePolicy(p Policy) error {
+	if err := validatePrincipalPolicy(p.Access); err != nil {
+		return err
+	}
 	if err := ValidateSourceQuotas(p.SourceQuotas); err != nil {
 		return err
 	}
