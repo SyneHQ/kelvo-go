@@ -40,14 +40,15 @@ type SchemaEvolution struct {
 }
 
 type Dataset struct {
-	SchemaEvolution      *SchemaEvolution `json:"schema_evolution,omitempty" yaml:"schema_evolution,omitempty"`
-	Multipart            *MultipartConfig `json:"multipart,omitempty" yaml:"multipart,omitempty"`
-	ID                   string           `json:"id" yaml:"id"`
-	Query                query.Request    `json:"query" yaml:"query"`
-	RefreshInterval      time.Duration    `json:"refresh_interval" yaml:"refresh_interval"`
-	MaxAge               time.Duration    `json:"max_age" yaml:"max_age"`
-	AuthorizationVersion string           `json:"authorization_version" yaml:"authorization_version"`
-	Limits               query.Limits     `json:"limits" yaml:"limits"`
+	Scan                 *SnapshotScanLimits `json:"scan,omitempty" yaml:"scan,omitempty"`
+	SchemaEvolution      *SchemaEvolution    `json:"schema_evolution,omitempty" yaml:"schema_evolution,omitempty"`
+	Multipart            *MultipartConfig    `json:"multipart,omitempty" yaml:"multipart,omitempty"`
+	ID                   string              `json:"id" yaml:"id"`
+	Query                query.Request       `json:"query" yaml:"query"`
+	RefreshInterval      time.Duration       `json:"refresh_interval" yaml:"refresh_interval"`
+	MaxAge               time.Duration       `json:"max_age" yaml:"max_age"`
+	AuthorizationVersion string              `json:"authorization_version" yaml:"authorization_version"`
+	Limits               query.Limits        `json:"limits" yaml:"limits"`
 }
 
 var tenantName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
@@ -143,6 +144,9 @@ func (c *Config) validateAcceleration(base string) error {
 		}
 		if err := d.Limits.Validate(); err != nil {
 			return errors.New("invalid dataset refresh resource limits")
+		}
+		if _, err := d.EffectiveSnapshotScanLimits(); err != nil {
+			return err
 		}
 		if d.Multipart != nil {
 			if d.Multipart.MaxParts < 2 || d.Multipart.MaxParts > 256 || d.Multipart.MaxPartBytes < 1<<20 || d.Multipart.MaxPartBytes > 4<<30 || d.Multipart.MaxPartBytes > d.Limits.MaxBytes {

@@ -1,10 +1,26 @@
 // Copyright 2026 SYNEHQ. SPDX-License-Identifier: Apache-2.0
 package federation
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 type scanBudgetKey struct{}
-type scanBudget struct{ active chan struct{} }
+type scanBudget struct {
+	active         chan struct{}
+	mu             sync.Mutex
+	snapshotMemory *snapshotAllocator
+}
+
+func (b *scanBudget) snapshotAllocator(limit int64) *snapshotAllocator {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.snapshotMemory == nil {
+		b.snapshotMemory = &snapshotAllocator{limit: limit}
+	}
+	return b.snapshotMemory
+}
 
 // WithScanBudget shares a concurrent source-scan limit across Tables made from
 // this context. A full budget fails immediately: waiting while a join holds a

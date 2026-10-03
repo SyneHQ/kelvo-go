@@ -155,3 +155,11 @@ jobs:
           GOEXPERIMENT=cgocheck2 go test -p 2 -race -modfile artifacts/duckbridge/duckbridge.mod -tags duckdb_arrow,duckbridge ./internal/duckbridge ./internal/federation
           go vet -p 2 -modfile artifacts/duckbridge/duckbridge.mod -tags duckdb_arrow,duckbridge ./...
           go build -p 2 -modfile artifacts/duckbridge/duckbridge.mod -tags duckdb_arrow,duckbridge -o bin/kelvo ./cmd/kelvo
+      - name: Verify guarded snapshots through real workers and principal revocation
+        run: |
+          export CGO_CXXFLAGS="-I${GITHUB_WORKSPACE}/artifacts/duckbridge/headers"
+          cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o bin/kelvo-landlock
+          KELVO_TEST_SNAPSHOT_BINARY="$PWD/bin/kelvo" KELVO_TEST_SNAPSHOT_SANDBOX="$PWD/bin/kelvo-landlock" \
+            go test -p 2 -race -count=1 -timeout=5m -modfile artifacts/duckbridge/duckbridge.mod \
+            -tags duckdb_arrow,duckbridge ./internal/worker ./internal/cluster \
+            -run '^TestSnapshot(WorkerSandboxPoliciesCancellationAndPinnedGeneration|PrincipalRealWorkerRevocationWithholdsEOS)$'

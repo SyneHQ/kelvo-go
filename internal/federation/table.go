@@ -25,6 +25,7 @@ type executorFactory func(catalog.Config, query.Limits) (execution, error)
 // Table describes one operator-selected relation. Every concurrent scan owns
 // its native executor, source connection, cancellation and one Arrow batch handoff.
 type Table struct {
+	snapshot                    *snapshotTable
 	guard                       *access.Relation
 	ctx                         context.Context
 	cancel                      context.CancelFunc
@@ -179,7 +180,9 @@ func (t *Table) scan(ctx context.Context, plan duckbridge.ScanPlan) (array.Recor
 	var sql string
 	var schema *arrow.Schema
 	var err error
-	if t.customDriver != nil {
+	if t.snapshot != nil {
+		plan, schema, err = t.snapshot.prepare(plan)
+	} else if t.customDriver != nil {
 		plan, schema, err = t.prepareCustomScan(plan)
 	} else {
 		sql, schema, err = t.compileScan(plan)
@@ -199,7 +202,9 @@ func (t *Table) scan(ctx context.Context, plan duckbridge.ScanPlan) (array.Recor
 		return nil, query.NewError("RESOURCE_EXHAUSTED", "Federation concurrent scan budget is full")
 	}
 	var executor execution
-	if t.customDriver != nil {
+	if t.snapshot != nil {
+		executor = &snapshotExecution{table: t.snapshot, plan: plan, schema: schema}
+	} else if t.customDriver != nil {
 		executor = &customExecution{driver: t.customDriver, source: publicSource(t.config.Sources[0]), table: publicTable(t.selected), limits: publicLimits(t.limits), plan: plan, schema: t.schema}
 	} else {
 		executor, err = t.factory(t.config, t.limits)

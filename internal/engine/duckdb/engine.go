@@ -50,6 +50,9 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		if err := source.ValidateParquetPaths(); err != nil {
 			return nil, query.NewError("CONFIGURATION_ERROR", "Invalid multipart parquet source")
 		}
+		if err := source.ValidateLocalSnapshot(); err != nil {
+			return nil, query.NewError("CONFIGURATION_ERROR", "Invalid local snapshot source")
+		}
 		if !catalog.ValidID(source.ID) {
 			return nil, query.NewError("INVALID_ARGUMENT", "Source ID is invalid")
 		}
@@ -82,7 +85,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	if req.Mode != "federated" {
 		return stats, query.NewError("INVALID_ARGUMENT", "DuckDB requires federated execution mode")
 	}
-	if err := access.ValidateRequest(parent, e.config, req); err != nil {
+	if err := access.ValidateResolvedRequest(parent, e.config, req); err != nil {
 		return stats, err
 	}
 	sources, selectErr := e.config.Select(req.Sources)
@@ -225,7 +228,7 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 		if source.Adapter != "" {
 			return errors.New("source adapters are unavailable to DuckDB federation")
 		}
-		if source.Federation != nil {
+		if source.Federation != nil || access.GuardedSnapshot(ctx, source) {
 			continue
 		}
 		id := quoteIdentifier(source.ID)
@@ -319,6 +322,11 @@ func lockSourceAccess(ctx context.Context, raw any, sources []catalog.Source, te
 		}
 		if source.Adapter != "" {
 			return errors.New("source adapters are unavailable to DuckDB federation")
+		}
+		// Restricted snapshot files belong to the Go policy reader only. Native
+		// table functions must never gain the raw Parquet capability.
+		if access.GuardedSnapshot(ctx, source) {
+			continue
 		}
 		switch source.Type {
 		case "csv", "parquet", "duckdb", "sqlite":

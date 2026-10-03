@@ -46,7 +46,7 @@ func (in Input) ExecutionContext(ctx context.Context) (context.Context, error) {
 			return nil, err
 		}
 	}
-	if err := access.ValidateRequest(ctx, in.Config, in.Request); err != nil {
+	if err := access.ValidateResolvedRequest(ctx, in.Config, in.Request); err != nil {
 		return nil, err
 	}
 	return ctx, nil
@@ -176,6 +176,10 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		return stats, err
 	}
 	defer release()
+	cfg := catalog.Config{Sources: sources, ExtensionDirectory: e.Config.ExtensionDirectory}
+	if err := access.ValidateResolvedRequest(ctx, cfg, r); err != nil {
+		return stats, err
+	}
 	workspace, err := newScratchWorkspace(e.ScratchRoot)
 	if err != nil {
 		return stats, query.NewError("RESOURCE_EXHAUSTED", "Worker scratch workspace is unavailable")
@@ -202,7 +206,6 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		}
 		releaseScratch()
 	}()
-	cfg := catalog.Config{Sources: sources, ExtensionDirectory: e.Config.ExtensionDirectory}
 	input := Input{Config: cfg, Limits: e.Limits, Request: r}
 	if policy, restricted := access.PolicyFromContext(ctx); restricted {
 		input.Access = &policy
