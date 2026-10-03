@@ -493,7 +493,11 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sink := &nodeSink{w: w, sink: worker.NewIPCSink(w, n.cfg.Policy.Limits)}
 	defer sink.sink.Abort()
 	executionStarted := time.Now()
-	stats, err := n.executor.Execute(ctx, request, sink)
+	var stats query.Stats
+	executionCtx, err := executionAuthorityContext(ctx, n.cfg.Policy, authority, request)
+	if err == nil {
+		stats, err = n.executor.Execute(executionCtx, request, sink)
+	}
 	if err == nil {
 		err = sink.sink.Finish()
 	}
