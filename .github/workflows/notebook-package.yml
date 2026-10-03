@@ -1,0 +1,48 @@
+name: Notebook runtime package
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: New immutable preview tag
+        required: true
+        default: v0.1.0-preview.1
+permissions:
+  contents: read
+jobs:
+  package:
+    if: github.ref == 'refs/heads/cargo'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      GOMAXPROCS: '2'
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.8'
+          cache: true
+      - name: Validate preview version
+        run: '[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]]'
+      - run: go test -p 2 -tags duckdb_arrow ./...
+      - run: go vet -p 2 -tags duckdb_arrow ./...
+      - name: Build on Ubuntu 22.04 for notebook compatibility
+        run: |
+          mkdir -p dist/package
+          go build -p 2 -trimpath -tags duckdb_arrow -ldflags "-s -w -X main.version=$VERSION" -o dist/package/kelvo ./cmd/kelvo
+          cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o dist/package/kelvo-landlock
+          dist/package/kelvo version
+          dist/package/kelvo query --config examples/kelvo.yml --sources sales --sql 'SELECT count(*) FROM sales' --out dist/smoke.arrow
+          cp LICENSE NOTICE dist/package/
+          printf 'source_commit=%s\nbuild_os=ubuntu-22.04\ngo=1.26.8\ntags=duckdb_arrow\n' "$GITHUB_SHA" > dist/package/BUILD.txt
+          tar -C dist/package -czf dist/kelvo-linux-amd64.tar.gz kelvo kelvo-landlock LICENSE NOTICE BUILD.txt
+          cd dist
+          sha256sum kelvo-linux-amd64.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kelvo-linux-amd64
+          path: |
+            dist/kelvo-linux-amd64.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
