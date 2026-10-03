@@ -161,7 +161,7 @@
     "no power-loss simulation",
     "NATS and sandbox service fixture skips are not provider passes",
     "disposable real ENOSPC evidence is recorded separately in durable-audit-journal.json",
-    "full live audited gateway/worker service acceptance is pending"
+    "real audited gateway/worker/NATS and scheduled refresh acceptance is recorded separately in durable-audit-service.json; its ClickHouse endpoint is a protocol fixture"
   ],
   "source_sha256": {
     "internal/cluster/audit.go": "8ee8d39ec97c15d15eef5fc823d81190f28250115c9401f57ea5f8312f709476",

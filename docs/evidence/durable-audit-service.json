@@ -1,0 +1,232 @@
+{
+  "date": "2026-10-03",
+  "passed": true,
+  "runtime_revision": "2a1ccb14cb005cfab0ec384e822451c3ba5bbb1c",
+  "source_manifest_sha256": "a43db40f06651fa076928e5607f65658891b64414a384e019474afb12a2500e6",
+  "environment": {
+    "provider": "Azure dedicated test VM",
+    "architecture": "x86_64",
+    "kernel": "6.12.95+deb12-cloud-amd64",
+    "python": "3.11.2",
+    "pyarrow": "25.0.1",
+    "pyyaml": "6.0.3",
+    "downloads": false,
+    "builds_during_smoke": false,
+    "build_tags": [
+      "duckdb_arrow",
+      "duckbridge"
+    ],
+    "gomaxprocs": 1
+  },
+  "isolation": {
+    "live_unit_properties": {
+      "ActiveState": "active",
+      "PrivateNetwork": "yes",
+      "PrivateTmp": "yes",
+      "NoNewPrivileges": "yes",
+      "CPUQuotaPerSecUSec": "1s",
+      "MemoryMax": "3221225472",
+      "MemorySwapMax": "0",
+      "TasksMax": "256"
+    },
+    "observed_cgroup_limits": {
+      "cpu.max": "100000 100000",
+      "memory.max": "3221225472",
+      "memory.swap.max": "0",
+      "pids.max": "256"
+    },
+    "runtime_uid_nonzero": true,
+    "capture_while_active": true
+  },
+  "passes": [
+    {
+      "date": "2026-10-03T11:12:41.598950+00:00",
+      "status": "passed",
+      "failure": null,
+      "cleanup_errors": [],
+      "integrity_errors": [],
+      "candidate_revision": "2a1ccb14cb005cfab0ec384e822451c3ba5bbb1c",
+      "input_sha256_before_and_after": {
+        "binary": "aa4a4b08eea657541bae362954f92afc2dae3133902d25ce67e83afd91fb365f",
+        "sandbox": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+        "harness": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+        "fixture_harness": "ca22d2d2a95f81ad4541b6afc1ed8826e450f8576fee14036e68f41093bf9f97",
+        "nats": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92"
+      },
+      "duration_seconds": 31.386,
+      "checks": [
+        {
+          "test": "offline_private_fixture_and_principal_policy",
+          "passed": true
+        },
+        {
+          "test": "audited_principal_query_and_both_cancellation_paths",
+          "passed": true,
+          "rows": 1,
+          "wire_bytes": 288
+        },
+        {
+          "test": "scheduled_refresh_publishes_verified_snapshot_with_service_receipt",
+          "passed": true,
+          "snapshot_rows": 2,
+          "refresh_receipts": 1
+        },
+        {
+          "test": "offline_receipts_have_trusted_identity_and_no_payload",
+          "passed": true,
+          "gateway_receipts": 6,
+          "worker_receipts": 4
+        },
+        {
+          "test": "restart_preserves_durable_local_receipts",
+          "passed": true
+        },
+        {
+          "test": "runtime_and_restart_fail_closed_after_journal_damage",
+          "passed": true
+        },
+        {
+          "test": "explicit_replacement_recovers_service_and_preserves_old_journal",
+          "passed": true
+        },
+        {
+          "test": "owned_service_and_broker_processes_stopped",
+          "passed": true
+        }
+      ],
+      "scope": "Fresh offline loopback NATS, ClickHouse HTTP/Arrow protocol fixture, real audited gateway and sandboxed worker, local row/column guard, CSV scheduled refresh",
+      "limits": [
+        "local receipt IDs only",
+        "no power-loss or host-loss guarantee",
+        "no external database/provider acceptance",
+        "no sustained load claim"
+      ],
+      "raw_report_sha256": "28a4e7cc0f98684d657c6a19004e4ed4110b1e4b08597610ed64d53c5f563a3a",
+      "source_manifest_verified_after": true,
+      "cgroup_absent_or_empty_after": true,
+      "owned_application_or_broker_processes_after": 0
+    },
+    {
+      "date": "2026-10-03T11:14:47.977487+00:00",
+      "status": "passed",
+      "failure": null,
+      "cleanup_errors": [],
+      "integrity_errors": [],
+      "candidate_revision": "2a1ccb14cb005cfab0ec384e822451c3ba5bbb1c",
+      "input_sha256_before_and_after": {
+        "binary": "aa4a4b08eea657541bae362954f92afc2dae3133902d25ce67e83afd91fb365f",
+        "sandbox": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+        "harness": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+        "fixture_harness": "ca22d2d2a95f81ad4541b6afc1ed8826e450f8576fee14036e68f41093bf9f97",
+        "nats": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92"
+      },
+      "duration_seconds": 29.081,
+      "checks": [
+        {
+          "test": "offline_private_fixture_and_principal_policy",
+          "passed": true
+        },
+        {
+          "test": "audited_principal_query_and_both_cancellation_paths",
+          "passed": true,
+          "rows": 1,
+          "wire_bytes": 288
+        },
+        {
+          "test": "scheduled_refresh_publishes_verified_snapshot_with_service_receipt",
+          "passed": true,
+          "snapshot_rows": 2,
+          "refresh_receipts": 1
+        },
+        {
+          "test": "offline_receipts_have_trusted_identity_and_no_payload",
+          "passed": true,
+          "gateway_receipts": 6,
+          "worker_receipts": 4
+        },
+        {
+          "test": "restart_preserves_durable_local_receipts",
+          "passed": true
+        },
+        {
+          "test": "runtime_and_restart_fail_closed_after_journal_damage",
+          "passed": true
+        },
+        {
+          "test": "explicit_replacement_recovers_service_and_preserves_old_journal",
+          "passed": true
+        },
+        {
+          "test": "owned_service_and_broker_processes_stopped",
+          "passed": true
+        }
+      ],
+      "scope": "Fresh offline loopback NATS, ClickHouse HTTP/Arrow protocol fixture, real audited gateway and sandboxed worker, local row/column guard, CSV scheduled refresh",
+      "limits": [
+        "local receipt IDs only",
+        "no power-loss or host-loss guarantee",
+        "no external database/provider acceptance",
+        "no sustained load claim"
+      ],
+      "raw_report_sha256": "4a91cdd8b8f30b9163a51de75262b0ffb299f4cd4a3ae073d5a8678109a64035",
+      "source_manifest_verified_after": true,
+      "cgroup_absent_or_empty_after": true,
+      "owned_application_or_broker_processes_after": 0
+    }
+  ],
+  "preserved_failed_attempts": [
+    {
+      "stage": "python_preflight",
+      "outcome": "not_started",
+      "reason": "System Python lacked PyArrow; used the existing acceptance virtual environment. No fixture was created."
+    },
+    {
+      "stage": "8zuysj19",
+      "outcome": "failed",
+      "reason": "Initial raw CSV fixture correctly rejected required row/column policy.",
+      "failure": "INCOMPLETE_RESULT",
+      "cleanup_errors": [],
+      "integrity_errors": [],
+      "raw_report_sha256": "ac24ea633abb0f48bf8c9f472c2cb38321dfa77fc6ad3acf63f22cad68e1770c",
+      "harness_sha256": "5387742931157118c399077e5c3d8af8eb604b134d88ff986dc75f79aabbbae2",
+      "duration_seconds": 5.549
+    },
+    {
+      "stage": "qgq0xfob",
+      "outcome": "failed",
+      "reason": "Diagnostic repeat confirmed UNSUPPORTED before replacing CSV with a registered callback adapter.",
+      "failure": "INCOMPLETE_RESULT_HTTP_503",
+      "cleanup_errors": [],
+      "integrity_errors": [],
+      "raw_report_sha256": "281b79f04930526fda3eafab1274415689cb8c3eb7527da6c490600e023ddc18",
+      "harness_sha256": "7807b9747809d37e49f01bc53c4e9c2a5058b138deaa71d1c291dce91c139525",
+      "duration_seconds": 5.986
+    },
+    {
+      "stage": "ud08bh6b",
+      "outcome": "failed",
+      "reason": "Registered callback query and refresh passed; immediate worker restart was rejected by its retained five-second broker identity lease. The final harness waits six seconds.",
+      "failure": "SERVICE_EXITED_A1",
+      "cleanup_errors": [
+        "GRACEFUL_STOP_FAILED_A1"
+      ],
+      "integrity_errors": [],
+      "raw_report_sha256": "10ad04c98c8d46385c42a0f2e40c7ff229acae93c716b9561217b473f91e647e",
+      "harness_sha256": "02204f6f1328184120ac9d9918ccf0e95b497338bf407ccc93d3c496c3410f49",
+      "duration_seconds": 7.532
+    }
+  ],
+  "reproduction": {
+    "harness": "scripts/audit_cluster_acceptance.py",
+    "requirements": "A fresh Linux amd64 source copy, pinned bridge-enabled binary, Landlock launcher, pinned cached NATS archive, PyArrow and PyYAML; run as a non-root private-network service with the recorded cgroup limits.",
+    "command": "python scripts/audit_cluster_acceptance.py --binary /private/kelvo --sandbox /private/kelvo-landlock --nats-archive /private/nats.tar.gz --candidate-revision <full-revision> --binary-sha256 <sha256> --sandbox-sha256 <sha256> --output /private/fresh-report.json",
+    "fixture_scope": "The harness creates its own artifacts/cluster-private directory and refuses an existing fixture or report. Generated keys, state and private diagnostics remain there."
+  },
+  "limits": [
+    "Two synthetic source rows; this is correctness acceptance, not throughput or production memory sizing.",
+    "The ClickHouse endpoint is a strict HTTP/Arrow protocol fixture, not a deployed database.",
+    "Actual gateway, worker, NATS, DuckDB bridge and CSV scheduled refresh processes are exercised.",
+    "No provider qualification, host/disk-loss simulation, sustained load, or cross-service receipt correlation.",
+    "Journal syscall faults and actual ENOSPC are separate evidence in durable-audit-journal.json."
+  ]
+}
