@@ -44,6 +44,12 @@ jobs:
         run: |
           mkdir -p artifacts
           python3 scripts/csv_memory_acceptance.py --binary bin/kelvo --launcher bin/kelvo-landlock --output artifacts/csv-memory-ci.json
+      - name: Verify snapshot backup evidence controls
+        run: python3 -m unittest discover -s scripts -p test_backup_acceptance.py
+      - name: Verify snapshot recovery after source and live-store loss
+        run: |
+          mkdir -p artifacts
+          python3 scripts/backup_acceptance.py --binary bin/kelvo --launcher bin/kelvo-landlock --output artifacts/backup-ci.json
       - name: Verify local multipart CLI conformance
         run: python3 scripts/multipart_acceptance.py
       - name: Verify schema evolution CLI conformance
