@@ -1,24 +1,20 @@
 ## Problem and resulting behavior
 
-Explain the trigger, the previous behavior, and what this change does.
+What triggers the problem, and what changes for the user?
 
 ## Linked work
 
-Link the roadmap or bug ticket. Use a closing reference only when its complete
-acceptance criteria are satisfied by this change and attached evidence.
+Link the issue. Use a closing reference only when all acceptance criteria are met.
 
 ## Validation
 
-List the relevant checks, exact tested revision/build, and reproducible evidence.
-Distinguish fixtures, live providers, and sustained capacity. Include failed,
-skipped, or unrun required gates and the reason.
+List checks, tested revision and evidence. Identify fixtures versus live-provider tests; include failed, skipped or unrun required checks.
 
 ## Operational impact
 
-Describe configuration/default changes, authorization and resource boundaries,
-format compatibility, migration/rollback, and remaining limitations where relevant.
+Note relevant defaults, security/resource boundaries, compatibility, migration and rollback.
 
 - [ ] Independent review addressed.
-- [ ] Applicable operator documentation and project status updated.
-- [ ] Each commit changes no more than ten files.
-- [ ] Public artifacts contain no credentials or private workload data.
+- [ ] Docs and project status updated.
+- [ ] Each commit changes at most ten files.
+- [ ] No secrets or private data in public artifacts.

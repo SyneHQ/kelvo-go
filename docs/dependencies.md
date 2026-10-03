@@ -1,5 +1,7 @@
 # Dependency rationale
 
+Use this list when reviewing upgrades or distributing Kelvo. Versions are pinned in `go.mod`/`go.sum`; review transitive licenses and provisioned extension notices too.
+
 | Dependency | Purpose | License |
 | --- | --- | --- |
 | duckdb-go v2.10506.0 / DuckDB 1.5.6 | Embedded SQL execution, file analysis and supported federation | MIT |
@@ -13,37 +15,14 @@
 | [zero-sql b01a7e8](https://github.com/SyneHQ/zero-sql/commit/b01a7e87002271a661ebd68060824be013347845) | Restricted MongoDB SQL compiler | Apache-2.0 |
 | [pgx v5.11.0](https://github.com/jackc/pgx/tree/v5.11.0) | Native PostgreSQL protocol connections | MIT |
 | [Go MySQL driver v1.10.1](https://github.com/go-sql-driver/mysql/tree/v1.10.1) | Native MySQL and MariaDB connections | MPL-2.0 |
-| [gRPC Go v1.78.0](https://github.com/grpc/grpc-go/tree/v1.78.0) | Apache Arrow Flight SQL transport | Apache-2.0 |
+| [gRPC Go v1.83.2](https://github.com/grpc/grpc-go/tree/v1.83.2) | Apache Arrow Flight SQL transport | Apache-2.0 |
 | [AWS SDK for Go v2 core v1.47.1](https://github.com/aws/aws-sdk-go-v2/tree/v1.47.1) | Official SigV4 signer for source-bound Athena/DynamoDB and S3-compatible snapshot requests; no ambient credential provider chain | Apache-2.0 |
 | [Exasol Go driver v1.1.1](https://github.com/exasol/exasol-driver-go/tree/v1.1.1) | DSN parsing for the exact native WebSocket connector | MIT |
 | [Gorilla WebSocket v1.5.3](https://github.com/gorilla/websocket/tree/v1.5.3) | Bounded Exasol WebSocket transport | BSD-2-Clause |
 | Go standard library | HTTP, subprocess lifecycle, configuration and CLI | Go BSD-style license |
 
-Transitive dependencies are pinned by `go.sum`; review their licenses when distributing binaries. DuckDB's driver includes platform-specific native libraries. Matching signed extensions are external provisioned artifacts, with their own dependency notices.
+ClickHouse supplies ArrowStream. The cloud, search, Trino/Presto, Spanner, Cosmos DB and Ignite connectors use documented APIs with bounded JSON conversion. Exasol uses its driver's DSN parser with Kelvo's exact-number WebSocket path, avoiding the stock driver's float64 decoding and background-context operations. Optional adapter services and their drivers remain external.
 
-The ClickHouse adapter uses HTTP and source-produced ArrowStream. Databricks,
-Snowflake and Cloudflare D1 use their documented HTTPS APIs and convert bounded
-JSON responses into Arrow batches. No provider SDK is required for those APIs.
-BigQuery, Elasticsearch, Trino and Presto also use documented HTTPS APIs.
-Flight SQL uses the existing Arrow dependency and gRPC for typed record-batch
-transport. Optional compatibility adapters connect to separately operated
-services; their database drivers and licenses are not bundled with Kelvo.
-Spanner, Cosmos DB and Ignite 2 use documented HTTPS APIs without cloud SDKs.
-Exasol's stock database/sql path converts JSON numbers through float64 and does
-not provide the required read-only transaction/cancellation semantics. Kelvo uses
-its DSN parser with a separate exact-number WebSocket path and read-only database
-credentials. It does not route queries through that driver's database/sql code.
-CDC remains a separate capability requiring its own acceptance evidence.
+Object storage uses the AWS core signer for S3/R2/GCS XML and standard HTTPS with explicit Azure SAS tokens. No ambient credential chain is loaded. The Go parent owns cloud TLS and conditional reads; DuckDB's matching signed `httpfs` extension reads anonymous loopback ranges.
 
-Object snapshots use the pinned AWS core signer for S3/R2/GCS XML requests and
-standard-library HTTPS for Azure Blob with explicit SAS tokens. No extra cloud
-SDK or credential-provider chain is introduced. DuckDB reads anonymous loopback
-ranges through its version-matched signed `httpfs` extension; the Go parent owns
-cloud TLS, conditional reads and redirect refusal.
-
-Optional native federation builds compile a small C++17 Arrow scan shim against
-DuckDB 1.5.6 headers and apply a scoped accessor patch to the same pinned Go
-driver. The provisioning helper verifies both upstream inputs and leaves the
-baseline go.mod unchanged. No Arrow C++ library or new runtime service is
-introduced. See [build/upgrade constraints](federation.md#build-and-update) and
-[retained MIT notices](../licenses/duckdb.txt).
+Native federation optionally adds a C++17 shim and scoped accessor patch against pinned DuckDB 1.5.6. Provisioning verifies its inputs and leaves baseline `go.mod` unchanged. It adds neither Arrow C++ nor a runtime service. See [build/upgrade requirements](federation.md#build-and-update) and [MIT notices](../licenses/duckdb.txt).

@@ -1,23 +1,18 @@
 # Updating DuckDB
 
-1. Select a reviewed `duckdb-go` release and its matching DuckDB/Arrow/bindings versions.
-2. Update `go.mod` and `go.sum` together; inspect release notes and dependency/license changes.
-3. Provision matching signed PostgreSQL/MySQL extensions for each target engine/platform. Do not reuse old extension binaries.
-4. Run local-file and real-database conformance: types, NULLs, parameters, joins, permissions, cancellation, limits and schema/error behavior.
-5. Re-run the same first-batch, completion, native memory, spill and throughput measurements against the previous version. Check whether the adapter's non-streaming behavior has changed.
-6. Build a versioned image/binary, validate staging, canary the update and retain rollback artifacts. Persistent DuckDB-file upgrades require backups and storage-format compatibility checks before rollback is promised.
+Upgrade the Go driver, engine, bindings and extensions as a matched set. Run downloads, builds and acceptance on the designated VM under [AGENTS.md](../AGENTS.md).
 
-Keep any required downstream driver patch small, justified and regression-tested.
-Kelvo should normally need changes only at its DuckDB adapter boundary. A new upstream version is not automatically safe or faster.
+1. Select a reviewed `duckdb-go` release and matching DuckDB/Arrow/bindings versions. Check release notes, licenses and dependency changes.
+2. Update `go.mod`/`go.sum` together and provision matching signed PostgreSQL/MySQL extensions for every target platform.
+3. Run file and live-database conformance: exact types, NULLs, parameters, joins, permissions, cancellation, limits and schema/errors.
+4. Compare first-batch/completion latency, native memory, spill and throughput against the prior version. Verify whether execution still materializes before delivery.
+5. Build versioned artifacts, validate staging and canary the update. Keep rollback binaries; persistent DuckDB files also need backups and storage-format checks.
 
-For native federation builds, also update the version and archive/module checksums
-in `scripts/provision_duckbridge.py`, review `scripts/duckbridge-driver.patch`,
-and match the runtime check in `internal/duckbridge`. Build artifacts use a
-separate module file with a local replacement. Regenerate it from the new pins;
-do not reuse a patched module or C++ headers from an older engine. Run both the
-ordinary and `duckbridge` test/build variants, strict cgo pointer checks with GC,
-source-predicate conformance and the real ClickHouse/PostgreSQL/MySQL acceptance
-scripts. Re-run mixed-source joins, substantial hash-build inputs, low-memory
-spill, complete exports and cluster admission/cancellation against the same
-versioned dataset and source settings. A stable
-Arrow C Data ABI does not make DuckDB's C++ planner interfaces version-independent.
+For native federation builds:
+
+1. Update archive/module checksums in `scripts/provision_duckbridge.py`, review `scripts/duckbridge-driver.patch`, and match `internal/duckbridge` runtime checks.
+2. Regenerate the separate module file and patched driver from the new pins. Never mix old headers, libraries or patched artifacts.
+3. Run ordinary and `duckbridge` builds/tests, strict cgo pointer checks under GC, predicate conformance and real ClickHouse/PostgreSQL/MySQL acceptance.
+4. Repeat mixed-source joins, large hash builds, low-memory spill, full exports and cluster admission/cancellation on identical versioned datasets/settings.
+
+Keep downstream patches small and tested. Arrow's stable C Data ABI does not stabilize DuckDB's C++ planning interfaces or guarantee a faster release.
