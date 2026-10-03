@@ -21,9 +21,11 @@ resources:
 | Refresh | Query reservation plus `max_bytes` staging, held through publication/pruning |
 | Query reserves | Capacity unavailable to background refresh; interactive queries can use all idle capacity |
 
-Queries/refreshes share one process-local pool and wait within their timeout. Oversized configurations fail startup; release follows cleanup. Inner refresh executors do not reacquire the pool. Reserves provide neither preemption nor fairness, and exports have no separate class.
+Queries/refreshes share one process-local pool and wait within their timeout. Oversized configurations fail startup; release follows cleanup. Inner refresh executors do not reacquire the pool. Reserves provide neither preemption nor fairness. Async export dispatch is not connected yet.
 
 Omitting `resources` retains slot-only admission. Reservations alone do not enforce RSS/disk limits; compression does not reduce them. Divide host capacity among nodes, retain OS/container limits, and budget persistent snapshots separately. DuckDB materializes execution before Arrow delivery and its memory setting does not cap every native/Arrow allocation.
+
+For kernel-enforced native process-tree limits, enable [Linux containment](process-containment.md). It requires explicit cgroup delegation, managed scratch and extra parent/native headroom. Uncertain cleanup retains reservations and drains the node.
 
 ## Diagnostics
 
