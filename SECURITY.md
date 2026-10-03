@@ -1,33 +1,45 @@
 # Security
 
-Kelvo Go is a developer preview. `serve` has one configured trust domain. Cluster mode adds tenant authentication, durable admission, tenant-bound worker pools, TLS 1.3 and a native Linux filesystem sandbox. It requires deployment-enforced tenant container/network/resource boundaries; process isolation and SQL filters alone are insufficient.
+Kelvo is a developer preview. Report vulnerabilities through [GitHub private reporting](https://github.com/SyneHQ/kelvo-go/security/advisories/new). Supported-version and response-time guarantees are not yet established.
 
-Use least-privilege database accounts, dedicated tenant worker/container identities, restricted mounts, outbound network policy and CPU/memory/PID/disk quotas. SQL can invoke functions beyond ordinary table reads; database permissions and network restrictions remain necessary. Do not attach unrelated tenants to one worker pool or `serve` catalog. See [deployment controls](deploy/README.md).
+## Deploy with these boundaries
 
-Cluster worker startup fails if Landlock ABI 3 or newer is unavailable. The native launcher applies restrictions before the Go runtime creates threads. It allows selected source files, approved extensions, public runtime libraries/CA roots and that query's scratch directory; it denies other file contents and dangerous syscalls. Landlock does not impose network destination rules or process-memory quotas. Keep secrets out of publicly allowed runtime directories.
+1. Give each tenant its own worker pool, container identity, snapshot namespace and NATS account. Do not mix unrelated tenants in one `serve` catalog.
+2. Use read-only database accounts, restricted mounts and outbound network policy. SQL functions can access more than tables.
+3. Enforce host/container CPU, memory, PID and disk limits. Admission reservations and Arrow output limits do not cap process memory.
+4. Protect broker storage and backups: NATS contains SQL, parameters and job metadata. It excludes database credentials and Arrow results.
 
-Each tenant must have a separate NATS account without cross-account imports/exports, restricted users and storage limits. Gateway and node credentials are trusted control-plane credentials for that tenant. NATS holds SQL, parameters and job metadata, so broker storage/backup access and encryption belong to the security boundary. Arrow results and registered database credentials do not enter NATS. API tokens authorize the whole tenant catalog; per-user row/column policies and external identity/KMS integration remain future work.
+Cluster mode requires TLS 1.3 and Linux Landlock ABI 3+. The native launcher installs filesystem/syscall restrictions before Go starts threads and fails startup without the required support. Landlock does not restrict network destinations or memory use. Keep secrets out of allowed runtime/library directories.
 
-Gateway tokens can optionally use [private revisioned key files](docs/gateway-key-rotation.md) for overlapping rotation and bounded per-replica revocation. Invalid or expired files fail closed, with no environment fallback. Operators must update every replica and the restart revision floor; rotation does not change tenant data policy or undo already committed results.
+See the [deployment checklist](deploy/README.md) and [cluster model](docs/cluster.md).
 
-Source secrets use explicitly configured environment-variable references in the allowed source namespace. Cluster nodes can optionally map those references to [private credential files](docs/operations.md#file-based-source-credential-rotation). The trusted parent resolves only selected source references and forwards their values in each new query or refresh subprocess's environment. Provider paths are not forwarded, and credential files are not added to sandbox grants. Configured file failures never fall back to environment values. This supports source credential rotation for new processes; custom CA/wallet mounts and other private-file access still require explicit support.
+## Credentials and authorization
 
-Legacy PostgreSQL/MySQL extension attachments use temporary redacted DuckDB secrets instead of embedding credentials in metadata paths; custom Go adapters resolve only their selected source credentials. The sandbox continues to reject unsupported private-file access. Never include secrets or customer data in issues.
+| Control | Requirement |
+| --- | --- |
+| Tenant access | Tokens authorize the tenant catalog. Per-user row/column policies and external identity/KMS are not implemented. |
+| NATS | Separate accounts, no cross-account imports/exports, restricted users and storage limits. Gateway/node credentials are trusted control-plane identities. |
+| Source secrets | Catalogs hold environment-variable references. The parent resolves only selected secrets and forwards values to the selected child. |
+| Credential files | Optional [private files](docs/operations.md#file-based-source-credential-rotation) rotate credentials for new processes. Paths stay in the parent; file errors never fall back to environment values. |
+| API keys | Optional [revisioned key files](docs/gateway-key-rotation.md) fail closed. Update every replica and restart floor; revocation is not globally atomic. |
+| TLS | [Identity](docs/tls-identity-rotation.md) and [trust](docs/tls-trust-rotation.md) rotation require operator propagation; trust policy also needs a configured restart floor. |
 
-Accelerated datasets are durable copies of source data. Give each tenant a separate private snapshot volume or object-storage namespace and matching catalog identity. Only trusted refresh processes may publish snapshots; query subprocesses receive selected immutable files or short-lived loopback range capabilities. Object readers and publishers use separate explicitly named environment credentials. Provider redirects, full-download fallbacks, unselected keys and changed object versions are rejected. Cloud credentials remain in the trusted parent, and no object listing or deletion API is exposed. Object query capabilities are private to the tenant process/network boundary; restrict same-tenant process visibility and network access. See [object storage](docs/object-storage.md). Increment the required `authorization_version` when source credentials or grants change, because a copied dataset cannot inherit database revocations automatically. Apply encryption, storage quotas, backup access controls and retired-copy deletion policies at deployment. NATS refresh envelopes contain dataset identifiers and fingerprints only. See [acceleration boundaries](docs/acceleration.md).
+Native relational connectors require verified TLS and operator-provisioned CA trust. Unsupported private wallets/CA paths are rejected. Legacy PostgreSQL/MySQL attachments use temporary redacted DuckDB secrets.
 
-Use GitHub private vulnerability reporting on this repository for sensitive reports. Supported-version and response-time guarantees have not yet been established for this preview.
+## Protect accelerated copies
 
-The optional [native federation bridge](docs/federation.md) compiles a version-pinned
-C++ Arrow shim and a scoped native-connection driver accessor. It registers only
-operator-selected tables in a disposable database; pointer-bearing views must
-never persist. Required source predicates are applied exactly or rejected, and
-scan admission is bounded per query. This native code remains inside the tenant
-worker boundary and does not replace filesystem, network or cgroup controls.
-Its ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and
-Databricks adapters perform source I/O in Go while DuckDB external access remains
-disabled. See [adapter configuration and limits](docs/federation-adapters.md).
-PostgreSQL/MySQL configurations without
-custom table registrations retain the legacy signed-extension behavior. Native
-relational credentials require verified TLS and operator-provisioned system CA
-trust; caller-selected trust files and insecure TLS modes are not accepted.
+- Keep tenant snapshots private. Apply encryption, storage quotas, backup access controls and retired-copy deletion policies.
+- Only trusted refresh processes publish. Query children receive selected immutable files or short-lived range capabilities; cloud credentials stay in the parent.
+- Use separate object reader/writer credentials. Redirects, changed versions, unselected keys and full-download fallbacks are rejected.
+- Restrict process visibility and network access within each tenant. Loopback capabilities rely on that boundary.
+- Increment `authorization_version` after source grants or credentials change. A copied snapshot cannot inherit database revocations automatically.
+
+See [acceleration](docs/acceleration.md) and [object storage](docs/object-storage.md).
+
+## Native federation
+
+The opt-in [Go/C++ bridge](docs/federation.md) registers operator-selected tables in disposable DuckDB instances. Pointer-bearing views must never persist. Required predicates are applied exactly or rejected; scan admission is bounded.
+
+Bridge adapters perform I/O in Go with DuckDB external access disabled. PostgreSQL/MySQL configurations without custom registrations retain signed-extension behavior. Native code stays inside the worker boundary and still needs deployment isolation.
+
+Never put credentials, DSNs or customer data in source, logs, fixtures or public reports.

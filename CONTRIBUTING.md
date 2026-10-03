@@ -1,13 +1,22 @@
 # Contributing
 
-Contributions are welcome through GitHub issues and pull requests. The default branch is `cargo`.
+Kelvo uses `cargo` as its default branch. Choose an issue from the [delivery board](https://github.com/orgs/SyneHQ/projects/3), or open one before a substantial API, connector or storage change.
 
-Discuss substantial API, connector or storage changes before implementation. Focus a pull request on one behavior and describe the problem, resulting behavior and validation. Preserve source-native types and permissions; unsupported behavior should return an explicit error.
+1. Read [AGENTS.md](AGENTS.md) and the [delivery process](docs/delivery-process.md).
+2. Use a purpose-based branch, such as `fix/query-cancellation`. Keep each commit to **ten files or fewer**.
+3. Preserve exact types, permissions and cancellation. Return an explicit error for unsupported behavior.
+4. Run the relevant tests, vet and build on the designated build host:
 
-Run the tagged Go tests, vet and build from the README. Connector changes need tests against a real database, including NULL/type fidelity, cancellation, limits and source permissions. A fake HTTP server is useful for error cases but is not database compatibility evidence.
+```sh
+go test -tags duckdb_arrow ./...
+go vet -tags duckdb_arrow ./...
+go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
+```
 
-Performance changes need reproducible before/after workloads with versions, schemas, query plans, cache state, CPU/memory limits, returned-result validation, first-batch latency, completion time and memory scopes. Keep failed trials. Do not submit production/customer data or credentials.
+5. Open a focused PR describing the problem, resulting behavior and validation. Link the issue and include failed or unrun required checks.
 
-Use descriptive branches such as `fix/query-cancellation` or `feature/sqlserver`. Dependencies need a written justification and compatible licensing. Do not add an engine, deployment platform or model runtime merely for optional future use.
+Connector changes need real-database checks for types/NULLs, cancellation, limits and permissions. Protocol fixtures alone do not prove compatibility.
 
-Code contributions are accepted under Apache License 2.0. Preserve applicable notices for adapted third-party code. Maintainers review and merge contributions; opening a pull request does not publish a release.
+Performance changes need reproducible before/after results: versions, data, plans, cache state, limits, exact answers, first-batch time, completion time and memory scope. Keep failed trials; never publish credentials or private data.
+
+Justify new dependencies and check their licenses. Contributions use Apache-2.0; preserve third-party notices. Maintainers review merges and releases.

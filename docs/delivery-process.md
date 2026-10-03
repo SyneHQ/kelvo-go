@@ -1,85 +1,50 @@
 # Production delivery process
 
-The [Kelvo Production Delivery board](https://github.com/orgs/SyneHQ/projects/3)
-and [roadmap tracker #32](https://github.com/SyneHQ/kelvo-go/issues/32) organize
-implementation and release acceptance. The [production checklist](production-status.md)
-remains the readable capability summary; the [validation record](validation.md)
-contains the evidence behind current claims.
+[Board](https://github.com/orgs/SyneHQ/projects/3) · [Tracker #32](https://github.com/SyneHQ/kelvo-go/issues/32) · [Capability checklist](production-status.md) · [Evidence](validation.md)
 
 ## Plan work
 
-Every deliverable has a GitHub issue with an observable outcome, explicit
-acceptance criteria, dependencies, priority, area and milestone. The tracker uses
-real sub-issues and blocking relationships. Keep provider access requirements
-explicit, and record only sanitized fixture/account requirements in public issues.
+Create one issue per deliverable: outcome, acceptance criteria, dependencies, owner, priority and milestone. Record provider access needs without secrets.
 
-| Priority | Milestone | Intent |
-| --- | --- | --- |
-| P0 | Production foundation | Isolation, credentials, lifecycle, recovery and release acceptance |
-| P1 | Durable analytics and efficient scale | Durable exports/cache, remote reader safety, maintenance and selective refresh |
-| P2 | Interoperability and continuous data | Standard clients and CDC after durability prerequisites |
+| Priority | Milestone |
+| --- | --- |
+| P0 | Production foundation: isolation, credentials, lifecycle, recovery |
+| P1 | Durable analytics and efficient scale: exports, cache, storage maintenance |
+| P2 | Interoperability and continuous data: standard clients and CDC |
 
-Milestones are delivery groups, not calendar promises. A feature's implementation
-and the acceptance of a deployment are different tasks. Split a ticket when they
-need different ownership, access or evidence; do not quietly relax its criteria.
+Milestones are delivery groups, not dates. Split implementation and deployment acceptance when they need different owners or evidence.
 
 ## Move work through the board
 
-| Status | Meaning |
+| Status | Use when |
 | --- | --- |
-| Todo | Accepted backlog; dependencies determine when work can start |
-| In Progress | Active engineering on a bounded ticket |
-| Review | Implementation awaits independent review |
-| Validation | Review is complete; required runtime or release evidence is pending |
-| Blocked | A named dependency or provider-access requirement prevents progress |
-| Done | Published implementation, review and every required acceptance criterion passed |
+| Todo | Accepted, waiting for work or dependencies |
+| In Progress | Implementation is active |
+| Review | Independent review is pending |
+| Validation | Review passed; required runtime evidence is pending |
+| Blocked | A named dependency or access requirement prevents progress |
+| Done | Published, reviewed and all acceptance criteria passed |
 
-Use the Delivery board for active status, Backlog for the full inventory,
-Release acceptance for test and compatibility work, and External dependencies
-for blocked work. Issue labels and the project Priority field must agree.
-Link related pull requests and evidence before moving a card to Done. A merged
-change with a pending provider gate stays in Validation or a linked open
-acceptance ticket.
+Keep labels, priority and linked PRs current. A merge with outstanding provider acceptance needs an open acceptance ticket.
 
 ## Implement and review
 
-Use purpose-based topic branches and focused commits of at most ten changed
-files. Keep shared interfaces owned by an integration lead while independent
-modules run in parallel. Review authorization, exact Arrow values, cancellation,
-resource ownership, durability and failure paths before optimizing throughput.
-Contributor build restrictions are in [AGENTS.md](../AGENTS.md).
+Use purpose-based branches and **at most ten files per commit**. Coordinate shared interfaces; review authorization, exact values, cancellation, ownership and durability before optimizing.
 
-Pull requests explain the concrete behavior change, linked issues, validation
-and operational impact. Use closing references only when the entire linked
-issue is satisfied. Reviewers should identify required deployment or provider
-evidence separately from implementation defects.
+PRs state the behavior change, tests and operational impact. Use closing references only for fully satisfied issues. Follow [AGENTS.md](../AGENTS.md) for build restrictions.
 
 ## Attach evidence and close
 
-1. Record source revision, executable/fixture hashes and the exact environment.
-2. Run relevant correctness, race, compatibility and recovery checks. Use the
-   designated Linux test hosts for builds and package downloads.
-3. Preserve failed attempts, skipped gates and limits alongside passing reports.
-4. Complete independent review and required CI on the revision being published.
-5. Update the operator documentation, checklist, issue criteria and board status.
+1. Record the revision, binary/fixture hashes and environment.
+2. Run required correctness, race, upgrade and recovery checks.
+3. Keep failures, skipped gates and limitations.
+4. Complete review and CI on the published revision.
+5. Update docs, issue criteria and board status.
 
-Protocol fixtures are not live cloud-provider conformance. A short functional
-campaign is not a sustained production-capacity result. Snapshot compatibility
-is not rolling cluster compatibility. Never transfer an older binary's
-throughput or memory measurements to a new runtime without rerunning the
-applicable workload.
+Fixtures do not prove live-provider compatibility; short trials do not prove sustained capacity. Snapshot upgrades do not prove rolling cluster upgrades. Old benchmark results belong to their recorded binaries.
 
-Current operational gates include [process-loss recovery](process-loss-acceptance.md),
-[release upgrades](release-upgrades.md), [mixed load](operational-acceptance.md),
-[storage conformance](storage-conformance.md) and [key rotation](gateway-key-rotation.md).
-Additional TLS identity and managed-scratch contracts are documented in
-[TLS rotation](tls-identity-rotation.md) and [worker scratch](worker-scratch.md).
+Release gates: [process loss](process-loss-acceptance.md), [upgrades](release-upgrades.md), [mixed load](operational-acceptance.md), [storage](storage-conformance.md), [key rotation](gateway-key-rotation.md).
 
 ## Keep tracking reproducible
 
-Use `gh api` REST operations for issue/sub-issue/dependency updates and GraphQL
-for ProjectV2 items, fields and views. Read existing state first and make
-idempotent updates. Restrict queries and mutations to this repository and project;
-never copy unrelated organization content into the board. Repository issue
-permissions and GitHub Projects permissions are separate. Keep workflow tokens
-read-only unless a specific reviewed automation needs more access.
+Use `gh api`: REST for issues/dependencies, GraphQL for ProjectV2. Read existing state, make idempotent updates, and scope requests to this repo and board. Keep workflow tokens read-only unless reviewed automation needs more access.
