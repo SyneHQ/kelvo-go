@@ -41,7 +41,7 @@ Remote pruning intentionally deletes nothing. Protect current, retained, pinned,
 | Automatic remote joins/aggregates | Pending bound-plan integration and parity checks |
 | Flight SQL | Client available; read-only server pending |
 | PostgreSQL/MySQL CDC | Pending checkpoint/publication and replay contracts |
-| Per-user row/column policy | Pending; tenant isolation is a separate boundary |
+| Principal source grants | [Opt-in user/service keys and handle ownership](principal-access.md); row/column policy still pending |
 | Single-query distribution | Outside this design; workers distribute independent queries |
 
 ## Gates that can run on the dedicated test hosts
