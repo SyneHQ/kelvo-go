@@ -1,0 +1,10 @@
+{
+  "older_revision": "67493699eb0ec97857a685923df225ad19b0cf62",
+  "binary_sha256": "e6ace8d4c560198c801ba531952bc9e10b3d83ac36e1f6bc5950a329e765c71c",
+  "baseline_without_scan_exit_code": 0,
+  "new_scan_yaml_rejected": true,
+  "public_refusal": "invalid YAML source configuration",
+  "with_scan_exit_code": 1,
+  "control": "SELECT 1 AS control with no selected source",
+  "note": "Same catalog and literal query succeed when only the scan mapping is removed. Missing snapshot status is a separate failure."
+}

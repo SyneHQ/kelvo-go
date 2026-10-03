@@ -63,7 +63,7 @@ Missing, corrupt, inconsistent or unsupported data fails the query. Raw resource
 
 ## Roll out or roll back
 
-Follow the [drained principal-policy cutover](principal-access.md). Deploy supporting binaries before enabling snapshot row and column policies or adding `scan` YAML. Older catalogs use strict unknown-field decoding and reject `scan`; older policy admission also rejects guarded snapshots. There is no mixed-version policy compatibility promise for this feature.
+Follow the [drained principal-policy cutover](principal-access.md). Deploy supporting binaries before enabling snapshot row and column policies or adding `scan` YAML. Older catalogs use strict unknown-field decoding and reject `scan`; older policy admission also rejects guarded snapshots. The [older-binary control](evidence/guarded-snapshot-rollout.json) verifies that adding only `scan` turns a successful literal-query catalog into an explicit configuration refusal. There is no mixed-version policy compatibility promise for this feature.
 
 Before rollback, stop new admission, drain or cancel jobs, restore a compatible catalog and policy, and then restore the earlier binaries. Do not remove a restrictive grant merely to make an older binary accept it. No snapshot manifest migration or per-principal stored copy is introduced.
 
