@@ -192,7 +192,7 @@ func backupCLIError(snapshot acceleration.Snapshot, err error) error {
 // Cluster dispatch uses a tenant's existing authenticated JetStream account.
 // Messages contain dataset identity and definition fingerprint only. Every node
 // must mount the same tenant snapshot store with working POSIX flock semantics.
-func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate, sourceQuotas worker.SourceAdmitter, secrets worker.SecretResolver, sourceHealth *telemetry.SourceHealth, scratchRoot *worker.ScratchRoot, processManager *containment.Manager, processBudget containment.Budget, recorders ...*tracing.Recorder) error {
+func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate, sourceQuotas worker.SourceAdmitter, secrets worker.SecretResolver, sourceHealth *telemetry.SourceHealth, scratchRoot *worker.ScratchRoot, processManager *containment.Manager, processBudget containment.Budget, runtimeAudit *cluster.ServiceAudit, policy cluster.Policy, recorders ...*tracing.Recorder) error {
 	m, err := acceleration.NewManager(c, refreshFactory(sandbox, refreshOptions{Admission: sourceQuotas, Secrets: secrets, SourceHealth: sourceHealth, ScratchRoot: scratchRoot, Containment: processManager, ContainmentBudget: processBudget, ResourceOverheadBytes: overhead}))
 	if err != nil {
 		return err
@@ -222,8 +222,10 @@ func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, qu
 			}
 			// Hold the reservation through snapshot publication and pruning.
 			return withRefreshReservation(ctx, pool, overhead, d.Limits, metrics, func(ctx context.Context) error {
-				_, err := m.Refresh(ctx, job.Dataset, true)
-				return err
+				return runtimeAudit.RunRefresh(ctx, policy, func(ctx context.Context) error {
+					_, err := m.Refresh(ctx, job.Dataset, true)
+					return err
+				})
 			}, recorders...)
 		}, func(err error) { fmt.Fprintln(os.Stderr, "Acceleration refresh: "+query.PublicError(err).Message) })
 	}()
