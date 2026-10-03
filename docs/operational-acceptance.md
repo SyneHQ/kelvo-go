@@ -118,6 +118,6 @@ Pair it with the [capacity evidence](federation-capacity.md),
 The later live-key-rotation binary separately passed the same [30-second
 operational gate](evidence/operational-key-rotation.json) using legacy environment
 tokens: all seven checks, 693 exact queries in 30.152 seconds, and
-continued scheduled refreshes. Its [two-gateway file-key gate](gateway-key-rotation.md#recorded-validation)
+continued scheduled refreshes. Its [two-gateway file-key gate](gateway-key-rotation.md#recorded-acceptance)
 checks the opt-in authentication path. Each report identifies its own binary and
 script hashes; the five-minute measurements above do not transfer to a later build.
