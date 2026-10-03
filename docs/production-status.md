@@ -23,13 +23,13 @@ Admission reserves budgets; optional containment enforces native process-tree li
 
 | Available | Still needed |
 | --- | --- |
-| Immutable local/remote full refresh, fenced publication and pinned readers | Live acceleration acceptance for each intended provider |
+| Immutable local/remote full refresh, fenced publication and local reader pins | Durable remote reader integration and live acceleration acceptance for each intended provider |
 | Strict schemas, optional nullable additions and conservative widening | Separate proof for any broader evolution policy |
 | Multipart snapshots and over-4-GiB development gates | Selective replacement, part reuse and incremental checkpoints |
 | Verified inventory/restore, local backup and remote-to-local migration | Remote-destination recovery, cross-host cutover and measured RTO/RPO |
 | Local pruning with reader protection | Durable remote reader protection, orphan accounting, GC and compaction |
 
-Remote pruning intentionally deletes nothing. Protect current, retained, pinned, staging and orphan data before adding GC. Remote v4 writes require coordinated reader/writer upgrades. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
+The [durable reader registry](durable-reader-registry.md) passed isolated race tests; provider, publication and query integration remain open. Remote pruning intentionally deletes nothing. Protect current, retained, pinned, staging and orphan data before adding GC. Remote v4 writes require coordinated reader/writer upgrades. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
 
 ## Results and interoperability
 
