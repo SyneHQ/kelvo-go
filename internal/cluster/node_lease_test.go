@@ -337,3 +337,64 @@ func TestNodeLeaseGateRevalidatesReservationLifetime(t *testing.T) {
 		})
 	}
 }
+
+type handedOffRenewalStore struct {
+	*leaseCountingStore
+	entered chan struct{}
+	release chan struct{}
+	first   atomic.Bool
+}
+
+func (s *handedOffRenewalStore) Get(ctx context.Context, id string) (Snapshot, error) {
+	if s.first.CompareAndSwap(false, true) {
+		close(s.entered)
+		select {
+		case <-s.release:
+			return Snapshot{}, ErrConflict
+		case <-ctx.Done():
+			return Snapshot{}, ctx.Err()
+		}
+	}
+	return s.leaseCountingStore.Get(ctx, id)
+}
+
+func TestNodeLateRenewalErrorPreservesCompletedHandoff(t *testing.T) {
+	n, base, id := leaseTestNode()
+	if err := n.finish(id, ResultReady, query.Stats{Rows: 42}, nil); err != nil {
+		t.Fatal(err)
+	}
+	base.writes.Store(0)
+	s := &handedOffRenewalStore{leaseCountingStore: base, entered: make(chan struct{}), release: make(chan struct{})}
+	n.store = s
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	n.ctx = ctx
+	r := n.jobs[id]
+	rctx, rcancel := context.WithCancel(ctx)
+	defer rcancel()
+	r.ctx, r.cancel, r.started = rctx, rcancel, true
+	n.permits = make(chan struct{}, 1)
+	n.permits <- struct{}{}
+	n.wg.Add(1)
+	go n.watch(id, r)
+	select {
+	case <-s.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("renewal did not start")
+	}
+	// ResultReady was published before this last renewal began. Complete the
+	// handler's handoff, then let the in-flight renewal report its late error.
+	n.release(id, r)
+	close(s.release)
+	finished := make(chan struct{})
+	go func() { n.wg.Wait(); close(finished) }()
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("released reservation watcher did not stop")
+	}
+	got, err := base.nodeTestStore.Get(context.Background(), id)
+	if err != nil || got.Job.State != ResultReady || got.Job.Stats.Rows != 42 || base.writes.Load() != 0 {
+		t.Fatalf("late renewal error replaced durable handoff: %+v writes=%d err=%v", got.Job, base.writes.Load(), err)
+	}
+}

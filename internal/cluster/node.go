@@ -279,6 +279,14 @@ func (n *Node) watch(id string, r *reservation) {
 			err := n.renewLease(ctx, id)
 			stop()
 			if err != nil {
+				// A completed handler may release its reservation while this
+				// renewal is still returning. Its durable result remains for the
+				// gateway to commit; do not turn that handoff into worker loss.
+				select {
+				case <-r.done:
+					return
+				default:
+				}
 				n.finish(id, Failed, query.Stats{}, query.NewError("WORKER_LOST", "Worker lease could not be renewed"))
 				n.stopReservation(id, r)
 				return
