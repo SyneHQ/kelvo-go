@@ -161,7 +161,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 		}
 		executor.SourceHealth = cfg.RuntimeSourceHealth
 	}
-	cfg.RuntimeMetrics = telemetry.New()
+	cfg.RuntimeMetrics = cfg.Metrics.NewRegistry()
 	executor.Metrics = cfg.RuntimeMetrics
 	var pool *admission.Pool
 	var overhead int64
