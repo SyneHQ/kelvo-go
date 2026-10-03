@@ -22,6 +22,7 @@ import (
 )
 
 type s3Client struct {
+	lifetime    clientLifetime
 	location    catalog.ObjectLocation
 	origin      *url.URL
 	http        *http.Client
@@ -53,9 +54,15 @@ func newS3(location catalog.ObjectLocation, credentials catalog.ObjectCredential
 	return &s3Client{location: location, origin: origin, http: client, credentials: aws.Credentials{AccessKeyID: id, SecretAccessKey: secret, SessionToken: token}, signer: v4.NewSigner()}, nil
 }
 
-func (c *s3Client) Close() { c.http.CloseIdleConnections() }
+func (c *s3Client) Close() { c.lifetime.close(c.http.CloseIdleConnections) }
 
 func (c *s3Client) Get(ctx context.Context, key, version string) (io.ReadCloser, Info, error) {
+	op, err := c.lifetime.begin(ctx)
+	if err != nil {
+		return nil, Info{}, err
+	}
+	defer op.finish(true)
+	ctx = op.ctx
 	r, err := c.request(ctx, http.MethodGet, key, nil, 0, "", Condition{})
 	if err != nil {
 		return nil, Info{}, err
@@ -80,12 +87,19 @@ func (c *s3Client) Get(ctx context.Context, key, version string) (io.ReadCloser,
 		resp.Body.Close()
 		return nil, info, ErrConflict
 	}
-	return resp.Body, info, nil
+	body, err := op.returnBody(resp.Body)
+	return body, info, err
 }
 
 // GetRange requires an immutable version and a closed byte interval. It never
 // falls back to a full-object response when an endpoint ignores Range.
 func (c *s3Client) GetRange(ctx context.Context, key, version string, offset, length int64) (io.ReadCloser, Info, error) {
+	op, err := c.lifetime.begin(ctx)
+	if err != nil {
+		return nil, Info{}, err
+	}
+	defer op.finish(true)
+	ctx = op.ctx
 	if version == "" || offset < 0 || length <= 0 || offset >= MaxUploadBytes || length > MaxUploadBytes-offset {
 		return nil, Info{}, errors.New("object range requires a version and a bounded interval")
 	}
@@ -120,10 +134,17 @@ func (c *s3Client) GetRange(ctx context.Context, key, version string, offset, le
 		resp.Body.Close()
 		return nil, info, ErrConflict
 	}
-	return ExactRangeBody(resp.Body, length), info, nil
+	body, err := op.returnBody(ExactRangeBody(resp.Body, length))
+	return body, info, err
 }
 
 func (c *s3Client) Head(ctx context.Context, key, version string) (Info, error) {
+	op, err := c.lifetime.begin(ctx)
+	if err != nil {
+		return Info{}, err
+	}
+	defer op.finish(true)
+	ctx = op.ctx
 	r, err := c.request(ctx, http.MethodHead, key, nil, 0, "", Condition{})
 	if err != nil {
 		return Info{}, err
@@ -147,6 +168,12 @@ func (c *s3Client) Head(ctx context.Context, key, version string) (Info, error) 
 }
 
 func (c *s3Client) Put(ctx context.Context, key string, body io.ReadSeeker, size int64, digest string, condition Condition) (Info, error) {
+	op, err := c.lifetime.begin(ctx)
+	if err != nil {
+		return Info{}, err
+	}
+	defer op.finish(true)
+	ctx = op.ctx
 	if body == nil || size < 0 || size > MaxUploadBytes || !digestPattern.MatchString(digest) || condition.Absent == (condition.Version != "") {
 		return Info{}, errors.New("object upload requires a bounded body, SHA256 and one precondition")
 	}

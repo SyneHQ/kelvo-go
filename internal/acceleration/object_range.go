@@ -308,8 +308,18 @@ func (bridge *objectRangeBridge) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	}
 	var closeOnce sync.Once
 	closeBody := func() { closeOnce.Do(func() { _ = body.Close() }) }
-	stopClose := context.AfterFunc(ctx, closeBody)
-	defer func() { stopClose(); closeBody() }()
+	callbackDone := make(chan struct{})
+	stopClose := context.AfterFunc(ctx, func() {
+		defer close(callbackDone)
+		closeBody()
+	})
+	defer func() {
+		stopped := stopClose()
+		closeBody()
+		if !stopped {
+			<-callbackDone
+		}
+	}()
 	if validateSnapshotObject(snapshot, info) != nil {
 		objectRangeError(w, http.StatusBadGateway)
 		return
