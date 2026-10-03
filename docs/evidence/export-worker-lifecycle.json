@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "date": "2026-10-03",
+  "scope": "Worker export custody, bounded execution, authenticated internal HTTP delivery, source admission and process-crash boundaries",
+  "environment": {
+    "platform": "dedicated Linux x86_64 test VM",
+    "cpu_quota": 1,
+    "memory_max_bytes": 3221225472,
+    "swap_max_bytes": 0,
+    "private_network": true,
+    "no_new_privileges": true,
+    "capabilities": [],
+    "go": {"GOMAXPROCS": 1, "parallel_packages": 1, "GOPROXY": "off", "GOSUMDB": "off", "GOTOOLCHAIN": "local"}
+  },
+  "unit_and_http_attempts": [
+    {
+      "source": "44d3fcb236059bffa29110b19be4ddbbd2548926",
+      "archive_sha256": "4fc7ef48b4aa31b2d6b595bf75d91b3e7c40df8f5aed2c51e47ea058efe8bfb7",
+      "scratch": "kelvo-export-worker.Mdfnx7",
+      "custody_race": {"pass_events": 10, "fail_events": 0, "skip_events": 0, "exit": 0},
+      "runtime_race": {"pass_events": 9, "fail_events": 0, "skip_events": 0, "exit": 0},
+      "vet_exit": 0,
+      "source_files": 881,
+      "source_unchanged": true,
+      "service": {"result": "success", "exit": 0, "state": "inactive/dead", "cgroup_absent": true}
+    },
+    {
+      "source": "847d745c8f663530077e2ee99566d864c79211ba",
+      "archive_sha256": "7e61b6b225331944d6dae605ea34bdd637d3c70296b6f6a6324f5515809b4dcc",
+      "scratch": "kelvo-export-worker02.55AeWu",
+      "custody_race": {"pass_events": 11, "fail_events": 0, "skip_events": 0, "exit": 0},
+      "runtime_race": {"executed": false, "exit": 1},
+      "vet_exit": 1,
+      "failure": "Test compilation failed: internal/cluster/export_worker_linux_test.go imported internal/query without using it. Runtime tests did not execute.",
+      "correction": "e0cec0a4eb294d05c448a808bd26382b9d30d11a removes the unused test import.",
+      "source_files": 889,
+      "source_unchanged": true,
+      "service": {"result": "exit-code", "exit": 1, "state": "failed/failed", "cgroup_absent": true}
+    },
+    {
+      "source": "e0cec0a4eb294d05c448a808bd26382b9d30d11a",
+      "archive_sha256": "68893876b9df1bb11850c2a7fa544289346a47cb1e2f57e38c30e922e71c27eb",
+      "scratch": "kelvo-export-worker03.APDHgU",
+      "custody_race": {"pass_events": 11, "fail_events": 0, "skip_events": 0, "exit": 0},
+      "runtime_race": {"pass_events": 19, "fail_events": 0, "skip_events": 0, "exit": 0},
+      "vet_exit": 0,
+      "source_files": 889,
+      "source_unchanged": true,
+      "service": {"result": "success", "exit": 0, "state": "inactive/dead", "cgroup_absent": true}
+    }
+  ],
+  "unit_and_http_commands": [
+    "go test -race -count=1 -p 1 -json ./internal/exports -run '^TestCustody'",
+    "go test -race -count=1 -p 1 -json ./internal/cluster -run '^TestExportRuntime'",
+    "go vet -p 1 ./internal/exports ./internal/cluster"
+  ],
+  "unit_and_http_coverage": [
+    "Persistent tenant/worker/root binding, exclusive process custody, true process kill and lock reacquisition, unsafe metadata refusal and orphan preservation",
+    "Reserve and durable Local binding before SQL; failed binding never invokes the executor",
+    "Stored remains unreadable until Ready; exact Arrow values and NULLs survive repeat reads and worker owner restart",
+    "Cancellation holds resource custody until executor cleanup; quarantined process custody keeps admission charged",
+    "Repeated part opens verify current state and full receipt; admitted reads stop on withdrawal; download memory admission releases on close",
+    "Internal gateway mTLS, exact single claim/receipt headers, claim replay refusal, HTTP Range refusal and withheld Arrow EOS after durable withdrawal",
+    "Private executor limits and overhead match admission; shared executor remains unchanged; missing, foreign or closed managed scratch and missing configured quotas are rejected",
+    "Production exportTransition validates the successful final unit/HTTP fixture transitions"
+  ],
+  "actual_child_fault_gate": {
+    "source": "e5a7137bd1d9ef292de06d9c8c781194a9f85efc",
+    "archive_sha256": "1d5cf9d696f73bb52746410440334247c29184fc3ec25509e7f8d93cbedd6299",
+    "binary_source": "ff6a77cebd207ccabbfefb00b92e7a4792e65b3d",
+    "binary_sha256": "abd62e27449aa4e5771ea055a66d970dc7d4e285456bb802050e2bc1e16b8fd4",
+    "sandbox_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+    "binary_source_difference": {
+      "production_code_changed": false,
+      "files": ["README.md", "docs/durable-audit.md", "docs/principal-access.md", "docs/production-roadmap.md", "docs/production-status.md", "internal/cluster/export_fault_linux_test.go", "internal/cluster/export_integration_linux_test.go", "internal/cluster/export_runtime_linux_test.go"]
+    },
+    "scratch": "kelvo-export-faults.xr3Rfs",
+    "command": "go test -race -count=1 -p 1 -timeout 180s -json ./internal/cluster -run '^(TestExportWorker.*|TestExportRuntimeStorageExhaustionPrecedesSQL)$'",
+    "required_environment": ["KELVO_TEST_EXPORT_BINARY", "KELVO_TEST_EXPORT_SANDBOX"],
+    "race": {"pass_events": 8, "fail_events": 0, "skip_events": 0, "exit": 0},
+    "tests": [
+      "TestExportRuntimeStorageExhaustionPrecedesSQL",
+      "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+      "TestExportWorkerSourceQuotaRevocationReapsChild",
+      "TestExportWorkerCrashAcrossLocalCommit/before",
+      "TestExportWorkerCrashAcrossLocalCommit/after",
+      "TestExportWorkerCrashAcrossLocalCommit",
+      "TestExportWorkerUsesSandboxAndExternalCustody",
+      "TestExportWorkerCancellationReapsSandboxAndReservations"
+    ],
+    "vet_command": "go vet -p 1 ./internal/cluster",
+    "vet_exit": 0,
+    "source_files": 897,
+    "source_unchanged": true,
+    "binary_and_sandbox_unchanged": true,
+    "service": {"result": "success", "exit": 0, "state": "inactive/dead", "cgroup_absent": true}
+  },
+  "limits_of_evidence": [
+    "Pass-event counts include named subtests; they are not distinct production workloads.",
+    "Unit/HTTP gates use actual durable files and production transition validation with an in-process broker/executor fixture.",
+    "The actual-child gate uses the real sandboxed query worker. Its process-kill cases use a synced disk-backed broker test double, not real JetStream.",
+    "Committed local files remain unreadable after an interrupted Stored publication; restarted workers neither adopt nor replay the abandoned execution. Unexpired reservations remain charged.",
+    "This receipt does not establish public gateway, real broker failover, throughput, capacity, provider compatibility or an exact-final-commit release build; those require their separate acceptance receipts."
+  ]
+}
