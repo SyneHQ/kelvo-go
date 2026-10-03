@@ -62,6 +62,8 @@ The header alone, a partial body or status 404 never proves success. After certi
 
 Policies remain static; changes require the drained account cutover described in [principal access](principal-access.md). There is no tenant-enrollment API, durable query-result catalog or single-query distribution. Optional [local audit](durable-audit.md) records protected operations and fails closed when durable recording is uncertain. Retain tenant container limits. The pinned DuckDB Go path materializes execution before Arrow delivery. Landlock ABI 3 or newer is required; unsupported hosts fail closed. Check [production status](production-status.md) for the accepted containment scope.
 
+Opt-in [durable exports](exports.md) use a separate retained queue and worker-local result catalog. They keep principal authorization, have independent admission, and support repeat downloads without replaying SQL. Interactive query handles keep their existing single-consumer lifecycle.
+
 ## Reproduce acceptance
 
 On a disposable Linux test host with the toolchain and PyArrow installed:
