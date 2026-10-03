@@ -5,6 +5,30 @@ and source database run on Azure; all SSH tunnel processes are also excluded fro
 the worker's accounting. It does not establish that the whole cluster or a
 standalone deployment fits in the micro VM's memory.
 
+## Current candidate rerun: 2026-10-03
+
+The [bounded candidate rerun](evidence/node-capacity-b09f2da.json) completed
+**91/91 workload queries**, plus a separate **3/3 correctness preflight**.
+Seven profiles produced three complete metrics-disabled/enabled pairs and one
+unpaired metrics-enabled profile. Every completed profile passed exact values,
+NULLs, Arrow completion, durable success and resource cleanup checks, with zero
+OOMs under the same 640 MiB worker service cap and one execution slot.
+
+The controller refused the next profile before launch to preserve its fixed
+cleanup window. **Five-pair capacity acceptance remains incomplete.** These
+results must not be combined with the earlier runtime's baseline to satisfy that
+requirement. They represent 84,000,056 repeated workload result rows, excluding
+the preflight, rather than distinct source records or a production capacity SLA.
+
+The candidate is `b09f2daad7caccf5caa7e35df5805696c9bc13ba`, binary SHA-256
+`26ea84328e850116f4d5f31ab758bea1f5c57b7161eca0d61ddd63f9d714af26`;
+its [845-file source manifest](evidence/node-capacity-b09f2da-source.json) pins the
+build. An initial package download timed out before any query ran; its resumed
+transfer passed the complete checksum before extraction. No query was retried.
+Independent cleanup checks verified source-account/key removal, preserved source
+tables, successful control-service shutdown and removed tunnel cgroups at
+15:32:24 UTC, before the unchanged 15:38:09 UTC fixture expiry.
+
 ## Pinned baseline: 2026-10-03
 
 [Ten profiles](evidence/node-capacity-6749369.json) completed **130/130 queries**:
