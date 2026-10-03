@@ -1,475 +1,215 @@
 # Validation — 2026-10-02
 
-Status: a tested developer preview. Cluster, sandbox, connector and failure-handling acceptance is described below. These checks do not certify a production multi-tenant service, establish capacity for every database, or replace deployment-specific security and recovery testing.
+This is recorded developer-preview evidence, tied to specific binaries and fixtures. Use [production status](production-status.md) for current release gates; these results do not certify arbitrary multi-tenant deployments.
 
 ## Expanded federation and public adapter SDK
 
-The optional Go/C++ Arrow bridge now supports **eight built-in adapters**:
-ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and
-Databricks. The [adapter guide](federation-adapters.md) explains exact namespaces,
-supported scalar types, provider limits and how to implement another source
-through the public `github.com/SYNEHQ/kelvo-go/federation` package.
+The optional Go/C++ bridge supports ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and Databricks. See the [adapter guide](federation-adapters.md) for namespaces, types and the public `github.com/SYNEHQ/kelvo-go/federation` interface.
 
-The [build record](evidence/federation-expansion.json) identifies the tested
-Linux amd64 binary and source hashes. Both ordinary and bridge configurations
-passed all-package tests and vet on the Azure VM. The public SDK, catalog,
-federation, bridge, DuckDB and worker packages also passed race tests with
-`GOEXPERIMENT=cgocheck2`. The pinned versions are Go 1.26.8, DuckDB 1.5.6,
-duckdb-go 2.10506.0 and Arrow Go 18.5.1.
+| Evidence | Executed scope |
+| --- | --- |
+| [Build](evidence/federation-expansion.json) | Ordinary/bridge tests and vet; SDK/catalog/federation/bridge/DuckDB/worker race checks with `cgocheck2` on Azure |
+| [SQL Server 2022](evidence/federation-sqlserver.json) | 25 native/federated checks: exact types including 100ns timestamps, pushdown, self/cross-source joins, CTE/windows, verified TLS negatives, SELECT grants, namespaces, limits, observed cancellation and recovery |
+| Snowflake/BigQuery/Databricks protocol fixtures | HTTPS types/pages/failures/cancellation; real DuckDB joins of fixture results with CSV |
+| [External SDK example](evidence/federation-adapter-example.json) | 13 CLI/direct-worker cases: external-module build, CSV join, pushdown/local filters, separate worker and limits without partial export |
 
-[Live SQL Server 2022 acceptance](evidence/federation-sqlserver.json) passed all
-25 checks and verifies
-exact Arrow types and values, including integer extrema, decimal, BIT, NULL and
-100 ns timestamps; source projection and integer/Boolean filters; self-joins;
-and a SQL Server + ClickHouse + CSV CTE, join and window query. Checks also cover
-verified TLS with unknown-CA/hostname negatives, SELECT-only grants, selected
-namespaces, scan row/byte limits, observed blocked-query cancellation, deadlines
-and recovery. Owned fixtures were removed and the existing ClickHouse service
-and its 100-million-row benchmark dataset were preserved. This is functional
-acceptance on a dedicated test VM, not a new throughput measurement.
-The [live acceptance harness](../scripts/federation_sql_acceptance.py) records
-fixture ownership and removes its resources after a successful run.
+Pinned build versions: Go 1.26.8, DuckDB 1.5.6, duckdb-go 2.10506.0 and Arrow Go 18.5.1. Live Oracle TCPS, Snowflake, BigQuery and Databricks acceptance remains pending; protocol fixtures establish neither warehouse grants nor billing behavior.
 
-Verified HTTPS protocol fixtures cover Snowflake, BigQuery and Databricks
-schema/value fidelity, result pages, failure handling and cancellation. A real
-DuckDB execution joins BigQuery and Databricks fixture results with CSV data and
-checks CTEs, aggregates and windows. These fixtures do **not** validate live
-warehouse grants, remote query plans or billing. Live Oracle TCPS, Snowflake,
-BigQuery and Databricks federation acceptance remains pending.
+Integer/Boolean filters can push down. String, decimal, float and temporal predicates, including their NULL checks, remain in DuckDB; unsupported required predicates fail. Private pointer scanners cannot be called from user SQL.
 
-The bridge now advertises source filter support only for integer/Boolean
-columns. String, decimal, floating-point and temporal predicates, including
-their NULL checks, stay in DuckDB. Tests use contrasting rows to verify local
-filtering rather than silent predicate loss. Unsupported required predicates
-still fail explicitly, and user SQL cannot call the private pointer-based
-scanner functions.
-
-[Public SDK acceptance](evidence/federation-adapter-example.json) compiles the
-guide's exact example as an external module importing only the public package.
-All 13 CLI/direct-worker cases passed, including a custom adapter's CSV join,
-integer pushdown, local string filtering, counts, separate worker execution,
-and source/result limits without publishing partial exports. The core checks
-table selection, schema and metadata, scan admission and borrowed-batch
-ownership. Adapters remain trusted compiled-in code and must implement their
-own source authorization, verified transport and cleanup; this API is not a
-security sandbox for untrusted plugins.
-The [SDK acceptance harness](../scripts/test_federation_adapter_example.py)
-reproduces the external-module and worker checks in a scratch checkout.
+Adapters are trusted compiled-in code responsible for source authorization, verified transport and cleanup. The core checks selection, schema, limits and borrowed batches; the SDK is not an untrusted-plugin sandbox. Reproduce with the [SQL harness](../scripts/federation_sql_acceptance.py) and [SDK harness](../scripts/test_federation_adapter_example.py). SQL fixtures were removed while existing ClickHouse data was preserved. No new throughput claim follows.
 
 ## Real CTE analytics, DuckDB and Polars
 
-The [analytical workflow report](analytics-workflow-benchmarks.md) records four
-full-quarter NYC Taxi analyses: daily rolling KPIs, hourly borough hotspots,
-route joins with distance bands, and monthly zone momentum. The input contains
-22,612,607 real trips and 265 lookup zones; 22,611,807 trips meet the common
-quarter cohort. Every output matches both direct ClickHouse references and
-independent raw-data aggregates with Python window/ranking checks.
+The [workflow report](analytics-workflow-benchmarks.md) covers rolling KPIs, borough hotspots, route joins and zone momentum over 22,612,607 NYC Taxi trips/265 zones; 22,611,807 trips belong to the common quarter cohort. Exact outputs match ClickHouse references and independent raw-data/window checks.
 
-All **84 measured attempts** passed: 36 same-Parquet Azure runs across Kelvo,
-DuckDB and Polars, 24 Azure live-source runs and 24 Oracle micro live-source
-runs. All **28 separate preflights** passed too. The
-[reconciled summary](evidence/analytics-workflow-summary.json) binds every
-scheduled trial to its decoded artifact hash; [five regression checks](evidence/analytics-evidence-regression.json)
-cover tampered hashes, missing attempts, failed resource observations and
-conflicting validation evidence.
+All 84 measured attempts and 28 separate preflights passed: 36 same-Parquet Azure trials, 24 Azure live-source and 24 Oracle micro live-source trials. The [reconciled summary](evidence/analytics-workflow-summary.json) binds artifacts to trials; [five controls](evidence/analytics-evidence-regression.json) reject tampering/missing attempts. [Runtime fingerprints](evidence/analytics-workflow-runtime.json) identify the reused compression binary and libraries.
 
-Same-file Kelvo medians range from 0.484–1.497 s; Polars is fastest on the route
-workflow. These fresh-command measurements include Python imports, setup and
-output persistence. They do not isolate SQL-kernel speed. Oracle native medians
-range from 1.480–3.727 s with SQL executed in Azure ClickHouse; Oracle federation
-medians range from 33.490–62.275 s with local DuckDB computation and source
-transfer. All live runs used a 640 MiB service cap. The Azure federated hotspot
-case reached that cap and spilled; completed trials do not establish capacity
-headroom or sustained/concurrent production service.
+| Path | Median range | Interpretation |
+| --- | ---: | --- |
+| Same-file Kelvo | 0.484–1.497s | Fresh commands include imports/setup/persistence; Polars wins the route workflow |
+| Oracle native | 1.480–3.727s | SQL executes in Azure ClickHouse |
+| Oracle federation | 33.490–62.275s | Source transfer and local DuckDB computation |
 
-This campaign reuses the validated result-compression binary; it changes
-benchmark tooling and documentation, not the engine. [Runtime fingerprints](evidence/analytics-workflow-runtime.json)
-record the binary, scripts and installed native-library versions/hashes.
+Live runs used a 640 MiB service cap; Azure's federated hotspot reached it and spilled. These are not SQL-kernel comparisons or evidence of sustained concurrency/headroom.
 
 ## Oracle micro VM and opt-in result compression
 
-The [Oracle micro VM capacity record](oracle-micro-capacity.md) covers actual
-remote exports on `VM.Standard.E2.1.Micro` with 951 MiB visible RAM, a 640 MiB
-Kelvo service cap and ClickHouse hosted separately on Azure. In the final
-million-row comparison, ten simultaneous workers completed all 30 exports with
-each codec: **242,827 aggregate output rows/s** without result compression and
-**469,800 rows/s** with LZ4. Source LZ4 was enabled in both profiles. Each
-response matched an independently decoded reference, included Arrow completion
-and finished with API state `succeeded`.
+The [micro-VM report](oracle-micro-capacity.md) uses `VM.Standard.E2.1.Micro`, 951 MiB visible RAM, a 640 MiB service cap and ClickHouse on Azure.
 
-With LZ4 and explicit limits of four million rows and 128 MiB result bytes,
-all **30 four-million-row exports** also completed in three ten-worker cohorts:
-**120 million verified rows at 443,421 aggregate rows/s**. The service retained
-its 640 MiB memory cap, peaked at **423.4 MiB charged cgroup memory**, and recorded
-no OOM or task-limit events. Native SQL executed on Azure. This validates larger
-exports for the tested three-column result; it does not establish capacity for
-wide rows or local federation at the same concurrency.
+| Native export profile | Verified work | Aggregate output rate |
+| --- | --- | ---: |
+| No result compression | 30 × 1m rows, ten concurrent workers | 242,827 rows/s |
+| LZ4 results | 30 × 1m rows, ten concurrent workers | 469,800 rows/s |
+| LZ4, 4m-row/128 MiB limits | 30 × 4m rows, three ten-worker cohorts | 443,421 rows/s |
 
-The guide retains the failed ten-worker federation test (cgroup OOM), the
-full-sort deadline failure, the slower federated CLI result-compression median,
-and separate CPU, RSS, cgroup and transport accounting. The remote client used
-SSH forwarding; these measurements do not establish direct HTTPS capacity or
-sustained entitlement on the burstable free shape.
+Source LZ4 was enabled in both million-row profiles. All results matched decoded references and complete Arrow/API success. The 120m-row campaign peaked at 423.4 MiB charged cgroup memory with no OOM/task-limit events.
 
-The [result-compression build record](evidence/oracle-micro-result-build.json)
-records all-package tests and focused race/vet checks on the Azure build VM.
-[Real cluster LZ4 acceptance](evidence/cluster-compression-acceptance.json)
-verified eight batches with exact integer, Unicode and NULL values, completion
-and encoded byte counts through node-to-gateway delivery. Compression remains
-opt-in across native, federated and accelerated result paths; the local worker
-pipe is uncompressed and output, memory and disk limits remain in effect.
+These are narrow three-column native results over SSH forwarding, not direct HTTPS, wide-row federation or sustained entitlement on a burstable shape. The report retains ten-worker federation OOM, sort timeout and slower federated compression results.
+
+[Build checks](evidence/oracle-micro-result-build.json) passed on Azure. [Cluster LZ4 acceptance](evidence/cluster-compression-acceptance.json) checked eight exact typed batches, completion and byte accounting. Compression is opt-in for native/federated/accelerated results; the worker pipe stays uncompressed and limits remain enforced.
 
 ## PostgreSQL/MySQL federation and NYC Taxi capacity
 
-The custom bridge now supports Go PostgreSQL and MySQL adapters alongside
-ClickHouse. The [final build record](evidence/federation-capacity-build.json)
-matches 187 committed source/build inputs to the VM and identifies the tested
-Linux amd64 image binary. Both ordinary and bridge CI passed for runtime commit
-[`6a2e94b`](https://github.com/SyneHQ/kelvo-go/actions/runs/36953244744).
-Focused worker/source/CLI [race checks](evidence/race-federation-cancellation.log)
-also passed on the VM.
+The [build record](evidence/federation-capacity-build.json) matches 187 inputs to the tested image. Ordinary/bridge [CI passed at `6a2e94b`](https://github.com/SyneHQ/kelvo-go/actions/runs/36953244744), as did focused [race checks](evidence/race-federation-cancellation.log).
 
-[Final-image container controls](evidence/federation-capacity-container.json)
-verified nonroot execution, read-only mounts/root, capability removal, CPU/PID/
-memory enforcement, Landlock file denial and tenant/external network denial with
-reachable controls. The contained query checks exact decimal/NULL values on a
-small synthetic dataset; the large taxi workloads below ran as host processes.
+| Evidence | Result and boundary |
+| --- | --- |
+| [Container controls](evidence/federation-capacity-container.json) | Nonroot, read-only mounts/root, dropped capabilities, CPU/PID/memory, Landlock and network denial with reachable controls; small exact query |
+| [Relational acceptance](evidence/federation-relational.json) | 45 checks: exact values, two/three-source joins, self-joins, TLS negatives, grants, selected tables, limits and cancellation |
+| [NYC Taxi capacity](federation-capacity.md) | 14 checks; 13 exact result sets; complete 22.6m-row sort/export in 7.738–7.835s (2.886–2.922m rows/s) |
+| [Remote exports](evidence/federation-wan.json) | 1m rows in 5.364–8.496s with matching Arrow hashes; SSH forwarding and inner TLS |
+| [Cluster load](evidence/federation-cluster-capacity.json) | 224/224 exact jobs; 1/2/4 clients for 120s each; 0.475/0.650/0.683 queries/s; p95 2.69/3.94/7.59s |
 
-[45 live relational checks](evidence/federation-relational.json) passed exact
-integer/decimal/NULL/timestamp preservation, pairwise and three-source INNER/LEFT joins,
-self-joins, verified TLS with unknown-CA/hostname negatives, read-only grants,
-selected-source/table restrictions, budgets, cancellation and Landlock execution.
-PostgreSQL/MySQL accept only explicit native TLS DSNs and operator-selected
-tables; the ClickHouse fixture uses HTTP. DuckDB
-external access remains disabled for these custom Go adapters.
+PostgreSQL/MySQL require explicit native TLS DSNs and selected tables; the ClickHouse fixture used HTTP. Custom adapters keep DuckDB external access disabled. Million-row PostgreSQL/MySQL joins took about 1.63s each; the three-adapter join took 3.14s. Every fact scan fetched all 22,612,607 rows.
 
-The [initial cancellation failure](evidence/federation-relational-pre-cancellation-fix.json)
-led to a bounded 750 ms cooperative worker shutdown, PostgreSQL's connection-keyed
-CancelRequest, and MySQL's operator-owned SELECT timeout. The final PostgreSQL
-query stopped upstream about **0.203 s** after cancellation. MySQL acknowledged
-client cancellation promptly but stopped upstream after **3.154 s from launch**
-with a verified three-second server timeout. It does not guarantee immediate
-remote cancellation. Native optimizer hints cannot override that timeout.
+Full-sort workers reached 717–834 MiB sampled RSS despite 128/256 MiB DuckDB budgets; the separate coordinator used about 61 MiB. Large workloads ran as host processes, not in the small container fixture. Do not sum separate peaks or infer a 512 MiB deployment fit. Throughput flattened beyond two clients on the shared four-core host; this is not multi-machine scaling.
 
-[NYC Taxi capacity](federation-capacity.md) uses **22,612,607 real trips**, 265
-official zones and one-million-row relational projections. All 14 checks passed;
-13 completed result sets matched exact native references. The complete sort and
-export took **7.738–7.835 s**, or **2.886–2.922 million output rows/s**. Joins against
-million-row PostgreSQL/MySQL inputs took about **1.63 s** each; the three-adapter
-join took **3.14 s**. All fact scans fetched the full 22.6 million rows.
+The [initial cancellation failure](evidence/federation-relational-pre-cancellation-fix.json) led to bounded cooperative shutdown and source controls. PostgreSQL stopped upstream about 0.203s after cancellation; MySQL stopped 3.154s after launch under its three-second server timeout. Immediate remote cancellation is not guaranteed. The [CA fixture fix](evidence/federation-capacity-fixture-tls.json) corrected key usage without disabling verification.
 
-The full-sort worker reached **717–834 MiB sampled RSS** despite 128/256 MiB
-DuckDB budgets; a separate coordinator used about 61 MiB. These host-process
-measurements do not prove the large sort fits inside the smaller engine budget
-or a 512 MiB container. The guide records allocated scratch peaks, paced-source
-and slow-consumer behavior, cancellation recovery, reference corrections and
-the exact limits of each measurement.
-
-[Actual remote exports](evidence/federation-wan.json) transferred one million
-rows in **5.364–8.496 s**, with identical complete Arrow hashes over SSH forwarding
-and strict inner TLS. The [fixture CA correction](evidence/federation-capacity-fixture-tls.json)
-fixed certificate key-usage metadata without disabling verification. This is a
-remote-client measurement including SSH and per-request TLS setup, not a direct
-HTTPS or engine-only throughput claim.
-
-[Sustained cluster load](evidence/federation-cluster-capacity.json) passed
-**224/224 exact-result jobs with zero errors**, across 1/2/4 clients for 120 s
-each. Every job fetched all 22.6 million fact rows and its selected relational
-join input. Completion rates were **0.475/0.650/0.683 queries/s**, and p95 latencies
-were **2.69/3.94/7.59 s**. All workers drained. Throughput nearly flattened beyond
-two clients on the shared four-core host; this is not a multi-machine scaling
-test. The guide records simultaneous worker RSS, per-service CPU, tenant and
-admission controls, and the limits of the short load windows.
-
-Owned [cluster](evidence/federation-capacity-cleanup.json) and
-[relational](evidence/federation-relational-cleanup.json) fixtures were stopped
-after validation. ClickHouse and both the real taxi data and original
-100-million-row dataset were preserved.
+Owned [cluster](evidence/federation-capacity-cleanup.json) and [relational](evidence/federation-relational-cleanup.json) fixtures were stopped; taxi and original 100m-row ClickHouse data remained. The capacity guide retains scratch, slow-consumer, paced-source and cancellation observations.
 
 ## DuckDB custom federation adapter
 
-The opt-in Linux amd64 bridge connects the Go ClickHouse reader to DuckDB through
-a small compiled C++ shim. The [build record](evidence/federation-build.json)
-matches 181 source/build inputs against the committed tree and tested VM.
-The [container record](evidence/federation-container.json) identifies the actual
-image and extracted binary used for live acceptance. Full bridge-tagged Go
-[tests](evidence/tests-federation.log), strict cgo pointer checks with
-[race tests](evidence/race-federation.log), and tagged vet passed.
+The initial opt-in Linux amd64 C++ shim connected the Go ClickHouse reader to DuckDB. [Build inputs](evidence/federation-build.json) matched 181 files; the [container record](evidence/federation-container.json) identifies the image/binary. [Tagged tests](evidence/tests-federation.log), [race/strict-cgo checks](evidence/race-federation.log) and vet passed.
 
-The same image binary passed [CLI/HTTP regression](evidence/acceptance-federation.json),
-[NATS store checks](evidence/cluster-store-federation.log),
-[10 cluster checks](evidence/cluster-federation.json), and
-[14 acceleration checks](evidence/acceleration-federation.json). Those regressions
-exercise the existing CSV/Parquet/range paths, tenant and mTLS enforcement,
-gateway replacement, one-broker loss and snapshot refresh; they are separate
-from custom ClickHouse federation acceptance. Container checks verified nonroot
-execution, a read-only root, dropped capabilities, no-new-privileges, memory/PID
-limits, Landlock file denial and permitted/denied network destinations. Disposable
-processes were stopped afterward. These are same-VM fixtures, not multi-zone HA.
+The same image passed [CLI/HTTP](evidence/acceptance-federation.json), [NATS store](evidence/cluster-store-federation.log), [10 cluster](evidence/cluster-federation.json) and [14 acceleration checks](evidence/acceleration-federation.json). Container tests covered privilege, filesystem and network controls; these were same-VM fixtures.
 
-[Live ClickHouse 26.9.7.9 acceptance](evidence/federation-clickhouse.json) passed
-27 checks on a separately owned one-million-row fixture. These cover exact
-Int64/UInt64 extrema, decimal and NULL values, projection and integer predicates,
-self-joins, a CSV join, scan limits, selected-table restrictions, the global
-32-table cap, cancellation and actual Landlock execution. Failed queries leave
-no completed export. The source user has SELECT-only grants, with a real write
-denial checked. Fixture cleanup preserved the existing 100-million-row dataset.
+[ClickHouse 26.9.7.9](evidence/federation-clickhouse.json) passed 27 checks over an owned million-row table: exact extrema/decimal/NULL, projection/integer predicates, joins, selected-table/global 32-table bounds, cancellation, Landlock and SELECT-only write denial. Failed exports were not published; existing benchmark data remained.
 
-For `row_id >= 999990`, the source sent only 10 rows from the million-row table.
-Selecting `row_id` fetched 80 logical Arrow bytes (352 response-body bytes),
-compared with 5,244 logical bytes (5,624 response-body bytes) when also selecting
-the large payload column. These measurements exclude schema discovery and HTTP
-headers; they demonstrate avoided transfer, not ClickHouse disk-scan reduction.
-The observed NULL predicate remained in DuckDB and fetched all one million rows.
-`COUNT(*)` selected the first physical column. Required string comparison
-pushdown fails explicitly; it is not silently omitted.
+For `row_id >= 999990`, ten rows crossed the source boundary. Selecting only `row_id` used 80 logical/352 body bytes versus 5,244/5,624 with payload. This excludes discovery/headers and proves avoided transfer, not reduced disk scanning. A NULL filter stayed local and fetched all rows; `COUNT(*)` selected the first physical column.
 
 ### One-million-row federated export
 
-Three complete CLI exports selected `row_id, u64`, ordered by `row_id`, and
-persisted 16,094,328 bytes of Arrow output each. All exact-value and NULL checks
-passed with the same canonical checksum. Timing includes coordinator/worker
-startup, source transfer, DuckDB ordering and file sync; checksum validation
-and fixture loading are outside the interval. Starting/stopping the RSS sampler
-is included, and the source capture proxy remains active during timing.
+Each ordered two-column export persisted 16,094,328 bytes with identical exact values/checksum. Timing includes startup, source transfer, ordering, file sync, sampler and active capture proxy; loading/checksum validation is outside.
 
-| Trial | Export seconds | Million rows/s | Coordinator peak RSS | Worker peak RSS |
+| Trial | Seconds | Million rows/s | Coordinator RSS | Worker RSS |
 | --- | ---: | ---: | ---: | ---: |
 | 1 | 0.291 | 3.442 | 58.76 MiB | 157.82 MiB |
 | 2 | 0.305 | 3.276 | 58.83 MiB | 150.62 MiB |
 | 3 | 0.296 | 3.377 | 57.84 MiB | 152.10 MiB |
 
-The median was **3.377 million rows/s** for this narrow synthetic export. Each
-trial fetched one million source rows in 23 batches. The four-CPU, approximately
-31-GiB VM also hosted ClickHouse, and an active test proxy captured and decoded
-the source batches. Caches were warm/uncontrolled. DuckDB used two threads and a
-256 MiB engine budget, with 64 MiB source/output limits and a two-million-row
-scan ceiling. RSS was sampled every 20 ms, can miss short peaks, and is reported
-separately per process; it excludes ClickHouse, proxy, kernel and filesystem
-cache memory. Do not sum the peaks or treat the engine budget as total RSS.
+Median: 3.377m rows/s; 23 source batches/trial. The four-CPU/~31 GiB VM also hosted ClickHouse/proxy; caches were uncontrolled. DuckDB used two threads/256 MiB, 64 MiB source/output limits and a 2m-row ceiling. Separate 20ms RSS peaks exclude source/proxy/kernel/cache and can miss spikes; do not add them or equate them with the engine budget.
 
-This workload is narrower and smaller than the earlier ten-million-row native
-export. It does not establish a speedup over that path, other engines, or a production
-workload. DuckDB still materializes execution before Arrow delivery; joins,
-aggregates, ordering and LIMIT are not generally pushed to the source. At this
-earlier baseline, sustained concurrency, slow consumers and WAN transfer had not
-been tested; the later NYC Taxi results above extend that scope. Production
-recovery still requires deployment-specific testing.
-The [adapter guide](federation.md) documents the supported predicates and build
-contract. Other native connectors do not automatically gain federation support.
+This smaller/narrower workload establishes no speedup over the native benchmark or other engines. DuckDB materializes execution; joins/aggregates/order/LIMIT are not generally pushed down. See the [adapter contract](federation.md) and later capacity scope above.
 
-The first CI run exposed an environment-dependent provisioning error: `git apply`
-inside build artifacts inherited the enclosing checkout and skipped the accessor
-patch while returning success. Provisioning now isolates Git discovery and checks
-the actual patched file before trusting its marker. Five Python regressions cover
-nested and Git-free checkouts, inherited Git environment, and missing/changed
-accessors. CI also caught a disappearing-process race in the acceptance observer;
-it now handles both Linux ENOENT and ESRCH during expected worker exit. Neither
-correction changes the compiled engine used for the measurements above.
+Early CI found inherited Git discovery skipping a native accessor patch and an ENOENT/ESRCH observer race. Provisioning isolation, content verification and five regression cases corrected these without changing the measured engine.
 
 ## Object snapshots and MongoDB refresh
 
-The [object baseline build](evidence/object-storage-build.json) verifies the
-committed source against the tested VM and records binary hashes. Full tagged
-Go tests, focused race tests, vet and CLI/launcher builds passed; see
-[tests](evidence/tests-object-storage.log) and [race checks](evidence/race-object-storage.log).
-The unchanged final baseline binary passed [CLI/HTTP](evidence/acceptance-object-storage.json),
-[cluster](evidence/cluster-object-storage.json) and
-[14 snapshot checks](evidence/acceleration-object-storage.json). The three-broker
-fixture ran on one VM, then its processes were stopped.
+[Build provenance](evidence/object-storage-build.json), [tagged tests](evidence/tests-object-storage.log), [race checks](evidence/race-object-storage.log), vet/builds and [CLI/HTTP](evidence/acceptance-object-storage.json), [cluster](evidence/cluster-object-storage.json), [14 snapshot checks](evidence/acceleration-object-storage.json) passed on the recorded baseline.
 
-[Object protocol acceptance](evidence/object-acceleration.json) passed all 36
-checks across private S3, R2, GCS and Azure TLS fixtures. Each selected-column
-query transferred 16,984 bytes in two ranges from a roughly 3.15 MB Parquet
-object. Reader-only identity, source outage, fresh reader staging, exact values,
-failed refresh retention, metadata corruption and read-only publisher separation
-were checked. Foreign redirects, ignored ranges and wrong intervals failed
-without a completed export; the foreign endpoint received zero requests. These
-are protocol fixtures, not real cloud accounts or IAM certification.
+[36 object checks](evidence/object-acceleration.json) used private S3/R2/GCS/Azure TLS fixtures: selected columns fetched 16,984 bytes in two ranges from ~3.15 MB objects. Tests covered reader identity, outages, exact data, failed refresh, metadata corruption and redirect/range refusal; foreign endpoints received no requests.
 
-Three alternating trials per provider measured median complete query/validation
-times of 258–285 ms remotely and 59–63 ms locally. The extra 198–226 ms includes
-CLI startup, extension loading, metadata, TLS, range access and export validation;
-it is not isolated bridge overhead. A separate generated 32 MiB loopback test
-measured 663.95 MB/s over three iterations. Neither result establishes cloud/WAN
-throughput or sustained concurrency capacity. Range and copy-buffer limits are
-in the [object storage guide](object-storage.md).
+Median full query/validation was 258–285ms remote versus 59–63ms local across three alternating trials/provider. A generated 32 MiB loopback test reached 663.95 MB/s. These include setup/validation and establish neither isolated bridge overhead nor cloud/WAN capacity. See [object limits](object-storage.md).
 
-The initial direct-DuckDB cloud reader failed the confinement test: pinned
-`httpfs` followed foreign redirects and forwarded an S3 session token. That path
-was removed. The released path uses a parent-owned Go range reader with redirect
-refusal and no cloud credentials in the query process. Object acceptance predates
-a later scheduling-only clock-skew fix; both binary identities are retained.
-The final code also tests service-clock freshness/scheduling with four-hour host
-clock offsets in both directions.
+The initial direct HTTPFS cloud path followed a foreign redirect with an S3 session token and failed confinement. It was removed; the parent Go range reader refuses redirects and keeps cloud credentials out of query children. Later scheduling clock-skew tests cover ±4h offsets; records retain both binary identities.
 
-[Live MongoDB 8.0.32 acceptance](evidence/mongodb-acceleration.json) covers YAML
-aggregation pipelines, filtered/grouped/empty results, exact int64/Decimal128/BSON
-values and DuckDB reads of the resulting local snapshot. `$out` and `$merge`
-refreshes fail and preserve the committed generation. BSON remains binary; this
-does not infer relational document columns or implement CDC.
+[MongoDB 8.0.32](evidence/mongodb-acceleration.json) checked pipeline refresh, filtered/grouped/empty results and exact BSON/int64/Decimal128 snapshots. `$out`/`$merge` fail without replacing the committed generation. BSON stays binary; there is no inferred relational schema or CDC.
 
 ## Dataset acceleration
 
-Persistent full-refresh Parquet snapshots are implemented with manual refresh,
-local scheduling and tenant-scoped NATS cluster dispatch. DuckDB queries selected
-snapshot aliases. [Configuration and operational boundaries](acceleration.md)
-cover freshness, grants, types, retention and shared storage.
+[Acceleration](acceleration.md) provides full-refresh Parquet snapshots with manual/local schedules and tenant NATS dispatch. [Build inputs](evidence/acceleration-build.json), [tagged tests](evidence/tests-acceleration.log), [race checks](evidence/race-acceleration.log), vet/builds and [CLI](evidence/acceptance-acceleration.json)/[cluster](evidence/cluster-acceleration.json) regression passed.
 
-The [integrated build record](evidence/acceleration-build.json) identifies the
-tested Linux binaries and matching VM/local source hashes. Full tagged Go tests,
-acceleration/catalog/cluster/worker/HTTP race tests, vet, CLI and sandbox-launcher
-builds passed. [Tagged test log](evidence/tests-acceleration.log),
-[race log](evidence/race-acceleration.log), [CLI/HTTP regression](evidence/acceptance-acceleration.json)
-and [cluster regression](evidence/cluster-acceleration.json) are retained.
-
-The [14-check acceleration acceptance](evidence/acceleration-acceptance.json)
-passed exact typed Arrow/Parquet round trips, empty schemas, failed-refresh
-retention, source-file outage reads, authorization-version invalidation and
-expiry. Real NATS dispatch refreshed two tenants' snapshots; both tenant A
-workers read the shared snapshot, scheduled replacements became visible, and
-cross-tenant handles remained inaccessible. Linux store race tests also exercise
-separate-process writer locking, writer death, readers and generation cleanup.
-These are same-host fixtures, not multi-host filesystem or recovery certification.
+[14 acceptance checks](evidence/acceleration-acceptance.json) cover typed/empty round trips, retained snapshots, source outages, authorization/freshness, scheduled two-tenant refresh and shared readers. Separate-process locking/death tests are local fixtures, not multi-host filesystem certification.
 
 ### Ten-million-row snapshot comparison
 
-The [benchmark script](../scripts/acceleration_benchmark.py) reads four columns
-from the first 10 million rows of the existing ClickHouse fixture and creates a
-112,829,920-byte Parquet snapshot. Refresh took **2.447 seconds**. Three alternating
-query pairs returned 4,096 groups with exactly matching counts, integer sums and
-bounds. Median complete CLI query times were **0.201 seconds native** and
-**0.240 seconds accelerated**. Native ClickHouse was faster in this comparison.
+The [script](../scripts/acceleration_benchmark.py) refreshed four ClickHouse columns into 112,829,920 bytes of Parquet in 2.447s. Three alternating pairs returned 4,096 exactly matched groups. Median CLI query: **0.201s native; 0.240s accelerated**. Native ClickHouse was faster.
 
-[Raw evidence](evidence/acceleration-clickhouse.json) records each trial and the
-source-unavailable positive/negative controls: snapshot SQL returned the same
-result with the registered source endpoint unreachable, while the native query
-failed. This demonstrates independent reads after refresh; it does not establish
-reduced PostgreSQL/Oracle load or a universal latency advantage.
+[Raw evidence](evidence/acceleration-clickhouse.json) includes source-unavailable controls: snapshot queries succeeded while native queries failed. This proves independent reads, not universal speedups or measured PostgreSQL/Oracle load reduction.
 
-GNU time reported maximum RSS of 77.9 MiB for refresh, 112.0–114.3 MiB for the
-accelerated query trials and 55.8–55.9 MiB for native query trials. These are
-GNU time's command/children maxima, not a summed process-tree peak; they exclude
-ClickHouse server memory. Source and Kelvo shared the four-CPU, approximately
-31-GiB test VM. Engine/client budgets were 512 MiB and two threads; they are not
-total-process memory limits. Caches were uncontrolled, only three pairs ran,
-and query output contained 4,096 rows rather than 10 million rows. No export,
-WAN, cold-cache or sustained-concurrency throughput claim follows from this test.
+GNU time reported command/children maxima: 77.9 MiB refresh, 112.0–114.3 MiB accelerated, 55.8–55.9 MiB native. They are not summed tree peaks and exclude ClickHouse. The shared four-core/~31 GiB VM used two threads/512 MiB budgets, uncontrolled caches and only three pairs. This aggregate-output test establishes no export/WAN/concurrency throughput.
 
-The benchmark harness's initial timed wait used polling that could add up to
-50 ms of observer delay. Final evidence uses a blocking wait with a signal
-deadline. No Go source changed for that correction.
-
-The original acceleration change did not validate a new container image or
-production deployment; the later federation image and regression are recorded above.
-The Compose overlay is provided for operator integration. Incremental refresh,
-CDC and per-user row/column policies remain absent. Object snapshots were added in the later validation above.
+A polling wait that could add 50ms was replaced with blocking timed wait before final evidence; no Go code changed. Later image validation is above. Incremental refresh, CDC and per-user row/column policies remain absent.
 
 ## Native connector expansion
 
-Six additional native routes are implemented: Exasol, Spanner, Ignite 2, Athena,
-DynamoDB, and Cosmos DB for NoSQL. Elasticsearch now supports bound positional
-parameters and has live acceptance evidence. Configuration, source dispatch and
-worker credential-isolation tests include the new routes. These connectors run
-queries at the selected provider; they do not add cross-source DuckDB federation.
+Exasol, Spanner, Ignite 2, Athena, DynamoDB and Cosmos DB added native routes; Elasticsearch added parameters/live checks. Native routes execute remotely and do not automatically gain federation.
 
-The current [integrated build record](evidence/native-expansion-build.json) records
-the Go version, kernel, commands, source hashes and binary hashes. Full tagged
-Go tests, native/worker/cluster/HTTP race tests, vet, binary and sandbox-launcher
-builds, [CLI/HTTP acceptance](evidence/acceptance-native-expansion.json), and
-[cluster regression acceptance](evidence/cluster-native-expansion.json) passed on
-the dedicated Linux VM. [Tagged tests](evidence/tests-native-expansion.log) and
-[race tests](evidence/race-native-expansion.log) are retained. The new connectors
-were not throughput-benchmarked, packaged into a newly validated container image,
-or deployed to production by this change.
+[Build provenance](evidence/native-expansion-build.json), [tagged tests](evidence/tests-native-expansion.log), [race checks](evidence/race-native-expansion.log), vet/builds and [CLI](evidence/acceptance-native-expansion.json)/[cluster](evidence/cluster-native-expansion.json) acceptance passed on Linux. This milestone added no container, throughput or deployment acceptance.
 
-| Connector | Executed checks | Remaining boundary |
-| --- | --- | --- |
-| Elasticsearch 8.19.0 | [Secured live server](evidence/elasticsearch-native.json): 1,205 rows, pagination, exact int64/NULLs, parameters, limits, index-restricted key, zero open contexts afterward | Package-level acceptance; no cluster or throughput measurement |
-| Ignite 2.17.0 | [Authenticated live server](evidence/ignite-native.json): 1,205 rows, exact values, UUID metadata refusal/cast, empty results, failure cleanup, six released cursors | One node behind a verified TLS proxy; no RBAC or sticky-routing acceptance; Ignite 3 unsupported |
-| DynamoDB Local 3.1.0 | [Live Local engine](evidence/dynamodb-native.json): complete tagged values, 38-digit decimals, 1,205 rows, empty continuation pages, restrictions/limits, certificate checks | Local does not enforce AWS IAM or prove cloud SigV4 interoperability |
-| Exasol | Native WSS protocol fixtures: RSA login, verified TLS, exact DECIMAL values, metadata, batching/fetch, cancellation, rollback acknowledgement, malformed responses and bounded stalls | No live Exasol server; source-side read permissions required |
-| Spanner | HTTPS fixtures: source-bound sessions, single-use strong read-only transaction, exact scalar types, cancellation and cleanup | No Google account; materialized REST response limited to 10 MiB; complex types unsupported |
-| Athena | Signed HTTPS fixtures: execution/polling, paging/header handling, exact scalar types, cancellation and limits | No AWS account; result files remain in configured S3 storage |
-| Cosmos DB for NoSQL | HTTPS fixtures and official HMAC vector: exact JSON, continuation/session headers, empty pages, RU/page budgets, query restrictions | No Azure account; projections/filters only, no distributed aggregates/sorting/query-plan merging |
+| Connector | Evidence and boundary |
+| --- | --- |
+| Elasticsearch 8.19.0 | [Live secured server](evidence/elasticsearch-native.json): 1,205 rows, exact values, paging/limits/restricted key, no open contexts; no throughput/cluster claim |
+| Ignite 2.17.0 | [Live authenticated server](evidence/ignite-native.json): 1,205 rows, six released cursors, UUID refusal/cast; one node behind TLS proxy, no RBAC/sticky routing, no Ignite 3 |
+| DynamoDB Local 3.1.0 | [Local engine](evidence/dynamodb-native.json): tagged values/38-digit decimals, paging/limits/TLS; no cloud IAM/SigV4 acceptance |
+| Exasol | Native WSS fixtures: exact decimals, TLS/login, paging/cancel/rollback; no live server; read grants still required |
+| Spanner | HTTPS read-only session/type/cleanup fixtures; no Google account, 10 MiB materialized-response cap, no complex types |
+| Athena | Signed HTTPS execution/paging/cancel fixtures; no AWS account; result files remain in configured S3 |
+| Cosmos DB | HTTPS/HMAC fixtures, exact documents, continuation and RU/page bounds; no Azure account or distributed aggregate/sort merging |
 
-Direct connector cancellation/cleanup checks run in-process. The outer worker
-currently uses immediate process-group termination, which can preempt remote
-cleanup on caller cancellation, outer deadlines, or downstream sink failure.
-This release does not guarantee provider-side cancellation through the worker
-boundary; see [the operational limitation](usage.md#native-cancellation-and-remote-cleanup).
+DynamoDB/Cosmos return Arrow Binary documents. Ignite decimals use exact annotated text; its first live UUID mismatch failed safely and led to explicit rejection plus a verified cast. Exasol avoids lossy driver decoding, but rollback-only sessions do not replace grants.
 
-New source guides document unsupported parameters, types and query shapes.
-DynamoDB and Cosmos return lossless document bytes in Arrow Binary, not inferred
-relational columns. Ignite decimals use annotated exact numeric text because the
-REST metadata lacks precision/scale. Exasol bypasses its upstream driver's lossy
-number decoding; its rollback-only session does not replace read-only grants.
-
-The first Ignite live scalar test exposed UUID text with binary metadata and
-failed safely. The connector now explicitly rejects that mismatch, with a
-regression and a validated `CAST(... AS VARCHAR)` path. Protocol fixtures alone
-had not exposed this provider behavior.
+In-process cancellation does not guarantee provider cleanup through worker termination. See [current cancellation limits](usage.md#native-cancellation-and-remote-cleanup).
 
 ## Prior cluster and connector expansion
 
-Builds and tests ran on the dedicated Linux amd64 VM, using Go 1.26.8, DuckDB 1.5.6 and Linux `6.12.95+deb12-cloud-amd64`. No local builds were used. The [container image record](evidence/cluster-connectors-image.json) identifies the Docker image and extracted Go/native-launcher binaries; [source hashes](evidence/cluster-connectors-source.json) match the tested VM and local checkout. The CLI, cluster, container and spill acceptance uses those extracted binaries or that image.
+Linux amd64 checks used Go 1.26.8, DuckDB 1.5.6 and kernel `6.12.95+deb12-cloud-amd64`. The [image](evidence/cluster-connectors-image.json) and [source hashes](evidence/cluster-connectors-source.json) identify extracted binaries used for acceptance.
 
-- Full `go test -tags duckdb_arrow -p 2 ./...`, tagged `go vet ./...`, and race tests for every native connector, cluster, worker and HTTP package passed. [Tagged test log](evidence/tests-cluster-connectors.log), [race log](evidence/race-cluster-connectors.log). Live database tests are opt-in; a passing default Go suite does not imply that live credentials were available.
-- [CLI/HTTP acceptance](evidence/acceptance-cluster-connectors.json) covers YAML, exact decimals, atomic failed exports, authentication, single-consumer Arrow results, limits, cancellation and worker process cleanup.
-- [Cluster acceptance](evidence/cluster-acceptance.json) covers tenant isolation, separate worker pools, cross-gateway claims/cancellation, mTLS identities, gateway replacement, one-broker loss with quorum, and worker death without automatic query replay. [NATS store/account tests](evidence/cluster-store-connectors.log) validate durable slots and isolation against three TLS-enabled brokers on the same VM. This is a local failure fixture, not multi-zone HA or backup/restore certification.
-- [Container acceptance](evidence/container-acceptance.json) uses the actual Dockerfile image. It verifies nonroot execution, capabilities, no-new-privileges, read-only root, cgroup settings, sandboxed Arrow values and unselected-file denial. Network checks include positive controls and denied cross-tenant/unapproved destination access.
-- [DuckDB spill acceptance](evidence/duckdb-spill.json) runs a five-million-row hash-sort/window aggregate with a 64 MiB DuckDB budget and a 1 GiB temporary-data budget. The sandboxed checksum matches the control and actual spill files were observed. Recorded process RSS exceeds the DuckDB budget: that setting is not a total process-memory cap. This fixture returns one aggregate row; it is not an export-throughput benchmark.
+| Evidence | Scope |
+| --- | --- |
+| [Tests](evidence/tests-cluster-connectors.log), [race](evidence/race-cluster-connectors.log), vet/build | Full tagged suite; opt-in live tests require their own credentials |
+| [CLI/HTTP](evidence/acceptance-cluster-connectors.json) | Types, failed-export atomicity, auth, single consumer, limits/cancel and process cleanup |
+| [Cluster](evidence/cluster-acceptance.json), [NATS store/accounts](evidence/cluster-store-connectors.log) | Tenant/mTLS isolation, replacement, one-broker quorum loss and no worker replay; three same-host brokers |
+| [Container](evidence/container-acceptance.json) | Nonroot/capabilities/read-only/cgroups/Landlock/network denial with positive controls |
+| [Spill](evidence/duckdb-spill.json) | 5m-row sort/window, 64 MiB DuckDB and 1 GiB temp budgets; actual spill and exact checksum; RSS exceeded engine budget |
+
+Spill returned one aggregate row, not an export benchmark. Local broker controls do not certify multi-zone HA or backup recovery.
 
 ### Database acceptance boundaries
 
-| Path | Executed validation | Remaining boundary |
+| Path | Executed validation | Boundary |
 | --- | --- | --- |
-| Native PostgreSQL 17.6 and MySQL 8.4 | [Live verified-TLS databases](evidence/relational-acceptance.json): read-only grants/transactions, exact integers/decimals/timestamps/NULLs, parameters, cancellation and limits | MariaDB, CockroachDB, AlloyDB and Redshift share protocol code but were not separately tested |
-| MongoDB 8.0.32 | [Live aggregation and restricted SQL](evidence/mongodb-acceptance.json): cursor cleanup, exact BSON, int64/Decimal128 literals, SQL NULL semantics, grouping and empty aggregates | Restricted single-collection SQL; no full SQL dialect, writes or cross-source federation |
-| SQLite | [Signed extension fixture](evidence/sqlite-acceptance.json): large int64, text, blob, NULL, read-only access and selected-file boundary | No SQLite concurrency or throughput claim |
-| ClickHouse, PostgreSQL/MySQL federation, CSV/Parquet/DuckDB | Initial live and engine evidence below | The original export benchmark predates cluster mode and new connectors |
-| Databricks, Snowflake, D1, BigQuery, Elasticsearch, Trino/Presto | HTTPS protocol tests for types, polling/paging, cancellation, origin binding, malformed responses and limits | No live cloud/vendor account acceptance or performance claim |
-| SQL Server and Oracle | Driver configuration, conservative read syntax, exact Arrow conversions and request-contract tests | No live vendor server acceptance |
-| Flight SQL | Real TLS Flight fixtures including exact batches, allocation/row limits, schema framing, malicious messages, endpoint binding and cancellation | Client only; one result endpoint; no live vendor service or server implementation |
-| Optional `dbapi` adapter | HTTPS contract tests plus [container CLI acceptance](evidence/adapter-acceptance.json) for source binding and token handoff | Bounded JSON compatibility; no live deployed gateway/all-backend acceptance |
+| PostgreSQL 17.6 / MySQL 8.4 | [Live TLS types/grants/parameters/cancel](evidence/relational-acceptance.json) | Protocol relatives not separately tested |
+| MongoDB 8.0.32 | [Live aggregation/restricted SQL](evidence/mongodb-acceptance.json) | Single collection, read-only subset; no cross-source federation |
+| SQLite | [Signed extension and exact values](evidence/sqlite-acceptance.json) | No concurrency/throughput claim |
+| ClickHouse / relational federation / files | Initial and later evidence above/below | Different milestones use different binaries |
+| SQL Server 2022 | [25 live native/federated checks](evidence/federation-sqlserver.json) | Functional acceptance, no new throughput result |
+| Oracle | Driver configuration, read syntax, Arrow/request tests | Live Oracle server/TCPS acceptance pending |
+| Databricks / Snowflake / D1 / BigQuery / Trino/Presto | HTTPS protocol/type/paging/cancellation fixtures | No live vendor/account acceptance |
+| Flight SQL | Real TLS fixtures, exact batches, schema/limits/endpoint/cancel checks | Client only, one result endpoint, no live vendor service |
+| Optional `dbapi` | HTTPS contract and [container CLI](evidence/adapter-acceptance.json) | Bounded JSON; no deployed gateway/all-backend acceptance |
 
-The [44-engine checklist](source-coverage.md) identifies 24 built-in native routes (including protocol families), three reference file-source routes, and 17 routes requiring an external service. Parquet is additional. Names registered for external adapters do not supply JDBC/vendor drivers. The reference gateway's two SAP entries have incomplete connection builders and need a custom adapter. Metadata browsing, writes, migrations and CDC are separate capabilities.
-
-The MongoDB compiler is pinned to the published [zero-sql commit](https://github.com/SyneHQ/zero-sql/commit/b01a7e87002271a661ebd68060824be013347845); no local module replacement is required. Its new read-only path leaves the legacy write-capable conversion API unchanged. Kelvo deliberately uses only the restricted read-only compiler.
+Use the [source checklist](source-coverage.md) for current routing. Registered external names do not supply vendor/JDBC drivers. Metadata browsing, writes, migrations and CDC are separate capabilities. The published [zero-sql pin](https://github.com/SyneHQ/zero-sql/commit/b01a7e87002271a661ebd68060824be013347845) supplies only Kelvo's restricted read-only compiler path.
 
 ## Initial release checks
 
-The checks and throughput benchmark in this section record the initial release at `45e42f5`. The later YAML configuration change passed the tagged Go tests, vet, build and CLI/HTTP acceptance; it did not rerun that throughput benchmark.
+These results belong to `45e42f5`. Later YAML changes passed tests/vet/build/CLI acceptance but did **not** rerun this throughput benchmark.
 
-- Full tagged Go tests, vet and binary build passed on Debian 12 / Linux amd64 with Go 1.26.8. HTTP and ClickHouse race tests passed. [Test log](evidence/tests-final.log), [race log](evidence/race-final.log), [build inputs and binary hash](evidence/build-evidence.json).
-- The compiled CLI and HTTP server passed exact decimal checks, the README's relative-path configuration, preservation of an existing export on failure, authentication, Arrow delivery, single-consumer results, explicit row-limit failure, queued/active cancellation, and Linux child cleanup after killing the parent. [Acceptance results](evidence/acceptance.json).
-- Real PostgreSQL 17.6 and MySQL 8.4 federation returned the expected joined names, exact decimal totals and NULL. Real ClickHouse 26.9.7.9 returned a 100,000,000-row count and ID sum of 4,999,999,950,000,000. CSV aggregation also matched. Signed DuckDB 1.5.6 extensions were provisioned with canonical filenames. These are functional checks, not capacity tests. [Database results](evidence/real-database-results.json).
-- Engine tests cover registered CSV, Parquet and DuckDB files, typed parameters, exact decimals, strings, NULLs and denied capabilities. Native adapter tests include fragmented multi-batch streams, dictionary replacement, late source errors, truncation, allocation/output limits and credential redaction.
+| Evidence | Scope |
+| --- | --- |
+| [Tests](evidence/tests-final.log), [race](evidence/race-final.log), [build](evidence/build-evidence.json) | Debian 12/amd64, Go 1.26.8; tagged tests/vet/build and HTTP/ClickHouse race |
+| [CLI/HTTP](evidence/acceptance.json) | Exact decimals, relative config, failed-export preservation, auth/results/limits/cancel and parent-death cleanup |
+| [Live databases](evidence/real-database-results.json) | PostgreSQL/MySQL joins; ClickHouse 100m count and sum 4,999,999,950,000,000; CSV and signed extensions |
+
+Engine/source tests also cover selected files, parameters, exact types, denied capabilities, fragmented/dictionary streams, late errors, truncation, limits and redaction.
 
 ## Ten-million-row native export
 
-The [public helper and exact fixture](benchmarking.md) select six columns from 10 million of 100 million synthetic ClickHouse rows. Each timed run includes coordinator launch, native source execution, worker/coordinator Arrow delivery, output-file persistence and final caller fsync. Arrow value validation and checksums happen after timing. The output is 659,299,304 bytes (628.76 MiB) in 154 batches; logical Arrow buffers account for 659,232,799 bytes.
+The [public helper](benchmarking.md) exports six columns from 10m of 100m synthetic ClickHouse rows. Timing includes coordinator launch, source execution, Arrow transfer, output persistence and final fsync; value/checksum validation follows timing.
 
-| Trial | Export seconds | Million rows/s | Coordinator peak RSS | Worker peak RSS |
+Output: 659,299,304 encoded bytes in 154 batches; logical Arrow buffers: 659,232,799 bytes.
+
+| Trial | Seconds | Million rows/s | Coordinator RSS | Worker RSS |
 | --- | ---: | ---: | ---: | ---: |
 | [1](evidence/clickhouse-transfer-trial-1.json) | 6.739 | 1.484 | 55.79 MiB | 50.05 MiB |
 | [2](evidence/clickhouse-transfer-trial-2.json) | 8.490 | 1.178 | 57.87 MiB | 49.81 MiB |
 | [3](evidence/clickhouse-transfer-trial-3.json) | 8.122 | 1.231 | 57.78 MiB | 51.57 MiB |
 
-Every run passed row count, ID sum (499,995,495,000,000), schema, timestamp-value formula, payload-format and NULL-count checks. File and Arrow-buffer checksums matched across all three runs. Median complete-export throughput was 1.231 million rows/s; encoded throughput ranged from 77.66 to 97.83 MB/s (decimal units).
+All rows, ID sum (499,995,495,000,000), schema, timestamp/payload formulas, NULL counts and checksums matched. Median complete-export throughput: **1.231m rows/s**; encoded rate: 77.66–97.83 MB/s. Internal execution alone took 2.89–3.23s; the table includes persistence.
 
-The VM has four logical CPUs and about 31 GiB RAM. ClickHouse shared that VM with Kelvo and was restricted to 1.5 CPUs and 4 GiB container memory. Kelvo used two query threads, a 1 GiB source-query/Arrow-decoder budget, an 11-million-row ceiling, 1 GiB encoded-byte ceiling and a 120-second timeout. The source cache was warm/uncontrolled. This was a local VM path without browser rendering or WAN transfer.
+The four-CPU/~31 GiB VM colocated ClickHouse (1.5 CPUs/4 GiB). Kelvo used two threads, 1 GiB source-query/decoder and byte budgets, an 11m-row limit and 120s timeout. Cache was warm/uncontrolled; there was no browser or WAN.
 
-RSS was sampled every 20 ms and can miss short peaks. Coordinator and worker peaks are separate observations: do not add them, because shared pages can be counted twice. They exclude ClickHouse, the validation client, kernel buffers and filesystem cache. The 1 GiB query budget is distinct from Kelvo's observed roughly 50–58 MiB per-process RSS. These figures do not establish the memory requirements of DuckDB joins, sorts, concurrency or larger values.
-
-The internal execution durations were about 2.89–3.23 seconds and excluded final export persistence. The table uses complete-export time. The Rust reference used a different transport/client path, so these results do not support a Go-versus-Rust speedup claim.
+RSS samples every 20ms can miss peaks. Separate process peaks exclude source/client/kernel/cache and must not be summed. Roughly 50–58 MiB observed RSS is distinct from configured budgets and says nothing about DuckDB joins, sorts or concurrency. Different transport/client benchmarks cannot establish a language/runtime speedup.
 
 ## Failures retained
 
-The first 512 MiB source-query attempt failed after approximately 69 MB of Arrow output. ClickHouse returned memory-limit error 241 after its HTTP 200 response; Kelvo initially misclassified the late text exception as an Arrow allocation limit. That classification is fixed and regression-tested. A repeat with the final binary correctly reported the ClickHouse source memory error. [Initial failure](evidence/clickhouse-transfer-initial-failure.json), [corrected diagnostic](evidence/clickhouse-transfer-512-recheck.json). The successful trials used 1 GiB; 512 MiB did not pass this workload.
-
-An initial benchmark assertion expected ClickHouse DateTime to be an Arrow timestamp. ClickHouse actually emits it as UInt32 Unix seconds; the export succeeded but that harness assertion failed. The helper now validates the documented mapping and exact epoch-second values without an optional NumPy dependency. All successful trials above ran after correction. [Initial harness failure](evidence/benchmark-harness-initial-failure.json), [mapping and explicit timestamp cast](../internal/sources/clickhouse/README.md).
+| Failure | Outcome |
+| --- | --- |
+| [512 MiB attempt](evidence/clickhouse-transfer-initial-failure.json) | Source error 241 after ~69 MB/HTTP 200 was initially misclassified as Arrow allocation; [recheck](evidence/clickhouse-transfer-512-recheck.json) reports source memory correctly. Successful trials used 1 GiB |
+| [Timestamp assertion](evidence/benchmark-harness-initial-failure.json) | Export succeeded but harness expected Arrow timestamp; ClickHouse DateTime was UInt32 Unix seconds. Corrected exact mapping preceded successful trials; see [cast/mapping guide](../internal/sources/clickhouse/README.md) |
 
 ## Remaining acceptance work
 
-Production deployment review, multi-zone broker/storage recovery, sustained tenant concurrency, cold-cache and slow-client/WAN workloads, per-provider live acceptance and broad native-memory profiling remain outstanding. Per-user row/column authorization, token/tenant management APIs, durable result storage, CDC, a Flight SQL server and distributed execution of one SQL plan are not implemented. The pinned DuckDB Go path materializes execution before Arrow delivery; streaming native ClickHouse output does not change that limitation.
+Track current work in [production status](production-status.md): deployment review, multi-zone recovery, provider acceptance and representative sustained/memory capacity remain separate gates. Per-user row/column policy, management APIs, durable query-result storage, CDC, Flight SQL server and cross-node execution of one SQL plan remain absent. The pinned DuckDB path materializes execution before Arrow delivery.

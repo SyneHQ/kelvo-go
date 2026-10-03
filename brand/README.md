@@ -2,11 +2,7 @@
 
 ![Kelvo — Your databases. One query gateway.](kelvo-banner.png)
 
-An editorial identity for a technical product: a small serif lockup, an abstract circular symbol, and vermilion. Six bands alternate between two curved fields inside a circle. The interleaving suggests data brought together; the mark is geometric, not a letter or monogram.
-
-The README banner places the red symbol and black wordmark at the top center of a warm-white database grid. Supported database logos frame the heading, **Your databases. One query gateway.** The social artwork retains its mineral-and-peach atmosphere.
-
-The product name is **Kelvo**. The organization is **SYNEHQ**. Use **Kelvo by SYNEHQ** when both appear together. The uppercase wordmark is artwork; use normal title case in prose.
+Use **Kelvo** for the product, **SYNEHQ** for the organization, and **Kelvo by SYNEHQ** together. The six-band circular mark is geometric, not a letter. Keep the serif wordmark small and centered in banner layouts.
 
 ## Assets
 
@@ -22,9 +18,7 @@ The product name is **Kelvo**. The organization is **SYNEHQ**. Use **Kelvo by SY
 | [Social SVG](kelvo-social.svg) · [Social PNG](kelvo-social.png) | 1600 × 840 master; 1200 × 630 export |
 | [Square icon](kelvo-icon.png) | 512 × 512 ink mark on vermilion |
 
-SVG lettering and marks are paths: no installed fonts or network requests are needed to display them. The README banner is entirely vector artwork, including its embedded database symbols. The social SVG embeds its grain field as a PNG; its lettering and mark remain vectors. PNG exports provide consistent rendering in GitHub and social clients.
-
-The architecture board extends the banner's warm-white grid into a workflow: sources on the left, the Go coordinator and two execution modes in the center, and Arrow consumers on the right. The coordinator shows selected credential resolution and resource/source admission. Vermilion arrows carry results and dataset transitions; dashed arrows mark cluster dispatch. Separate rows follow full refresh through schema contracts and immutable generations to pinned DuckDB reads, explain cluster routing, and distinguish verified local recovery from worker operations. The [architecture walkthrough](../docs/architecture.md) is the accessible text companion and documents scope, optional controls and execution boundaries.
+SVG lettering and marks are paths and need no fonts/network at display time. The social SVG embeds a grain PNG. Use PNG exports for consistent GitHub/social rendering; [architecture text](../docs/architecture.md) accompanies the diagram.
 
 ## Color
 
@@ -37,19 +31,18 @@ The architecture board extends the banner's warm-white grid into a workflow: sou
 | Warm white | `#FCFAF8` | README grid background |
 | Rose gray | `#DDD3D5` | README grid lines |
 
-Use ink on vermilion or paper. Use paper on ink. On the README banner, use vermilion for the symbol and near-black for the wordmark. Keep grain behind artwork, never inside the standalone mark. The social artwork's atmosphere is original procedural artwork, not a photograph or an extracted reference asset.
+Use ink on vermilion/paper and paper on ink. The README uses a vermilion symbol, near-black text and warm-white grid. Keep grain behind artwork, never inside the mark.
 
 ## Typography and spacing
 
-**Instrument Serif Regular** supplies the wordmark. **Inter Regular** supplies the README headline, supporting line, and database labels. **Space Mono Regular** is the supporting typeface for technical content outside the logo artwork. All are SIL Open Font License 1.1 fonts. Keep the serif at its native width; do not stretch or artificially condense it.
-
-Keep at least one band height of clear space around the visible mark. Keep the lockup at least 160 px wide in the source artwork. Below 32 px, use the four-band small mark to preserve the curved fields and negative space. Banner lockups are deliberately small and centered, with generous space. Keep the README headline and its single supporting line separate from the logo. The database grid illustrates connector coverage; it does not imply provider endorsement or universal federation support.
-
-Preserve proportions, band count, and the supplied curves. Use the inverse assets on dark surfaces. Avoid outlines, drop shadows, extra colors, or gradients applied to the mark itself. Do not imply that a community project is an official SYNEHQ release.
+- **Instrument Serif Regular:** wordmark. **Inter Regular:** banner headline/labels. **Space Mono Regular:** technical supporting text. All use SIL OFL 1.1.
+- Leave one band-height of clear space. Keep the lockup at least 160px wide; use the four-band mark below 32px.
+- Preserve proportions and curves. Do not stretch, outline, shadow or add gradients to the mark. Use inverse assets on dark backgrounds.
+- Database marks indicate connector coverage, not endorsement or universal federation. Community artwork must not imply an official SYNEHQ release.
 
 ## Reproduce the artwork
 
-Run the renderer on a build host with Python 3, Pillow 11.3.0, fonttools 4.60.1, and CairoSVG 2.8.2. It uses a fixed grain seed for the social artwork and generates all ten Kelvo exports. Database symbols are read from the checked-in sprite.
+On a build host, use Python 3, Pillow 11.3.0, fonttools 4.60.1 and CairoSVG 2.8.2:
 
 ```sh
 python scripts/render_brand.py \
@@ -58,9 +51,9 @@ python scripts/render_brand.py \
   --output brand
 ```
 
-Add `--banner-only` to regenerate only `kelvo-banner.svg` and `kelvo-banner.png`. The default database sprite is `brand/database-marks.svg`; use `--database-marks` to override it.
+Add `--banner-only` for the banner pair. `--database-marks` overrides the checked-in sprite. Social grain uses a fixed seed.
 
-Generate the architecture diagram separately, using the same fonts and dependencies:
+Render the architecture separately:
 
 ```sh
 python scripts/render_architecture.py \
@@ -71,15 +64,15 @@ python scripts/render_architecture.py \
   --output artifacts/architecture
 ```
 
-The renderer checks label widths and emits the SVG, 2× PNG, and `architecture-layout.json` with text positions for review. Copy only the reviewed SVG and PNG into `brand/`. Edit labels and layout in `scripts/render_architecture.py`; the exported SVG is also editable in vector design tools.
+The renderer checks label widths and emits SVG, 2× PNG and `architecture-layout.json`. Review them before copying SVG/PNG into `brand/`. Edit layout in `scripts/render_architecture.py` or a vector editor.
 
-Instrument Serif and Inter are supplied to the renderer; font binaries are not bundled in this repository. Inter's variable font is used at its default regular weight. Upstream typeface sources and licenses:
+Fonts are supplied to the renderer, not bundled:
 
-- [Instrument Serif Regular](https://github.com/google/fonts/blob/main/ofl/instrumentserif/InstrumentSerif-Regular.ttf) · [OFL](https://github.com/google/fonts/blob/main/ofl/instrumentserif/OFL.txt)
-- [Inter Regular, pinned source](https://github.com/google/fonts/blob/0b58fb370093f9a9f4ff785d94405710b79de67c/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf) · [OFL](https://github.com/google/fonts/blob/0b58fb370093f9a9f4ff785d94405710b79de67c/ofl/inter/OFL.txt)
-- [Space Mono Regular](https://github.com/google/fonts/blob/main/ofl/spacemono/SpaceMono-Regular.ttf) · [OFL](https://github.com/google/fonts/blob/main/ofl/spacemono/OFL.txt)
+- [Instrument Serif](https://github.com/google/fonts/blob/main/ofl/instrumentserif/InstrumentSerif-Regular.ttf) · [OFL](https://github.com/google/fonts/blob/main/ofl/instrumentserif/OFL.txt)
+- [Inter, pinned regular](https://github.com/google/fonts/blob/0b58fb370093f9a9f4ff785d94405710b79de67c/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf) · [OFL](https://github.com/google/fonts/blob/0b58fb370093f9a9f4ff785d94405710b79de67c/ofl/inter/OFL.txt)
+- [Space Mono](https://github.com/google/fonts/blob/main/ofl/spacemono/SpaceMono-Regular.ttf) · [OFL](https://github.com/google/fonts/blob/main/ofl/spacemono/OFL.txt)
 
-SHA-256 of the fonts used for these exports:
+SHA-256 of font files used:
 
 ```text
 InstrumentSerif-Regular.ttf
@@ -88,4 +81,4 @@ Inter.ttf
 29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031
 ```
 
-Kelvo artwork and the renderer are included under the repository's [Apache-2.0 license](../LICENSE). That license does not grant trademark rights. Font software remains under its upstream OFL terms. Product symbols retain their upstream licenses and trademark ownership, documented for the [database marks](database-marks.SOURCES.md) and [architecture marks](architecture-marks.SOURCES.md).
+Kelvo artwork/renderers use [Apache-2.0](../LICENSE), without trademark rights. Fonts retain OFL terms. Third-party marks retain the licenses and ownership recorded in [database sources](database-marks.SOURCES.md) and [architecture sources](architecture-marks.SOURCES.md).
