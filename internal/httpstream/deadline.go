@@ -18,8 +18,9 @@ const cancellationInterval = 25 * time.Millisecond
 // a blocked Write. Reassertion also interrupts that close-notify write.
 //
 // Call the returned function before the handler returns. It joins the watcher
-// before the ResponseWriter becomes invalid, and restores an idle deadline only
-// if the operation was not cancelled. Unsupported writers retain their existing
+// before the ResponseWriter becomes invalid. It leaves the deadline in place for
+// net/http to flush buffered bytes after handler return and clear it afterward.
+// Unsupported writers retain their existing
 // behavior; this helper cannot add socket controls they do not implement.
 func WatchWriteDeadline(ctx context.Context, writer http.ResponseWriter, deadline time.Time) func() {
 	controller := http.NewResponseController(writer)
@@ -60,9 +61,6 @@ func WatchWriteDeadline(ctx context.Context, writer http.ResponseWriter, deadlin
 		once.Do(func() {
 			close(finished)
 			<-joined
-			if ctx.Err() == nil {
-				_ = controller.SetWriteDeadline(time.Time{})
-			}
 		})
 	}
 }

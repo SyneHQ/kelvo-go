@@ -3,9 +3,12 @@ package httpstream
 
 import (
 	"context"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -38,7 +41,7 @@ func (w *deadlineWriter) snapshot() []time.Time {
 	return append([]time.Time(nil), w.deadlines...)
 }
 
-func TestCompletionRestoresDeadlineAndStopsBeforeWriterRelease(t *testing.T) {
+func TestCompletionPreservesDeadlineAndStopsBeforeWriterRelease(t *testing.T) {
 	w := &deadlineWriter{ResponseRecorder: httptest.NewRecorder()}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -47,8 +50,8 @@ func TestCompletionRestoresDeadlineAndStopsBeforeWriterRelease(t *testing.T) {
 	stop()
 	stop()
 	values := w.snapshot()
-	if len(values) != 2 || !values[0].Equal(deadline) || !values[1].IsZero() {
-		t.Fatal("normal completion did not restore exactly once")
+	if len(values) != 1 || !values[0].Equal(deadline) {
+		t.Fatal("normal completion changed the deadline before server flush")
 	}
 	cancel()
 	time.Sleep(2 * cancellationInterval)
@@ -137,5 +140,84 @@ func TestUnsupportedWriterDoesNotStartEnforcement(t *testing.T) {
 	stop()
 	if err := http.NewResponseController(httptest.NewRecorder()).SetWriteDeadline(time.Now()); err == nil {
 		t.Fatal("fixture unexpectedly implements deadlines")
+	}
+}
+
+// A small response remains in net/http's buffer until after ServeHTTP returns.
+// Observe the deadline at the actual TLS socket write from finishRequest;
+// clearing it in handler cleanup would silently remove this last-write bound.
+type bufferedTLSWriteState struct {
+	handlerReturned    atomic.Bool
+	writesAfterHandler atomic.Int32
+	unboundedWrites    atomic.Int32
+}
+
+type bufferedTLSListener struct {
+	net.Listener
+	state *bufferedTLSWriteState
+}
+
+func (l *bufferedTLSListener) Accept() (net.Conn, error) {
+	connection, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return &bufferedTLSConn{Conn: connection, state: l.state}, nil
+}
+
+type bufferedTLSConn struct {
+	net.Conn
+	state    *bufferedTLSWriteState
+	mu       sync.Mutex
+	deadline time.Time
+}
+
+func (c *bufferedTLSConn) SetWriteDeadline(deadline time.Time) error {
+	c.mu.Lock()
+	c.deadline = deadline
+	c.mu.Unlock()
+	return c.Conn.SetWriteDeadline(deadline)
+}
+
+func (c *bufferedTLSConn) Write(value []byte) (int, error) {
+	if c.state.handlerReturned.Load() {
+		c.mu.Lock()
+		deadline := c.deadline
+		c.mu.Unlock()
+		c.state.writesAfterHandler.Add(1)
+		if deadline.IsZero() {
+			c.state.unboundedWrites.Add(1)
+		}
+	}
+	return c.Conn.Write(value)
+}
+
+func TestTLSBufferedCompletionRetainsDeadlineThroughServerFlush(t *testing.T) {
+	var state bufferedTLSWriteState
+	const payload = "small buffered final response"
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		stop := WatchWriteDeadline(r.Context(), w, time.Now().Add(3*time.Second))
+		defer func() { stop(); state.handlerReturned.Store(true) }()
+		_, _ = io.WriteString(w, payload)
+	}))
+	server.Listener = &bufferedTLSListener{Listener: server.Listener, state: &state}
+	server.StartTLS()
+	defer server.Close()
+	client := server.Client()
+	client.Timeout = 3 * time.Second
+	response, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil || string(body) != payload || response.ProtoMajor != 1 {
+		t.Fatal("buffered HTTP/1 TLS response failed", response.Proto, err)
+	}
+	if state.writesAfterHandler.Load() == 0 {
+		t.Fatal("fixture did not observe post-handler socket flush")
+	}
+	if state.unboundedWrites.Load() != 0 {
+		t.Fatal("handler cleanup cleared the final TLS flush deadline")
 	}
 }
