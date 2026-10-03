@@ -1,0 +1,379 @@
+{
+  "acceptance": "kelvo-csv-buffer-memory-v1",
+  "artifacts": {
+    "binary_sha256": "2dc3ebdf40f67786ade422822c79f3fc060488a318fdbd265d1a0176e61fab19",
+    "launcher_sha256": "cb09cd6b1bcf29a50b7436e02f3aebc9c2f47b1cca74a27c4fe5a7b9ec2bfb6f",
+    "runner_sha256": "9c090f76034bdc15f09485e2503b9492207991f4ad50c32a449fdee56190f05c"
+  },
+  "cases": [
+    {
+      "duckdb_memory_limit_mb": 16,
+      "elapsed_seconds": 0.06423564400756732,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {},
+      "outcome_code": "RESOURCE_EXHAUSTED",
+      "process_timeout_seconds": 25,
+      "profile": "csv_default",
+      "rss_samples": 3,
+      "sampled_peak_worker_rss_bytes": 69513216,
+      "source_rows": 1,
+      "threads": 1,
+      "worker_timeout_seconds": 20
+    },
+    {
+      "arrow_eos": true,
+      "duckdb_memory_limit_mb": 16,
+      "elapsed_seconds": 0.0640147789963521,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {
+        "buffer_size": "1048576",
+        "maximum_line_size": "262144"
+      },
+      "outcome_code": "OK",
+      "process_timeout_seconds": 25,
+      "profile": "csv_1mib_256kib",
+      "result_sha256": "7c039d884596ccbfe64be85cccf572181b40dc6eb8938fe5f7dc0b3e9a594801",
+      "row_count": 1,
+      "rows": [
+        {
+          "total": 3
+        }
+      ],
+      "rss_samples": 4,
+      "sampled_peak_worker_rss_bytes": 84529152,
+      "schema": [
+        {
+          "name": "total",
+          "nullable": true,
+          "type": "int64"
+        }
+      ],
+      "source_rows": 1,
+      "threads": 1,
+      "wire_bytes": 296,
+      "worker_timeout_seconds": 20
+    },
+    {
+      "duckdb_memory_limit_mb": 16,
+      "elapsed_seconds": 0.06406383198918775,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {
+        "buffer_size": "8000000",
+        "maximum_line_size": "2000000"
+      },
+      "outcome_code": "RESOURCE_EXHAUSTED",
+      "process_timeout_seconds": 25,
+      "profile": "csv_8000000_2000000",
+      "rss_samples": 4,
+      "sampled_peak_worker_rss_bytes": 87449600,
+      "source_rows": 1,
+      "threads": 1,
+      "worker_timeout_seconds": 20
+    },
+    {
+      "arrow_eos": true,
+      "duckdb_memory_limit_mb": 16,
+      "elapsed_seconds": 0.06398813499254175,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {},
+      "outcome_code": "OK",
+      "process_timeout_seconds": 25,
+      "profile": "parquet_control",
+      "result_sha256": "7c039d884596ccbfe64be85cccf572181b40dc6eb8938fe5f7dc0b3e9a594801",
+      "row_count": 1,
+      "rows": [
+        {
+          "total": 3
+        }
+      ],
+      "rss_samples": 4,
+      "sampled_peak_worker_rss_bytes": 85872640,
+      "schema": [
+        {
+          "name": "total",
+          "nullable": true,
+          "type": "int64"
+        }
+      ],
+      "source_rows": 1,
+      "threads": 1,
+      "wire_bytes": 296,
+      "worker_timeout_seconds": 20
+    },
+    {
+      "duckdb_memory_limit_mb": 32,
+      "elapsed_seconds": 0.06398308899952099,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {},
+      "outcome_code": "RESOURCE_EXHAUSTED",
+      "process_timeout_seconds": 25,
+      "profile": "csv_default",
+      "rss_samples": 3,
+      "sampled_peak_worker_rss_bytes": 73105408,
+      "source_rows": 1,
+      "threads": 1,
+      "worker_timeout_seconds": 20
+    },
+    {
+      "arrow_eos": true,
+      "duckdb_memory_limit_mb": 32,
+      "elapsed_seconds": 0.06395967397838831,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {
+        "buffer_size": "1048576",
+        "maximum_line_size": "262144"
+      },
+      "outcome_code": "OK",
+      "process_timeout_seconds": 25,
+      "profile": "csv_1mib_256kib",
+      "result_sha256": "7c039d884596ccbfe64be85cccf572181b40dc6eb8938fe5f7dc0b3e9a594801",
+      "row_count": 1,
+      "rows": [
+        {
+          "total": 3
+        }
+      ],
+      "rss_samples": 4,
+      "sampled_peak_worker_rss_bytes": 87334912,
+      "schema": [
+        {
+          "name": "total",
+          "nullable": true,
+          "type": "int64"
+        }
+      ],
+      "source_rows": 1,
+      "threads": 1,
+      "wire_bytes": 296,
+      "worker_timeout_seconds": 20
+    },
+    {
+      "arrow_eos": true,
+      "duckdb_memory_limit_mb": 32,
+      "elapsed_seconds": 0.06401040800847113,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {
+        "buffer_size": "8000000",
+        "maximum_line_size": "2000000"
+      },
+      "outcome_code": "OK",
+      "process_timeout_seconds": 25,
+      "profile": "csv_8000000_2000000",
+      "result_sha256": "7c039d884596ccbfe64be85cccf572181b40dc6eb8938fe5f7dc0b3e9a594801",
+      "row_count": 1,
+      "rows": [
+        {
+          "total": 3
+        }
+      ],
+      "rss_samples": 4,
+      "sampled_peak_worker_rss_bytes": 89239552,
+      "schema": [
+        {
+          "name": "total",
+          "nullable": true,
+          "type": "int64"
+        }
+      ],
+      "source_rows": 1,
+      "threads": 1,
+      "wire_bytes": 296,
+      "worker_timeout_seconds": 20
+    },
+    {
+      "arrow_eos": true,
+      "duckdb_memory_limit_mb": 32,
+      "elapsed_seconds": 0.06402737699681893,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {},
+      "outcome_code": "OK",
+      "process_timeout_seconds": 25,
+      "profile": "parquet_control",
+      "result_sha256": "7c039d884596ccbfe64be85cccf572181b40dc6eb8938fe5f7dc0b3e9a594801",
+      "row_count": 1,
+      "rows": [
+        {
+          "total": 3
+        }
+      ],
+      "rss_samples": 4,
+      "sampled_peak_worker_rss_bytes": 87195648,
+      "schema": [
+        {
+          "name": "total",
+          "nullable": true,
+          "type": "int64"
+        }
+      ],
+      "source_rows": 1,
+      "threads": 1,
+      "wire_bytes": 296,
+      "worker_timeout_seconds": 20
+    },
+    {
+      "duckdb_memory_limit_mb": 64,
+      "elapsed_seconds": 0.0639949940086808,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {},
+      "outcome_code": "RESOURCE_EXHAUSTED",
+      "process_timeout_seconds": 25,
+      "profile": "csv_default",
+      "rss_samples": 4,
+      "sampled_peak_worker_rss_bytes": 89034752,
+      "source_rows": 1,
+      "threads": 1,
+      "worker_timeout_seconds": 20
+    },
+    {
+      "arrow_eos": true,
+      "duckdb_memory_limit_mb": 64,
+      "elapsed_seconds": 0.06400591801502742,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {
+        "buffer_size": "1048576",
+        "maximum_line_size": "262144"
+      },
+      "outcome_code": "OK",
+      "process_timeout_seconds": 25,
+      "profile": "csv_1mib_256kib",
+      "result_sha256": "7c039d884596ccbfe64be85cccf572181b40dc6eb8938fe5f7dc0b3e9a594801",
+      "row_count": 1,
+      "rows": [
+        {
+          "total": 3
+        }
+      ],
+      "rss_samples": 4,
+      "sampled_peak_worker_rss_bytes": 87724032,
+      "schema": [
+        {
+          "name": "total",
+          "nullable": true,
+          "type": "int64"
+        }
+      ],
+      "source_rows": 1,
+      "threads": 1,
+      "wire_bytes": 296,
+      "worker_timeout_seconds": 20
+    },
+    {
+      "arrow_eos": true,
+      "duckdb_memory_limit_mb": 64,
+      "elapsed_seconds": 0.06398376898141578,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {
+        "buffer_size": "8000000",
+        "maximum_line_size": "2000000"
+      },
+      "outcome_code": "OK",
+      "process_timeout_seconds": 25,
+      "profile": "csv_8000000_2000000",
+      "result_sha256": "7c039d884596ccbfe64be85cccf572181b40dc6eb8938fe5f7dc0b3e9a594801",
+      "row_count": 1,
+      "rows": [
+        {
+          "total": 3
+        }
+      ],
+      "rss_samples": 4,
+      "sampled_peak_worker_rss_bytes": 87830528,
+      "schema": [
+        {
+          "name": "total",
+          "nullable": true,
+          "type": "int64"
+        }
+      ],
+      "source_rows": 1,
+      "threads": 1,
+      "wire_bytes": 296,
+      "worker_timeout_seconds": 20
+    },
+    {
+      "arrow_eos": true,
+      "duckdb_memory_limit_mb": 64,
+      "elapsed_seconds": 0.06389130998286419,
+      "exit_code": 0,
+      "max_result_bytes": 1048576,
+      "options": {},
+      "outcome_code": "OK",
+      "process_timeout_seconds": 25,
+      "profile": "parquet_control",
+      "result_sha256": "7c039d884596ccbfe64be85cccf572181b40dc6eb8938fe5f7dc0b3e9a594801",
+      "row_count": 1,
+      "rows": [
+        {
+          "total": 3
+        }
+      ],
+      "rss_samples": 4,
+      "sampled_peak_worker_rss_bytes": 87613440,
+      "schema": [
+        {
+          "name": "total",
+          "nullable": true,
+          "type": "int64"
+        }
+      ],
+      "source_rows": 1,
+      "threads": 1,
+      "wire_bytes": 296,
+      "worker_timeout_seconds": 20
+    }
+  ],
+  "failures": [],
+  "fixture_only": true,
+  "kernel_release": "6.12.95+deb12-cloud-amd64",
+  "low_memory_improvements": [
+    {
+      "memory_mb": 16,
+      "profile": "csv_1mib_256kib"
+    },
+    {
+      "memory_mb": 32,
+      "profile": "csv_1mib_256kib"
+    },
+    {
+      "memory_mb": 32,
+      "profile": "csv_8000000_2000000"
+    }
+  ],
+  "machine": "x86_64",
+  "passed": true,
+  "private_temp_cleanup": true,
+  "pyarrow_version": "25.0.1",
+  "query": "SELECT length(list(i))::BIGINT AS total FROM events,LATERAL range(events.n) input(i)",
+  "sampling": {
+    "caveat": "Sampled process RSS is distinct from DuckDB memory_limit and can exceed it. Samples may miss brief peaks.",
+    "interval_ms": 10,
+    "rss_source": "/proc/<worker-pid>/status:VmRSS"
+  },
+  "scope": "One local CSV row n=3, exact three-element list aggregate. This is not a throughput benchmark, tenant capacity test, or hard RSS cap.",
+  "sources": {
+    "csv_sha256": "1804229309389d8e382d75a83167038e7ca82489e37ac6eea775ae27613ab3e8",
+    "logical_schema": [
+      {
+        "name": "n",
+        "type": "int64"
+      }
+    ],
+    "parquet_sha256": "7431f333cdc9894756a77d901def541d7ae83bdccab6efa1d64dd7d2565ab8e8",
+    "rows": [
+      {
+        "n": 3
+      }
+    ]
+  }
+}
