@@ -390,3 +390,55 @@ func TestExportStoreSanitizesBackendErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestExportStoreHeartbeatAuthorityAndReadyCASContention(t *testing.T) {
+	f := newExportStoreFixture(t)
+	stored := f.stored(t)
+	f.now = f.now.Add(time.Second)
+	f.lease(t, exportTestOwner)
+	beat, renew, ready := stored.Job, stored.Job, stored.Job
+	renew.AuthorityUntil = f.now.Add(f.store.policy.LeaseDuration)
+	ready.State = ExportReady
+	start := make(chan struct{})
+	out := make(chan error, 3)
+	var pending sync.WaitGroup
+	for _, next := range []ExportJob{beat, renew, ready} {
+		pending.Add(1)
+		go func(next ExportJob) {
+			defer pending.Done()
+			<-start
+			_, err := f.store.CompareAndSwapExport(f.ctx, stored, next)
+			out <- err
+		}(next)
+	}
+	close(start)
+	pending.Wait()
+	close(out)
+	success, conflicts := 0, 0
+	for err := range out {
+		if err == nil {
+			success++
+		} else if errors.Is(err, ErrExportConflict) {
+			conflicts++
+		} else {
+			t.Fatal(err)
+		}
+	}
+	if success != 1 || conflicts != 2 {
+		t.Fatal("concurrent same-revision mutations", success, conflicts)
+	}
+	current, err := f.store.GetExport(f.ctx, stored.Job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Job.State == ExportStored {
+		current = f.step(t, current, ExportReady)
+	}
+	if !sameExportReceipt(current.Job.Receipt, stored.Job.Receipt) {
+		t.Fatal("contention changed receipt")
+	}
+	current = f.step(t, current, ExportCancelled)
+	if _, err = f.store.CompareAndSwapExport(f.ctx, stored, ready); !errors.Is(err, ErrExportConflict) {
+		t.Fatal("stale publication revived withdrawal", err)
+	}
+}

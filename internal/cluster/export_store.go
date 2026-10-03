@@ -40,7 +40,7 @@ func exportStreamConfig(p Policy) jetstream.StreamConfig {
 		Retention: jetstream.WorkQueuePolicy, Storage: jetstream.FileStorage,
 		MaxConsumers: 1, MaxMsgs: int64(p.Exports.MaxJobs), MaxBytes: int64(p.Exports.MaxJobs) * 1024,
 		MaxMsgSize: 1024, MaxMsgsPerSubject: -1, MaxAge: p.Exports.QueueTimeout + time.Minute,
-		Replicas: p.Replicas, Discard: jetstream.DiscardNew, Duplicates: 2 * time.Minute,
+		Replicas: p.Replicas, Discard: jetstream.DiscardNew, Duplicates: time.Minute,
 		Metadata: map[string]string{"kelvo.tenant": p.TenantID},
 	}
 }
@@ -59,6 +59,16 @@ func exportKVConfig(p Policy) jetstream.KeyValueConfig {
 		MaxValueSize: exportJobValueLimit, MaxBytes: int64(p.Exports.MaxJobs) * exportJobValueLimit, Replicas: p.Replicas, Storage: jetstream.FileStorage}
 }
 
+func validateExportConsumerConfig(got jetstream.ConsumerConfig, p Policy) error {
+	// Newer brokers annotate consumers as well as streams. Ignore only their
+	// reserved metadata; every operator-controlled field still matches exactly.
+	got.Metadata = refreshUserMetadata(got.Metadata)
+	if !reflect.DeepEqual(got, exportConsumerConfig(p)) {
+		return errors.New("export consumer configuration mismatch")
+	}
+	return nil
+}
+
 // OpenExportStore uses the already authenticated, policy-checked parent store.
 // It creates only absent resources with initialization authority; existing queue
 // policy is never silently changed. Closing the parent closes this store too.
@@ -66,7 +76,14 @@ func OpenExportStore(parent context.Context, base *NATSStore, initialize bool) (
 	if base == nil || base.js == nil || base.kv == nil {
 		return nil, errExportInvalid
 	}
-	p := base.Policy()
+	rawPolicy, err := json.Marshal(base.Policy())
+	if err != nil {
+		return nil, errExportInvalid
+	}
+	var p Policy
+	if json.Unmarshal(rawPolicy, &p) != nil {
+		return nil, errExportInvalid
+	}
 	if p.Exports == nil {
 		return nil, ErrExportDisabled
 	}
@@ -130,7 +147,7 @@ func OpenExportStore(parent context.Context, base *NATSStore, initialize bool) (
 		return nil, errors.New("export consumer unavailable")
 	}
 	ci, err := consumer.Info(ctx)
-	if err != nil || !reflect.DeepEqual(ci.Config, exportConsumerConfig(p)) {
+	if err != nil || validateExportConsumerConfig(ci.Config, p) != nil {
 		return nil, errors.New("export consumer configuration mismatch")
 	}
 	return &natsExportStore{base: base, policy: p, kv: kv, consumer: consumer, now: func() time.Time { return time.Now().UTC() }}, nil
@@ -233,6 +250,9 @@ func (s *natsExportStore) workerCurrent(ctx context.Context, j ExportJob, now ti
 		return errors.New("export worker lease unavailable")
 	}
 	var lease workerLease
+	// A concurrent heartbeat can legitimately occur during the store read.
+	// Compare with the clock after that read, not an older pre-request instant.
+	now = s.now()
 	if json.Unmarshal(entry.Value(), &lease) != nil || lease.Owner != j.WorkerOwner || lease.HeartbeatAt.After(now) || now.Sub(lease.HeartbeatAt) >= s.policy.LeaseDuration {
 		return ErrExportConflict
 	}
