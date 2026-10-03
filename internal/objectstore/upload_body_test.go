@@ -49,6 +49,17 @@ func uploadPending(t *testing.T, signal <-chan struct{}) {
 	}
 }
 
+func uploadCleanupJoins(t *testing.T, signals ...<-chan struct{}) {
+	t.Helper()
+	for _, signal := range signals {
+		select {
+		case <-signal:
+		case <-time.After(3 * time.Second):
+			t.Error("upload fixture cleanup did not join its spawned work")
+		}
+	}
+}
+
 func TestUploadBodySealsPromptlyAndJoinsSerializedReads(t *testing.T) {
 	proceed := make(chan struct{})
 	var release sync.Once
@@ -57,7 +68,10 @@ func TestUploadBodySealsPromptlyAndJoinsSerializedReads(t *testing.T) {
 	reader := &uploadTestReader{Reader: bytes.NewReader([]byte("payload")), entered: make(chan struct{}), proceed: proceed}
 	body := newUploadBody(reader, 7)
 	first, second := make(chan struct{}), make(chan struct{})
+	var exits []<-chan struct{}
+	t.Cleanup(func() { _ = body.Close(); unblock(); uploadCleanupJoins(t, exits...) })
 	go func() { defer close(first); _, _ = body.Read(make([]byte, 7)) }()
+	exits = append(exits, first)
 	uploadWait(t, reader.entered)
 	go func() {
 		defer close(second)
@@ -65,6 +79,7 @@ func TestUploadBodySealsPromptlyAndJoinsSerializedReads(t *testing.T) {
 			t.Error("queued read reached the caller after the body sealed")
 		}
 	}()
+	exits = append(exits, second)
 	deadline := time.NewTimer(3 * time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(time.Millisecond)
@@ -84,12 +99,14 @@ func TestUploadBodySealsPromptlyAndJoinsSerializedReads(t *testing.T) {
 	}
 	closed := make(chan struct{})
 	go func() { _ = body.Close(); close(closed) }()
+	exits = append(exits, closed)
 	uploadWait(t, closed)
 	if _, err := body.Read(make([]byte, 1)); !errors.Is(err, io.ErrClosedPipe) {
 		t.Fatal("read admitted after Close")
 	}
 	joined := make(chan struct{})
 	go func() { body.wait(); close(joined) }()
+	exits = append(exits, joined)
 	uploadPending(t, joined)
 	if reader.reads.Load() != 1 {
 		t.Fatal("caller reader was accessed concurrently")
@@ -113,7 +130,7 @@ func TestUploadBodyRequiresCloseAfterExactBoundedRead(t *testing.T) {
 	}
 	joined := make(chan struct{})
 	go func() { body.wait(); close(joined) }()
-	t.Cleanup(func() { _ = body.Close() })
+	t.Cleanup(func() { _ = body.Close(); uploadCleanupJoins(t, joined) })
 	uploadPending(t, joined)
 	_ = body.Close()
 	uploadWait(t, joined)
