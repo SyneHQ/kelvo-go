@@ -1,98 +1,92 @@
 # Kelvo worker on Oracle E2.1.Micro
 
-This guide measures a Kelvo **worker** on the micro VM. The gateway, NATS brokers
-and source database run on Azure; all SSH tunnel processes are also excluded from
-the worker's accounting. It does not establish that the whole cluster or a
-standalone deployment fits in the micro VM's memory.
+This measures one Kelvo **worker** on the micro VM. The Azure gateway, NATS,
+source database and every SSH tunnel are outside its accounting. It does not
+establish that a whole cluster or standalone deployment fits on the micro VM.
 
-## Current candidate rerun: 2026-10-03
+## Latest pinned campaign
 
-Two [fresh preflights](evidence/node-capacity-observer-gap-refusals.json) subsequently
-passed all three correctness queries each, but failed the unchanged resource
-observer gate: maximum sampling gaps were **2.635 s and 2.986 s**, above its
-2-second limit. Neither attempt launched a paired profile. The one retry reused
-verified executable inodes to reduce duplicate file-cache pressure; that did not
-resolve the refusal. These failures remain part of the evidence even if a later
-observer implementation succeeds.
-
-The frozen observer hashes the executable and inputs synchronously between its
-periodic loop and shutdown sampling. Its ordering needs correction and validation;
-the receipts do not establish that hashing explains every part of either gap.
-Worker exits were zero with no OOMs or leaked processes. Independent cleanup
-verified removal of both temporary source accounts, forwarding keys, services and
-cgroups before the unchanged 18:43:57 UTC deadline. Fixture controllers retained
-exit 143 from their explicit SIGTERM cleanup handler; that history is preserved.
-After capture, only those two stopped units were reset and verified unloaded,
-with absent cgroups; older failed units were left untouched.
-Each temporary Azure control fixture was capped at 1 CPU / 1 GiB. The existing
-ClickHouse source container remained separate, unchanged and excluded from that
-cap and from the Oracle worker measurements. **Five-pair acceptance remains
-blocked by observer evidence; no threshold was relaxed or further retry made.**
-
-The [bounded candidate rerun](evidence/node-capacity-b09f2da.json) completed
-**91/91 workload queries**, plus a separate **3/3 correctness preflight**.
-Seven profiles produced three complete metrics-disabled/enabled pairs and one
-unpaired metrics-enabled profile. Every completed profile passed exact values,
-NULLs, Arrow completion, durable success and resource cleanup checks, with zero
-OOMs under the same 640 MiB worker service cap and one execution slot.
-
-The controller refused the next profile before launch to preserve its fixed
-cleanup window. **Five-pair capacity acceptance remains incomplete.** These
-results must not be combined with the earlier runtime's baseline to satisfy that
-requirement. They represent 84,000,056 repeated workload result rows, excluding
-the preflight, rather than distinct source records or a production capacity SLA.
-
-The candidate is `b09f2daad7caccf5caa7e35df5805696c9bc13ba`, binary SHA-256
-`26ea84328e850116f4d5f31ab758bea1f5c57b7161eca0d61ddd63f9d714af26`;
-its [845-file source manifest](evidence/node-capacity-b09f2da-source.json) pins the
-build. An initial package download timed out before any query ran; its resumed
-transfer passed the complete checksum before extraction. No query was retried.
-Independent cleanup checks verified source-account/key removal, preserved source
-tables, successful control-service shutdown and removed tunnel cgroups at
-15:32:24 UTC, before the unchanged 15:38:09 UTC fixture expiry.
-
-## Pinned baseline: 2026-10-03
-
-[Ten profiles](evidence/node-capacity-6749369.json) completed **130/130 queries**:
-five matched metrics-disabled/enabled pairs, including ten bursts of ten
-simultaneously submitted million-row operations. Each profile used **one execution slot**, three serial
-queries, then a burst of ten queued submissions. Exact types, values, NULLs,
-Arrow EOS and durable successful state passed for every response. These are
-120,000,080 repeated result rows from a million-row taxi selection and 265 zones,
-not 120 million distinct source records.
-
-The tested runtime is `67493699eb0ec97857a685923df225ad19b0cf62`, binary SHA-256
-`e6ace8d4c560198c801ba531952bc9e10b3d83ac36e1f6bc5950a329e765c71c`.
-The [805-file source manifest](evidence/node-capacity-6749369-source.json) identifies
-the exact build. Later runtime changes require new validation; this baseline does
-not certify the current release. The host exposed two logical CPUs, fractional
-E2.1.Micro CPU allocation and 951.3 MiB RAM. Source and result LZ4 were enabled.
+The [final-runtime campaign](evidence/node-capacity-d144a43-r2.json) passed
+**130/130 workload queries** across five metrics-disabled/enabled pairs, plus a
+separate **3/3 preflight**. Each profile ran three serial queries and ten
+simultaneous queued submissions through **one execution slot**. Exact Arrow
+types, values, NULLs, framing/EOS and durable success passed for every result.
+The workload returned **120,000,080 repeated rows** from one million source rows
+and 265 zones; these are not distinct source records. The million-row projection
+has three columns (`int64`, `int32`, `int64`). Source and result LZ4 were enabled;
+wider rows and different compression change memory and transfer costs.
 
 | Full-delivery workload | Metrics disabled median / p95 | Metrics enabled median / p95 |
 | --- | ---: | ---: |
+| Native million-row projection | 5.885 / 6.124 s | 6.098 / 6.541 s |
+| Federated million-row projection | 8.790 / 9.820 s | 9.200 / 10.146 s |
+| Federated CTE/zone join, eight result rows | 7.223 / 7.438 s | 7.524 / 7.645 s |
+| Queued million-row operation, including assignment wait | 38.341 / 71.406 s | 38.718 / 73.109 s |
+
+Median full-delivery rates were about **170k / 164k rows/s native**
+and **114k / 109k rows/s federated**, for disabled/enabled metrics.
+
+The first three rows contain five samples per mode; queued operations contain
+50 per mode. p95 is empirical nearest rank, not a confidence bound. Timings include
+SQL, queueing, dispatch, TLS and SSH transport; Arrow decoding is outside that
+interval. Native SQL runs on Azure; federation runs on Oracle. This is not a
+direct analytical-library comparison.
+
+Median per-profile peaks were **230.7 / 230.5 MiB** for combined node/worker RSS
+and **122.0 / 123.5 MiB** for charged cgroup memory, for disabled/enabled metrics. The
+**640 MiB** worker cap includes the observer, with no swap and one execution
+permit. Every profile had zero OOMs and complete process/scratch/containment
+cleanup. Maximum active/shutdown sampling gap was **0.292 seconds**, within the
+unchanged two-second gate. Post-run hashing is outside this interval; startup
+setup remains in whole-cgroup counters. Executables used verified hardlinks; warm
+shared file-cache pages may be charged outside a later profile's cgroup, while
+combined RSS can count shared pages twice. The changed observer ordering also
+changes the sampling boundary. Lower charged peaks than older trials do not
+establish application-memory savings or a new minimum RAM requirement.
+
+The [916-file source manifest](evidence/node-capacity-d144a43-source.json) pins
+runtime `d144a437b824fef1cd908303fa220d1bdd581401`; the separately reviewed observer
+is `9cad90497daa23b23543a8dbbea622449e313ecf`. Full binary/harness checksums and all
+profile receipts are in the campaign evidence. No earlier run was pooled into it.
+
+The temporary Azure control fixture was capped at **1 CPU / 1 GiB**; the preserved
+ClickHouse source kept its separate **1.5 CPU / 4 GiB** cap. Independent checks
+verified source-account/key removal, stopped gateway/brokers/tunnels and absent
+worker cgroups, with source tables intact. Controller cleanup finished at
+**18:19:11 UTC**; subsequent independent checks completed before the unchanged
+**18:43:57 UTC** expiry. The fixture's explicit SIGTERM exit
+143 is retained, followed by proof that its stopped unit was unloaded.
+
+Coordinated Azure builds/tests were held during measurements; read-only staging
+or hashing could occur. Caches were warm and uncontrolled, and Oracle CPU burst
+availability and host steal varied. These results do not prove causal metrics
+savings, minimum production RAM, whole-cluster fit, an SLA or later-runtime
+readiness.
+
+## Earlier attempts
+
+| Pinned attempt | Outcome | Retained evidence |
+| --- | --- | --- |
+| `6749369`, original observer | Five pairs; 130/130 queries | [Baseline](evidence/node-capacity-6749369.json) |
+| `b09f2da`, bounded campaign | Three complete pairs plus one profile; 91/91 queries; deadline guard stopped further launch | [Partial campaign](evidence/node-capacity-b09f2da.json) |
+| `b09f2da`, two fresh preflights | 3/3 queries each; sampling gaps 2.635/2.986 s failed the two-second gate; no pairs launched | [Observer refusals](evidence/node-capacity-observer-gap-refusals.json) |
+| `d144a43`, first corrected-observer trial | Two pairs; 52/52 queries; local ENOSPC stopped the next lease observation before launch; both hosts cleaned independently | [Controller refusal](evidence/node-capacity-d144a43-enospc.json) |
+
+For historical context, the original `6749369` baseline produced these full-delivery
+times. Its runtime and observer differ from the latest campaign; this table does
+not establish a regression or speedup, and its profiles cannot be combined with
+newer ones.
+
+| Historical baseline workload | Metrics disabled median / p95 | Metrics enabled median / p95 |
+| --- | ---: | ---: |
 | Native million-row projection | 6.583 / 11.266 s | 5.925 / 6.042 s |
 | Federated million-row projection | 9.348 / 9.923 s | 8.793 / 9.102 s |
-| Federated CTE/zone join, eight result rows | 7.337 / 7.513 s | 7.097 / 7.534 s |
-| Queued million-row operation, including assignment wait | 39.006 / 73.383 s | 38.473 / 72.492 s |
+| Federated CTE/zone join | 7.337 / 7.513 s | 7.097 / 7.534 s |
+| Queued million-row operation | 39.006 / 73.383 s | 38.473 / 72.492 s |
 
-The first three rows contain five samples per mode; queued rows contain 50 per
-mode. p95 uses the empirical nearest rank, not a confidence bound. Arrow decoding
-is outside delivery timing; SQL, dispatch, verified worker/gateway TLS and SSH
-transport are included. Native SQL executes on Azure; federation executes on
-Oracle. This does not compare Kelvo against a direct analytical-library baseline.
-
-Median per-profile combined node/worker RSS peaks were **230.9 / 229.8 MiB**;
-cgroup peaks were **183.4 / 181.1 MiB** for disabled/enabled metrics. The 640 MiB
-worker service cap included its Python observer, with zero swap. Every profile
-had one observed worker, zero OOMs and complete process, scratch and containment
-cleanup. The temporary source user, forwarding key, brokers and tunnel cgroups
-were removed; source tables were preserved. Cleanup finished at 14:49:02 UTC,
-before the original 15:38:09 UTC fixture deadline.
-
-Caches were warm and uncontrolled; other bounded Azure acceptance tests ran
-concurrently, while Oracle CPU burst availability and host steal varied. These
-five pairs show trial variability, not causal savings from enabling metrics.
-They do not establish minimum production RAM, whole-cluster fit or an SLA.
+Its median combined RSS peaks were 230.9/229.8 MiB; cgroup peaks were
+183.4/181.1 MiB. The [baseline manifest](evidence/node-capacity-6749369-source.json)
+and receipt retain full scope, identity and cleanup details.
 
 ## Reproduce the profile
 
@@ -141,6 +135,11 @@ on the worker VM. Run `node_capacity_client.py` with the matching profile/mode
 and the client fixture directory on the separate host. When it finishes, create
 the worker profile's `stop` file, then wait for service and cgroup cleanup.
 The outer controller must remain alive and use bounded SSH keepalives/timeouts.
+Use the [cleanup coordinator](../scripts/cleanup_coordinator.py) to attempt both
+hosts before persisting local receipts. Keep each hard-expiry timer armed until
+all of its host-specific cleanup claims pass, and retain authoritative reports
+on the remote hosts. Its [six controls](../scripts/test_cleanup_coordinator.py)
+cover local write failures, remote failures and malformed cleanup proofs.
 Before reusing the fixture worker identity, observe its previous heartbeat and
 wait until the configured fencing lease has expired. Clean process shutdown does
 not delete that lease. Preserve any premature launch failure; never reset the
