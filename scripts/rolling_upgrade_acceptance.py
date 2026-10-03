@@ -187,11 +187,19 @@ class ArrowGate:
 
 
 class UpgradeAcceptance(loss.LossAcceptance):
+    validate_matrix = staticmethod(validate_matrix)
+
+    def archive_digest(self):
+        return ops.cf.DIGEST
+
+    def provision_fixture(self):
+        ops.cf.provision(self.args.nats_archive)
+
     def __init__(self, args):
         super().__init__(args)
         self.env["GOMAXPROCS"] = "1"
         self.matrix = json.loads(Path(args.matrix).read_text())
-        validate_matrix(self.matrix)
+        self.validate_matrix(self.matrix)
         self.binaries = {"old": self.binary, "new": Path(args.new_binary).resolve()}
         self.roles = {role: "old" for role in APP_ROLES}
         self.gate = ArrowGate()
@@ -206,7 +214,7 @@ class UpgradeAcceptance(loss.LossAcceptance):
         self.artifacts.update({Path(args.old_archive).resolve(): self.matrix["old"]["source_archive_sha256"],
                                Path(args.new_archive).resolve(): self.matrix["new"]["source_archive_sha256"],
                                self.sandbox: self.matrix["old"]["launcher_sha256"],
-                               Path(args.nats_archive).resolve(): ops.cf.DIGEST})
+                               Path(args.nats_archive).resolve(): self.archive_digest()})
         self.fixture_provisioned = False
 
     def call(self, path, tenant="a", body=None, node=None, timeout=12, with_headers=False, gateway=None, token=None):
@@ -249,14 +257,14 @@ class UpgradeAcceptance(loss.LossAcceptance):
 
     def startup(self):
         import yaml
-        validate_matrix(self.matrix)
+        self.validate_matrix(self.matrix)
         ops.require(all(path.is_file() and ops.sha256(path) == digest for path, digest in self.artifacts.items()),
                     "INPUT_ARTIFACT_MISMATCH")
         ops.require(not self.fixture.exists(), "FRESH_EXCLUSIVE_FIXTURE_REQUIRED")
         previous = ops.cf.DIR
         ops.cf.DIR = self.fixture
         try:
-            ops.cf.provision(self.args.nats_archive)
+            self.provision_fixture()
         finally:
             ops.cf.DIR = previous
             self.fixture_provisioned = (self.fixture/"pids.json").is_file()
@@ -294,7 +302,7 @@ class UpgradeAcceptance(loss.LossAcceptance):
         ops.cf.write(path, yaml.safe_dump(config, sort_keys=False))
         self.start_gateway(2)
         return {**detail, "explicit_principals": 4, "policy_revision": 2,
-                "declared_old_revision": OLD_REVISION, "declared_new_revision": NEW_REVISION,
+                "declared_old_revision": self.matrix["old_revision"], "declared_new_revision": self.matrix["new_revision"],
                 "source_fixture": "Gated ClickHouse HTTP protocol returning exact Arrow; not a ClickHouse server benchmark"}
 
     def key_rotation(self):
