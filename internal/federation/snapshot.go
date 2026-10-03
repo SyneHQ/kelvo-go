@@ -344,7 +344,7 @@ func (e *snapshotExecution) part(ctx context.Context, index int, sink query.Sink
 		}
 		rows += count
 	}
-	if rows != e.table.source.LocalSnapshot.Parts[index].Rows {
+	if rows != e.table.parts[index].Rows {
 		return snapshotUnavailable()
 	}
 	return nil
