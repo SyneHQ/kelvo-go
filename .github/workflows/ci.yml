@@ -226,7 +226,7 @@ jobs:
           export CGO_CXXFLAGS="-I${GITHUB_WORKSPACE}/artifacts/duckbridge/headers"
           for version in 2.14.7 2.15.0; do
             broker="$PWD/artifacts/export-brokers/$version"
-            for mode in acl lifecycle; do
+            for mode in acl lifecycle dispatch; do
               extra=()
               if [ "$mode" = lifecycle ]; then
                 extra=(--export-binary "$PWD/bin/kelvo" --export-sandbox "$PWD/bin/kelvo-landlock")

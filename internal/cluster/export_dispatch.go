@@ -53,7 +53,7 @@ func (r *ExportRuntime) dispatchExports() {
 			next := s.Job
 			next.State = ExportFailed
 			next.Error = query.PublicError(context.DeadlineExceeded)
-			if _, err = r.store.CompareAndSwapExport(r.ctx, s, next); err == nil || errors.Is(err, ErrExportConflict) {
+			if _, err = r.store.CompareAndSwapExport(r.ctx, s, next); err == nil {
 				_ = d.Ack(r.ctx)
 			} else {
 				_ = d.Retry(r.ctx)
@@ -78,11 +78,10 @@ func (r *ExportRuntime) dispatchExports() {
 		assigned, err := r.store.CompareAndSwapExport(r.ctx, s, next)
 		if err != nil {
 			r.releaseExport(s.Job.ID, reservation)
-			if errors.Is(err, ErrExportConflict) {
-				_ = d.Ack(r.ctx)
-			} else {
-				_ = d.Retry(r.ctx)
-			}
+			// A supervisor can renew authority without leaving Queued. A CAS
+			// conflict therefore does not prove the delivery is disposable.
+			// Retry rereads durable state before assigning or acknowledging it.
+			_ = d.Retry(r.ctx)
 			continue
 		}
 		// A redelivery sees Assigned and is acknowledged without execution. The

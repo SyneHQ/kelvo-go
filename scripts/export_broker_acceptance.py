@@ -22,6 +22,18 @@ from nats_export_permissions import tenant_permissions
 from export_diagnostics import ExportDiagnostics
 
 SUPPORTED_SERVERS = ("2.14.7", "2.15.0")
+ACCEPTANCE_TESTS = {
+    "acl": "TestNATSExportRuntimeACLAndAccountIsolation",
+    "lifecycle": "TestExportClusterActualWorkerLifecycle",
+    "dispatch": "TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
+}
+FIXTURE_PREFIXES = {"acl": "KELVO_TEST_EXPORT_ACL", "lifecycle": "KELVO_TEST_EXPORT_E2E_NATS",
+                    "dispatch": "KELVO_TEST_EXPORT_DISPATCH_NATS"}
+SCOPES = {
+    "acl": "single broker; exact runtime and initializer ACLs in two separate tenant accounts",
+    "lifecycle": "single broker; actual sandboxed worker and gateway lifecycle using separate restricted broker roles",
+    "dispatch": "single broker; queued renewal conflict, deduplicated republish and delayed redelivery; synthetic Arrow executor; separate restricted roles",
+}
 
 
 def sha256(path):
@@ -40,7 +52,7 @@ class ExportBrokerFixture:
         self.process, self.log = None, None
         self.environment = {}
         self.created = False
-        if mode not in ("acl", "lifecycle"):
+        if mode not in ACCEPTANCE_TESTS:
             raise ValueError("unknown export broker acceptance mode")
         self.mode = mode
 
@@ -89,7 +101,7 @@ class ExportBrokerFixture:
                 label = role if exports else "base"
                 user, password = tenant + "-" + label, secrets.token_hex(32)
                 prefix = ("KELVO_TEST_EXPORT_ACL_" + tenant.upper() + "_" + label.upper() if self.mode == "acl" else
-                          "KELVO_TEST_EXPORT_E2E_NATS" + ("" if role == "initializer" else "_" + role.upper()))
+                          FIXTURE_PREFIXES[self.mode] + ("" if role == "initializer" else "_" + role.upper()))
                 self.environment[prefix + "_USER"] = user
                 self.environment[prefix + "_PASSWORD"] = password
                 users.append({"user": user, "password": password, "permissions": tenant_permissions(role, exports)})
@@ -100,7 +112,7 @@ class ExportBrokerFixture:
                   "tls": {"cert_file": str(cert), "key_file": str(key), "min_version": "1.3", "timeout": 2}}
         config_path = self.directory / "broker.conf"
         config_path.write_text(json.dumps(config, indent=2) + "\n")
-        prefix = "KELVO_TEST_EXPORT_ACL" if self.mode == "acl" else "KELVO_TEST_EXPORT_E2E_NATS"
+        prefix = FIXTURE_PREFIXES[self.mode]
         self.environment.update({prefix + "_URL": "tls://127.0.0.1:" + str(port), prefix + "_CA_FILE": str(cert)})
         (self.directory / "environment.json").write_text(json.dumps(self.environment, indent=2) + "\n")
         self.log = (self.directory / "broker.log").open("w")
@@ -169,10 +181,9 @@ def run(args):
     if output.exists() or output.is_symlink():
         raise RuntimeError("acceptance output must be fresh")
     output.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    test = ("TestNATSExportRuntimeACLAndAccountIsolation" if args.mode == "acl" else "TestExportClusterActualWorkerLifecycle")
+    test = ACCEPTANCE_TESTS[args.mode]
     report = {"mode": args.mode, "server_version": args.server_version, "server_binary_sha256": args.server_sha256, "build_tags": args.tags,
-              "scope": ("single broker; exact runtime and initializer ACLs in two separate tenant accounts" if args.mode == "acl" else
-                        "single broker; actual sandboxed worker and gateway lifecycle using separate restricted broker roles"),
+              "scope": SCOPES[args.mode],
               "tests": [], "failures": [], "skips": [], "passed": False}
     diagnostics = ExportDiagnostics()
     fixture = ExportBrokerFixture(args.fixture, args.nats_server, args.server_sha256, args.server_version, args.mode)
@@ -248,7 +259,7 @@ def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("acl", "lifecycle"), default="acl")
+    parser.add_argument("--mode", choices=tuple(ACCEPTANCE_TESTS), default="acl")
     for name in ("fixture", "nats-server", "server-sha256", "server-version", "go", "output"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--modfile")

@@ -82,6 +82,15 @@ class ExportPermissionTests(unittest.TestCase):
 
 
 class FixtureIdentityTests(unittest.TestCase):
+    def test_dispatch_mode_is_separate_and_keeps_explicit_test_selection(self):
+        self.assertEqual(set(fixture.ACCEPTANCE_TESTS), {"acl", "lifecycle", "dispatch"})
+        self.assertEqual(fixture.ACCEPTANCE_TESTS["dispatch"], "TestNATSExportDispatchRenewalConflictAndDelayedRedelivery")
+        self.assertEqual(fixture.FIXTURE_PREFIXES["dispatch"], "KELVO_TEST_EXPORT_DISPATCH_NATS")
+        self.assertEqual(len(set(fixture.FIXTURE_PREFIXES.values())), 3)
+        self.assertIn("synthetic Arrow executor", fixture.SCOPES["dispatch"])
+        broker = fixture.ExportBrokerFixture("/unused", "/unused", "0" * 64, "2.15.0", "dispatch")
+        self.assertEqual(broker.mode, "dispatch")
+
     def test_early_failure_preserves_identity_and_private_receipt(self):
         with tempfile.TemporaryDirectory() as directory, mock.patch.object(fixture, "source_manifest", side_effect=ValueError("invalid source")):
             output = Path(directory) / "receipt.json"
