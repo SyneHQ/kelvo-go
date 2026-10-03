@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
+	"github.com/SYNEHQ/kelvo-go/internal/access"
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
@@ -29,10 +30,28 @@ import (
 )
 
 type Input struct {
+	Access  *access.Policy `json:"access,omitempty"`
 	Config  catalog.Config `json:"config"`
 	Limits  query.Limits   `json:"limits"`
 	Request query.Request  `json:"request"`
 }
+
+// ExecutionContext validates the trusted envelope before any child engine is
+// opened. Parent checks are repeated because worker stdin is a separate boundary.
+func (in Input) ExecutionContext(ctx context.Context) (context.Context, error) {
+	if in.Access != nil {
+		var err error
+		ctx, err = access.WithPolicy(ctx, *in.Access)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := access.ValidateRequest(ctx, in.Config, in.Request); err != nil {
+		return nil, err
+	}
+	return ctx, nil
+}
+
 type Outcome struct {
 	Stats query.Stats  `json:"stats"`
 	Error *query.Error `json:"error,omitempty"`
@@ -99,6 +118,9 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		r.Mode = "federated"
 	}
 	if err := query.ValidateRequest(r); err != nil {
+		return stats, err
+	}
+	if err := access.ValidateRequest(ctx, e.Config, r); err != nil {
 		return stats, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.Limits.Timeout)
@@ -180,7 +202,11 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		releaseScratch()
 	}()
 	cfg := catalog.Config{Sources: sources, ExtensionDirectory: e.Config.ExtensionDirectory}
-	payload, err := json.Marshal(Input{cfg, e.Limits, r})
+	input := Input{Config: cfg, Limits: e.Limits, Request: r}
+	if policy, restricted := access.PolicyFromContext(ctx); restricted {
+		input.Access = &policy
+	}
+	payload, err := json.Marshal(input)
 	if err != nil {
 		return stats, err
 	}

@@ -1,0 +1,38 @@
+{
+  "base_revision": "0d6b489",
+  "source_manifest_sha256": "d572a72a13560985d0fddbb20894aa417440a52b73af78f3ab806f5b37810a21",
+  "source_verified_before": true,
+  "stages": {
+    "integration-race": {
+      "exit_code": 0,
+      "seconds": 105.684,
+      "log_sha256": "9041fea5cfaa05513153857634f936c714039d6a28304edc3056d4575792d02e"
+    },
+    "integration-vet": {
+      "exit_code": 0,
+      "seconds": 9.545,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "failed": [],
+  "skipped": [
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshStatusDurabilityResetAndBudget",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshQueueProvisionDedupRetry",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreAdmissionCASAndReuse",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreQueueAndWorkerLease",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreRejectsMetadataMismatch",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreReconcileFailsStaleAssigned",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreCorruptJobFailsClosed",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSAccountIsolation",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerSuccessAndCancellation",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerRefreshCustody",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerStartFailureCleansOwnership",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerRealDuckDBCTE",
+    "github.com/SYNEHQ/kelvo-go/cmd/kelvo/TestContainedNodeStartupPlacement"
+  ],
+  "scope": "Principal restriction binding and trusted worker-envelope tests; guarded SQL engine validation separate",
+  "source_verified_after": true,
+  "passed": true
+}

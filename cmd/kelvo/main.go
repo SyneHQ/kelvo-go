@@ -227,6 +227,10 @@ func runWorker() error {
 	defer stop()
 	ctx, cancel := context.WithTimeout(parent, in.Limits.Timeout)
 	defer cancel()
+	ctx, err := in.ExecutionContext(ctx)
+	if err != nil {
+		return emit(err)
+	}
 	var executor query.Executor
 	if in.Request.Mode == "native" {
 		e, err := native.New(in.Config, in.Limits, in.Request)
