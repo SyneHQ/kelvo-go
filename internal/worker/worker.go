@@ -42,6 +42,8 @@ type Executor struct {
 	Limits      query.Limits
 	Binary      string
 	SandboxPath string
+	// ScratchRoot optionally owns private crash-recoverable query workspaces.
+	ScratchRoot *ScratchRoot
 	// ResourcePool must be shared by query and refresh executors on this process.
 	ResourcePool *admission.Pool
 	// ResourceOverheadBytes reserves memory beyond DuckDB's managed memory limit.
@@ -135,11 +137,16 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		return stats, err
 	}
 	defer release()
-	dir, err := os.MkdirTemp("", "kelvo-worker-")
+	workspace, err := newScratchWorkspace(e.ScratchRoot)
 	if err != nil {
-		return stats, err
+		return stats, query.NewError("RESOURCE_EXHAUSTED", "Worker scratch workspace is unavailable")
 	}
-	defer os.RemoveAll(dir)
+	dir := workspace.path
+	defer func() {
+		if err := workspace.cleanup(); err != nil && resultErr == nil {
+			resultErr = query.NewError("RESOURCE_EXHAUSTED", "Worker scratch cleanup failed")
+		}
+	}()
 	cfg := catalog.Config{Sources: sources, ExtensionDirectory: e.Config.ExtensionDirectory}
 	payload, err := json.Marshal(Input{cfg, e.Limits, r})
 	if err != nil {
@@ -155,6 +162,7 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	}
 	cmd := exec.CommandContext(ctx, command, args...)
 	configureProcess(cmd)
+	workspace.attach(cmd)
 	cmd.Dir = dir
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "TMPDIR=" + dir, "GOMAXPROCS=" + fmt.Sprint(e.Limits.Threads)}
 	// Only explicitly configured secrets enter the query process.
