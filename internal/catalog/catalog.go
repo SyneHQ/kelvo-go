@@ -98,6 +98,9 @@ func Load(path string) (Config, error) {
 				return c, fmt.Errorf("source %s option exceeds size limit", s.ID)
 			}
 		}
+		if _, err := s.CSVOptions(); err != nil {
+			return c, err
+		}
 		if s.Adapter != "" {
 			if err := s.ValidateAdapter(); err != nil {
 				return c, err

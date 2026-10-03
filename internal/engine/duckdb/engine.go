@@ -43,6 +43,9 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		return nil, query.NewError("INVALID_ARGUMENT", "Extension directory must be absolute")
 	}
 	for _, source := range config.Sources {
+		if _, err := source.CSVOptions(); err != nil {
+			return nil, err
+		}
 		if err := source.ValidateParquetPaths(); err != nil {
 			return nil, query.NewError("CONFIGURATION_ERROR", "Invalid multipart parquet source")
 		}
@@ -199,6 +202,12 @@ func configure(ctx context.Context, raw any, extensionDir, tempDir string, limit
 }
 
 func attachSources(ctx context.Context, raw any, sources []catalog.Source, extensionDir, tempDir string) error {
+	// Recheck programmatic/mutated configurations before opening any source.
+	for _, source := range sources {
+		if _, err := source.CSVOptions(); err != nil {
+			return err
+		}
+	}
 	exec, ok := raw.(driver.ExecerContext)
 	if !ok {
 		return errors.New("DuckDB driver does not support trusted source setup")
@@ -217,7 +226,16 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 		var statement string
 		switch source.Type {
 		case "csv":
-			statement = "CREATE VIEW " + id + " AS SELECT * FROM read_csv_auto('" + quoteLiteral(source.Path) + "')"
+			options, err := source.CSVOptions()
+			if err != nil {
+				return err
+			}
+			arguments := ""
+			if options != nil {
+				arguments = ", buffer_size=" + strconv.FormatInt(options.BufferBytes, 10) +
+					", maximum_line_size=" + strconv.FormatInt(options.LineBytes, 10)
+			}
+			statement = "CREATE VIEW " + id + " AS SELECT * FROM read_csv_auto('" + quoteLiteral(source.Path) + "'" + arguments + ")"
 		case "parquet":
 			if source.Range != nil || source.Ranges != nil {
 				if err := prepareObjectRange(ctx, exec, source, extensionDir, tempDir); err != nil {
