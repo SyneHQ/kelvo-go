@@ -10,19 +10,26 @@ values, immutable snapshots and resource controls. The remaining work is larger
 than a documentation update: distributed storage maintenance, durable results,
 CDC and per-user policy each require their own safety contracts and acceptance.
 A checklist item is complete only when implementation, relevant correctness
-checks and any required live release gate are complete.
+checks and any required live release gate are complete. Track ownership, dependencies
+and evidence on the [production board](https://github.com/orgs/SyneHQ/projects/3)
+and [delivery tracker](https://github.com/SyneHQ/kelvo-go/issues/32); the
+[delivery process](delivery-process.md) defines status and completion rules.
 
 ## Operational foundation
 
 | Deliverable | Current implementation | Remaining acceptance or capability |
 | --- | --- | --- |
 | Aggregate query/refresh budgets | Shared [admission pool](../internal/admission/pool.go), node memory/scratch accounting and protected interactive reserves; held through cleanup/publication; [five-minute local mixed-load gate](operational-acceptance.md#recorded-validation) passed | Separate export class, per-query cgroup containment and workload-sized sustained capacity gates |
-| Independent probes and maintenance | Gateway probes bypass permits; worker dataset readiness; bounded gateway/node drain and cancellation; saturation, recovery and accepted-query node-drain fixture passed | Real rolling-process loss campaign under mixed running/queued jobs; explicit capacity-readiness policy if needed |
+| Independent probes and maintenance | Gateway probes bypass permits; worker dataset readiness; bounded gateway/node drain and cancellation; saturation, recovery and accepted-query node-drain fixture passed; [gateway/worker/broker process-loss acceptance](process-loss-acceptance.md) passed on the recorded candidate | Rolling cluster upgrade campaigns, multi-hour fault/load evidence and explicit capacity-readiness policy if needed |
 | Diagnostics and history | Fixed-cardinality lifecycle and reached local-stage metrics, optional bounded local history, actual federation scan diagnostics | Full distributed queue/source/local execution attribution, durable audit retention and measured instrumentation overhead |
 | Passive source observations | Opt-in [native outcome diagnostics](source-health.md), bounded per-node registry, TTL and internal mTLS scope | Live-provider classification/rotation acceptance; active rate-limited probes remain absent |
 | Source pressure and refresh recovery | Distributed [source quotas](../internal/cluster/source_quota.go), classified durable retry state and operator reset | Retry/credential lifecycle acceptance across every connector and provider; saturation/fault soaks |
-| Credentials | Selected-secret forwarding, bounded [private source credential files](operations.md#file-based-source-credential-rotation) and [live gateway key rotation](gateway-key-rotation.md) with a passing two-gateway fixture | Cloud secret-provider integrations, global/persistent revocation coordination, atomic TLS rotation and explicit enrollment/policy rollout |
-| Release correctness | Scheduled CI, native bridge race/ownership gates, sandbox/cluster fixtures, storage release runner, 15 executed notebooks and repeatable operational acceptance | Recurrent real-provider suite, release upgrade matrix and failure-inclusive multi-hour mixed-load evidence |
+| Credentials | Selected-secret forwarding, bounded [private source credential files](operations.md#file-based-source-credential-rotation) and [live gateway key rotation](gateway-key-rotation.md) with a passing two-gateway fixture; opt-in [atomic TLS identity rotation](tls-identity-rotation.md) | Cloud secret-provider integrations, global/persistent revocation coordination, CA/trust rotation, peer revocation and explicit enrollment/policy rollout |
+| Release correctness | Scheduled CI, native bridge race/ownership gates, sandbox/cluster fixtures, storage release runner, 15 executed notebooks, repeatable operational acceptance and a [preview/candidate snapshot upgrade matrix](release-upgrades.md) | Recurrent real-provider suite, rolling cluster upgrade acceptance and failure-inclusive multi-hour mixed-load evidence |
+
+Opt-in Linux [managed worker scratch](worker-scratch.md) reclaims complete owned
+workspaces only after parent and child leases are released. It does not sweep
+legacy temporary directories or provide independent hostile-process containment.
 
 Already implemented controls are configurable; enabling them is not evidence of
 safe capacity on a particular host. Admission reserves configured budgets rather

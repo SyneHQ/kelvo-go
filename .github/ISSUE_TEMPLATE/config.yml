@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Production delivery board
+    url: https://github.com/orgs/SyneHQ/projects/3
+    about: Check active work and dependencies before opening a duplicate.
+  - name: Security reporting
+    url: https://github.com/SyneHQ/kelvo-go/blob/cargo/SECURITY.md
+    about: Follow the security policy for nonpublic vulnerability reports.

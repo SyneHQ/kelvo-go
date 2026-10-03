@@ -1,0 +1,40 @@
+name: Bug report
+description: Report reproducible incorrect behavior or a regression.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "For security vulnerabilities, follow SECURITY.md. Keep credentials, private queries, and customer data out of public reports."
+  - type: input
+    id: version
+    attributes:
+      label: Kelvo version or commit
+      description: Include build tags and native bridge version when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and limits
+      description: OS, architecture, source engine/version, deployment mode, and configured resource limits.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Use synthetic or public data and sanitized YAML/commands. Include steps from a clean start.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+      description: Include exact-value/type differences, error codes, or sanitized logs where useful.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Validation evidence
+      description: Link reproducible reports and include failed attempts, concurrency, returned/fetched rows, and memory accounting for performance reports.

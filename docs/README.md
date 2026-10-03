@@ -96,3 +96,9 @@ Reports link their [raw evidence](evidence/), versions, failures and reproductio
 [Contributing](../CONTRIBUTING.md) · [Public federation interface](../federation/federation.go) · [Adapter guide](federation-adapters.md) · [Dependency rationale](dependencies.md) · [DuckDB upgrades](upgrading-duckdb.md) · [Production roadmap](production-roadmap.md) · [Brand assets](../brand/README.md)
 
 The roadmap separates [delivered capabilities](production-roadmap.md#delivery-status) from remaining milestones. See [LICENSE](../LICENSE) and [NOTICE](../NOTICE) for licensing and attribution.
+
+## Delivery and release engineering
+
+- [Production board](https://github.com/orgs/SyneHQ/projects/3) and [delivery process](delivery-process.md)
+- [TLS identity rotation](tls-identity-rotation.md) and [managed worker scratch](worker-scratch.md)
+- [Process-loss acceptance](process-loss-acceptance.md) and [release upgrade compatibility](release-upgrades.md)
