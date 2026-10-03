@@ -24,3 +24,5 @@ The fixture preserves the existing ten-second cancellation and 25-second queued-
 The run finished in 21.884 seconds under a two-CPU, 6 GiB, no-swap service limit with a private network namespace and no capabilities. Cleanup reported zero forced application kills, live descendants, scratch directories, and containment records. All three validation service cgroups were absent after completion.
 
 This single broker placement demonstrates the exit-and-replacement path. It does not certify multi-hour throughput or recovery deadlines for every leader placement, network partition, or load level. Earlier failed campaigns remain separate evidence; this result does not rewrite them as passes.
+
+The [combined candidate checks](evidence/node-lease-integration-b09f2da.json) pin `b09f2da`: 429 full-package race pass events, ten focused recovery passes, six real snapshot/principal passes, 60 harness controls and vet. Twelve ordinary external/optional skips remain listed. Sustained and WAN campaigns need their own matching results.

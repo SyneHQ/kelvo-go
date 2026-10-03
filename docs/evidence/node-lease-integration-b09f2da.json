@@ -1,0 +1,100 @@
+{
+  "revision": "b09f2daad7caccf5caa7e35df5805696c9bc13ba",
+  "source_manifest_sha256": "d40a0906584ab5e89d1a316d17596cf16d54993fc0c4dade8b894fef97e4583a",
+  "scope": "Integrated local snapshot policies and fenced worker recovery; broker/sustained/capacity campaigns separate",
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "compiler_lanes": 1,
+  "umask": "0077",
+  "source_verified_before": true,
+  "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "binaries": {
+    "kelvo": "26ea84328e850116f4d5f31ab758bea1f5c57b7161eca0d61ddd63f9d714af26",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "source_verified_after": true,
+  "passed": true,
+  "schema": 1,
+  "validation_receipt_sha256": "7c29fe6a1843ed801f87d16f5816fed5d6e2a802c98a7ce6136d6d88b3b2f6a2",
+  "stages": {
+    "focused-race": {
+      "exit_code": 0,
+      "seconds": 27.411,
+      "log_sha256": "afd902d1f7b45b005da4135cd4c2d9b9cbbf20c5b754240b19505dda951fd442",
+      "pass_events": 10,
+      "fail_events": 0,
+      "skip_events": 0
+    },
+    "build": {
+      "exit_code": 0,
+      "seconds": 17.293,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "pass_events": 0,
+      "fail_events": 0,
+      "skip_events": 0
+    },
+    "launcher": {
+      "exit_code": 0,
+      "seconds": 0.114,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "pass_events": 0,
+      "fail_events": 0,
+      "skip_events": 0
+    },
+    "real-snapshot-worker": {
+      "exit_code": 0,
+      "seconds": 7.278,
+      "log_sha256": "7c5f6a109c5bd4107f85322d6362152345d66ea64cc58142b7b2a3c32535fde7",
+      "pass_events": 6,
+      "fail_events": 0,
+      "skip_events": 0
+    },
+    "python-controls": {
+      "exit_code": 0,
+      "seconds": 0.314,
+      "log_sha256": "50ee9c21433508da58ac8e8a2016770a59e63aaa0e9516b28ce6e3da23719a4a",
+      "pass_events": 0,
+      "fail_events": 0,
+      "skip_events": 0,
+      "unittest_count": 60
+    },
+    "race": {
+      "exit_code": 0,
+      "seconds": 62.808,
+      "log_sha256": "ed7529d7e46634879d7803351339f973c80fc907323b148b3d4ddd134cb26d1a",
+      "pass_events": 429,
+      "fail_events": 0,
+      "skip_events": 12
+    },
+    "vet": {
+      "exit_code": 0,
+      "seconds": 2.118,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "pass_events": 0,
+      "fail_events": 0,
+      "skip_events": 0
+    }
+  },
+  "ordinary_suite_skips": [
+    "github.com/SYNEHQ/kelvo-go/cmd/kelvo/TestContainedNodeStartupPlacement",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshStatusDurabilityResetAndBudget",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshQueueProvisionDedupRetry",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreAdmissionCASAndReuse",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreQueueAndWorkerLease",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreRejectsMetadataMismatch",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreReconcileFailsStaleAssigned",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreCorruptJobFailsClosed",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSAccountIsolation",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestSandboxedWorkerFailurePreservesSnapshotAndAdmission"
+  ],
+  "limits": [
+    "Focused and combined package checks do not replace broker-loss, sustained, WAN or provider acceptance",
+    "Complete cmd/cluster race suite retained 12 external or optional skips; explicit real snapshot/principal gates had none",
+    "Broker and micro-capacity campaigns on this candidate are reported separately",
+    "Later documentation-only commits do not change this recorded executable or source identity"
+  ]
+}
