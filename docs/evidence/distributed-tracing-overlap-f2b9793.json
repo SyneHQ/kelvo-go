@@ -1,0 +1,67 @@
+{
+  "scope": "Component correctness gate overlapped the sustained lifecycle campaign; neither is a throughput measurement.",
+  "tested_revision": "f2b9793c3407c29e6d4212b0cd0fcff6e5b3e29c",
+  "sustained_revision": "0544d5f013eb72598a6da608331ec8b00711866f",
+  "service_timing": {
+    "unit": "kelvo-distributed-tracing-f2b9793c34-f9fe92.service",
+    "source": "Exact-unit systemd PID1 journal entries; raw messages omitted.",
+    "events": [
+      {
+        "kind": "started",
+        "journal_realtime_microseconds": 1791071436969550,
+        "utc": "2026-10-03T23:50:36.969550Z"
+      },
+      {
+        "kind": "deactivated_successfully",
+        "journal_realtime_microseconds": 1791071490895683,
+        "utc": "2026-10-03T23:51:30.895683Z"
+      }
+    ],
+    "journal_interval_seconds": 53.926133
+  },
+  "service_timing_sha256": "1ce4bc44d11cb367a757ba12c13f9bbdf67dcbb13d0d0529ab88dc77c9e89c1a",
+  "overlap_observation": {
+    "observed_at": "2026-10-03T23:51:16.359861+00:00",
+    "units": {
+      "kelvo-sustained-c259ccfefa71.service": {
+        "RuntimeMaxUSec": "2h 5min",
+        "Result": "success",
+        "ExecMainStartTimestamp": "Sat 2026-10-03 23:16:45 UTC",
+        "ExecMainStartTimestampMonotonic": "205512620204",
+        "CPUQuotaPerSecUSec": "2s",
+        "MemoryMax": "6442450944",
+        "MemorySwapMax": "0",
+        "ActiveState": "active",
+        "SubState": "running"
+      },
+      "kelvo-distributed-tracing-f2b9793c34-f9fe92.service": {
+        "RuntimeMaxUSec": "30min",
+        "Result": "success",
+        "ExecMainStartTimestamp": "Sat 2026-10-03 23:50:36 UTC",
+        "ExecMainStartTimestampMonotonic": "207544164152",
+        "CPUQuotaPerSecUSec": "1s",
+        "MemoryMax": "3221225472",
+        "MemorySwapMax": "0",
+        "ActiveState": "active",
+        "SubState": "running"
+      }
+    },
+    "both_active": true
+  },
+  "overlap_observation_sha256": "6fe5e3aba9b2ca7a5cf436ca308d233431a457d18b4e90cbb1fe502a513086be",
+  "independent_cleanup": {
+    "unit": "kelvo-distributed-tracing-f2b9793c34-f9fe92",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true,
+    "revision": "f2b9793c3407c29e6d4212b0cd0fcff6e5b3e29c"
+  },
+  "independent_cleanup_sha256": "b60baea2784e2a8b8d9207f658409639d7c73114018e9bfe178ac4ce15851369"
+}

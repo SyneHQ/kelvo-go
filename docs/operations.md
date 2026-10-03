@@ -43,7 +43,7 @@ Worker `GET /metrics` and `GET /resources` require gateway mTLS. Metrics have fi
 | First batch | Executor entry to first decoded Arrow record; absent for empty streams |
 | Sink callbacks | Subset of execution/delivery, not an additional phase or pure network time |
 
-The startup SELECT probe counts as execution. Metrics reset on restart; there is no durable history. Optional [tracing](tracing.md) exports bounded sampled spans. Neither measures JetStream dispatch, claim delay, gateway receipt or separate overlapping source/transfer time. See [phase definitions](tracing.md#what-is-recorded).
+The startup SELECT probe counts as execution. Metrics reset on restart; there is no durable history. Optional [tracing](tracing.md) links authorized gateway and worker activity with bounded sampled spans. Broker queue time, assignment-to-claim delay and separate source/compute/transfer time remain unknown. See [phase definitions](tracing.md#what-is-recorded).
 
 ## Passive source observations
 
