@@ -1,0 +1,75 @@
+{
+  "revision": "67493699eb0ec97857a685923df225ad19b0cf62",
+  "source_manifest_sha256": "e8b13ce4bad3455ed04876f9d5d32c179d3f861b87ce711d30f8458ddc1b72fe",
+  "stages": {
+    "sustained-controls": {
+      "exit_code": 0,
+      "seconds": 0.264,
+      "log_sha256": "9848d310fa07dfec848259451766ef5b53ac41349286effe515cb5ad1609eeca"
+    },
+    "build": {
+      "exit_code": 0,
+      "seconds": 17.898,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "launcher": {
+      "exit_code": 0,
+      "seconds": 0.114,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "failures": [],
+  "skips": [
+    "github.com/SYNEHQ/kelvo-go/internal/audit/TestAuditActualDiskFull",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestExecuteRealPostgresMySQLFederation",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestRealConnectionMetadataDoesNotExposeDSNs",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestExecuteSQLiteFixture",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestCustomFederationNeedsExplicitBridgeBuild",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestPinnedMultipartObjectRangeQuery",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestPinnedObjectRangesUseRangesAndExactAllowlist",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshStatusDurabilityResetAndBudget",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshQueueProvisionDedupRetry",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreAdmissionCASAndReuse",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreQueueAndWorkerLease",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreRejectsMetadataMismatch",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreReconcileFailsStaleAssigned",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreCorruptJobFailsClosed",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSAccountIsolation",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelPrestartMembershipAndControls",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelNativeMemoryOOM",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelCPUQuota",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelPIDsLimit",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelDetachedDescendantCleanup",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelFailedCleanupQuarantinesCustody",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelRestartRecoversOwnedProcess",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelRestartRecoversIncompleteIntent",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelHierarchyOwnershipLock",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelStaleRootIdentityRejected",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelSandboxRuntime",
+    "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelMissingControllersFailsClosed",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerSuccessAndCancellation",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerRefreshCustody",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerStartFailureCleansOwnership",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerRealDuckDBCTE",
+    "github.com/SYNEHQ/kelvo-go/cmd/kelvo/TestContainedNodeStartupPlacement"
+  ],
+  "scope": "Rebuilt unchanged runtime with corrected frozen acceptance runner; full race/vet inherited from byte-identical2103318 runtime inputs",
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "compiler_lanes": 1,
+  "umask": "0077",
+  "source_verified_before": true,
+  "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "runtime_source_unchanged_from": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+  "reused_validation_receipt_sha256": "2eb060e3e8fa0968d1f50e6fd842e0b83bfc34f40ce8c0677cf68ae0794d109a",
+  "binaries": {
+    "kelvo": "e6ace8d4c560198c801ba531952bc9e10b3d83ac36e1f6bc5950a329e765c71c",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "source_verified_after": true,
+  "passed": true
+}

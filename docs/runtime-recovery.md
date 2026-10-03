@@ -21,7 +21,7 @@ and both binaries. Nine package race checks, vet, 16 sustained-run controls and
 repeated startup regressions passed on Azure. The [handoff regression](evidence/node-handoff-regression.json) fails before the fix and passes afterward; [scratch regressions](evidence/scratch-lease-regression.json) retain their separate source identity. A separate isolated three-broker
 NATS race run passed all nine top-level tests without skips.
 
-The earlier failed sustained trials and WAN preflights remain recorded. The
+The [corrected runner build](evidence/runtime-recovery-rebuild.json) pins `6749369`; its Go/native inputs match `2103318` byte for byte. It passed 22 controls before rebuilding. The [503 smoke failure](evidence/sustained-broker-status-failure.json) remains recorded alongside earlier scratch and WAN failures. The
 [600-second smoke and two-hour campaign](sustained-acceptance.md) and refreshed
 [Oracle capacity profile](oracle-micro-capacity.md) remain separate required gates.
 These package results establish no new throughput or production-readiness claim.
