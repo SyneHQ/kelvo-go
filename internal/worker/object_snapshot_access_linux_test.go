@@ -443,3 +443,31 @@ func TestObjectSnapshotWorkerActualChildCancellationDrainsResources(t *testing.T
 		})
 	}
 }
+
+// An old child must refuse the new envelope before it can register raw ranges.
+// Run this opt-in rollback control separately with an immutable previous binary.
+func TestObjectSnapshotPreviousChildRefusesNewEnvelope(t *testing.T) {
+	previous := os.Getenv("KELVO_TEST_PREVIOUS_SNAPSHOT_BINARY")
+	if previous == "" {
+		t.Skip("set KELVO_TEST_PREVIOUS_SNAPSHOT_BINARY for the actual rollback refusal control")
+	}
+	executor, ctx, source, client, release := objectAccessFixture(t, 1)
+	defer release()
+	request := query.Request{Sources: []string{source.ID}, SQL: "SELECT id,amount,observed,tiny FROM orders_object ORDER BY id"}
+	current := &objectExactSink{}
+	if _, err := executor.Execute(ctx, request, current); err != nil || len(current.values) != 3 {
+		t.Fatalf("current child did not accept the guarded control: %v", err)
+	}
+	requireObjectWorkerClean(t, executor, client)
+	before := client.calls.Load()
+	executor.Binary = previous
+	old := &objectExactSink{}
+	stats, err := executor.Execute(ctx, request, old)
+	if err == nil || query.PublicError(err).Code != "INVALID_ARGUMENT" || old.schema != nil || len(old.values) != 0 || stats.Rows != 0 {
+		t.Fatalf("previous child failed to reject the envelope before Arrow output: %v", err)
+	}
+	if client.calls.Load() != before {
+		t.Fatal("previous child accessed the object capability before rejecting new provenance")
+	}
+	requireObjectWorkerClean(t, executor, client)
+}
