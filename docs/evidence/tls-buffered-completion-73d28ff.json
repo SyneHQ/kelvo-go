@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "runtime_commit": "73d28ffdbfaa154cee9b069e25be422f4585834d",
+  "validation_base": "64e59563e4688a34ebdfec61bebd7d3165e41693",
+  "go_version": "go1.26.8 linux/amd64",
+  "scope": "Real local TLS final-buffer lifetime plus HTTP/1 and HTTP/2 cancellation regression. Controlled export metadata, no live-provider, broker, WAN, multi-host, or maximum-throughput certification.",
+  "passed": true,
+  "source_unchanged": true,
+  "validation_report_sha256": "fc72b1013dcbc09ed14549dbd7a2914bfdf5c9583c61007cd0e78d40f0f11f21",
+  "negative_control": {
+    "base_helper_commit": "64e59563e4688a34ebdfec61bebd7d3165e41693",
+    "test": "TestTLSBufferedCompletionRetainsDeadlineThroughServerFlush",
+    "expected_regression_detected": true,
+    "log_sha256": "6e4461e694eef13ab4b8fe746564cd59dd4fd1581b3f08986e1ae876842bf636"
+  },
+  "validation": {
+    "helper_race": {
+      "passed_test_events": 5,
+      "seconds": 1.818,
+      "log_sha256": "c7d789b3f1b6b92db8bc295f6cadcef52ce5a6f9eda90cb718973682119ac285"
+    },
+    "gateway_race": {
+      "passed_test_events": 39,
+      "seconds": 16.305,
+      "log_sha256": "4cbe8a72ef228f7d396281b368f5fdfed676e25e17d1d832b8c67a42c637d15b"
+    },
+    "httpapi_race": {
+      "passed_test_events": 26,
+      "seconds": 2.469,
+      "log_sha256": "99b12deec55476a483250bb9809eefb9a6eeed72677e0476586e1e175df70615"
+    },
+    "vet": {
+      "exit_code": 0,
+      "seconds": 5.477,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "failed_test_events": 0,
+    "skipped_test_events": 0
+  },
+  "final_buffer_assertions": {
+    "real_tcp_tls_server": true,
+    "small_response_buffered_until_handler_return": true,
+    "post_handler_socket_write_observed": true,
+    "deadline_remains_nonzero_during_final_flush": true,
+    "exact_response_body": true,
+    "http_1_verified": true,
+    "watcher_joined_before_handler_return": true
+  },
+  "isolated_service": {
+    "uid_nonroot": true,
+    "private_network": true,
+    "private_tmp": true,
+    "no_new_privileges": true,
+    "capabilities": [],
+    "cpu_percent": 100,
+    "memory_bytes": 3221225472,
+    "swap_bytes": 0,
+    "tasks_max": 256,
+    "runtime_limit_seconds": 1200,
+    "result": "success",
+    "active_state": "inactive",
+    "sub_state": "dead",
+    "cgroup_empty": true
+  },
+  "source_files_sha256": {
+    "internal/httpstream/deadline.go": "dc7a4a048f65ae9f2d7e7dfe28c2dcd6d3f76b74a616086e43316f0c56c4f03f",
+    "internal/httpstream/deadline_test.go": "ed77b0add7aaccc3781d14d43deef2ddcf34c9695dc28af52d19d4491479fe6d"
+  },
+  "previous_transport_evidence": "tls-stream-cancellation-64e5956.json"
+}
