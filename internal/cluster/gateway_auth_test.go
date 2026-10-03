@@ -196,46 +196,93 @@ func TestGatewayFileAuthenticationProbesHeadersAndParkedCancellation(t *testing.
 	}
 }
 
-func TestGatewayKeyRevocationAbortsActiveRelayWithoutCompletion(t *testing.T) {
-	gateway, store, stop := admissionGateway(t, map[string]string{"active": Assigned})
-	defer stop()
-	a := bareAuthenticator(t)
-	gateway.auth = a
-	if !a.apply(rotationSet(t, 1, rotationOld), time.Now()) {
-		t.Fatal("initial keys rejected")
+// firstRelayWrite observes gateway delivery rather than the worker's flush:
+// an upstream flush can still race with client.Do receiving the headers.
+type firstRelayWrite struct {
+	*httptest.ResponseRecorder
+	started chan struct{}
+	once    sync.Once
+}
+
+func (w *firstRelayWrite) Write(p []byte) (int, error) {
+	n, err := w.ResponseRecorder.Write(p)
+	if n > 0 {
+		w.once.Do(func() { close(w.started) })
 	}
-	started := make(chan struct{})
-	encoded, _ := compressedRelayFixture(t, "none")
-	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		_, _ = w.Write(encoded[:100])
-		w.(http.Flusher).Flush()
-		close(started)
-		<-request.Context().Done()
-	}))
-	defer upstream.Close()
-	endpoint, _ := url.Parse(upstream.URL)
-	gateway.tenants["a"] = gatewayTenant{store: store, workers: map[string]workerEndpoint{"a1": {url: endpoint, client: upstream.Client()}}}
-	finished := make(chan any, 1)
-	output := httptest.NewRecorder()
-	go func() {
-		defer func() { finished <- recover() }()
-		gateway.ServeHTTP(output, admissionRequest(context.Background(), "/v1/queries/active/results"))
-	}()
-	<-started
-	if !a.apply(rotationSet(t, 2, rotationNew), time.Now()) {
-		t.Fatal("revocation failed")
-	}
-	select {
-	case result := <-finished:
-		if result != http.ErrAbortHandler {
-			t.Fatal("revoked active relay did not abort", result)
+	return n, err
+}
+
+func (w *firstRelayWrite) Unwrap() http.ResponseWriter { return w.ResponseRecorder }
+
+func TestGatewayKeyRevocationCancelsDeliveryWithoutCompletion(t *testing.T) {
+	for _, activeRelay := range []bool{false, true} {
+		name := "before_headers"
+		if activeRelay {
+			name = "active_relay"
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("revocation failed to cancel active relay")
-	}
-	job, _ := store.Get(context.Background(), "active")
-	if job.Job.State != Failed || len(gateway.permits) != 0 || strings.HasSuffix(output.Body.String(), string([]byte{255, 255, 255, 255, 0, 0, 0, 0})) {
-		t.Fatal("revoked stream completed or leaked permit")
+		t.Run(name, func(t *testing.T) {
+			gateway, store, stop := admissionGateway(t, map[string]string{"active": Assigned})
+			defer stop()
+			a := bareAuthenticator(t)
+			gateway.auth = a
+			if !a.apply(rotationSet(t, 1, rotationOld), time.Now()) {
+				t.Fatal("initial keys rejected")
+			}
+			upstreamStarted, upstreamDone := make(chan struct{}), make(chan struct{})
+			encoded, _ := compressedRelayFixture(t, "none")
+			upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				defer close(upstreamDone)
+				if activeRelay {
+					_, _ = w.Write(encoded[:100])
+					w.(http.Flusher).Flush()
+				}
+				close(upstreamStarted)
+				<-request.Context().Done()
+			}))
+			defer upstream.Close()
+			endpoint, _ := url.Parse(upstream.URL)
+			gateway.tenants["a"] = gatewayTenant{store: store, workers: map[string]workerEndpoint{"a1": {url: endpoint, client: upstream.Client()}}}
+			finished := make(chan any, 1)
+			output := &firstRelayWrite{ResponseRecorder: httptest.NewRecorder(), started: make(chan struct{})}
+			requestContext, cancel := context.WithCancel(context.Background())
+			defer cancel() // release the upstream even if a progress assertion fails
+			go func() {
+				defer func() { finished <- recover() }()
+				gateway.ServeHTTP(output, admissionRequest(requestContext, "/v1/queries/active/results"))
+			}()
+			started := upstreamStarted
+			if activeRelay {
+				started = output.started
+			}
+			select {
+			case <-started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("delivery did not reach the revocation boundary")
+			}
+			if !a.apply(rotationSet(t, 2, rotationNew), time.Now()) {
+				t.Fatal("revocation failed")
+			}
+			select {
+			case result := <-finished:
+				if activeRelay && result != http.ErrAbortHandler {
+					t.Fatal("revoked active relay did not abort", result)
+				}
+				if !activeRelay && (result != nil || output.Code != http.StatusServiceUnavailable || output.Header().Get("Kelvo-Result-Completion") != "") {
+					t.Fatal("revoked pre-stream request did not fail without completion", result, output.Code)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("revocation failed to cancel delivery")
+			}
+			select {
+			case <-upstreamDone:
+			case <-time.After(2 * time.Second):
+				t.Fatal("revocation left the worker request running")
+			}
+			job, _ := store.Get(context.Background(), "active")
+			if job.Job.State != Failed || len(gateway.permits) != 0 || strings.HasSuffix(output.Body.String(), string([]byte{255, 255, 255, 255, 0, 0, 0, 0})) {
+				t.Fatal("revoked stream completed or leaked permit")
+			}
+		})
 	}
 }
 
