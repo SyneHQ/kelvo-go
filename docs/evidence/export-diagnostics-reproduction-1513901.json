@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "scope": "Scoped diagnostics validation and one isolated export lifecycle reproduction; original hosted failure remains unresolved",
+  "original_hosted_failure": {
+    "workflow_run": 37144625480,
+    "job": 111265908647,
+    "evidence_file": "export-ci-37144625480-failure.json",
+    "cause": "unresolved",
+    "reclassified": false
+  },
+  "helper_staging_attempt_1": {
+    "passed": false,
+    "lifecycle_attempts_started": 0,
+    "cause": "The host Python 3.11.2 tarfile.extractall API does not accept the filter keyword",
+    "python_extractall_parameters": [
+      "self",
+      "path",
+      "members",
+      "numeric_owner"
+    ],
+    "independent_stage_observation": {
+      "source_entries": 0,
+      "parser_log_exists": false,
+      "fixture_exists": false,
+      "harness_log_exists": false
+    },
+    "receipt_sha256": "572b186808d5b38b010d24d0b426b0027247989487580933643a3b5d5800467d",
+    "reported_failures": [
+      "TypeError",
+      "AssertionError"
+    ],
+    "runtime_source_verified_before": true,
+    "runtime_source_verified_after": true,
+    "independently_verified_input_hashes_after": {
+      "kelvo": "3f68b741eb819cc78fe26629b02cdc9b8279defc0d2e3452416b55fbe67b61ff",
+      "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+      "nats-server": "667bfa7d71ac190ab745e00bd1f9a037338b719b3293cda25bd44aef24b457fa",
+      "go": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34"
+    },
+    "cleanup": {
+      "service": {
+        "MainPID": "0",
+        "Result": "exit-code",
+        "ExecMainStatus": "1",
+        "ControlGroup": "",
+        "LoadState": "loaded",
+        "ActiveState": "failed",
+        "SubState": "failed",
+        "InvocationID": "18b92653ee6249669f764c4d86873ed5"
+      },
+      "cleanup_verified": true,
+      "passed": false,
+      "service_after": {
+        "MainPID": "0",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "ControlGroup": "",
+        "LoadState": "not-found",
+        "ActiveState": "inactive",
+        "SubState": "dead",
+        "InvocationID": ""
+      },
+      "cgroup_absent": true,
+      "service_succeeded": false,
+      "receipt_sha256": "572b186808d5b38b010d24d0b426b0027247989487580933643a3b5d5800467d"
+    }
+  },
+  "helper_attempt_2": {
+    "receipt_sha256": "7e58734ca4d5c643b2f4efe8d7d95886b517b8e4c6bdd81f4b643d6406af84d5",
+    "helper_hashes": {
+      "run.py": "b0c3ca2d2c96cc980340ae0f1402f0e6b743c1084205477038fabcb60254f655",
+      "controller.py": "7f81935b0c8c30d62b4e694e7170ed906c383cda5b6adbc9fdf1137324f81942",
+      "collect.py": "40b9305e814e2d617e260d597ebd363fa4bf9c1f62d725ab45c9e5141e1dc990"
+    },
+    "receipt": {
+      "passed": true,
+      "scope": "One isolated offline lifecycle reproduction; test/harness source differs from unchanged frozen runtime",
+      "source_revision": "151390182698735a7f65dab1a486c5d7e83b9f5a",
+      "source_manifest_sha256": "00439885b5253924a153ad9cc87bd98c7540c76f8d7876cdf927c532e4ee173a",
+      "runtime_revision": "0da7523527477df905b9e68dd329b719c161a753",
+      "runtime_source_manifest_sha256": "2c0dbded80deddb5dc6ffdf7c424756575988a130070693f02d205688d323ef7",
+      "broker_version": "2.14.7",
+      "helper_attempt": 2,
+      "lifecycle_attempts_started": 1,
+      "failures": [],
+      "isolation": {
+        "memory_max_bytes": 3221225472,
+        "swap_max_bytes": 0,
+        "cpu_max": "100000 100000",
+        "tasks_max": 256,
+        "non_root": true,
+        "private_network": true
+      },
+      "input_hashes_before": {
+        "kelvo": "3f68b741eb819cc78fe26629b02cdc9b8279defc0d2e3452416b55fbe67b61ff",
+        "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+        "nats-server": "667bfa7d71ac190ab745e00bd1f9a037338b719b3293cda25bd44aef24b457fa",
+        "go": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34"
+      },
+      "runtime_source_verified_before": true,
+      "source_verified_before": true,
+      "effective_module_files": {
+        "mod": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+        "sum": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+      },
+      "parser_tests": {
+        "tests_run": 6,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0,
+        "log_sha256": "3f462b08c9eb731931f119881cac46459e7c7e8cd7370c2f2755d96c3053c09a"
+      },
+      "harness_exit_code": 0,
+      "harness_log_sha256": "b00fd6f087d8747c173e8b26294d9242efdc55bef2d88fe6dee84c1b6e4414ef",
+      "lifecycle": {
+        "mode": "lifecycle",
+        "server_version": "2.14.7",
+        "server_binary_sha256": "667bfa7d71ac190ab745e00bd1f9a037338b719b3293cda25bd44aef24b457fa",
+        "build_tags": "duckdb_arrow,duckbridge",
+        "scope": "single broker; actual sandboxed worker and gateway lifecycle using separate restricted broker roles",
+        "tests": [
+          {
+            "name": "TestExportClusterActualWorkerLifecycle/accepted-export-survives-submit-disconnect",
+            "outcome": "pass"
+          },
+          {
+            "name": "TestExportClusterActualWorkerLifecycle/lz4-preserves-values-and-null-policy",
+            "outcome": "pass"
+          },
+          {
+            "name": "TestExportClusterActualWorkerLifecycle/ready-export-survives-worker-restart",
+            "outcome": "pass"
+          },
+          {
+            "name": "TestExportClusterActualWorkerLifecycle/lost-completion-is-not-replayed",
+            "outcome": "pass"
+          },
+          {
+            "name": "TestExportClusterActualWorkerLifecycle/fresh-key-rechecks-ready-downloads",
+            "outcome": "pass"
+          },
+          {
+            "name": "TestExportClusterActualWorkerLifecycle",
+            "outcome": "pass"
+          }
+        ],
+        "failures": [],
+        "skips": [],
+        "passed": true,
+        "source_sha256": "00439885b5253924a153ad9cc87bd98c7540c76f8d7876cdf927c532e4ee173a",
+        "source_revision": "151390182698735a7f65dab1a486c5d7e83b9f5a",
+        "source_verified_before": true,
+        "export_binary_sha256": "3f68b741eb819cc78fe26629b02cdc9b8279defc0d2e3452416b55fbe67b61ff",
+        "export_sandbox_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+        "exit_code": 0,
+        "seconds": 20.959,
+        "log_sha256": "d6a5dfd5b2bf41d9e10310ed019e4ffb9d26f52b7f1a4294d89fdcc375498110",
+        "source_verified_after": true,
+        "diagnostics": {
+          "records": [
+            {
+              "test": "TestExportClusterActualWorkerLifecycle/accepted-export-survives-submit-disconnect",
+              "file": "export_integration_linux_test.go",
+              "line": 277,
+              "kind": "wait_state",
+              "wanted": "ready",
+              "observed": "ready",
+              "deadline_reached": false,
+              "receipt_present": true,
+              "error_class": "none",
+              "executions": 1
+            },
+            {
+              "test": "TestExportClusterActualWorkerLifecycle/lz4-preserves-values-and-null-policy",
+              "file": "export_integration_linux_test.go",
+              "line": 298,
+              "kind": "wait_state",
+              "wanted": "ready",
+              "observed": "ready",
+              "deadline_reached": false,
+              "receipt_present": true,
+              "error_class": "none",
+              "executions": 2
+            },
+            {
+              "test": "TestExportClusterActualWorkerLifecycle/lost-completion-is-not-replayed",
+              "file": "export_integration_linux_test.go",
+              "line": 331,
+              "kind": "wait_state",
+              "wanted": "cancelled",
+              "observed": "cancelled",
+              "deadline_reached": false,
+              "receipt_present": true,
+              "error_class": "job_cancelled",
+              "executions": 3
+            }
+          ],
+          "rejected": 0,
+          "truncated": 0
+        },
+        "broker_stopped": true
+      },
+      "runtime_source_verified_after": true,
+      "source_verified_after": true,
+      "input_hashes_after": {
+        "kelvo": "3f68b741eb819cc78fe26629b02cdc9b8279defc0d2e3452416b55fbe67b61ff",
+        "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+        "nats-server": "667bfa7d71ac190ab745e00bd1f9a037338b719b3293cda25bd44aef24b457fa",
+        "go": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34"
+      },
+      "seconds": 22.095
+    },
+    "cleanup": {
+      "service": {
+        "MainPID": "0",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "ControlGroup": "",
+        "LoadState": "loaded",
+        "ActiveState": "active",
+        "SubState": "exited",
+        "InvocationID": "501ae16dfa9b4d51b55a4b23ec68cb30"
+      },
+      "cleanup_verified": true,
+      "passed": true,
+      "service_after": {
+        "MainPID": "0",
+        "Result": "success",
+        "ExecMainStatus": "0",
+        "ControlGroup": "",
+        "LoadState": "not-found",
+        "ActiveState": "inactive",
+        "SubState": "dead",
+        "InvocationID": ""
+      },
+      "cgroup_absent": true,
+      "service_succeeded": true,
+      "receipt_sha256": "7e58734ca4d5c643b2f4efe8d7d95886b517b8e4c6bdd81f4b643d6406af84d5"
+    }
+  },
+  "limits": [
+    "This successful isolated reproduction does not identify, fix or relabel the original hosted failure.",
+    "The Go test and diagnostic harness use revision 1513901; the unchanged worker binary uses runtime revision 0da7523. Both complete identities are retained separately.",
+    "The 3 GiB service bound includes race-instrumented test compilation, the loopback broker and the test runtime; it is not a deployment memory recommendation.",
+    "No timeout, cancellation state, execution count or replay criterion was relaxed. No production runtime code was changed by the diagnostics patch.",
+    "This is one single-broker lifecycle attempt, not sustained-load, multi-broker HA or live-provider acceptance."
+  ]
+}

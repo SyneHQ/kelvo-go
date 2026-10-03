@@ -2,7 +2,7 @@
 
 This is recorded developer-preview evidence, tied to specific binaries and fixtures. Use [production status](production-status.md) for current release gates; these results do not certify arbitrary multi-tenant deployments.
 
-Latest: [durable export validation](export-validation.md) covers the combined worker, broker, transport and crash checks on `d144a43`.
+Latest: [durable export validation](export-validation.md) covers the combined worker, broker, transport and crash checks on `d144a43`; [export CI diagnostics](export-ci-diagnostics.md) retains a later unresolved failure and a separate passing isolated reproduction.
 
 The [pinned worker-capacity gate](node-capacity.md) also passed on `d144a43` with observer `9cad904`: five matched metrics on/off pairs, 130/130 workload queries and a separate 3/3 preflight. Its warm-cache, worker-only scope excludes the Azure gateway, NATS, source database and SSH tunnels; broader sustained and deployment capacity remain separate.
 
