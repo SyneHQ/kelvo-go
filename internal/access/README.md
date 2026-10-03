@@ -53,8 +53,8 @@ a batch of `n` rows, guard work retains that bounded input, uses a Boolean mask
 (one bit per row plus Arrow capacity/alignment), an index selection of at most
 eight bytes per selected row plus alignment, and copies selected visible
 column buffers. Builder capacity growth, field buffers, and Go object headers
-add overhead. No complete result is retained, and cancellation is checked every
-1,024 predicate rows. This is a per-batch allocation model, not a total RSS cap;
+add overhead. The guard retains one output batch; DuckDB can still materialize
+query execution. Cancellation is checked every 1,024 predicate rows. This is a per-batch allocation model, not a total RSS cap;
 the worker's admission and OS containment limits remain necessary.
 
 ## Operational limits
