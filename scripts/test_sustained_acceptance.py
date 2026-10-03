@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Negative controls: smoke, duration, missing/fault gates, ownership and limits."""
 import copy
+import errno
 import hashlib
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -151,6 +154,113 @@ class SustainedControls(unittest.TestCase):
             (process / "stat").unlink()
             (process / "stat").mkdir()
             self.assertEqual(fixture.sampled_identity(123, root), (None, "read_error"))
+
+    def sampler_fixture(self, root):
+        process = root / '123'
+        (process / 'task/123').mkdir(parents=True)
+        fields = ['S', *(['0'] * 18), '456']
+        (process / 'stat').write_text('123 (fixture worker) ' + ' '.join(fields))
+        (process / 'status').write_text('State: S (sleeping)\nVmRSS: 4 kB\n')
+        (process / 'task/123/children').write_text('')
+        sampler = fixture.LockedSamples({'a1': mock.Mock(pid=123, poll=lambda: None)})
+        sampler.proc_root = root
+        return sampler
+
+    def test_proc_exit_errno_and_permission_errors_at_each_operation(self):
+        for operation in ('stat', 'status', 'tasks', 'children'):
+            for error_number in (errno.ENOENT, errno.ESRCH, errno.EACCES, errno.EPERM, errno.EIO):
+                with self.subTest(operation=operation, errno=error_number), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    sampler = self.sampler_fixture(root)
+                    target = root / '123' / {'stat': 'stat', 'status': 'status', 'tasks': 'task', 'children': 'task/123/children'}[operation]
+                    original = Path.iterdir if operation == 'tasks' else Path.read_text
+                    def observed(path, *args, **kwargs):
+                        if path == target:
+                            raise OSError(error_number, 'PRIVATE_DIAGNOSTIC_NOT_FOR_REPORT')
+                        return original(path, *args, **kwargs)
+                    with mock.patch.object(Path, 'iterdir' if operation == 'tasks' else 'read_text', observed):
+                        sampler.sample()
+                        sampler.sample()
+                    evidence = sampler.evidence()
+                    disappeared = error_number in (errno.ENOENT, errno.ESRCH)
+                    self.assertEqual(evidence['read_errors'], [] if disappeared else ['PROCESS_IDENTITY_READ_FAILED' if operation == 'stat' else 'PROCESS_READ_FAILED'])
+                    self.assertEqual(evidence['disappeared_or_exited_process_or_thread_samples'], 2 if disappeared else 0)
+                    self.assertEqual(len(evidence['read_diagnostics']), 1)
+                    diagnostic = evidence['read_diagnostics'][0]
+                    self.assertEqual((diagnostic['operation'], diagnostic['outcome'], diagnostic['errno'], diagnostic['count']),
+                                     (operation, 'disappeared' if disappeared else 'oserror', error_number, 2))
+                    self.assertLessEqual(diagnostic['first_elapsed_seconds'], diagnostic['last_elapsed_seconds'])
+                    self.assertNotIn('PRIVATE_DIAGNOSTIC', json.dumps(evidence))
+                    self.assertNotIn(str(root), json.dumps(evidence))
+
+    def test_malformed_proc_data_remains_a_hard_failure(self):
+        cases = [('stat', 'malformed'), ('stat', '124 (wrong pid) S ' + '0 ' * 18 + '456'),
+                 ('status', 'State: S\nVmRSS: -1 kB\n'), ('status', 'State: S\nVmRSS: nonsense kB\n'),
+                 ('status', 'State: S\n'), ('task/123/children', '-123'), ('task/123/children', 'not-a-pid'),
+                 ('task/123/children', '\u00b2'), ('task/123/children', '9' * 5000), ('task/123/children', str(1 << 31))]
+        for name, payload in cases:
+            with self.subTest(name=name, payload=payload), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                sampler = self.sampler_fixture(root)
+                (root / '123' / name).write_text(payload)
+                sampler.sample()
+                evidence = sampler.evidence()
+                self.assertEqual(evidence['read_errors'], ['PROCESS_IDENTITY_READ_FAILED' if name == 'stat' else 'PROCESS_READ_FAILED'])
+                self.assertEqual(evidence['read_diagnostics'][0]['outcome'], 'malformed')
+                self.assertEqual(evidence['disappeared_or_exited_process_or_thread_samples'], 0)
+
+    def test_explicit_zombie_status_does_not_require_rss(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sampler = self.sampler_fixture(root)
+            (root / '123/status').write_text('State: Z (zombie)\n')
+            sampler.sample()
+            evidence = sampler.evidence()
+            self.assertEqual(evidence['read_errors'], [])
+            self.assertEqual(evidence['disappeared_or_exited_process_or_thread_samples'], 1)
+            self.assertEqual(evidence['read_diagnostics'][0]['operation'], 'status')
+            self.assertEqual(evidence['read_diagnostics'][0]['outcome'], 'exited')
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux procfs exit semantics')
+    def test_open_proc_descriptors_after_child_exit_report_esrch(self):
+        process = subprocess.Popen(['/bin/sleep', '10'])
+        handles = {}
+        try:
+            root = Path('/proc') / str(process.pid)
+            for name in ('stat', 'status'):
+                handles[name] = (root / name).open()
+            process.terminate()
+            process.wait(timeout=3)
+            sampler = fixture.LockedSamples({})
+            original = Path.read_text
+            def opened_before_exit(path, *args, **kwargs):
+                if path.parent == root and path.name in handles:
+                    return handles[path.name].read()
+                return original(path, *args, **kwargs)
+            with mock.patch.object(Path, 'read_text', opened_before_exit):
+                self.assertEqual(fixture.sampled_identity(process.pid, diagnostic=sampler.diagnostic), (None, 'disappeared'))
+                self.assertIsNone(sampler.read_process_text(root / 'status', 'status'))
+            evidence = sampler.evidence()
+            self.assertEqual(evidence['read_errors'], [])
+            self.assertEqual(evidence['disappeared_or_exited_process_or_thread_samples'], 2)
+            self.assertEqual({(item['operation'], item['errno']) for item in evidence['read_diagnostics']}, {('stat', errno.ESRCH), ('status', errno.ESRCH)})
+        finally:
+            for handle in handles.values():
+                handle.close()
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=3)
+
+    def test_diagnostics_are_bounded_without_hiding_failures_or_aliasing(self):
+        sampler = fixture.LockedSamples({})
+        for error_number in range(100, 100 + fixture.PROCESS_DIAGNOSTIC_LIMIT + 5):
+            sampler.diagnostic('status', 'oserror', error_number)
+        evidence = sampler.evidence()
+        self.assertEqual(len(evidence['read_diagnostics']), fixture.PROCESS_DIAGNOSTIC_LIMIT)
+        self.assertEqual(evidence['read_diagnostic_overflow_events'], 5)
+        self.assertEqual(evidence['read_errors'], ['PROCESS_READ_FAILED'])
+        evidence['read_diagnostics'][0]['operation'] = 'changed'
+        self.assertEqual(sampler.evidence()['read_diagnostics'][0]['operation'], 'status')
 
     def test_baseline_and_every_named_gate(self):
         self.assertTrue(fixture.reconcile(valid_report(), REVISION))
