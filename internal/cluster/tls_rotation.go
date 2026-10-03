@@ -21,6 +21,15 @@ const tlsIdentityReadTimeout = 2 * time.Second
 var errTLSIdentityUnavailable = errors.New("TLS identity unavailable")
 
 func validateTLSRotation(c TLSConfig) error {
+	if c.Trust != nil {
+		if c.CAFile != "" {
+			return errors.New("TLS trust replaces ca_file")
+		}
+		if err := c.Trust.validate(); err != nil {
+			return err
+		}
+	}
+
 	if c.IdentityFile == "" {
 		if c.ReloadInterval != 0 {
 			return errors.New("TLS reload_interval requires identity_file")
@@ -269,44 +278,80 @@ func (i *tlsIdentity) close() {
 }
 
 // ServerTLS owns opt-in certificate/key rotation. Close it after the server
-// finishes draining. Trust roots are static and normal peer verification stays on.
+// finishes draining. Optional trust rotation preserves normal peer verification.
 type ServerTLS struct {
 	Config   *tls.Config
 	identity *tlsIdentity
+	trust    *tlsTrust
+	peerURI  string
 }
 
 func OpenServerTLS(c TLSConfig, ownURI, clientURI string) (*ServerTLS, error) {
-	if c.IdentityFile == "" {
-		config, err := BuildServerTLS(c, ownURI, clientURI)
-		return &ServerTLS{Config: config}, err
-	}
-	identity, err := newTLSIdentity(c, ownURI, x509.ExtKeyUsageServerAuth, nil)
-	if err != nil {
+	if err := validateTLSRotation(c); err != nil {
 		return nil, err
 	}
-	config := &tls.Config{MinVersion: tls.VersionTLS13, SessionTicketsDisabled: true}
-	if clientURI != "" {
-		config.ClientCAs, err = loadRoots(c.CAFile)
+	runtime := &ServerTLS{peerURI: clientURI}
+	started := false
+	defer func() {
+		if !started {
+			runtime.Close()
+		}
+	}()
+	var err error
+	if c.Trust != nil {
+		if clientURI == "" {
+			return nil, errors.New("TLS trust rotation requires an mTLS listener")
+		}
+		runtime.trust, err = newTLSTrust(*c.Trust, nil)
 		if err != nil {
-			identity.close()
 			return nil, err
 		}
-		config.ClientAuth = tls.RequireAndVerifyClientCert
 	}
-	config.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return identity.current() }
-	config.VerifyConnection = func(state tls.ConnectionState) error {
-		if !identity.ready() {
-			return errTLSIdentityUnavailable
+	if c.IdentityFile == "" {
+		runtime.Config, err = buildServerTLS(c, ownURI, clientURI, runtime.trust)
+		if err != nil {
+			return nil, err
 		}
-		if clientURI != "" && (len(state.VerifiedChains) == 0 || len(state.PeerCertificates) == 0 || !hasURI(state.PeerCertificates[0], clientURI)) {
-			return errors.New("unexpected gateway identity")
+	} else {
+		runtime.identity, err = newTLSIdentity(c, ownURI, x509.ExtKeyUsageServerAuth, nil)
+		if err != nil {
+			return nil, err
 		}
-		return nil
+		identity := runtime.identity
+		config := &tls.Config{MinVersion: tls.VersionTLS13, SessionTicketsDisabled: true}
+		if clientURI != "" {
+			config.ClientCAs, err = loadTLSRoots(c, runtime.trust)
+			if err != nil {
+				return nil, err
+			}
+			config.ClientAuth = tls.RequireAndVerifyClientCert
+		}
+		config.GetCertificate = func(*tls.ClientHelloInfo) (*tls.Certificate, error) { return identity.current() }
+		config.VerifyConnection = func(state tls.ConnectionState) error {
+			if !identity.ready() {
+				return errTLSIdentityUnavailable
+			}
+			if clientURI != "" && (len(state.VerifiedChains) == 0 || len(state.PeerCertificates) == 0 || !hasURI(state.PeerCertificates[0], clientURI)) {
+				return errors.New("unexpected gateway identity")
+			}
+			return nil
+		}
+		runtime.Config = config
 	}
-	return &ServerTLS{Config: config, identity: identity}, nil
+	if runtime.trust != nil {
+		runtime.Config, err = configureTLSTrustServer(runtime.Config, runtime.trust, clientURI)
+		if err != nil {
+			return nil, err
+		}
+	}
+	started = true
+	return runtime, nil
 }
 
 func (s *ServerTLS) Close() {
+	if s.trust != nil {
+		s.trust.close()
+	}
 	if s.identity != nil {
 		s.identity.close()
 	}
@@ -315,10 +360,13 @@ func (s *ServerTLS) Close() {
 // Handler gates requests on existing keepalive connections too, and preserves
 // the wrapped cluster handler's drain lifecycle. In-flight requests may finish.
 func (s *ServerTLS) Handler(handler http.Handler) http.Handler {
-	if s.identity == nil {
-		return handler
+	if s.identity != nil {
+		handler = &tlsIdentityHandler{Handler: handler, identity: s.identity}
 	}
-	return &tlsIdentityHandler{Handler: handler, identity: s.identity}
+	if s.trust != nil {
+		handler = &tlsTrustHandler{Handler: handler, trust: s.trust, expectedURI: s.peerURI}
+	}
+	return handler
 }
 
 type tlsIdentityHandler struct {
