@@ -1,6 +1,6 @@
 # Worker admission, metrics and maintenance
 
-Cluster nodes can opt into aggregate resource reservations in their node YAML:
+Opt into shared node reservations in worker YAML. These illustrative MiB values are **not** measured sizing recommendations:
 
 ```yaml
 resources:
@@ -14,278 +14,127 @@ resources:
   query_reserve_scratch_mb: 2048
 ```
 
-These are illustrative budgets, not a measured sizing recommendation. Values are
-MiB. The pool's usable memory is `memory_mb - baseline_mb`. Each query reserves
-its configured engine `memory_mb` plus `overhead_mb`, and its `max_temp_mb` scratch
-budget. Each refresh additionally reserves `max_bytes` for snapshot staging.
-Refresh reservations remain held through Parquet completion, publication and
-pruning. The inner refresh executor does not acquire the same pool again.
+| Reservation | Accounting |
+| --- | --- |
+| Usable memory | `memory_mb - baseline_mb` |
+| Query | Engine `memory_mb + overhead_mb`; `max_temp_mb` scratch |
+| Refresh | Query reservation plus `max_bytes` staging, held through publication/pruning |
+| Query reserves | Capacity unavailable to background refresh; interactive queries can use all idle capacity |
 
-Query and refresh work share one pool in each node process. Work waits within its
-timeout when capacity is occupied. Oversize configured queries or datasets fail
-node startup. Release follows execution cleanup, including cancellation. Existing
-cluster queue and worker-slot limits still apply. Optional `query_reserve_*`
-settings protect slots, memory and scratch from background refresh work. Refreshes
-must fit the remaining background budget; otherwise node startup rejects their
-configuration. Interactive queries may use all idle capacity, including space not
-currently needed by refreshes. These are limits within one shared pool, not
-separate allocations, preemption or a fairness guarantee. Existing interactive
-queries can still fill the pool. Omitting the reserve fields preserves the
-previous shared-capacity behavior; exports do not have their own class yet.
-Separate node processes do not share this accounting. Operators must divide
-host budgets between them, retain container limits, and account for persistent
-snapshots separately from temporary staging.
+Queries/refreshes share one process-local pool and wait within their timeout. Oversized configurations fail startup; release follows cleanup. Inner refresh executors do not reacquire the pool. Reserves provide neither preemption nor fairness, and exports have no separate class.
 
-Omitting `resources` preserves the previous slot-only behavior. Reservations do
-not enforce RSS or disk quotas. DuckDB's setting does not cap Arrow/native/runtime
-allocations; measure sufficient baseline and per-job overhead. Compressed results
-do not reduce reservations. A shared pool cannot establish OOM safety without
-appropriate budgets and real mixed-load capacity testing.
+Omitting `resources` retains slot-only admission. Reservations alone do not enforce RSS/disk limits; compression does not reduce them. Divide host capacity among nodes, retain OS/container limits, and budget persistent snapshots separately. DuckDB materializes execution before Arrow delivery and its memory setting does not cap every native/Arrow allocation.
 
 ## Diagnostics
 
-Worker `GET /metrics` exports fixed-cardinality Prometheus counters and histograms.
-It requires the existing gateway mTLS identity, as does `GET /resources`, which
-returns aggregate reservation capacity, usage, active/waiting counts and drain
-state when resources are configured. Neither endpoint exposes SQL, credentials,
-source names, query IDs or tenant IDs. Provision authorized internal collection;
-do not expose worker diagnostics publicly.
+Worker `GET /metrics` and `GET /resources` require gateway mTLS. Metrics have fixed cardinality; resource responses expose aggregate capacity, usage, waits and drain state. Neither includes SQL, credentials, sources, query IDs or tenant IDs. Keep collection internal.
 
-Execution metrics distinguish query and refresh success, errors, cancellations
-and capacity/drain rejection. Query queue histograms include measured node-resource
-and source-quota admission wait; query duration excludes those intervals. Refresh
-queue histograms measure outer node-resource admission only; source-quota wait in
-the nested extraction remains part of refresh duration, alongside extraction and
-publication. Neither histogram measures distributed JetStream queue latency.
-Durations also include setup and delivery/cleanup. These are not separate source
-execution and DuckDB computation timings. The startup SELECT
-probe counts as a query execution. Metrics are process-local and reset on restart;
-optional [lifecycle tracing](tracing.md) exports bounded, sampled local query/refresh
-spans through OTLP/HTTP. It is disabled by default and excludes SQL, parameters,
-source/tenant identities and raw errors. Query workers expose six reached, disjoint local phase histograms and matching
-sampled spans: validation, node admission, source admission, preparation,
-combined execution/delivery and cleanup. A separate first-batch histogram measures
-executor entry to the first decoded Arrow record before sink delivery; empty
-streams have no record observation. Cumulative schema/record sink callback time
-is a subset of execution/delivery, never an additional phase or pure network
-measurement. Early failure teardown remains in its active phase. Full phase
-semantics and refresh differences are documented in
-[lifecycle tracing](tracing.md#what-is-recorded). Neither metrics nor spans measures
-JetStream dispatch wait, client claim delay, gateway receipt, or separate
-overlapping database execution and transfer. There is no durable query history. Snapshotting
-metrics takes a short lock; rendering occurs after releasing it.
+| Measurement | Meaning |
+| --- | --- |
+| Query queue | Local node-resource and source-quota admission waits |
+| Query duration | Setup, execution/delivery and cleanup; excludes those admission waits |
+| Refresh queue | Outer node-resource admission only |
+| Refresh duration | Includes nested source-quota wait, extraction and publication |
+| Query phases | Validation, node admission, source admission, preparation, execution/delivery, cleanup |
+| First batch | Executor entry to first decoded Arrow record; absent for empty streams |
+| Sink callbacks | Subset of execution/delivery, not an additional phase or pure network time |
+
+The startup SELECT probe counts as execution. Metrics reset on restart; there is no durable history. Optional [tracing](tracing.md) exports bounded sampled spans. Neither measures JetStream dispatch, claim delay, gateway receipt or separate overlapping source/transfer time. See [phase definitions](tracing.md#what-is-recorded).
 
 ## Passive source observations
 
-Optional `source_health: {observation_ttl: 5m}` in node YAML enables protected
-worker `GET /sources` diagnostics for at most 256 configured live sources. The
-registry records eligible native-query completions and selected typed failures,
-including native refresh extraction. It issues no probe SQL and expires old
-observations to `unknown`; it does not affect liveness or readiness. Source IDs
-stay within the tenant-bound worker's internal gateway-mTLS endpoint and never
-become metric labels. See [source diagnostics](source-health.md) for attribution,
-exclusions, fixed categories and the validation contract.
+`source_health: {observation_ttl: 5m}` enables gateway-mTLS `GET /sources` for at most 256 configured live sources. Eligible native query/refresh completions update observations; expiry becomes `unknown`. There is no probe SQL or readiness effect. Source IDs remain internal, never metric labels. See [source diagnostics](source-health.md).
 
 ## Maintenance
 
-`kelvo gateway` and `kelvo node` accept `--drain-timeout` (default `30s`). SIGTERM
-and SIGINT stop admission, make readiness fail and retain existing result,
-status/cancel and lease operations during the grace period. Grace expiry triggers
-cancellation and a bounded shutdown. Gateway drain waits the configured grace
-because other gateway replicas share durable handles. Workers wait for assigned
-jobs and active refresh work. Assigned SQL is never automatically replayed.
+1. Set `--drain-timeout` on `gateway`/`node` (default `30s`).
+2. Send SIGTERM or SIGINT: admission stops and readiness fails; existing results, status/cancel and leases continue during grace.
+3. Allow workers to finish assigned queries/refreshes. Gateways wait their configured grace because handles are shared. Grace expiry cancels work and bounds shutdown; assigned SQL is never replayed.
 
-Gateway `/health` and `/ready` bypass the ordinary HTTP request permit so overload
-does not turn a healthy probe into HTTP 429. Gateway readiness remains a lifecycle
-and broker-reconciliation signal. Worker readiness can additionally require
-operator-selected datasets as described below. Neither proves source reachability
-or spare query capacity. Worker probes require gateway mTLS.
-
+Gateway `/health` and `/ready` bypass ordinary request permits. Readiness reports lifecycle/broker reconciliation, not source reachability or spare capacity. Worker probes require gateway mTLS and can additionally require datasets.
 
 ## Dataset diagnostics and required readiness
 
-With acceleration configured, worker `GET /datasets` uses the existing gateway
-mTLS identity and returns bounded metadata for at most 64 configured datasets.
-States are `ready`, `missing`, `stale`, `configuration_changed` or `unavailable`.
-Records expose dataset ID, generation, original refresh time, age and optional
-schema hash. They exclude filesystem paths, object URLs, fingerprints, source
-configuration and backend error text.
+Acceleration enables gateway-mTLS `GET /datasets` for up to 64 datasets. States are `ready`, `missing`, `stale`, `configuration_changed` or `unavailable`; metadata excludes paths, object URLs, fingerprints, source configuration and raw errors.
 
-Opt into dataset readiness in the **node** YAML:
+Require selected catalog datasets in **node** YAML:
 
 ```yaml
 required_datasets:
   - orders_daily
 ```
 
-Every required ID must exist in the node's acceleration catalog. Worker `/ready`
-returns unavailable if any required dataset is missing, stale, mismatched with
-the current catalog fingerprint or unavailable. Optional dataset failures do not
-gate readiness, and the gateway's own `/ready` does not inherit this check.
-Without required IDs, dataset state does not gate worker readiness.
+Missing, stale, mismatched or unavailable required data fails worker readiness. Optional datasets and gateway readiness remain independent. Without this setting, dataset state does not gate readiness.
 
-Metadata reads are coalesced per dataset and cached for two seconds. Probes have
-a five-second deadline and at most four concurrent backend reads. When required
-datasets exist, two slots are reserved for them and two for optional datasets;
-optional diagnostic traffic cannot occupy the required slots. Age continues to
-advance while metadata is cached. No background polling, source SQL or automatic
-refresh is triggered by these endpoints.
+Reads coalesce/cache for 2s with a 5s deadline and four backend slots. When required data exists, two slots are reserved for it. Cached age keeps advancing; diagnostics trigger no source SQL or refresh.
 
-**Readiness checks metadata, not payload integrity.** A `ready` record does not
-prove a full checksum, decoded Parquet schema, source connectivity or sufficient
-execution capacity. Use explicit verification and recovery checks for payload
-integrity; a copied schema hash in diagnostics is not fresh schema validation.
+**Readiness checks metadata, not payload integrity.** Use explicit verification for checksums/schema; readiness does not prove source connectivity or execution headroom.
 
 ## Local snapshot backups
 
-Use `kelvo accelerate backup --config kelvo.yml --dataset orders_daily --destination /absolute/new-root`
-for a verified copy of one current local generation on Linux. The destination
-must be absent under an existing private parent; the active catalog supplies the
-authorization fingerprint and byte budget. Recovery copies from that backup into
-another fresh root before an explicit operator configuration switch. Refresh time
-is preserved, so integrity verification does not make stale data ready. A failed
-command may have published a destination before a directory-sync error; do not
-delete or overwrite it automatically. Follow the [backup and recovery procedure](snapshot-backup.md).
+```sh
+kelvo accelerate backup --config kelvo.yml --dataset orders_daily \
+  --destination /absolute/new-root
+```
+
+The Linux destination must be absent under a private parent. Catalog authorization/budgets apply and refresh time is preserved. Recover into another fresh root before switching configuration. A sync failure may occur after publication: do not automatically overwrite/delete that destination. Follow [backup and recovery](snapshot-backup.md).
 
 ## Remote generation inventory and restore
 
-The existing operator CLI now supports both local and remote backends:
+Use the source/acceleration catalog, not node YAML:
 
 ```sh
 kelvo accelerate inventory --config kelvo.yml --dataset orders_daily
 kelvo accelerate restore --config kelvo.yml --dataset orders_daily \
-  --generation <retained-generation> \
-  --expected-generation <current-generation>
+  --generation RETAINED_GENERATION --expected-generation CURRENT_GENERATION
 ```
 
-Use the source/acceleration catalog as `--config`, not the cluster node file.
-Restore derives the authorization/configuration fingerprint from that catalog;
-it never accepts a caller-supplied fingerprint. Both target and current payloads
-must pass full streamed SHA-256 verification and exact Arrow schema compatibility.
-Object schemas use bounded range reads; datasets are not loaded entirely into
-memory. Custom object clients without range reads explicitly reject recovery.
+Restore derives authorization from the catalog, verifies current and target SHA-256/schema, takes a renewable writer lease and conditionally publishes. Changed expected generation fails. Exact immutable versions and original refresh time remain; restored data can still be stale. Custom clients without bounded range reads reject recovery.
 
-Remote inventory is a **retained manifest catalog**, not a storage listing. It
-contains the current generation and at most 16 historical entries, with fewer
-entries if needed to keep the manifest below 64 KiB and reserve room for writer
-leases. Output identifies this scope and signals catalog truncation. Publication
-retains the previous current generation atomically. Legacy historical objects
-without catalog entries cannot be discovered or restored through this API.
-Evicting metadata never deletes an object; storage reclamation and remote reader
-GC remain separate, unimplemented operations.
+Inventory is a retained manifest catalog: current plus at most 16 historical entries, fewer when the 64 KiB root limit requires it. Output signals truncation. It does not list storage, discover uncatalogued legacy objects or delete evicted objects. Remote GC remains unimplemented.
 
-Restore uses the same renewable writer lease and conditional publication as
-refresh, and rejects a changed `--expected-generation`. It preserves the original
-refresh timestamp, checksum and immutable object/descriptor versions: restored
-data can remain stale.
-Immutable reader versions remain usable. A corrupt current payload cannot be
-repaired through this restore path because current-schema verification is
-required; use a separately validated backup or source recovery procedure.
-Payload verification failures mark entries unverified when their manifest and
-descriptor remain readable. An unreadable or invalid root/descriptor prevents
-inventory from constructing a trustworthy entry and can fail the request. This is not a complete backup/disaster-recovery system
-or a measured RTO/RPO guarantee.
+Corrupt current payloads cannot use this restore path because current-schema verification is required. Use independently validated backup/source recovery. Readable corrupt entries can be marked unverified; invalid root/descriptors can fail inventory entirely. This is not complete disaster recovery or a measured RTO/RPO.
 
 ### Remote manifest upgrade
 
-New code reads remote manifests **v2, v3 and v4**. Every remote writer action now
-emits **v4**, including the first lease claim or renewal, even when multipart is
-disabled or extraction later fails or is aborted. Version 4 adds immutable
-multipart descriptor references; version 3's bounded retained catalog remains.
-A legacy v2 manifest starts without historical entries; later publication can
-retain its previous current generation.
-
-Coordinate all readers and writers before permitting a new writer action. Older
-binaries reject v4; mixed-version operation and binary rollback after the first
-lease claim are unsupported. Drain old workers and preserve a verified recovery
-plan before crossing this boundary. Do not edit a version number to downgrade
-newer metadata. Local versions are separate: v1 is single-file, v2 is multipart.
+Readers accept remote v2/v3/v4; every writer action emits v4, including first lease claim/renewal before extraction succeeds. Legacy v2 starts without history. Coordinate compatible readers/writers before that boundary; pre-v4 readers and binary rollback afterward are unsupported. Never edit versions to downgrade. Local formats remain v1 single-file and v2 multipart.
 
 ### Remote multipart operation
 
-[Multipart acceleration](multipart-acceleration.md) is optional for local or remote
-storage. Remote refresh stages and uploads one part at a time, confirms the exact
-version and metadata, then publishes a versioned descriptor and one conditional
-root update. The descriptor is at most 2 MiB; the root remains at most 64 KiB and
-retains current plus at most 16 historical entries. At most 256 parts of up to
-4 GiB each fit within the configured 1 TiB aggregate ceiling. Actual achievable
-capacity can be lower because of row, metadata, part-count and resource limits.
+[Multipart refresh](multipart-acceleration.md) stages/uploads one part at a time, verifies immutable identity, then publishes a descriptor and conditional root. Limits: 2 MiB descriptor, 64 KiB root, 256 parts, 4 GiB/part and 1 TiB configured aggregate; other row/metadata/resource limits can lower capacity.
 
-Queries use exact immutable versions through a parent-owned loopback range
-bridge shared across all selected parts. Its four upstream request slots and
-1,024-capability query ceiling remain bounded; cloud credentials never enter
-query subprocesses. Descriptor/part identity and totals are checked before use.
-Full payload hashes, row counts and schemas are checked by verification/recovery.
-No remote listing or garbage collection is added: orphaned or retired objects
-remain until a safe operator-managed cleanup procedure removes them.
+Queries share a parent-owned range bridge with four upstream slots and 1,024 capabilities; cloud credentials stay outside children. Verification/recovery checks full hashes, rows and schema. Orphaned/retired objects require safe operator cleanup.
 
-The [20-check multipart TLS matrix](evidence/object-multipart-acceptance.json),
-[36-check legacy object regression](evidence/object-multipart-legacy-acceptance.json)
-and [remote over-4-GiB component gate](evidence/object-multipart-large-dataset.json)
-passed at runtime milestone `71f3390`. The large gate used a synthetic Arrow
-producer and disk-backed object fixture, with real DuckDB/HTTPFS reads. These
-checks establish neither actual cloud-account acceptance nor WAN throughput,
-concurrent tenant capacity or a general memory bound.
+At `71f3390`, [20 multipart TLS checks](evidence/object-multipart-acceptance.json), [36 legacy checks](evidence/object-multipart-legacy-acceptance.json) and the [remote over-4-GiB gate](evidence/object-multipart-large-dataset.json) passed. The latter uses synthetic Arrow, disk-backed storage and real HTTPFS; it is not live-cloud/WAN or memory-capacity evidence.
 
 ## Validation boundaries
 
-Validated on the dedicated Azure Linux VM on 2 October 2026 against runtime
-commit `6b49c17`: full `go test -tags duckdb_arrow ./...`, focused race tests for
-admission/telemetry/worker/cluster/CLI, `go vet`, CLI and sandbox builds, 22 fixture
-tests, real NATS store integration, [10 cluster acceptance checks](evidence/production-foundation-cluster.json)
-and [14 standalone/cluster acceleration checks](evidence/production-foundation-acceleration.json)
-passed. The new fixture enables shared resource budgets on every worker. The
-final telemetry-only fix received another CLI race-test pass and rebuild before
-acceptance. No local builds were run. Default VM Python initially lacked PyArrow;
-the scripts passed using the existing analytics virtual environment.
+At `6b49c17`, Azure tests, focused race checks, vet/builds, 22 fixture tests and real NATS integration passed alongside [10 cluster checks](evidence/production-foundation-cluster.json) and [14 acceleration checks](evidence/production-foundation-acceleration.json). All workers used shared budgets; no local builds ran. Fixture Python used the existing PyArrow environment.
 
-The cluster record contains a single loopback transfer timing for reproducibility;
-it is not a capacity or performance comparison. CI includes race coverage for the
-new packages. A full production release still
-requires mixed export/join/refresh soaks, actual rolling-process fault tests,
-RSS/cgroup/scratch measurements, micro-VM remeasurement and telemetry overhead
-benchmarks. No new throughput or OOM-safety claim follows from unit tests.
-
+Single loopback timings and unit tests establish no throughput/OOM guarantee. Use [production status](production-status.md) for later operational/fault evidence and remaining deployment gates.
 
 ## Shared source quotas
 
-Optional `policy.source_quotas` maps configured source IDs to maximum concurrent
-Kelvo operations across a tenant's nodes. Every copy of the policy must match.
-These limits count whole admitted operations; one federated operation may open
-multiple source scans, so they are not a database connection limit.
+Configure matching tenant policies everywhere; these count **whole operations**, not connections or individual federated scans:
 
 ```yaml
 policy:
-  # Include the other required tenant scheduling fields.
   source_quotas:
     warehouse: 2
     orders: 4
 ```
 
-The parent acquires selected source slots in a stable order, rolls back partial
-acquisitions on contention, and renews ownership while work runs. Admission wait
-is included in the execution timeout. Lost renewal cancels execution; release
-follows subprocess cleanup. The completion check also rejects ownership lost
-after the final Arrow IPC read; such a result cannot be published as a successful
-refresh. Parent cancellation, execution deadlines and typed sink failures keep
-their existing precedence. Accelerated reads do not consume their original
-source's slots. Broker TTL reclaims crashed owners independently of host clocks.
-A distributed lease cannot fence SQL already running at a remote database:
-remote cancellation is still best effort. Read-only source permissions and
-source-side workload limits remain required.
+1. Retain the other required policy fields and provision `KV_KELVO_SOURCE_QUOTAS` with `cluster-init`.
+2. Allow six account streams when acceleration status is enabled, plus worker publish permissions for `$JS.API.STREAM.MSG.GET.KV_KELVO_SOURCE_QUOTAS` and `$KV.KELVO_SOURCE_QUOTAS.>`.
+3. Drain/reprovision for policy changes. Limits are 64 source IDs and 64 slots each.
 
-Initialize `KV_KELVO_SOURCE_QUOTAS` with `cluster-init` when enabling quotas.
-Account stream capacity must allow six streams when acceleration status is also
-enabled. Workers additionally need publish permissions for
-`$JS.API.STREAM.MSG.GET.KV_KELVO_SOURCE_QUOTAS` and
-`$KV.KELVO_SOURCE_QUOTAS.>` in their own tenant account. Source quotas are limited
-to 64 configured source IDs and 64 slots each, with bounded KV storage. Policies
-are immutable during normal operation; coordinate drain and reprovisioning when
-changing them.
+The parent acquires slots in stable order, releases partial acquisitions on contention and renews ownership. Wait consumes execution timeout; lease loss cancels work. Release follows cleanup, and late ownership loss prevents refresh publication. Accelerated reads consume no original-source slots. Broker TTL reclaims crashed owners independently of host clocks.
+
+A lease cannot fence remote SQL. Keep read-only grants and source-side limits; cancellation remains best effort.
 
 ## File-based source credential rotation
 
-Node YAML may map existing source environment references to private local files:
+Map existing environment references to private files in node YAML:
 
 ```yaml
 secrets:
@@ -294,70 +143,35 @@ secrets:
     KELVO_WAREHOUSE_PASSWORD: /run/kelvo-secrets/warehouse-password
 ```
 
-The trusted parent resolves only references for selected sources and shares the
-provider with refresh executors. A newly started query receives current values
-within the configured cache TTL. Unmapped references use the process environment;
-a configured file failure never falls back to an older environment value. Source
-catalogs and child input retain reference names, not secret contents or provider
-paths. Values enter only the selected child's environment.
+Only selected-source references are resolved into the selected child's environment; catalogs retain reference names. New queries/refreshes receive current values within cache TTL. Unmapped references use environment values; configured file failure never falls back.
 
-Use private regular files owned by the service UID in trusted directories, and
-rotate by atomically replacing a file. Symlinks, hardlinks, unsafe permissions,
-nonregular files, embedded NULs and values over 16 KiB are rejected. Contents are
-exact: use `printf`, not a command adding an unwanted newline. At most 128 files
-and 2 MiB of retained bytes are supported; TTL is at most five minutes and zero
-disables retention. Close wipes retained byte buffers on a best-effort basis;
-Go strings and child environments cannot be guaranteed erased from memory.
+Use service-owned regular files in trusted directories and atomic replacement. Symlinks, hardlinks, unsafe modes, NULs and values over 16 KiB fail. Preserve exact bytes without unwanted newlines. Limits: 128 files, 2 MiB retained bytes, TTL ≤5m; zero TTL disables retention. Buffer wiping is best effort.
 
-This rotates source-driver credentials for new query/refresh processes. It does
-not rotate credentials in existing queries, parent object-storage clients, NATS
-connections, gateway API tokens or TLS certificates, and is not a cloud secret
-manager integration.
-
-
+This does not rotate existing query credentials, parent object clients, NATS, gateway tokens or TLS, and adds no cloud secret-manager integration.
 
 ## Source refresh failures and recovery
 
-PostgreSQL and MySQL-family native adapters classify known errors from typed
-protocol metadata and return fixed public messages. Authentication and permission
-failures stop scheduled refresh immediately; invalid queries, bad configuration
-and unsupported result types are also permanent failures. Unknown driver errors
-remain retryable within the five-failure budget, with jitter capped at five
-minutes. See the [exact mappings and limits](native-error-classification.md).
+Typed PostgreSQL/MySQL errors classify authentication, permission, query/configuration and unsupported-type failures as permanent. Unknown errors retry within five failures, with jitter capped at 5m. See [error mappings](native-error-classification.md).
 
-DuckDB's typed native out-of-memory category also returns a fixed
-`RESOURCE_EXHAUSTED` error and stops scheduled refreshes as a permanent resource
-failure. This includes analytical execution before Arrow delivery, separately
-from output row/byte limits. Repair the workload or its memory budget before
-resetting. Generic I/O errors and externally killed processes remain unclassified;
-Kelvo does not infer OOM by parsing error text. DuckDB's managed memory limit is
-not a whole-process RSS ceiling. See [worker failure validation](worker-failures.md).
+Typed DuckDB OOM produces permanent/resource `RESOURCE_EXHAUSTED`, including failure before Arrow delivery. It does not infer OOM from text or classify generic I/O/external kills. DuckDB memory is not a process RSS ceiling; see [worker failures](worker-failures.md).
 
-Inspect the dataset's durable state before changing it:
+1. Inspect durable state:
 
 ```sh
 kelvo refresh-status --config worker.yml --dataset sales_snapshot
 ```
 
-Repair the source credentials, permissions, query, result types or configuration
-identified by the failure category. Then reset the current catalog fingerprint:
+2. Repair credentials, grants, query/types or resource budget.
+3. Reset using operator NATS authority and the current catalog fingerprint:
 
 ```sh
 kelvo refresh-reset --config worker.yml --dataset sales_snapshot \
   --expected-fingerprint CURRENT_CATALOG_FINGERPRINT
 ```
 
-Reset requires operator NATS authority. It is sequence-fenced against old
-messages and does not repair the underlying source. Permanent suppression survives
-worker restarts. These commands concern cluster scheduled refreshes; standalone
-`accelerate watch` has no durable cluster retry state.
+Reset is sequence-fenced; permanent suppression survives restarts. Standalone `accelerate watch` has no durable cluster retry state.
 
-Failed refreshes retain the last committed snapshot. Revoking source grants or
-breaking source authentication does not revoke readers' access to that snapshot.
-For revocation, bump the dataset's `authorization_version` and propagate the
-catalog update to all serving nodes; old snapshots then fail the new fingerprint
-check. Credential rotation and retry reset alone do not perform this revocation.
-
+Failed refreshes preserve the previous snapshot. Revoking source access does **not** revoke snapshot readers: bump `authorization_version` and propagate the catalog to all serving nodes. Credential rotation/reset alone does not invalidate snapshots.
 
 ## Optional execution history
 
@@ -367,98 +181,26 @@ history:
   ttl: 1h
 ```
 
-Without this block no history ring is allocated. `GET /history` on the worker
-requires gateway mTLS and returns at most 1,024 retained execution records with
-at most 24 hours of retention. Entries contain generated query IDs, fixed
-outcome/category, timestamps and duration; no query text, parameters, source
-identities or result previews. Expiry is enforced on reads/appends, without a
-background sweeper. Records disappear on restart.
+Gateway-mTLS `GET /history` returns a process-local ring, at most 1,024 entries/24h. Without configuration no ring is allocated. Entries contain generated query IDs, fixed outcomes/categories and timing, without SQL, parameters, sources or result previews. Reads/appends expire entries; restart clears them.
 
-One record is captured after a node execution/transfer and its result-ready update.
-Node success does not prove the gateway committed success or the client received
-the complete result. This is bounded operational history, not an audit trail,
-queued-job history, trace export or durable replay catalog.
-
+A record follows node execution/transfer and result-ready update. Node success does not prove gateway durable success or client receipt. This is not an audit/replay catalog or queued-job history.
 
 ## Dataset safety validation
 
-Runtime commit `ad25a3c` was validated on the dedicated Azure Linux VM with the
-full ordinary and pinned DuckDB bridge suites, focused race checks (including
-secret rotation, source quotas, history and diagnostics), and `cgocheck2` plus
-race checks for the bridge/federation/engine. Real NATS tests passed durable
-failure suppression, sequence-fenced reset, shared source capacity and recovery
-after broker TTL. The [16-check acceleration acceptance](evidence/dataset-safety-acceptance.json)
-passed typed round-trips, real schema drift rejection, restore freshness and stale
-precondition rejection, scheduled cluster refresh and tenant isolation.
-
-Two integration failures were found and fixed: the refresh status test requested
-a pull timeout above the consumer limit; quota KV values initially allowed too
-little space for NATS CAS headers. The corrected tests were rerun successfully.
-These are correctness checks, not sustained-load, provider-wide rotation, memory
-footprint or recovery-time benchmarks.
+At `ad25a3c`, ordinary/bridge/race/strict-cgo checks and real NATS quota/retry/reset tests passed. [16 acceleration checks](evidence/dataset-safety-acceptance.json) cover typed data, schema drift, restore preconditions/freshness, scheduled refresh and isolation. Integration fixes increased CAS-header space and corrected a consumer timeout; corrected tests passed.
 
 ## Current development validation
 
-Focused tracing tests and credential-rotation tests exercise bounded export,
-privacy, cancellation, atomic file replacement and selected parent-to-child
-credential forwarding. Protocol fixtures exercise remote recovery and failure
-boundaries. These are development correctness gates; provider protocol fixtures
-are not live-provider acceptance, and passing them does not establish throughput,
-export overhead, sustained concurrency or a production capacity guarantee. Keep
-committed acceptance evidence and its runtime revision separate from these checks.
-
+Tracing/credential tests cover bounds, privacy, cancellation and selected secret forwarding. Protocol recovery fixtures establish correctness only; keep their exact runtime evidence separate from live-provider, throughput and capacity claims.
 
 ## Readiness and recovery milestone validation
 
-Runtime commit `c303b5f` was validated on the dedicated Azure Linux test VM with
-Go 1.26.8. The full ordinary and pinned DuckDB bridge test suites passed, along
-with focused race checks for acceleration, admission, cluster, worker, tracing
-and CLI packages. Bridge/federation/engine checks passed with both the race
-detector and `GOEXPERIMENT=cgocheck2`. `go vet`, the Kelvo binary build and the
-strict C sandbox launcher build also passed. All compilation ran on the VM.
+At `c303b5f`, ordinary/bridge/race/strict-cgo checks, vet/builds and real NATS tests passed on Azure, followed by [10 cluster](evidence/production-readiness-cluster.json) and [19 acceleration checks](evidence/production-readiness-acceptance.json). Required/optional readiness, sanitized diagnostics and recovery were checked.
 
-Real NATS store tests passed, followed by the
-[10-check cluster acceptance](evidence/production-readiness-cluster.json) and
-[19-check acceleration acceptance](evidence/production-readiness-acceptance.json).
-The latter checks missing-required readiness without breaking liveness, recovery
-after refresh, optional-missing independence and sanitized dataset diagnostics,
-in addition to typed results, schema safety, restore, scheduled refresh and tenant
-isolation. The harness restores its temporary node/catalog configuration.
-
-Review and tests found two defects before this milestone was committed: a
-same-generation remote restore could misclassify an ambiguous no-op write and
-leave a writer lease behind; the tracing SDK merged environment resource
-attributes despite explicit resource configuration. Regression tests now cover
-no-op lease cleanup and detached resource sanitization before the export queue.
-Collector redirect, header/body size and queue/shutdown bounds are also tested.
-
-These checks do not validate a live cloud-object provider, quantify trace export
-overhead, establish sustained tenant capacity or measure backup RTO/RPO. Remote
-rollback remains protocol-fixture tested; it requires intact current and target
-payloads and is not a repair path for corrupted current data. No new micro-VM or
-throughput claims follow from this milestone. Changes and test binaries remain
-separate from any production deployment.
-
-
-For native CSV inputs on constrained workers, [paired CSV reader options](csv-memory.md)
-can reduce scanner allocation without silently changing defaults for other sources.
-Choose the line setting from actual data and retain headroom beyond DuckDB memory.
-
+Regression fixes covered same-generation restore lease cleanup and tracing resource sanitization. Trace overhead, real-provider rollback and backup RTO/RPO were not measured. For constrained CSV workers, use [paired reader options](csv-memory.md) based on actual line sizes and retain native-memory headroom.
 
 ## Additional validation at runtime revision f3886b7
 
-The ordinary and pinned-bridge suites, affected subsystem race checks, vet,
-ordinary/bridge builds and strict cgo checks passed on the designated Azure VM.
-[Four sandboxed worker cases](evidence/worker-failure-acceptance.json) verified
-native resource failure and injected quota loss across both local snapshot
-layouts, followed by exact recovery after reset.
+Azure ordinary/bridge/race/strict-cgo checks, vet/builds and [four sandboxed failure cases](evidence/worker-failure-acceptance.json) passed. The same binary passed [36 single-object](evidence/snapshot-verification-object-acceptance.json), [20 multipart TLS](evidence/snapshot-verification-multipart-acceptance.json) checks and the [12-case CSV experiment](evidence/csv-memory-acceptance.json). Temporary CAs/directories were removed.
 
-The stronger single-file verifier also passed refreshed
-[36 single-object TLS checks](evidence/snapshot-verification-object-acceptance.json)
-and [20 multipart TLS checks](evidence/snapshot-verification-multipart-acceptance.json).
-Both retained records identify the same application binary as the worker and
-[12-case CSV memory experiment](evidence/csv-memory-acceptance.json).
-All temporary fixture CAs and CSV work directories were removed.
-These storage endpoints are protocol fixtures, and quota/retry failure injection
-uses an in-memory coordination fixture. No new live-cloud, broker-failover,
-large-dataset, WAN, sustained-capacity or Oracle micro-VM results are implied.
+These use protocol storage and injected in-memory quota/retry failures. They add no live-cloud, broker-failover, WAN, sustained-capacity or Oracle micro-VM result.

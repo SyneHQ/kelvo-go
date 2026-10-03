@@ -1,41 +1,18 @@
 # Worker failure and refresh recovery
 
-Kelvo reports DuckDB's typed native out-of-memory error as
-`RESOURCE_EXHAUSTED` with the fixed message `Query exceeded DuckDB memory limit`.
-The mapping recognizes the pinned driver's error category, including wrapped
-errors. It never searches driver text. Generic I/O errors, Go runtime failures
-and externally killed processes retain their existing error handling.
+Typed DuckDB OOM maps to `RESOURCE_EXHAUSTED` with `Query exceeded DuckDB memory limit`. Classification uses the pinned driver's category, never error-text matching; generic I/O, Go failures and external kills retain existing handling.
 
-Cluster scheduled refreshes persist these failures as `permanent` / `resource`.
-They preserve the previous authorized snapshot and stop automatic retries until
-an operator repairs the workload or budget and explicitly resets the status.
-See [operations](operations.md#source-refresh-failures-and-recovery). A reset
-alone cannot make an oversized query fit.
+1. Inspect the scheduled refresh's permanent/resource failure. Its last authorized snapshot remains available and automatic retries stop across worker restarts.
+2. Repair the workload or memory budget.
+3. Explicitly [reset refresh status](operations.md#source-refresh-failures-and-recovery). Reset alone cannot make an oversized query fit.
 
-Worker completion also checks source-quota ownership after IPC delivery and
-process cleanup. A cancellation between the final IPC check and completion
-returns an error instead of permitting a refresh to publish. The original
-execution deadline remains observable even if the quota's child context was
-canceled earlier. Parent cancellation, deadlines and existing typed sink/worker
-errors retain precedence. Coordination cause strings do not enter public errors.
+Completion rechecks source-quota ownership after IPC and process cleanup, preventing publication after late ownership loss. Parent cancellation, original deadlines and typed sink/worker errors retain precedence; coordination strings stay private.
 
 ## Development checks
 
-The focused tests exercise:
+Tests exercise real nonspillable DuckDB OOM, completed IPC followed by ownership loss, actual sandbox/refresh publication for both local layouts, admission/scratch release, retained metadata, retry suppression and exact recovery after reset.
 
-- A real nonspillable list aggregate over two million generated integers with a
-  16 MB DuckDB limit. The pinned native Arrow API reports its actual OOM category;
-  Kelvo delivers no schema or rows and subsequently executes a small query.
-- Completed Arrow IPC followed by deterministic source-ownership cancellation at
-  the completion decision, with a still-live enclosing context.
-- Real sandboxed worker execution, actual IPC and acceleration Manager publication
-  with both single-file and multipart local snapshots. A Parquet source controls
-  a list aggregate over twenty million integers with a 64 MB managed limit.
-- Injected quota cancellation after a parent sink accepts a batch, released
-  source/node admission, scratch cleanup, unchanged generation/hash/schema/time,
-  permanent resource suppression, explicit reset and exact recovered values.
-
-Build and run these checks on the designated Linux test machine:
+Run on the designated Linux test host:
 
 ```sh
 go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
@@ -48,17 +25,6 @@ go test -race -tags duckdb_arrow ./internal/worker ./internal/engine/duckdb \
   -run 'Test(WorkerResult|WorkerQuotaLoss|ExecutorQuotaCancellation|ExecutorTypedSink|PublicErrorClassifies|ExecuteNativeMemory)' -count=1
 ```
 
-The [recorded sandboxed run](evidence/worker-failure-acceptance.json) passed all
-four required layout/failure cases against runtime changes through `f3886b7`.
-The complete ordinary and bridge suites, affected subsystem race checks, vet,
-builds and strict cgo checks also passed on the Azure test VM. CI wiring is
-committed separately; this record is local development validation, not a claim
-that the unpublished commits have run on hosted CI.
+The [sandboxed record](evidence/worker-failure-acceptance.json) passed four layout/failure cases through runtime `f3886b7`. Ordinary/bridge suites, affected race checks, vet, builds and strict cgo checks passed on Azure. This is development evidence; CI wiring alone does not establish hosted CI success.
 
-The quota cancellation is injected in the trusted parent. Retry-state tests use
-an in-memory compare-and-swap fixture, including reconstruction of its queue
-wrapper; they do not simulate a real broker restart. The sandbox launcher is
-used, but these checks are not an independent sandbox escape audit. They do not
-establish a process RSS bound, cgroup OOM protection, WAN throughput or capacity
-under sustained concurrent tenants. The pinned DuckDB path still materializes
-execution before Arrow delivery.
+Quota cancellation is injected in the trusted parent; retry state uses in-memory CAS, not a real broker restart. These checks are not an independent sandbox audit, RSS ceiling, cgroup OOM gate, WAN benchmark or sustained tenant test. The pinned DuckDB path materializes execution before Arrow delivery.
