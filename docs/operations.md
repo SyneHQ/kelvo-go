@@ -142,7 +142,7 @@ Map existing environment references to private files in node YAML:
 secrets:
   ttl: 30s
   files:
-    KELVO_WAREHOUSE_PASSWORD: /run/kelvo-secrets/warehouse-password
+    KELVO_SOURCE_WAREHOUSE_PASSWORD: /run/kelvo-secrets/warehouse-password
 ```
 
 Only selected-source references are resolved into the selected child's environment; catalogs retain reference names. New queries/refreshes receive current values within cache TTL. Unmapped references use environment values; configured file failure never falls back.
@@ -186,6 +186,8 @@ history:
 Gateway-mTLS `GET /history` returns a process-local ring, at most 1,024 entries/24h. Without configuration no ring is allocated. Entries contain generated query IDs, fixed outcomes/categories and timing, without SQL, parameters, sources or result previews. Reads/appends expire entries; restart clears them.
 
 A record follows node execution/transfer and result-ready update. Node success does not prove gateway durable success or client receipt. This is not an audit/replay catalog or queued-job history.
+
+For bounded durable cluster receipts, configure [local audit](durable-audit.md). Its journal is separate from history, requires private disk capacity and can stop admission when recording is uncertain.
 
 ## Dataset safety validation
 

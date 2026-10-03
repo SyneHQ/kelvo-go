@@ -17,9 +17,11 @@ See the [deployment checklist](deploy/README.md) and [cluster model](docs/cluste
 
 | Control | Requirement |
 | --- | --- |
-| Tenant access | Tokens authorize the tenant catalog. Per-user row/column policies and external identity/KMS are not implemented. |
+| Principal access | [User/service keys](docs/principal-access.md) bind source grants and handle ownership. [Row/column policies](docs/row-column-access.md) cover registered callback tables; restricted native SQL and snapshots fail closed. External identity and enrollment remain open. |
 | NATS | Separate accounts, no cross-account imports/exports, restricted users and storage limits. Gateway/node credentials are trusted control-plane identities. |
 | Source secrets | Catalogs hold environment-variable references. The parent resolves only selected secrets and forwards values to the selected child. |
+| Cloud secrets | Optional [AWS, Azure and GCP mappings](docs/cloud-secrets.md) keep expiring provider credentials in the trusted parent. Live IAM/rotation acceptance is unrun. |
+| Audit | Optional [durable local receipts](docs/durable-audit.md) protect specified cluster operations. No SQL/row retention, replication or cross-service atomicity guarantee. |
 | Credential files | Optional [private files](docs/operations.md#file-based-source-credential-rotation) rotate credentials for new processes. Paths stay in the parent; file errors never fall back to environment values. |
 | API keys | Optional [revisioned key files](docs/gateway-key-rotation.md) fail closed. Update every replica and restart floor; revocation is not globally atomic. |
 | TLS | [Identity](docs/tls-identity-rotation.md) and [trust](docs/tls-trust-rotation.md) rotation require operator propagation; trust policy also needs a configured restart floor. |

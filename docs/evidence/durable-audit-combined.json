@@ -1,0 +1,52 @@
+{
+  "runtime_revision": "2a1ccb14cb005cfab0ec384e822451c3ba5bbb1c",
+  "source_manifest_sha256": "a43db40f06651fa076928e5607f65658891b64414a384e019474afb12a2500e6",
+  "source_verified_before": true,
+  "stages": {
+    "combined-race": {
+      "exit_code": 0,
+      "seconds": 131.859,
+      "log_sha256": "96516c2e6ec119e3ca6c3ddb73c8e808e3194ce56eca958e1825e9377cf9c9d2"
+    },
+    "combined-vet": {
+      "exit_code": 0,
+      "seconds": 18.445,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build": {
+      "exit_code": 0,
+      "seconds": 5.774,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "failed": [],
+  "skipped": [
+    "github.com/SYNEHQ/kelvo-go/internal/audit/TestAuditActualDiskFull",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestExecuteRealPostgresMySQLFederation",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestRealConnectionMetadataDoesNotExposeDSNs",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestExecuteSQLiteFixture",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestCustomFederationNeedsExplicitBridgeBuild",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestPinnedMultipartObjectRangeQuery",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestPinnedObjectRangesUseRangesAndExactAllowlist",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshStatusDurabilityResetAndBudget",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshQueueProvisionDedupRetry",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreAdmissionCASAndReuse",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreQueueAndWorkerLease",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreRejectsMetadataMismatch",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreReconcileFailsStaleAssigned",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreCorruptJobFailsClosed",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSAccountIsolation",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerSuccessAndCancellation",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerRefreshCustody",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerStartFailureCleansOwnership",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerRealDuckDBCTE",
+    "github.com/SYNEHQ/kelvo-go/cmd/kelvo/TestContainedNodeStartupPlacement"
+  ],
+  "scope": "Combined durable audit, principal policy, worker envelope and real pinned DuckDB checks; service acceptance recorded separately",
+  "bridge_driver_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "binary_sha256": "aa4a4b08eea657541bae362954f92afc2dae3133902d25ce67e83afd91fb365f",
+  "source_verified_after": true,
+  "passed": true
+}
