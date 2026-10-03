@@ -13,6 +13,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -230,13 +231,16 @@ func TestExportClusterActualWorkerLifecycle(t *testing.T) {
 		return result
 	}
 	waitState := func(t *testing.T, id, wanted string) ExportSnapshot {
+		t.Helper()
 		deadline := time.Now().Add(20 * time.Second)
 		for {
 			snapshot, err := gateway.exports["a"].GetExport(ctx, id)
 			if err == nil && snapshot.Job.State == wanted {
+				logExportWaitObservation(t, wanted, snapshot.Job, err, time.Now().After(deadline), executions.Load())
 				return snapshot
 			}
 			if err != nil || time.Now().After(deadline) || (err == nil && !exportActive(snapshot.Job) && snapshot.Job.State != ExportReady) {
+				logExportWaitObservation(t, wanted, snapshot.Job, err, time.Now().After(deadline), executions.Load())
 				t.Fatalf("await %s: state=%s error=%v job_error=%v", wanted, snapshot.Job.State, err, snapshot.Job.Error)
 			}
 			time.Sleep(20 * time.Millisecond)
@@ -378,6 +382,61 @@ func TestExportClusterActualWorkerLifecycle(t *testing.T) {
 	if err != nil || len(entries) != 1 || entries[0].Name() != ".kelvo-scratch.lock" || !entries[0].Type().IsRegular() {
 		t.Fatal("sandbox scratch leaked", err, entries)
 	}
+}
+
+// Public acceptance receipts retain only this closed schema. The full test log
+// stays private; neither job identity nor arbitrary provider/error text enters
+// the marker consumed by scripts/export_diagnostics.py.
+func logExportWaitObservation(t *testing.T, wanted string, job ExportJob, err error, deadlineReached bool, executions int32) {
+	t.Helper()
+	state := func(value string) string {
+		switch value {
+		case ExportQueued, ExportAssigned, ExportClaimed, ExportRunning, ExportStored, ExportReady,
+			ExportFailed, ExportCancelled, ExportPublicationUncertain:
+			return value
+		default:
+			return "unknown"
+		}
+	}
+	errorClass := "none"
+	if err != nil {
+		switch {
+		case errors.Is(err, context.Canceled):
+			errorClass = "context_cancelled"
+		case errors.Is(err, context.DeadlineExceeded):
+			errorClass = "deadline_exceeded"
+		case errors.Is(err, ErrExportNotFound):
+			errorClass = "not_found"
+		case errors.Is(err, ErrExportConflict):
+			errorClass = "conflict"
+		default:
+			errorClass = "store_error"
+		}
+	} else if job.Error != nil {
+		switch job.Error.Code {
+		case "CANCELLED":
+			errorClass = "job_cancelled"
+		case "DEADLINE_EXCEEDED":
+			errorClass = "job_deadline_exceeded"
+		case "UNAVAILABLE":
+			errorClass = "job_unavailable"
+		default:
+			errorClass = "job_error"
+		}
+	}
+	observation := struct {
+		Wanted          string `json:"wanted"`
+		Observed        string `json:"observed"`
+		DeadlineReached bool   `json:"deadline_reached"`
+		ReceiptPresent  bool   `json:"receipt_present"`
+		ErrorClass      string `json:"error_class"`
+		Executions      int32  `json:"executions"`
+	}{state(wanted), state(job.State), deadlineReached, job.Receipt != nil, errorClass, executions}
+	raw, marshalErr := json.Marshal(observation)
+	if marshalErr != nil {
+		t.Fatal("export wait observation encoding failed")
+	}
+	t.Logf("KELVO_EXPORT_WAIT_STATE %s", raw)
 }
 
 func exportIntegrationTLS(t *testing.T) (TLSConfig, TLSConfig) {

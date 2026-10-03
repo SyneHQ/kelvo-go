@@ -1,0 +1,62 @@
+{
+  "scope": "Original hosted export lifecycle failure, retained without reclassification",
+  "pull_request": 73,
+  "workflow_run": 37144625480,
+  "job": 111265908647,
+  "job_url": "https://github.com/SyneHQ/kelvo-go/actions/runs/37144625480/job/111265908647",
+  "workflow_head_revision": "b85889b520e87deec54b65ffb5dc8ee93a85256c",
+  "artifact": 11281658094,
+  "artifact_member": "export-2.14.7-lifecycle.json",
+  "original_receipt_sha256": "4b896fa30ebd9c99c3297e3939b345dc05b4b2841faf62b90e0cebb098767b01",
+  "receipt": {
+    "mode": "lifecycle",
+    "server_version": "2.14.7",
+    "server_binary_sha256": "667bfa7d71ac190ab745e00bd1f9a037338b719b3293cda25bd44aef24b457fa",
+    "build_tags": "duckdb_arrow,duckbridge",
+    "scope": "single broker; actual sandboxed worker and gateway lifecycle using separate restricted broker roles",
+    "tests": [
+      {
+        "name": "TestExportClusterActualWorkerLifecycle/accepted-export-survives-submit-disconnect",
+        "outcome": "pass"
+      },
+      {
+        "name": "TestExportClusterActualWorkerLifecycle/lz4-preserves-values-and-null-policy",
+        "outcome": "pass"
+      },
+      {
+        "name": "TestExportClusterActualWorkerLifecycle/ready-export-survives-worker-restart",
+        "outcome": "pass"
+      },
+      {
+        "name": "TestExportClusterActualWorkerLifecycle/lost-completion-is-not-replayed",
+        "outcome": "fail"
+      },
+      {
+        "name": "TestExportClusterActualWorkerLifecycle",
+        "outcome": "fail"
+      }
+    ],
+    "failures": [
+      "TestExportClusterActualWorkerLifecycle/lost-completion-is-not-replayed",
+      "TestExportClusterActualWorkerLifecycle"
+    ],
+    "skips": [],
+    "passed": false,
+    "source_sha256": "d432087b74b929edaa75697caeac27a96cdc301ad916b2f8d04d6b85689ae86f",
+    "source_revision": "d35319b519b15ded09552b0ee710a58b98dbc898",
+    "source_verified_before": true,
+    "export_binary_sha256": "059139aceda413a72837100ecb8fdc4e4f3978dd30924d6f8be0ea66dd5f5b9a",
+    "export_sandbox_sha256": "a2dc9f21d53654d740722288172673558580f11597f6ad7ed5a52e7fca7b7697",
+    "exit_code": 1,
+    "seconds": 30.075,
+    "log_sha256": "ec5cce51fdb1144a8f9d219cf679f66774baf77723151480d83ed643f3a04a7a",
+    "source_verified_after": true,
+    "broker_stopped": true
+  },
+  "cause": "unresolved",
+  "limitations": [
+    "The private acceptance.log was hashed but not uploaded; the exact assertion, observed export state and error class cannot be recovered from this receipt.",
+    "The 30.075 second duration includes the Go command and earlier subtests. A 20 second state-wait timeout is an inference, not established evidence.",
+    "This single failure does not establish a broker-version defect or authorize changing the timeout, cancellation requirement or execution-count gate."
+  ]
+}
