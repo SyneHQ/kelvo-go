@@ -191,6 +191,8 @@ func TestGatewayPrincipalOwnershipCoversStatusCancelAndResults(t *testing.T) {
 	for _, body := range []string{
 		`{"mode":"native","connection_id":"payroll","sql":"SELECT 1"}`,
 		`{"mode":"federated","sources":["sales"],"sql":"SELECT 1","authority":{"principal_id":"analyst"}}`,
+		`{"mode":"federated","sources":["sales"],"sql":"SELECT 1","access":{"sources":{}}}`,
+		`{"mode":"federated","sources":["sales"],"sql":"SELECT 1","row_column_policy":{"sources":{}}}`,
 	} {
 		r := httptest.NewRequest("POST", "/v1/queries", strings.NewReader(body))
 		r.Header.Set("Authorization", "Bearer "+rotationOld)
