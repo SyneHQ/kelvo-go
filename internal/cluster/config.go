@@ -83,6 +83,9 @@ func LoadNode(path string) (NodeConfig, error) {
 	if err != nil {
 		return c, err
 	}
+	if c.ScratchDirectory != "" && (!filepath.IsAbs(c.ScratchDirectory) || filepath.Clean(c.ScratchDirectory) != c.ScratchDirectory || c.ScratchDirectory == string(filepath.Separator) || len(c.ScratchDirectory) > 4096) {
+		return c, errors.New("scratch_directory must be a clean absolute private directory")
+	}
 	if c.Resources != nil {
 		if _, err := c.Resources.NewPool(); err != nil {
 			return c, err
