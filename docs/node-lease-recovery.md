@@ -25,4 +25,8 @@ The run finished in 21.884 seconds under a two-CPU, 6 GiB, no-swap service limit
 
 This single broker placement demonstrates the exit-and-replacement path. It does not certify multi-hour throughput or recovery deadlines for every leader placement, network partition, or load level. Earlier failed campaigns remain separate evidence; this result does not rewrite them as passes.
 
-The [combined candidate checks](evidence/node-lease-integration-b09f2da.json) pin `b09f2da`: 429 full-package race pass events, ten focused recovery passes, six real snapshot/principal passes, 60 harness controls and vet. Twelve ordinary external/optional skips remain listed. Sustained and WAN campaigns need their own matching results.
+## Combined candidate check
+
+The [combined package checks](evidence/node-lease-integration-b09f2da.json) pin `b09f2da`: 429 full-package race pass events, ten focused recovery passes, six real snapshot/principal passes, 60 harness controls and vet. Twelve ordinary external/optional skips remain listed.
+
+The [combined candidate receipt](evidence/node-lease-recovery-b09f2da.json) repeats the contained broker gate on `b09f2daad7caccf5caa7e35df5805696c9bc13ba`, with its exact build manifest and binary hashes. Worker `b1` exited at 4.960175 seconds after the fault, reached its conservative expiry bound at 9.960175 seconds, and restarted after its old children were confirmed absent at 9.981010 seconds. The replacement was ready at 10.201490 seconds. Original queued handles and Arrow values passed, failed attempts remained rejected, and cleanup left no descendants or containment records. The run took 22.042 seconds. Matching smoke and sustained campaigns are separate evidence.
