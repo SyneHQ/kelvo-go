@@ -56,6 +56,9 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snaps
 	if err := m.store.Prune(ctx, id, 2); err != nil && !errors.Is(err, ErrNotFound) {
 		return Snapshot{}, err
 	}
+	if d.Multipart != nil {
+		return m.refreshMultipart(ctx, d, fingerprint, onlyIfDue)
+	}
 	tx, err := m.store.Begin(ctx, id)
 	if err != nil {
 		return Snapshot{}, err
@@ -107,6 +110,63 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snaps
 	// Publication is already durable. Prune failures must not turn a successful
 	// generation into an apparent failure; the next refresh retries cleanup.
 	_ = m.store.Prune(ctx, id, 2)
+	return snapshot, nil
+}
+
+// refreshMultipart retains one writer transaction across every part. Nothing
+// becomes visible until source execution, all footers and the schema contract
+// have completed successfully.
+func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, fingerprint string, onlyIfDue bool) (Snapshot, error) {
+	backend, ok := m.store.(MultipartBackend)
+	if !ok {
+		return Snapshot{}, query.NewError("CONFIGURATION_ERROR", "Snapshot backend does not support multipart refresh")
+	}
+	options := MultipartOptions{MaxParts: d.Multipart.MaxParts, MaxPartBytes: d.Multipart.MaxPartBytes, MaxTotalBytes: d.Limits.MaxBytes}
+	tx, err := backend.BeginMultipart(ctx, d.ID, options)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	defer tx.Abort()
+	ctx = tx.Context()
+	if onlyIfDue {
+		current, err := m.store.Status(ctx, d.ID)
+		if err == nil && current.Fingerprint == fingerprint && d.RefreshInterval > 0 && current.Age() < d.RefreshInterval {
+			return current, nil
+		}
+	}
+	previous, err := tx.PreviousSchema()
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return Snapshot{}, err
+	}
+	config := m.config
+	config.Acceleration = nil
+	executor, err := m.factory(config, d.Limits)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	sink := NewMultipartParquetSink(tx, d.Limits, options)
+	sink.expectedSchema = previous
+	defer sink.Abort()
+	if _, err = executor.Execute(ctx, d.Query, sink); err != nil {
+		return Snapshot{}, err
+	}
+	if err = ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	if err = sink.Finish(); err != nil {
+		return Snapshot{}, err
+	}
+	if err = ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	if err = tx.SetSchema(sink.schema); err != nil {
+		return Snapshot{}, err
+	}
+	snapshot, err := tx.Commit(fingerprint)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	_ = m.store.Prune(ctx, d.ID, 2)
 	return snapshot, nil
 }
 
@@ -224,6 +284,18 @@ func Resolve(ctx context.Context, c catalog.Config, request query.Request) ([]ca
 		}
 		leases = append(leases, lease)
 		sources[i] = catalog.Source{ID: source.ID, Type: "parquet", Path: lease.Snapshot.Path}
+		if len(lease.Snapshot.Parts) > 0 {
+			if len(lease.Snapshot.Parts) > 256 || lease.Snapshot.Path != "" || lease.Snapshot.ObjectKey != "" {
+				closeAll()
+				return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Multipart snapshot layout is invalid")
+			}
+			paths := make([]string, len(lease.Snapshot.Parts))
+			for index, part := range lease.Snapshot.Parts {
+				paths[index] = part.Path
+			}
+			sources[i] = catalog.Source{ID: source.ID, Type: "parquet", ParquetPaths: paths}
+		}
+
 		if lease.Snapshot.ObjectKey != "" {
 			if c.Acceleration.ObjectStorage == nil {
 				closeAll()
