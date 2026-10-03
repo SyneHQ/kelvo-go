@@ -40,6 +40,10 @@ is a CAS token, not a content checksum. Missing or uncertain provider metadata
 fails closed. Ambiguous writes can leave retained pins and never grant a reader
 permission to start.
 
+The [object-store adapter and immutable binding components](reader-objectstore.md)
+now have focused race/vet coverage. They remain unwired; the integration gates
+below still apply.
+
 ## A pin does not authorize access
 
 The caller must compute a complete canonical immutable-commit digest; the
