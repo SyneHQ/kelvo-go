@@ -7,21 +7,25 @@ Manifests bind tenant/owner/authorization, creation/expiry, writer fence, schema
 ## Identity and publication contract
 
 1. Open a private root for one tenant with fixed operator limits.
-2. Call `Begin` with a trusted owner and effective-authorization SHA-256 digest. It reserves the full budget and creates unpredictable export/fence IDs.
-3. Write borrowed batches synchronously. Each batch becomes one part; oversized batches fail instead of splitting or coercing.
+2. Call `Reserve` with a trusted owner and effective-authorization SHA-256 digest **before executing source SQL**. It durably reserves the full budget and creates unpredictable export/fence IDs without needing a schema.
+3. Call `BindSchema` with the result schema and current trusted identity, then write borrowed batches synchronously. Binding succeeds exactly once; each batch becomes one part. Oversized schemas/batches fail instead of splitting or coercing. `Begin` remains a convenience wrapper for a schema already known before execution.
 4. Call `Commit` with current identity, or `Cancel`. Retain all returned errors, including errors from unfinished-writer `Close`.
 
 The package compares the supplied digest; **it cannot discover revocation**. Higher layers must include every applicable policy/version, obtain current authorization and invalidate fills after changes. Authentication, row/column policies and key rotation are outside this API.
 
-`Begin` durably records a root initialization intent before creating entry state, schema or lease. The intent stays charged and unreadable until initialization completes. Writers hold exclusive export leases.
+`Reserve` durably records a root initialization intent before creating entry state or lease. The intent stays charged and unreadable until initialization completes. Writers hold exclusive export leases. Unbound `Write`/`Commit` return `ErrSchemaUnbound` without consuming part capacity; invalid schemas or identities can be corrected before binding.
+
+`BindSchema` rechecks exact reservation, identity, expiry and cancellation under the root lock, syncs the immutable schema, then publishes active state. Rebinding is rejected, including an identical schema. Storage failures poison the writer; an orphan schema is never adopted. Binding does not make results readable.
 
 `Commit` verifies parts and rechecks persisted fence, identity, expiry and active state under the root lock. It creates/syncs the immutable manifest, then atomically publishes ready state with that manifest's digest. Cancellation uses the same lock; cancelled or replaced fences cannot publish.
 
 Metadata uses synced unnamed `O_TMPFILE` inodes and `linkat(AT_EMPTY_PATH)`. New files never replace existing names. State replacement links to `.state.next.yml`, then renames onto `state.yml` and syncs the directory. Recovery discards a pending slot only for a valid transition of the exact reservation; malformed/conflicting slots fail closed. Temporary-looking names do not authorize deletion.
 
-**`ErrPublicationUncertain` with a manifest means publication may have happened.** Preserve the entry and investigate storage; do not overwrite, delete or report ordinary success. Readback cannot prove a failed sync survived a crash. Incomplete data stays unavailable before ready publication.
+**`ErrPublicationUncertain` means a metadata publication may have happened.** `Commit` also returns a manifest; `BindSchema` returns no result and the entry stays unreadable. Both release the writer without cancellation. Preserve the entry and investigate storage; do not overwrite, delete or report ordinary success. Readback cannot prove a failed sync survived a crash.
 
-Unfinished `Close` cancels and releases the lease with a five-second lock bound; it reclaims neither files nor reservation. Process death releases OS locks but not durable reservations, and never causes SQL replay or fill adoption. If initialization removes its intent but root sync fails, the unleased active entry remains unavailable/charged until original expiry or operator cancellation plus cleanup. Preserve that error and investigate first.
+Unfinished `Close` cancels and releases the lease with a five-second lock bound; it reclaims neither files nor reservation. Process death releases OS locks but not durable reservations, and never causes SQL replay or fill adoption. After initialization removes its intent, an unleased reserved/active entry remains unavailable and charged until original expiry or operator cancellation plus cleanup, including root-sync failures or a crash during binding. Preserve storage errors and investigate first.
+
+New entries use state version 2 (`reserved → active → ready`); existing version 1 entries remain readable without migration. Manifests and root configuration remain version 1. Upgrade **every process using a root before new writes**: older binaries reject version 2 entries, and mixed-version operation or automatic downgrade is unsupported. A pending schema-binding state slot is discarded only after validating its exact immutable schema and reservation; conflicting metadata remains untouched.
 
 ## Reading and cancellation
 
@@ -49,7 +53,7 @@ Each export reserves:
 max_encoded_bytes + 1 MiB schema + 128 KiB manifest + 3 × 8 KiB state/intent metadata
 ```
 
-The root adds 8 KiB. Active, ready, cancelled, expired and crashed entries retain their **full** reservation until cleanup, including staging/publication files. Set realistic budgets and provision filesystem quota/headroom for block rounding, journals, COW and unrelated files.
+The root adds 8 KiB. Reserved, active, ready, cancelled, expired and crashed entries retain their **full** reservation until cleanup, including staging/publication files. Set realistic budgets and provision filesystem quota/headroom for block rounding, journals, COW and unrelated files.
 
 Schema preflight runs before FlatBuffer construction, bounds child counts before copying and separately bounds final allocation/encoding. Dictionary, list/view, struct, map, union, run-end and extension schemas remain supported within limits. Arrow's FlatBuffer/metadata allocations are not fully controlled by `WithAllocator`.
 
@@ -74,6 +78,8 @@ GOMAXPROCS=2 go test -race -p 2 ./internal/exports
 GOMAXPROCS=2 go vet -p 2 ./internal/exports
 ```
 
-[Package evidence](evidence/export-storage-package.json) covers exact Arrow data, LZ4, limits, independent leases, cross-process admission, cancellation/publication races, crash cutpoints, sync uncertainty, strict recovery, filesystem safety and schema/IPC bounds.
+[Reservation evidence](evidence/export-reservation-package.json) adds pre-schema admission, binding/crash recovery and actual v1/v2 binary compatibility checks. All shared-store processes must upgrade before v2 writes.
+
+[Earlier package evidence](evidence/export-storage-package.json) covers exact Arrow data, LZ4, limits, independent leases, cross-process admission, cancellation/publication races, crash cutpoints, sync uncertainty, strict recovery, filesystem safety and schema/IPC bounds.
 
 Runtime jobs, authenticated HTTP downloads, cluster loss and workload-sized capacity still need acceptance before durable exports are user-facing.

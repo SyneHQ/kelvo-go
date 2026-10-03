@@ -18,6 +18,7 @@ var (
 	ErrFenced               = errors.New("export writer no longer owns publication")
 	ErrBusy                 = errors.New("export storage has active leases")
 	ErrClosed               = errors.New("export storage closed")
+	ErrSchemaUnbound        = errors.New("export schema is not bound")
 	ErrPublicationUncertain = errors.New("export publication durability uncertain; preserve and inspect storage")
 	ErrUnsupported          = errors.New("export storage requires Linux")
 )
@@ -135,11 +136,34 @@ type state struct {
 }
 
 func (s state) valid(c Config, id string) bool {
-	return s.Version == 1 && s.ID == id && idPattern.MatchString(s.ID) && idPattern.MatchString(s.Fence) && s.Tenant == c.Tenant &&
+	common := s.ID == id && idPattern.MatchString(s.ID) && idPattern.MatchString(s.Fence) && s.Tenant == c.Tenant &&
 		s.Identity.valid() && s.Limits.valid() && !s.CreatedAt.IsZero() && s.ExpiresAt.After(s.CreatedAt) && s.ExpiresAt.Sub(s.CreatedAt) <= c.MaxTTL &&
-		s.ReservedBytes == s.Limits.MaxEncodedBytes+metadataReservation && digestPattern.MatchString(s.SchemaSHA256) &&
-		(s.Status == "active" || s.Status == "ready" || s.Status == "cancelled") &&
-		((s.Status == "ready" && digestPattern.MatchString(s.ManifestSHA256)) || (s.Status != "ready" && (s.ManifestSHA256 == "" || digestPattern.MatchString(s.ManifestSHA256))))
+		s.ReservedBytes == s.Limits.MaxEncodedBytes+metadataReservation
+	if !common {
+		return false
+	}
+	if s.Version == 1 {
+		// Keep the original on-disk validation contract for existing entries.
+		return digestPattern.MatchString(s.SchemaSHA256) &&
+			(s.Status == "active" || s.Status == "ready" || s.Status == "cancelled") &&
+			((s.Status == "ready" && digestPattern.MatchString(s.ManifestSHA256)) || (s.Status != "ready" && (s.ManifestSHA256 == "" || digestPattern.MatchString(s.ManifestSHA256))))
+	}
+	if s.Version != 2 {
+		return false
+	}
+	switch s.Status {
+	case "reserved":
+		return s.SchemaSHA256 == "" && s.ManifestSHA256 == ""
+	case "active":
+		return digestPattern.MatchString(s.SchemaSHA256) && s.ManifestSHA256 == ""
+	case "ready":
+		return digestPattern.MatchString(s.SchemaSHA256) && digestPattern.MatchString(s.ManifestSHA256)
+	case "cancelled":
+		return (s.SchemaSHA256 == "" && s.ManifestSHA256 == "") ||
+			(digestPattern.MatchString(s.SchemaSHA256) && (s.ManifestSHA256 == "" || digestPattern.MatchString(s.ManifestSHA256)))
+	default:
+		return false
+	}
 }
 
 // CleanupResult counts entries actually removed. Busy leases remain charged.

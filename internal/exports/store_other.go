@@ -13,8 +13,9 @@ type Writer struct{}
 type Reader struct{}
 type Part struct{}
 
-func Open(Config) (*Store, error) { return nil, ErrUnsupported }
-func (*Store) Close() error       { return ErrUnsupported }
+func Open(Config) (*Store, error)                                { return nil, ErrUnsupported }
+func (*Store) Close() error                                      { return ErrUnsupported }
+func (*Store) Reserve(context.Context, Request) (*Writer, error) { return nil, ErrUnsupported }
 func (*Store) Begin(context.Context, Request, *arrow.Schema) (*Writer, error) {
 	return nil, ErrUnsupported
 }
@@ -25,6 +26,7 @@ func (*Store) Cleanup(context.Context, int) (CleanupResult, error) {
 func (*Store) Acquire(context.Context, string, Identity) (*Reader, error) { return nil, ErrUnsupported }
 func (*Writer) ID() string                                                { return "" }
 func (*Writer) Fence() string                                             { return "" }
+func (*Writer) BindSchema(context.Context, Identity, *arrow.Schema) error { return ErrUnsupported }
 func (*Writer) Write(context.Context, arrow.RecordBatch) error            { return ErrUnsupported }
 func (*Writer) Commit(context.Context, Identity) (Manifest, error)        { return Manifest{}, ErrUnsupported }
 func (*Writer) Close() error                                              { return ErrUnsupported }
