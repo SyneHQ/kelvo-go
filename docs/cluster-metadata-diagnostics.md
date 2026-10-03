@@ -40,3 +40,12 @@ does not prove that the subsequent authenticated metadata API operations will
 succeed. Retain the failed attempt and its diagnostic when investigating
 initialization; do not treat a later successful attempt as an explanation of
 the earlier failure.
+
+## Validation
+
+The [combined `b47ce87` build](evidence/sustained-build-b47ce87.json) passed all
+59 Python controls and nine focused Go race tests, plus vet. Its
+[600-second smoke](evidence/sustained-smoke-b47ce87.json) passed all ten lifecycle
+gates and exact cleanup. This does not identify the cause of the earlier
+[`40965ef` startup failure](evidence/sustained-startup-diagnostics-40965ef.json)
+or close the separate TLS test and multi-hour acceptance gates.

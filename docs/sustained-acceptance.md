@@ -7,28 +7,34 @@ only to the recorded binary, source inventories, topology and resource budget.
 
 ## Recorded smoke
 
-The [600-second smoke on `cbc3e25`](evidence/sustained-smoke-cbc3e25.json) passed
-strict reconciliation with identical build/execution source and unchanged
-binaries. Its [isolated build](evidence/sustained-build-cbc3e25.json) passed all
-56 Python controls, including real Linux zombie and exited-descriptor checks,
-with no failures, errors or skips.
+The [600-second smoke on `b47ce87`](evidence/sustained-smoke-b47ce87.json) passed
+all ten gates with unchanged source and binaries. Its
+[isolated build](evidence/sustained-build-b47ce87.json) passed 59 Python controls,
+nine focused Go race tests (39 pass events), vet and both binary builds.
 
 | Observation | Recorded result |
 | --- | --- |
-| Lifecycle and fault gates | All ten passed |
-| Mixed workload interval | 600.160 seconds, two paced tenant clients |
-| Completed work | 1,606 queries, 80 refreshes, 20 slow readers, 20 cancellations |
-| Process sampling | 11,770 samples; zero hard read errors or diagnostic overflow |
-| Charged memory peak | 778,711,040 bytes under a 200% CPU / 6 GiB service cap |
+| Mixed workload interval | 600.169 seconds, two paced tenant clients |
+| Completed work | 1,571 queries, 79 refreshes, 20 slow readers, 20 cancellations |
+| Fault gates | Saturation, gateway loss, worker loss and broker loss passed |
+| Process sampling | 11,761 samples; zero hard read errors or diagnostic overflow |
+| Charged memory peak | 759,009,280 bytes under a 200% CPU / 6 GiB service cap |
 | Client/resource errors and OOMs | Zero |
 | Cleanup | No forced application kills, live descendants, scratch directories or containment records; owned brokers stopped, service and cgroup removed |
 
-This is a lifecycle smoke, not a maximum-throughput or deployment-sizing result.
-The multi-hour gate remains open. Earlier failures, including the
-[two-hour run on `b09f2da`](evidence/lease-recovery-sustained-failed-b09f2da.json)
-and [600-second run on `0da7523`](evidence/sustained-smoke-failed-0da7523.json),
-remain failed and retained. The passing smoke's raw report SHA-256 is
-`e3d3ee6da61fd97b76d780b41f38de0b57916657587af01a8e1fcc05ebcadad7`.
+This is lifecycle evidence, not maximum throughput or deployment sizing. The
+multi-hour gate remains open. The same candidate's
+[hosted CI failure](evidence/tls-ci-37150306039-failure.json) is retained:
+`TestTLSIdentityOneReaderRejectsLateResultAndCloses` failed at its late-result
+assertion. That test waits for the old snapshot to expire, which does not prove
+the pending read exceeded its own deadline. The exact historical read timings
+were not recorded; a test synchronization correction is being validated.
+A passing smoke does not clear that separate CI failure.
+
+The earlier [smoke on `cbc3e25`](evidence/sustained-smoke-cbc3e25.json) also passed
+all ten gates: 1,606 queries and 11,770 process samples, with verified cleanup.
+The failed [two-hour run on `b09f2da`](evidence/lease-recovery-sustained-failed-b09f2da.json)
+and [smoke on `0da7523`](evidence/sustained-smoke-failed-0da7523.json) remain retained.
 
 ## Combined candidate: startup failed
 
