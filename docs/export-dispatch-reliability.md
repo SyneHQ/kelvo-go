@@ -19,6 +19,27 @@ limits remain unchanged. A retry does not extend a job's execution authority.
 
 ## Validation
 
+The [scoped validation receipt](evidence/export-dispatch-conflicts-64dc69a.json)
+records one Linux run against source `64dc69a`, with verified source and native
+build inputs, one CPU, 3 GiB memory, no swap, and a private loopback network.
+
+| Check | Recorded result |
+| --- | --- |
+| Old dispatch logic with the new regression | Expected failure: a legal queued renewal was followed by an acknowledgment instead of a retry |
+| Fixed dispatcher with the race detector | Four top-level tests and two subtests passed |
+| Fixture permissions and diagnostic parser | 18 controls passed |
+| Cluster package vet | Passed |
+| NATS 2.14.7 dispatch gate with the race detector | Passed: deduplicated republish, delayed redelivery, one assignment, zero SQL calls before claim and after cancellation |
+| Original service exit and cleanup | Exit 0; owned service and cgroup removed |
+
+The control snapshot differs from the fixed snapshot only in the restored
+dispatch logic. Its gate requires the exact expected assertion after the legal
+renewal and rejects compilation, setup, panic, race, or timeout failures as
+substitutes. NATS 2.15.0 is selected in CI but was not measured in this run.
+The broker discriminator never submits an execution claim. The fixed in-memory
+scenario runs one execution, then confirms that terminal redelivery cannot
+repeat it.
+
 The deterministic dispatcher tests cover a real legal gateway renewal, failure
 update conflicts and transient errors, duplicate assignment, terminal duplicate
 delivery after one execution, and reservation cleanup. A separate real-broker
