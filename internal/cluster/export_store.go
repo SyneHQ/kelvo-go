@@ -332,7 +332,12 @@ func (s *natsExportStore) NextExport(ctx context.Context) (Delivery, error) {
 		wait = min(wait, time.Until(deadline))
 	}
 	if wait <= 0 {
-		return nil, ctx.Err()
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		// The deadline callback may not have run yet. Never return a nil
+		// delivery together with a nil error to the worker dispatcher.
+		return nil, context.DeadlineExceeded
 	}
 	batch, err := s.consumer.Fetch(1, jetstream.FetchMaxWait(wait))
 	if err != nil {
