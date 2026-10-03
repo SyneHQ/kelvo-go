@@ -31,9 +31,10 @@ WORKER_GATES = [
     "TestContainedWorkerStartFailureCleansOwnership", "TestContainedWorkerRealDuckDBCTE",
 ]
 STARTUP_GATE = "TestContainedNodeStartupPlacement"
+EXPORT_GATE = "TestExportWorkerConstructorBindsKernelContainment"
 OUTSIDE_GATE = "StartupPlacementOutsideDelegation"
-REQUIRED = KERNEL_GATES + WORKER_GATES + [STARTUP_GATE, OUTSIDE_GATE]
-BINARIES = ["containment.test", "worker.test", "startup.test", "kelvo", "kelvo-landlock", "sandbox-runtime"]
+REQUIRED = KERNEL_GATES + WORKER_GATES + [STARTUP_GATE, EXPORT_GATE, OUTSIDE_GATE]
+BINARIES = ["containment.test", "worker.test", "startup.test", "export.test", "kelvo", "kelvo-landlock", "sandbox-runtime"]
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 METADATA_NAMES = {".DS_Store"}
 SOURCE_REQUIRED = {"go.mod", "go.sum", "sandbox/launcher.c", "internal/containment/manager_linux.go"}
@@ -176,7 +177,8 @@ def inside(args):
         env = test_environment(artifact, jobs, state)
         for binary, pattern, required in [("containment.test", "^TestKernel", KERNEL_GATES),
                                           ("worker.test", "^TestContainedWorker", WORKER_GATES),
-                                          ("startup.test", "^" + STARTUP_GATE + "$", [STARTUP_GATE])]:
+                                          ("startup.test", "^" + STARTUP_GATE + "$", [STARTUP_GATE]),
+                                          ("export.test", "^" + EXPORT_GATE + "$", [EXPORT_GATE])]:
             result = run([str(artifact / binary), "-test.v", "-test.run=" + pattern, "-test.timeout=90s"], env=env, timeout=100)
             (artifact / (binary + ".log")).write_text(result.stdout)
             report["gates"].update(gates(result.stdout, required))
@@ -267,6 +269,7 @@ def main():
         commands = [[args.go, "test", "-p", "1", "-c", "-o", str(artifact / "containment.test"), "./internal/containment"],
                     [args.go, "test", "-p", "1", "-c", "-o", str(artifact / "worker.test"), "./internal/worker"],
                     [args.go, "test", "-p", "1", "-c", "-o", str(artifact / "startup.test"), "./cmd/kelvo"],
+                    [args.go, "test", "-p", "1", "-c", "-o", str(artifact / "export.test"), "./internal/cluster"],
                     [args.go, "build", "-tags", "duckdb_arrow", "-p", "1", "-o", str(artifact / "kelvo"), "./cmd/kelvo"],
                     ["cc", "-O2", "-Wall", "-Wextra", "-Werror", "sandbox/launcher.c", "-o", str(artifact / "kelvo-landlock")],
                     ["c++", "-O2", "-std=c++17", "-pthread", "internal/containment/testdata/sandbox_runtime.cc", "-o", str(artifact / "sandbox-runtime")]]
