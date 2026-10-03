@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "checked_at": "2026-10-03T03:18:11.525097+00:00",
+  "steps": [
+    {
+      "gate": "correctness",
+      "passed": true,
+      "exit_code": 0,
+      "elapsed_seconds": 4.723,
+      "timed_out": false,
+      "interrupted": false,
+      "cleanup_pending": false,
+      "log_truncated": false,
+      "required_tests": [
+        "TestSchemaEvolutionIntegerDirectionalMatrix",
+        "TestSchemaEvolutionIndependentFlagsAndAppendOnlyColumns",
+        "TestSchemaEvolutionTemporalChangesRemainExplicit",
+        "TestSchemaEvolutionPublicationMatrix",
+        "TestSchemaEvolutionDoesNotRelaxWithinGeneration",
+        "TestSchemaEvolutionPolicyFingerprintFencesExistingSnapshot",
+        "TestMultipartStoreRoundTripAndEmpty",
+        "TestMultipartStoreRestoreAndWholeGenerationPins",
+        "TestMultipartPruneResumesInterruptedRetirement",
+        "TestMultipartPruneReclaimsInterruptedPublication",
+        "TestMultipartSealRejectsFalseRowCount",
+        "TestObjectMultipartCommitStagesOnePartAndPublishesDescriptor",
+        "TestObjectMultipartLeaseLossCannotPublish",
+        "TestObjectMultipartAmbiguousPublication",
+        "TestObjectMultipartCanceledAfterUploadCannotPublish"
+      ],
+      "passed_tests": [
+        "TestMultipartPruneReclaimsInterruptedPublication",
+        "TestMultipartPruneResumesInterruptedRetirement",
+        "TestMultipartSealRejectsFalseRowCount",
+        "TestMultipartStoreRestoreAndWholeGenerationPins",
+        "TestMultipartStoreRoundTripAndEmpty",
+        "TestObjectMultipartAmbiguousPublication",
+        "TestObjectMultipartCanceledAfterUploadCannotPublish",
+        "TestObjectMultipartCommitStagesOnePartAndPublishesDescriptor",
+        "TestObjectMultipartLeaseLossCannotPublish",
+        "TestSchemaEvolutionDoesNotRelaxWithinGeneration",
+        "TestSchemaEvolutionIndependentFlagsAndAppendOnlyColumns",
+        "TestSchemaEvolutionIntegerDirectionalMatrix",
+        "TestSchemaEvolutionPolicyFingerprintFencesExistingSnapshot",
+        "TestSchemaEvolutionPublicationMatrix",
+        "TestSchemaEvolutionTemporalChangesRemainExplicit"
+      ],
+      "missing_or_rejected_tests": []
+    },
+    {
+      "gate": "large_local",
+      "passed": true,
+      "exit_code": 0,
+      "elapsed_seconds": 58.548,
+      "timed_out": false,
+      "interrupted": false,
+      "cleanup_pending": false,
+      "log_truncated": false,
+      "required_tests": [
+        "TestMultipartDatasetLargerThanFourGiB"
+      ],
+      "passed_tests": [
+        "TestMultipartDatasetLargerThanFourGiB"
+      ],
+      "missing_or_rejected_tests": []
+    },
+    {
+      "gate": "large_remote",
+      "passed": true,
+      "exit_code": 0,
+      "elapsed_seconds": 86.614,
+      "timed_out": false,
+      "interrupted": false,
+      "cleanup_pending": false,
+      "log_truncated": false,
+      "required_tests": [
+        "TestObjectMultipartDatasetLargerThanFourGiB"
+      ],
+      "passed_tests": [
+        "TestObjectMultipartDatasetLargerThanFourGiB"
+      ],
+      "missing_or_rejected_tests": []
+    },
+    {
+      "gate": "tls_single",
+      "passed": true,
+      "exit_code": 0,
+      "elapsed_seconds": 22.133,
+      "timed_out": false,
+      "interrupted": false,
+      "cleanup_pending": false,
+      "log_truncated": false,
+      "required_fixture_checks": 36
+    },
+    {
+      "gate": "tls_multipart",
+      "passed": true,
+      "exit_code": 0,
+      "elapsed_seconds": 25.268,
+      "timed_out": false,
+      "interrupted": false,
+      "cleanup_pending": false,
+      "log_truncated": false,
+      "required_fixture_checks": 20
+    }
+  ],
+  "source": {
+    "revision": "57baf2cbfe6f34f4d29351348d8464cb862c83b8",
+    "dirty": false,
+    "input_sha256": "7c75b74af1fddc34d3e8ee8e76c0e8061ffe974bc9e6a48a319ea79e7295600d",
+    "input_files": 345,
+    "input_bytes": 2872974,
+    "input_scope": "runtime_and_test_inputs_excluding_generated_artifacts_and_evidence"
+  },
+  "runner_sha256": "9269c41242378f32422e84d8987885abed77592769404068a9b18251f44c6685",
+  "binary_sha256": "3c1c712be04ab69cd75296e316c107293e540546c39863ab31d11f1f26959d12",
+  "binary_source_association": "unverified",
+  "options": {
+    "large_local": true,
+    "large_remote": true,
+    "tls_fixtures": true,
+    "install_test_ca": true
+  },
+  "skipped_scope": [],
+  "scope": "Storage correctness gates; TLS fixtures are not real-cloud conformance or throughput benchmarks",
+  "source_after": {
+    "revision": "57baf2cbfe6f34f4d29351348d8464cb862c83b8",
+    "dirty": true,
+    "input_sha256": "7c75b74af1fddc34d3e8ee8e76c0e8061ffe974bc9e6a48a319ea79e7295600d",
+    "input_files": 345,
+    "input_bytes": 2872974,
+    "input_scope": "runtime_and_test_inputs_excluding_generated_artifacts_and_evidence"
+  },
+  "not_run_gates": []
+}
