@@ -78,3 +78,5 @@ Native SQL policies, public export/download integration, result-cache authorizat
 [Integration evidence](evidence/guarded-snapshot-integration.json) records race/vet checks, real sandbox execution, generation cleanup, key revocation and EOS refusal, plus earlier failed trials and remaining gates.
 
 [Fixture permission regression](evidence/guarded-snapshot-fixture-umask.json) retains the initial CI failure and verifies explicit private test directories under both `0022` and `0077` umasks. The production file-permission checks remain unchanged.
+
+[Object integration](evidence/guarded-object-integration.json) covers full ordinary/bridge suites, race checks, mixed joins, real workers, principal revocation and cleanup. It retains optional skips and links the [exact source](evidence/guarded-object-source.json). [Boundary trials](evidence/guarded-object-boundaries.json), [older-worker refusal](evidence/guarded-object-rollback.json) and [response identity checks](evidence/object-response-identity.json) preserve earlier failures and component evidence. Live-provider and capacity acceptance remain separate.
