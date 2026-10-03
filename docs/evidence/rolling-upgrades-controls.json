@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "controls_exit_code": 0,
+  "prior_actual_report_reconciled": true,
+  "source_sha256": {
+    "scripts/rolling_upgrade_acceptance.py": "58ff16f34a01a35efeff27e80862e845f5ecda16756dd76193ac5debaffbdf51",
+    "scripts/test_rolling_upgrade_acceptance.py": "ce795a2786db1cb8163e284196b686b17bf9e63092971df9b9501bb2222208e7",
+    "docs/evidence/rolling-upgrades.json": "9b954bde9fcf0d947b31cc22d190f18d95c711c2ac6703072bc6490db419fe39"
+  },
+  "source_unchanged": true,
+  "scope": "Stricter report validation of all six controls and the retained exact-pair actual report; no new runtime trial",
+  "prerequisite_failures": [
+    {
+      "phase": "temporary_validation_launcher",
+      "error": "SyntaxError before control execution",
+      "resolution": "Corrected launcher string escaping; fresh isolated retry passed"
+    }
+  ]
+}

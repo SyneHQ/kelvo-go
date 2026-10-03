@@ -58,6 +58,10 @@ def validate_matrix(matrix):
 
 
 def reconcile(report):
+    def count(item, field, expected):
+        value = item.get(field)
+        return type(value) is int and value == expected
+
     checks = report.get("checks", [])
     if (report.get("interrupted") is not False or len(checks) != len(REQUIRED)
             or {item.get("test") for item in checks} != set(REQUIRED)
@@ -66,24 +70,36 @@ def reconcile(report):
     by_name = {item["test"]: item for item in checks}
     for name in WAVES:
         item = by_name[name]
-        if (item.get("running_before_transition") != 2 or item.get("queued_before_transition") != 2
-                or item.get("exact_running_results") != 2 or item.get("exact_queued_results") != 2
+        if (not all(count(item, field, 2) for field in
+                    ("running_before_transition", "queued_before_transition", "exact_running_results", "exact_queued_results"))
                 or item.get("original_handles_preserved") is not True or item.get("consumed_results_rejected") is not True
                 or item.get("one_observed_source_request_per_marker") is not True
                 or item.get("revoked_keys_denied") is not True or item.get("foreign_handles_hidden") is not True):
             return False
+        if name.startswith("broker_restart_"):
+            if (not count(item, "replicas_after_rejoin", 3) or item.get("one_broker_at_a_time") is not True
+                    or item.get("broker_version_before") != ops.cf.VERSION or item.get("broker_version_after") != ops.cf.VERSION):
+                return False
+        elif item.get("readiness_rejected_during_drain") is not True or item.get("graceful_exit") is not True:
+            return False
     security = by_name["stale_startup_rejected"]
     fault = by_name["ambiguous_gateway_loss"]
     clean = by_name["cleanup"]
-    return (by_name["key_rotation_and_floor"].get("both_replica_floors") == 3
-            and security.get("rejected_probes") == 8 and security.get("current_metadata_revalidated") is True
+    rotation = by_name["key_rotation_and_floor"]
+    return (count(rotation, "both_replica_floors", 3)
+            and rotation.get("overlap_and_revocation_on_both_replicas") is True
+            and rotation.get("rollback_requires_current_keys_and_policy") is True
+            and count(security, "rejected_probes", 8) and security.get("current_metadata_revalidated") is True
             and security.get("current_configuration_hashes_preserved") is True
+            and security.get("revoked_keys_remain_denied") is True
+            and count(fault, "running_before_fault", 2) and count(fault, "queued_before_fault", 2)
             and fault.get("failed_result_rejected") is True and fault.get("failed_attempt_not_replayed") is True
             and fault.get("surviving_tenant_exact_result") is True and fault.get("queued_handles_preserved") is True
             and fault.get("one_observed_source_request_per_marker") is True
-            and clean.get("forced_application_kills") == 0 and clean.get("observed_live_descendants") == 0
-            and clean.get("worker_scratch_directories") == 0 and clean.get("original_configurations_verified") is True
-            and clean.get("all_owned_brokers_stopped") is True and clean.get("fixture_gate_errors") == 0
+            and all(count(clean, field, 0) for field in ("forced_application_kills", "observed_live_descendants",
+                                                       "worker_scratch_directories", "fixture_gate_errors"))
+            and clean.get("original_configurations_verified") is True
+            and clean.get("all_owned_brokers_stopped") is True
             and clean.get("input_artifact_hashes_preserved") is True)
 
 

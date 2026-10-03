@@ -17,13 +17,21 @@ class EvidenceControls(unittest.TestCase):
                 check.update(running_before_transition=2, queued_before_transition=2, exact_running_results=2,
                              exact_queued_results=2, original_handles_preserved=True, consumed_results_rejected=True,
                              one_observed_source_request_per_marker=True, revoked_keys_denied=True, foreign_handles_hidden=True)
+                if check["test"].startswith("broker_restart_"):
+                    check.update(replicas_after_rejoin=3, one_broker_at_a_time=True,
+                                 broker_version_before=fixture.ops.cf.VERSION, broker_version_after=fixture.ops.cf.VERSION)
+                else:
+                    check.update(readiness_rejected_during_drain=True, graceful_exit=True)
             elif check["test"] == "key_rotation_and_floor":
-                check.update(both_replica_floors=3)
+                check.update(both_replica_floors=3, overlap_and_revocation_on_both_replicas=True,
+                             rollback_requires_current_keys_and_policy=True)
             elif check["test"] == "stale_startup_rejected":
-                check.update(rejected_probes=8, current_metadata_revalidated=True, current_configuration_hashes_preserved=True)
+                check.update(rejected_probes=8, current_metadata_revalidated=True, current_configuration_hashes_preserved=True,
+                             revoked_keys_remain_denied=True)
             elif check["test"] == "ambiguous_gateway_loss":
                 check.update(failed_result_rejected=True, failed_attempt_not_replayed=True, surviving_tenant_exact_result=True,
-                             queued_handles_preserved=True, one_observed_source_request_per_marker=True)
+                             queued_handles_preserved=True, one_observed_source_request_per_marker=True,
+                             running_before_fault=2, queued_before_fault=2)
             elif check["test"] == "cleanup":
                 check.update(forced_application_kills=0, observed_live_descendants=0, worker_scratch_directories=0,
                              original_configurations_verified=True, all_owned_brokers_stopped=True,
@@ -52,7 +60,10 @@ class EvidenceControls(unittest.TestCase):
             for field, value in check.items():
                 if field in ("test", "passed"):
                     continue
-                for replacement in (None, False if value is True else value+1):
+                invalid = (None, False, "different") if type(value) is str else (None, False, value+1)
+                if type(value) is int:
+                    invalid += (True, float(value), str(value))
+                for replacement in invalid:
                     changed = copy.deepcopy(report)
                     changed["checks"][index][field] = replacement
                     self.assertFalse(fixture.reconcile(changed), (check["test"], field))

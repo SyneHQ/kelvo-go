@@ -60,7 +60,7 @@ any successful rerun.
 
 The [2026-10-03 acceptance](evidence/rolling-upgrades.json) passed all 16 gates in
 88.45 seconds: 11 transition waves, eight stale-startup probes, key rotation,
-ambiguous gateway loss and cleanup. Six evidence/protocol controls also passed.
+ambiguous gateway loss and cleanup. Six evidence/protocol controls also passed. A [stricter evidence check](evidence/rolling-upgrades-controls.json) rejects missing transition details and non-integer counters; it revalidated this retained runtime report without rerunning the cluster.
 The [initial prerequisite failure](evidence/rolling-upgrades-prerequisite-failure.json)
 is retained: the default Python interpreter lacked PyArrow, so the first control
 run stopped before provisioning a cluster. The rerun used an already installed
