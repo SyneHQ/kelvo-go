@@ -121,7 +121,6 @@ func TestAuditBlockedStartRetainsSingleWriterAndFencesLateReceipt(t *testing.T) 
 
 func TestAuditBlockedFinishNeverReturnsLateSuccessOrStartsAnotherWriter(t *testing.T) {
 	cfg := testConfig(t.TempDir())
-	cfg.WriteTimeout = 25 * time.Millisecond
 	operations := defaultIO()
 	var enabled, blocked atomic.Bool
 	entered, release := make(chan struct{}), make(chan struct{})
@@ -146,7 +145,13 @@ func TestAuditBlockedFinishNeverReturnsLateSuccessOrStartsAnotherWriter(t *testi
 	}
 	enabled.Store(true)
 	done := make(chan error, 1)
-	go func() { done <- r.Finish(context.Background(), Succeeded, None) }()
+	go func() {
+		// Bound the injected finish fault, not the prerequisite receipt's real
+		// fsync, whose latency depends on the test host's storage load.
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+		defer cancel()
+		done <- r.Finish(ctx, Succeeded, None)
+	}()
 	select {
 	case <-entered:
 	case <-time.After(time.Second):
