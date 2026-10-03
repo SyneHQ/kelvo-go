@@ -83,7 +83,7 @@ func TestPrometheusResponse(t *testing.T) {
 			t.Errorf("missing %q", want)
 		}
 	}
-	if len(w.Body.Bytes()) > 16384 {
+	if len(w.Body.Bytes()) > 65536 {
 		t.Fatal("unexpected export size")
 	}
 	for _, method := range []string{http.MethodHead, http.MethodPost} {

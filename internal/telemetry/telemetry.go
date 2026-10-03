@@ -1,6 +1,8 @@
 // Copyright 2026 SYNEHQ. SPDX-License-Identifier: Apache-2.0
-// Package telemetry provides bounded, process-local lifecycle metrics. It never
-// stores query text, identifiers, credentials, tenant names, or source names.
+// Package telemetry provides bounded, process-local diagnostics. Aggregate
+// lifecycle metrics never store query text, identifiers, credentials, tenant
+// names or source names. The separate SourceHealth registry contains only
+// explicitly configured source IDs for authenticated tenant-node diagnostics.
 package telemetry
 
 import (
@@ -51,10 +53,13 @@ type Histogram struct {
 }
 
 type Snapshot struct {
-	Outcomes   [2][3]uint64
-	Rejections [2][2]uint64
-	QueueWait  [2]Histogram
-	Duration   [2]Histogram
+	Outcomes     [2][3]uint64
+	Rejections   [2][2]uint64
+	QueueWait    [2]Histogram
+	Duration     [2]Histogram
+	Phases       [2][PhaseCount]Histogram
+	FirstBatch   [2]Histogram
+	SinkDuration [2]Histogram
 }
 
 // Registry's zero value is usable. All state has a fixed size, regardless of
@@ -153,6 +158,7 @@ func writeMetrics(w io.Writer, s Snapshot) error {
 	}
 	writeHistogram(&out, "kelvo_job_queue_wait_seconds", "Observed worker admission wait of terminal jobs; excludes distributed dispatch wait.", s.QueueWait)
 	writeHistogram(&out, "kelvo_job_duration_seconds", "Observed worker call duration including setup and transfer but excluding admission wait.", s.Duration)
+	writePhaseMetrics(&out, s)
 	_, err := w.Write(out.data)
 	return err
 }
