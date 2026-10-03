@@ -136,6 +136,7 @@ type GatewayConfig struct {
 }
 
 type NodeConfig struct {
+	Containment         *ContainmentConfig            `yaml:"containment,omitempty"`
 	ScratchDirectory    string                        `yaml:"scratch_directory,omitempty"`
 	SourceHealth        *telemetry.SourceHealthConfig `yaml:"source_health,omitempty"`
 	RuntimeSourceHealth *telemetry.SourceHealth       `yaml:"-"`

@@ -18,6 +18,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/cluster"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/secrets"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
@@ -92,7 +93,7 @@ func runCluster(args []string) error {
 	return serveCluster(ctx, ln, serverTLS.Config, serverTLS.Handler(gateway), func() { _ = gateway.Close() }, *drainTimeout)
 }
 
-func runNode(ctx context.Context, file string, drainTimeout time.Duration) error {
+func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resultErr error) {
 	cfg, err := cluster.LoadNode(file)
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
@@ -174,10 +175,33 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 		executor.ResourcePool, executor.ResourceOverheadBytes = pool, overhead
 		if catalogue.Acceleration != nil {
 			for _, d := range catalogue.Acceleration.Datasets {
+				if cfg.Containment != nil {
+					if err := cfg.Containment.Validate(cfg.Resources, d.Limits); err != nil {
+						return err
+					}
+				}
 				if !cfg.Resources.Fits(d.Limits, true) {
 					return errors.New("refresh reservation exceeds node resources")
 				}
 			}
+		}
+	}
+	if cfg.Containment != nil {
+		executor.Containment, err = containment.Open(cfg.Containment.Config)
+		if err != nil {
+			return query.NewError("CONFIGURATION_ERROR", "Worker process containment is unavailable")
+		}
+		executor.ContainmentBudget = cfg.Containment.Budget
+		defer func() {
+			if err := executor.Containment.Close(context.Background()); err != nil {
+				fmt.Fprintln(os.Stderr, "Worker process containment cleanup remains uncertain")
+				if resultErr == nil {
+					resultErr = query.NewError("RESOURCE_EXHAUSTED", "Worker process containment cleanup remains uncertain")
+				}
+			}
+		}()
+		if err := verifyContainmentStartup(ctx, executor); err != nil {
+			return err
 		}
 	}
 	store, err := cluster.OpenStore(ctx, cfg.NATS, cfg.Policy, false)
@@ -240,11 +264,19 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 	defer stopRefresh()
 	defer stop()
 	refreshGate := newRefreshGate()
+	if executor.Containment != nil {
+		executor.Containment.SetOnQuarantine(func(error) {
+			node.BeginDrain()
+			refreshGate.Drain()
+			pool.Drain()
+			stopRefresh()
+		})
+	}
 	var refreshDone chan error
 	if refreshQueue != nil {
 		refreshDone = make(chan error, 1)
 		go func() {
-			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeSourceHealth, executor.ScratchRoot, cfg.RuntimeTracing)
+			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeSourceHealth, executor.ScratchRoot, executor.Containment, executor.ContainmentBudget, cfg.RuntimeTracing)
 			stop()
 		}()
 	}

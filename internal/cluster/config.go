@@ -97,6 +97,14 @@ func LoadNode(path string) (NodeConfig, error) {
 			return c, errors.New("query reservation exceeds node resources")
 		}
 	}
+	if c.Containment != nil {
+		if err := c.Containment.Validate(c.Resources, c.Policy.Limits); err != nil {
+			return c, err
+		}
+		if c.ScratchDirectory == "" || c.SandboxPath == "" {
+			return c, errors.New("containment requires managed scratch and the sandbox launcher")
+		}
+	}
 	resolveTLS(base, &c.TLS)
 	if err := validateTLSRotation(c.TLS); err != nil {
 		return c, err

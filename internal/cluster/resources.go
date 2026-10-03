@@ -4,6 +4,7 @@ package cluster
 import (
 	"errors"
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
@@ -49,4 +50,21 @@ func (c ResourceConfig) Fits(l query.Limits, refresh bool) bool {
 		scratchCapacity -= c.QueryReserveScratchMB << 20
 	}
 	return (int64(l.MemoryMB)+c.OverheadMB)<<20 <= memoryCapacity && scratch <= scratchCapacity
+}
+
+// ContainmentConfig is opt-in kernel enforcement for disposable native workers.
+// Config and Budget are immutable shared configuration; custody is per request.
+type ContainmentConfig struct {
+	containment.Config `yaml:",inline"`
+	containment.Budget `yaml:",inline"`
+}
+
+func (c ContainmentConfig) Validate(resources *ResourceConfig, limits query.Limits) error {
+	if c.Config.Validate() != nil || c.Budget.Validate() != nil || resources == nil || !c.Budget.FitsOverhead(int64(limits.MemoryMB), resources.OverheadMB) {
+		return errors.New("containment requires explicit delegation and separate native and parent memory reservations")
+	}
+	if c.MaxGroups != 0 && c.MaxGroups < resources.MaxConcurrent {
+		return errors.New("containment max_groups is smaller than node concurrency")
+	}
+	return nil
 }

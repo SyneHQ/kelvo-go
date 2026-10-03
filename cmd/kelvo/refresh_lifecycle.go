@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/tracing"
@@ -88,7 +89,9 @@ func withRefreshReservation(ctx context.Context, pool *admission.Pool, overhead 
 		if acquireErr != nil {
 			return acquireErr
 		}
-		defer reservation.Release()
+		custody, _ := containment.NewCustody(reservation.Release)
+		defer custody.Complete()
+		ctx = containment.WithCustody(ctx, custody)
 	}
 	return run(ctx)
 }

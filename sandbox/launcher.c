@@ -11,6 +11,7 @@
 #include <linux/audit.h>
 #include <linux/filter.h>
 #include <linux/seccomp.h>
+#include <linux/sched.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -243,8 +244,10 @@ static void install_dangerous_syscall_filter(void) {
 #else
 # error "seccomp architecture is only supported here for x86_64 and aarch64"
 #endif
-	// This denylist deliberately does not block clone, clone3, fork, or vfork:
-	// Go requires thread creation. PID/cgroup isolation belongs to deployment.
+	// Parent cgroup placement happens before this filter. Inside the worker,
+	// deny clone3 completely with ENOSYS so libc can fall back to clone for
+	// threads; pointed-to clone3 arguments cannot be inspected by classic BPF.
+	// Legacy clone keeps ordinary threads/fork but cannot create namespaces.
 #define DENY(nr) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (nr), 0, 1), \
 	BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA))
 	struct sock_filter filter[] = {
@@ -257,6 +260,19 @@ static void install_dangerous_syscall_filter(void) {
 		// this explicit rejection they bypass a number-only denylist.
 		BPF_JUMP(BPF_JMP | BPF_JSET | BPF_K, 0x40000000U, 0, 1),
 		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
+#endif
+#ifdef SYS_clone3
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_clone3, 0, 1),
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (ENOSYS & SECCOMP_RET_DATA)),
+#endif
+#ifdef SYS_clone
+		BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_clone, 0, 3),
+		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, args[0])),
+		BPF_JUMP(BPF_JMP | BPF_JSET | BPF_K,
+			CLONE_NEWCGROUP | CLONE_NEWIPC | CLONE_NEWNET | CLONE_NEWNS |
+			CLONE_NEWPID | CLONE_NEWUSER | CLONE_NEWUTS, 0, 1),
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA)),
+		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
 #endif
 #ifdef SYS_setsid
 		DENY(SYS_setsid),
