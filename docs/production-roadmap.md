@@ -10,14 +10,14 @@ Kelvo remains a developer preview. The board tracks owners, dependencies and acc
 | --- | --- |
 | Query/refresh admission, source quotas, diagnostics, readiness and drain | [Operations](operations.md) |
 | Key, TLS identity and TLS trust rotation | [API keys](gateway-key-rotation.md) · [TLS identity](tls-identity-rotation.md) · [Trust/revocation](tls-trust-rotation.md) |
-| Principal keys and callback/local/object-snapshot policies | [Authority](principal-access.md) · [Table restrictions](row-column-access.md) · [Snapshots](guarded-snapshots.md); native/export/cache paths remain open |
+| Principal keys and callback/local/object-snapshot policies | [Authority](principal-access.md) · [Table restrictions](row-column-access.md) · [Snapshots](guarded-snapshots.md); native row policies and cache remain open |
 | Parent-only cloud secrets and bounded local audit | [Cloud secrets](cloud-secrets.md) · [Audit contract and measured cost](durable-audit.md) |
 | Managed Linux worker scratch | [Ownership and recovery](worker-scratch.md) |
 | Opt-in Linux process-tree memory, CPU and PID limits | [Containment](process-containment.md) · [18-gate evidence](evidence/process-containment-publication.json) |
 | Strict schemas, optional widening, multipart snapshots and verified restore | [Acceleration](acceleration.md) · [Schema policy](schema-evolution.md) · [Multipart](multipart-acceleration.md) |
 | Local backup and remote-to-local migration | [Recovery](snapshot-backup.md) |
 | Passive source observations and local lifecycle telemetry | [Source health](source-health.md) · [Tracing](tracing.md) |
-| Durable Arrow export storage primitive | [Contributor API](export-storage.md); no export jobs or download API yet |
+| Opt-in federated exports and authorized repeat downloads | [Setup and API](exports.md) · [Storage contract](export-storage.md); [acceptance status](production-status.md) |
 | Repeatable release gates | [Process loss](process-loss-acceptance.md) · [Snapshot upgrades](release-upgrades.md) · [Rolling matrix](rolling-upgrades.md) · [Broker/client matrix](nats-compatibility.md) · [Storage](storage-conformance.md) |
 
 Implemented controls are not deployment certification. Live-provider gates and sustained fault/load campaigns remain open. The [rolling matrix](rolling-upgrades.md) covers one application pair; the [broker/client matrix](nats-compatibility.md) adds the declared NATS versions and security-configuration refusal checks. Deployment-specific combinations still need validation. Existing measurements belong to their recorded binaries.
