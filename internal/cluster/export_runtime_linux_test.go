@@ -77,13 +77,10 @@ func (s *exportRuntimeStore) CompareAndSwapExport(ctx context.Context, old Expor
 			return ExportSnapshot{}, err
 		}
 	}
-	now := time.Now().UTC()
-	if next.WorkerID != "" && exportActive(next) && next.AuthorityUntil.Equal(current.Job.AuthorityUntil) {
-		next.HeartbeatAt = now
-	}
-	if current.Job.State == ExportClaimed && next.State == ExportRunning {
-		next.StartedAt = now
-		next.ExecutionDeadline = minTime(now.Add(next.Spec.QueryLimits.Timeout), next.ExpiresAt)
+	var err error
+	next, _, err = exportTransition(s.p, current.Job, next, time.Now().UTC())
+	if err != nil {
+		return ExportSnapshot{}, err
 	}
 	if err := validateExportJob(s.p, next); err != nil {
 		return ExportSnapshot{}, err
@@ -161,11 +158,15 @@ func openRuntimeExportFixture(t *testing.T, executor query.Executor) (*ExportRun
 }
 
 func addRuntimeExport(t *testing.T, s *exportRuntimeStore) string {
+	return addRuntimeExportSQL(t, s, "SELECT 7")
+}
+
+func addRuntimeExportSQL(t *testing.T, s *exportRuntimeStore, sql string) string {
 	t.Helper()
 	a, _ := authorityForPrincipal(s.p, "reports")
 	ctx := context.WithValue(context.Background(), jobAuthorityKey{}, a)
 	now := time.Now().UTC()
-	j, err := normalizeExportSubmission(ctx, s.p, ExportSubmission{Request: query.Request{Mode: "federated", SQL: "SELECT 7"}, SupervisorOwner: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", AuthorityUntil: now.Add(s.p.LeaseDuration)}, now)
+	j, err := normalizeExportSubmission(ctx, s.p, ExportSubmission{Request: query.Request{Mode: "federated", SQL: sql}, SupervisorOwner: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", AuthorityUntil: now.Add(s.p.LeaseDuration)}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
