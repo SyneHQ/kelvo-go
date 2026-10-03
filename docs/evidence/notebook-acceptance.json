@@ -1,0 +1,285 @@
+{
+  "all_code_cells": {
+    "executed": 73,
+    "expected": 73
+  },
+  "allow_unpinned": false,
+  "binary": {
+    "bytes": 123007904,
+    "name": "kelvo",
+    "role": "expected_release_reference",
+    "sha256": "087ca86d2f56c8a0d3ff612ed955f390e75f0111cc1e4bd38211256f8c31a016",
+    "version": "Kelvo Go v0.1.0-preview.1"
+  },
+  "bootstrap_mode": "public_bootstrap",
+  "complete_curriculum_passed": true,
+  "datasets": [
+    {
+      "bytes": 15241,
+      "expected_sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+      "name": "penguins.csv",
+      "sha256": "f204db2c753b0937caac3cb35258562c14f073e4bbc76be24b4c51ce22767a93",
+      "url": "https://raw.githubusercontent.com/allisonhorst/palmerpenguins/8957207b78d6ccd1b4654a9dd9c9041b657478ab/inst/extdata/penguins.csv"
+    },
+    {
+      "bytes": 12331,
+      "expected_sha256": "1a99e105092230f8620f301edcca7f80d3080642ff404d28ed957d3fa222c8ed",
+      "name": "taxi_zone_lookup.csv",
+      "sha256": "1a99e105092230f8620f301edcca7f80d3080642ff404d28ed957d3fa222c8ed",
+      "url": "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
+    },
+    {
+      "bytes": 49961641,
+      "expected_sha256": "c4d59da7bbc8abaeeeb1727947ee93d9891a71acb42854bd80db1571b2030510",
+      "name": "yellow_tripdata_2024-01.parquet",
+      "sha256": "c4d59da7bbc8abaeeeb1727947ee93d9891a71acb42854bd80db1571b2030510",
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet"
+    }
+  ],
+  "execution_boundary": "Kelvo CLI plus authenticated loopback API; isolated Python kernel per notebook",
+  "expected_curriculum_count": 15,
+  "finished_at": "2026-10-03T05:48:37.873719+00:00",
+  "frozen_curriculum_passed": true,
+  "helper": {
+    "path": "notebooks/kelvo_notebooks.py",
+    "role": "expected_frozen_reference",
+    "sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9"
+  },
+  "limitations": [
+    "Exercises released helper/archive URLs in isolated Jupyter kernels, not Google's hosted Colab runtime",
+    "Validates reproducible notebook answers, not production throughput or tenant isolation",
+    "Optional external gateway branch is disabled; authenticated local gateway branch executes"
+  ],
+  "notebooks": [
+    {
+      "elapsed_seconds": 3.745112,
+      "executed_artifact": "01-first-query.ipynb",
+      "executed_code_cells": 5,
+      "executed_sha256": "9a992383a14aa209a4e4d047d3308492141b16159b91fd16365da23048a4896a",
+      "expected_code_cells": 5,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "01-first-query.ipynb",
+      "pins_verified": true,
+      "source_sha256": "d8d6ed9209ec636524751f6b5c36a2574935e3751db172c27bba49070806fc3e",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 4.00665,
+      "executed_artifact": "02-parameters-nulls-and-types.ipynb",
+      "executed_code_cells": 6,
+      "executed_sha256": "54e9000acc0af48e41c4572b96f575f3be3e19136e293c75d8c10e5dfb011de2",
+      "expected_code_cells": 6,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "02-parameters-nulls-and-types.ipynb",
+      "pins_verified": true,
+      "source_sha256": "1e9b9a38bfc09bc1c4eba9a71df15ecb4c94a294b3d051b81a6dfcc0595f5244",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 3.848625,
+      "executed_artifact": "03-taxi-parquet-exploration.ipynb",
+      "executed_code_cells": 5,
+      "executed_sha256": "879786a603750a632638851283805606341e2fb875c6b553f057708ff0db7537",
+      "expected_code_cells": 5,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "03-taxi-parquet-exploration.ipynb",
+      "pins_verified": true,
+      "source_sha256": "208c2b9c7718091c42653f09f677e9f79a3913059f47c5e8a088b4dc333e1a15",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 4.087263,
+      "executed_artifact": "04-joins-with-taxi-zones.ipynb",
+      "executed_code_cells": 5,
+      "executed_sha256": "7b1a7cffc7f40aa2e8f84bcde956b5d80b9baee6fdbfd9e5060a9da0ce27ce17",
+      "expected_code_cells": 5,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "04-joins-with-taxi-zones.ipynb",
+      "pins_verified": true,
+      "source_sha256": "fb0ed13cf97e07d333a3dbd2326a7888780724aedcebda8cd47c1769fcf228fc",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 3.952862,
+      "executed_artifact": "05-cte-business-metrics.ipynb",
+      "executed_code_cells": 5,
+      "executed_sha256": "d86df810b8121066b3559bbb5e1f6bec20f90f7ffb9088c98ee8098c83db5ad5",
+      "expected_code_cells": 5,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "05-cte-business-metrics.ipynb",
+      "pins_verified": true,
+      "source_sha256": "88f365f8f05b4effe92909b32acdd3b1fb01509060199ec8338f3cf0c692d43a",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 3.79046,
+      "executed_artifact": "06-window-functions-and-rankings.ipynb",
+      "executed_code_cells": 4,
+      "executed_sha256": "8865575484d886dab944983147e3a7f17634c91ea8eefe2ce71de66692d996e0",
+      "expected_code_cells": 4,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "06-window-functions-and-rankings.ipynb",
+      "pins_verified": true,
+      "source_sha256": "3bc9abde80868a91c349f01918b64534e78d1fcdf146edfd3b0f0f5ab3714450",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 4.364059,
+      "executed_artifact": "07-dashboard-from-arrow.ipynb",
+      "executed_code_cells": 5,
+      "executed_sha256": "98b925d19182a5513113a4f3b8a0d0c8ef87a99215b975dd5ff63adabd4ebdf0",
+      "expected_code_cells": 5,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "07-dashboard-from-arrow.ipynb",
+      "pins_verified": true,
+      "source_sha256": "c3884b5ce6d703bd6c4a49fab1e17150143b8218e0ae25a1aaa0844d31960a06",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 4.211329,
+      "executed_artifact": "08-data-quality-contracts.ipynb",
+      "executed_code_cells": 5,
+      "executed_sha256": "e919df650420a79e3082c0af9fed00bb7c49d9e6092b72d81ae3905158e3bfa5",
+      "expected_code_cells": 5,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "08-data-quality-contracts.ipynb",
+      "pins_verified": true,
+      "source_sha256": "87d79a582966440c13e6162a520e0ccdfb410dd0019b3ef45c6444310e53c50c",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 3.506387,
+      "executed_artifact": "09-bounded-arrow-consumption.ipynb",
+      "executed_code_cells": 5,
+      "executed_sha256": "b9b5370a4ecacd332508d9d56a82a00197a8e8881a7adbef091cf78295461fb1",
+      "expected_code_cells": 5,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "09-bounded-arrow-consumption.ipynb",
+      "pins_verified": true,
+      "source_sha256": "2665d2f7631c0fdf3c63f8bc5e507f5d9466e4379f35e84c8197a1a9672fbd8f",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 4.419585,
+      "executed_artifact": "10-opt-in-lz4-results.ipynb",
+      "executed_code_cells": 4,
+      "executed_sha256": "cb37ee3659151ee3f674b2fdb5b4a5b20183b0e398dc035b8b01f406136275bd",
+      "expected_code_cells": 4,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "10-opt-in-lz4-results.ipynb",
+      "pins_verified": true,
+      "source_sha256": "90cf7ff9e612106af2ac7773c5b6d367ef946d350b3a678952d9d6d4acce9e1a",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 3.856283,
+      "executed_artifact": "11-catalog-federation-and-reusable-parquet.ipynb",
+      "executed_code_cells": 5,
+      "executed_sha256": "a9e35e8ef1e2bc7fcf8907fe21de3a2a060607b673b49886e35e2aa63e4999b2",
+      "expected_code_cells": 5,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "11-catalog-federation-and-reusable-parquet.ipynb",
+      "pins_verified": true,
+      "source_sha256": "9fca7c8a23574fb02107d6ac8380b4ce054b992288b0e7acbdb578994bc274a2",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 3.804752,
+      "executed_artifact": "12-acceleration-refresh-and-verify.ipynb",
+      "executed_code_cells": 6,
+      "executed_sha256": "68f53f59453e63e4fc3f9fc163d54de47bb9d7e1c2c228f6b15e8b333398935b",
+      "expected_code_cells": 6,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "12-acceleration-refresh-and-verify.ipynb",
+      "pins_verified": true,
+      "source_sha256": "bb6e4c4231418ab6309f84a1b59bf3dc96e25904f9ee5a36adb023dd6c35b6e2",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 3.932539,
+      "executed_artifact": "13-snapshot-schema-and-freshness.ipynb",
+      "executed_code_cells": 5,
+      "executed_sha256": "48001876855394a8d8ee8231f3ec329185cbcf0caefe35afb3c1555f1b31f150",
+      "expected_code_cells": 5,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "13-snapshot-schema-and-freshness.ipynb",
+      "pins_verified": true,
+      "source_sha256": "40d136ce91c9b410852fa2f7c2139d24b808881c34cca4410f81626a9958bd30",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 4.321604,
+      "executed_artifact": "14-concurrent-independent-queries.ipynb",
+      "executed_code_cells": 4,
+      "executed_sha256": "147f193c8244fe025999dd0678f0fd6a200f500d4a4a308c6d16285a4cfe17b0",
+      "expected_code_cells": 4,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "14-concurrent-independent-queries.ipynb",
+      "pins_verified": true,
+      "source_sha256": "160a367e936922a61e77c20c50b0eb2fb087e4793a2bb6fe4ebffe288a04b718",
+      "status": "passed"
+    },
+    {
+      "elapsed_seconds": 3.483242,
+      "executed_artifact": "15-authenticated-http-gateway.ipynb",
+      "executed_code_cells": 4,
+      "executed_sha256": "8c5688d55060aa22d8a97aa7fb0729016004a8e3d3039e61fd9fd234ec8483f5",
+      "expected_code_cells": 4,
+      "helper_expected_sha256": "86696a66a3c903eb8f18d529fcef055e8bee72234da324b8776529138436d9a9",
+      "helper_reference": "eacb7e2aedd8020575ecfede53db819112c40199",
+      "notebook": "15-authenticated-http-gateway.ipynb",
+      "pins_verified": true,
+      "source_sha256": "36f5ae5dde84437e770248d3461d9ab24e3e2f1480303c68b911c53fd7972572",
+      "status": "passed"
+    }
+  ],
+  "release_installer_validated": true,
+  "requested_notebooks": [
+    "01-first-query.ipynb",
+    "02-parameters-nulls-and-types.ipynb",
+    "03-taxi-parquet-exploration.ipynb",
+    "04-joins-with-taxi-zones.ipynb",
+    "05-cte-business-metrics.ipynb",
+    "06-window-functions-and-rankings.ipynb",
+    "07-dashboard-from-arrow.ipynb",
+    "08-data-quality-contracts.ipynb",
+    "09-bounded-arrow-consumption.ipynb",
+    "10-opt-in-lz4-results.ipynb",
+    "11-catalog-federation-and-reusable-parquet.ipynb",
+    "12-acceleration-refresh-and-verify.ipynb",
+    "13-snapshot-schema-and-freshness.ipynb",
+    "14-concurrent-independent-queries.ipynb",
+    "15-authenticated-http-gateway.ipynb"
+  ],
+  "runtime": {
+    "machine": "x86_64",
+    "packages": {
+      "PyYAML": "6.0.3",
+      "ipykernel": "6.30.1",
+      "matplotlib": "3.10.7",
+      "nbclient": "0.10.2",
+      "nbformat": "5.10.4",
+      "pandas": "2.3.3",
+      "pyarrow": "25.0.1"
+    },
+    "python": "3.11.2",
+    "system": "Linux"
+  },
+  "schema_version": 1,
+  "started_at": "2026-10-03T05:47:38.234643+00:00",
+  "status": "passed"
+}
