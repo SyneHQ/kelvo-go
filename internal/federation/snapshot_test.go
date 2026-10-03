@@ -29,9 +29,20 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func snapshotFixture(t *testing.T, records ...arrow.RecordBatch) catalog.Source {
+func snapshotPrivateDir(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
+	// Match the production snapshot directory contract independently of the
+	// caller's umask; testing.TempDir's final directory may be world-readable.
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func snapshotFixture(t *testing.T, records ...arrow.RecordBatch) catalog.Source {
+	t.Helper()
+	root := snapshotPrivateDir(t)
 	schema := records[0].Schema()
 	hash, err := acceleration.SchemaFingerprint(schema)
 	if err != nil {
@@ -488,7 +499,7 @@ func TestSnapshotReaderUnsupportedPhysicalSchema(t *testing.T) {
 			record := builder.NewRecordBatch()
 			builder.Release()
 			defer record.Release()
-			path := filepath.Join(t.TempDir(), "unsupported.parquet")
+			path := filepath.Join(snapshotPrivateDir(t), "unsupported.parquet")
 			output, err := os.Create(path)
 			if err != nil {
 				t.Fatal(err)
