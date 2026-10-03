@@ -36,9 +36,38 @@ HTTP APIs are `POST /v1/queries`, `GET /v1/queries/{id}`, `GET /v1/queries/{id}/
 
 An initial result request can wait for assignment until its durable job expires
 or the client disconnects. Waiting does not claim the result or fail a valid
-queued job after an unrelated fixed timeout.
+queued job after an unrelated fixed timeout. Queued result requests use a separate
+bounded waiter pool so they cannot prevent retrieval of already assigned jobs.
+`max_http_requests` bounds each pool: the gateway admits at most that many active
+requests plus the same number of parked result waiters. Status, cancellation and
+assigned-result requests use the active pool. An assigned waiter must reacquire
+an active permit before claiming delivery. If either pool is full, the gateway
+returns HTTP 429 before consuming the result claim; retry the same handle after
+backoff. Cancellation, expiry and shutdown release the held permit. The separate
+pools prevent queued waiters from blocking all active requests; they are not a
+fairness or throughput guarantee.
 
-The node records `result_ready` after successful execution. The gateway verifies that state, commits `succeeded`, then releases the final eight-byte Arrow EOS marker. The nonterminal ready state prevents slot reuse during this final handoff. A failed stream is aborted without a successful end marker. Clients must check transport completion and terminal job status before committing an export or displaying an analysis as complete. The gateway may fail to deliver a result whose execution succeeded; status describes execution, not proof of receipt by the client.
+The node records `result_ready` after successful execution. The gateway verifies
+that state, durably commits `succeeded`, then releases the final eight-byte Arrow
+EOS marker. The nonterminal ready state prevents slot reuse during this handoff.
+A failed stream is aborted without a successful end marker.
+
+Cluster result responses advertise `Kelvo-Result-Completion: durable-eos-v1`.
+This header announces the completion protocol; it is not a success receipt.
+A client that recognizes this capability can certify durable success only after
+successfully consuming the complete HTTP response, parsing exactly one valid
+Arrow stream, and verifying its final eight-byte EOS. The gateway releases that
+EOS only after its durable success commit. A header on an incomplete body,
+truncated Arrow data, or failed HTTP framing is never success. Reject unknown
+capability versions instead of guessing their semantics.
+
+After certified delivery, a separate status request is diagnostic: the bounded
+terminal slot can already have been reused and return 404 under concurrent load.
+A 404 by itself never proves success. Without the recognized gateway capability,
+clients must still check successful terminal status as well as transport and
+Arrow completion. The standalone HTTP server does not advertise this guarantee.
+The gateway can fail to deliver a result whose execution succeeded; status alone
+does not prove receipt by the client.
 
 `/health` reports process liveness. Gateway `/ready` requires successful reconciliation for every configured tenant and recovers after broker service recovers. Worker readiness requires the native sandbox startup probe and worker-identity claim. A node that loses its lease becomes unavailable and should be restarted by deployment supervision.
 

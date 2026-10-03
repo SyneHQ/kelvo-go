@@ -105,7 +105,7 @@ func TestQueuedResultsWaitUntilJobExpiry(t *testing.T) {
 	s := &gatewayStore{policy: Policy{TenantID: "a"}, jobs: map[string]Snapshot{"pending": {Job: Job{ID: "pending", TenantID: "a", State: Queued, ExpiresAt: time.Now().Add(30 * time.Millisecond)}}}}
 	w := httptest.NewRecorder()
 	g := &Gateway{}
-	g.results(w, httptest.NewRequest(http.MethodGet, "/v1/queries/pending/results", nil), gatewayTenant{store: s}, "pending")
+	g.results(w, httptest.NewRequest(http.MethodGet, "/v1/queries/pending/results", nil), gatewayTenant{store: s}, "pending", nil)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expired queued job status=%d", w.Code)
 	}

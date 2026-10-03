@@ -32,19 +32,20 @@ type workerEndpoint struct {
 	client *http.Client
 }
 type Gateway struct {
-	tenants      map[string]gatewayTenant
-	tokens       map[[32]byte]string
-	permits      chan struct{}
-	ctx          context.Context
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
-	handlers     sync.WaitGroup
-	mu           sync.RWMutex
-	reconcileOK  map[string]bool
-	reconcileErr error
-	draining     bool
-	closed       bool
-	once         sync.Once
+	tenants       map[string]gatewayTenant
+	tokens        map[[32]byte]string
+	permits       chan struct{}
+	resultWaiters chan struct{}
+	ctx           context.Context
+	cancel        context.CancelFunc
+	wg            sync.WaitGroup
+	handlers      sync.WaitGroup
+	mu            sync.RWMutex
+	reconcileOK   map[string]bool
+	reconcileErr  error
+	draining      bool
+	closed        bool
+	once          sync.Once
 }
 
 func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
@@ -52,7 +53,7 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 		return nil, errors.New("cluster gateway: max_http_requests must be positive")
 	}
 	gctx, cancel := context.WithCancel(context.Background())
-	g := &Gateway{tenants: map[string]gatewayTenant{}, tokens: map[[32]byte]string{}, permits: make(chan struct{}, cfg.MaxHTTPRequests), ctx: gctx, cancel: cancel, reconcileOK: map[string]bool{}}
+	g := &Gateway{tenants: map[string]gatewayTenant{}, tokens: map[[32]byte]string{}, permits: make(chan struct{}, cfg.MaxHTTPRequests), resultWaiters: make(chan struct{}, cfg.MaxHTTPRequests), ctx: gctx, cancel: cancel, reconcileOK: map[string]bool{}}
 	for _, tc := range cfg.Tenants {
 		tenant := tc.Policy.TenantID
 		st := stores[tenant]
@@ -195,11 +196,12 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	select {
 	case g.permits <- struct{}{}:
-		defer func() { <-g.permits }()
 	default:
 		g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Request capacity unavailable")
 		return
 	}
+	admission := requestAdmission{active: g.permits, waiting: g.resultWaiters, held: admissionActive}
+	defer admission.release()
 	tenant, ok := g.tenant(r)
 	if !ok {
 		w.Header().Set("WWW-Authenticate", "Bearer")
@@ -231,7 +233,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(p) == 4 && p[3] == "results" && r.Method == "GET" {
-		g.results(w, r, g.tenants[tenant], p[2])
+		g.results(w, r, g.tenants[tenant], p[2], &admission)
 		return
 	}
 	g.err(w, 404, "NOT_FOUND", "Not found")
@@ -314,7 +316,7 @@ func (g *Gateway) cancelJob(w http.ResponseWriter, r *http.Request, t gatewayTen
 	}
 	g.err(w, 409, "CONFLICT", "Query state changed")
 }
-func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string) {
+func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string, admission *requestAdmission) {
 	var s Snapshot
 	var e error
 	poll := time.NewTicker(50 * time.Millisecond)
@@ -334,9 +336,19 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 			return
 		}
 		if s.Job.State == Assigned {
+			if !admission.activate() {
+				w.Header().Set("Retry-After", "1")
+				g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Result request capacity unavailable")
+				return
+			}
 			break
 		}
 		if s.Job.State == Queued {
+			if !admission.park() {
+				w.Header().Set("Retry-After", "1")
+				g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Queued result wait capacity unavailable")
+				return
+			}
 			select {
 			case <-r.Context().Done():
 				return
@@ -395,6 +407,9 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 	}
 	w.Header().Set("Content-Type", "application/vnd.apache.arrow.stream")
 	w.Header().Set("Cache-Control", "no-store")
+	// This advertises the protocol, not success: only the final EOS below is
+	// released after durable Succeeded CAS. Partial/aborted bodies prove nothing.
+	w.Header().Set("Kelvo-Result-Completion", "durable-eos-v1")
 	w.WriteHeader(200)
 	controller := http.NewResponseController(w)
 	_ = controller.SetWriteDeadline(time.Now().Add(t.store.Policy().Limits.Timeout))

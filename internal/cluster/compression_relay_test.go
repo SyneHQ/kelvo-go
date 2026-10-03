@@ -192,16 +192,18 @@ func TestGatewayRelaysCompressedIPCOnlyAfterDurableSuccess(t *testing.T) {
 					}
 				}()
 				gateway := &Gateway{}
-				gateway.results(output, httptest.NewRequest(http.MethodGet, "/v1/queries/compressed-result/results", nil), tenant, "compressed-result")
+				gateway.results(output, httptest.NewRequest(http.MethodGet, "/v1/queries/compressed-result/results", nil), tenant, "compressed-result", nil)
 			}()
 			final, err := store.Get(context.Background(), "compressed-result")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if output.Code != http.StatusOK || output.Header().Get("Content-Type") != "application/vnd.apache.arrow.stream" {
+			if output.Code != http.StatusOK || output.Header().Get("Content-Type") != "application/vnd.apache.arrow.stream" || output.Header().Get("Kelvo-Result-Completion") != "durable-eos-v1" {
 				t.Fatalf("unexpected result response: status=%d headers=%v", output.Code, output.Header())
 			}
 			if failCommit {
+				// The advertised protocol is not itself success. Even with that
+				// header present, a failed commit must withhold final Arrow EOS.
 				if !aborted || final.Job.State != Failed || store.commitAttempts != 8 {
 					t.Fatalf("failed commit did not abort delivery: aborted=%v state=%s attempts=%d", aborted, final.Job.State, store.commitAttempts)
 				}
