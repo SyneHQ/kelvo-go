@@ -1,0 +1,1148 @@
+{
+  "schema": 1,
+  "runtime_commit": "b09f2daad7caccf5caa7e35df5805696c9bc13ba",
+  "raw_report_sha256": "efdb5d5a92b86b37712e8a5576ce1ff5c40d2f26df36b63ed47641cf3062e4b5",
+  "strict_reconciliation_passed": true,
+  "scope": "Synthetic Parquet correctness and lifecycle on a dedicated capped service within a shared Linux test VM. Queries are deliberately paced; this is not source-provider, WAN, multi-host, or maximum-throughput certification.",
+  "source": {
+    "base_revision": "b09f2daad7caccf5caa7e35df5805696c9bc13ba",
+    "sha256": "d40a0906584ab5e89d1a316d17596cf16d54993fc0c4dade8b894fef97e4583a",
+    "file_count": 845,
+    "verified": true
+  },
+  "build_source_matches": true,
+  "acceptance_source_sha256": {
+    "sustained_acceptance.py": "ae49f8195fb123972d2c948d2c0efe463a11c7c2ec9031ef467df9b2da504bc6",
+    "process_loss_acceptance.py": "8ce67ca9f2f5972de28be2b655b4764f96bb0a65c8f68e4ef29860af5c9c8df8",
+    "lease_supervision.py": "e3fe1e889b2d4e8e694f33efee890dc5d223ca4542ccccd9eecc0080e230d4b3"
+  },
+  "passed": true,
+  "mode": "smoke",
+  "requested_seconds": 600.0,
+  "elapsed_seconds": 614.028,
+  "multi_hour_gate_passed": false,
+  "checked_at": "2026-10-03T15:10:25.385877+00:00",
+  "binary_sha256": {
+    "kelvo": "26ea84328e850116f4d5f31ab758bea1f5c57b7161eca0d61ddd63f9d714af26",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "resource_budget": {
+    "cpu_percent": 200,
+    "memory_bytes": 6442450944,
+    "swap_bytes": 0,
+    "tasks": 512
+  },
+  "interrupted": false,
+  "source_unchanged": true,
+  "service_exit_code": 0,
+  "owned_service_removed": true,
+  "owned_cgroup_removed": true,
+  "workload": {
+    "queries": {
+      "a": 792,
+      "b": 785
+    },
+    "slow_readers": {
+      "a": 10,
+      "b": 10
+    },
+    "cancellations": {
+      "a": 10,
+      "b": 10
+    },
+    "refreshes": {
+      "a": 40,
+      "b": 39
+    }
+  },
+  "control_response_counts": {
+    "cancel_http_200": 32,
+    "status_http_200": 27,
+    "queued_status_http_200": 84,
+    "cancel_transport_error": 3
+  },
+  "latencies": {
+    "query": {
+      "a": {
+        "count": 792,
+        "sum_seconds": 169.94640326214721,
+        "maximum_seconds": 0.4786565400136169,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          726,
+          792,
+          792,
+          792,
+          792,
+          792,
+          792,
+          792,
+          792,
+          792
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ],
+        "quantile_upper_bounds_seconds": {
+          "0.5": 0.25,
+          "0.95": 0.5,
+          "0.99": 0.5
+        }
+      },
+      "b": {
+        "count": 785,
+        "sum_seconds": 171.51235707232263,
+        "maximum_seconds": 0.5223976210108958,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          699,
+          784,
+          785,
+          785,
+          785,
+          785,
+          785,
+          785,
+          785,
+          785
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ],
+        "quantile_upper_bounds_seconds": {
+          "0.5": 0.25,
+          "0.95": 0.5,
+          "0.99": 0.5
+        }
+      }
+    },
+    "dispatch_observation": {
+      "a": {
+        "count": 792,
+        "sum_seconds": 4.53912965831114,
+        "maximum_seconds": 0.17193303699605167,
+        "buckets": [
+          690,
+          769,
+          772,
+          772,
+          791,
+          792,
+          792,
+          792,
+          792,
+          792,
+          792,
+          792,
+          792,
+          792,
+          792
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ],
+        "quantile_upper_bounds_seconds": {
+          "0.5": 0.005,
+          "0.95": 0.01,
+          "0.99": 0.1
+        }
+      },
+      "b": {
+        "count": 785,
+        "sum_seconds": 6.581084322446259,
+        "maximum_seconds": 0.11270932000479661,
+        "buckets": [
+          603,
+          730,
+          732,
+          732,
+          784,
+          785,
+          785,
+          785,
+          785,
+          785,
+          785,
+          785,
+          785,
+          785,
+          785
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ],
+        "quantile_upper_bounds_seconds": {
+          "0.5": 0.005,
+          "0.95": 0.1,
+          "0.99": 0.1
+        }
+      }
+    },
+    "first_byte": {
+      "a": {
+        "count": 10,
+        "sum_seconds": 1.4396305789996404,
+        "maximum_seconds": 0.25126316500245593,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          3,
+          9,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ],
+        "quantile_upper_bounds_seconds": {
+          "0.5": 0.25,
+          "0.95": 0.5,
+          "0.99": 0.5
+        }
+      },
+      "b": {
+        "count": 10,
+        "sum_seconds": 1.2953023919544648,
+        "maximum_seconds": 0.24631413098541088,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          2,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ],
+        "quantile_upper_bounds_seconds": {
+          "0.5": 0.25,
+          "0.95": 0.25,
+          "0.99": 0.25
+        }
+      }
+    },
+    "slow_delivery": {
+      "a": {
+        "count": 10,
+        "sum_seconds": 61.558925260964315,
+        "maximum_seconds": 6.332756213989342,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ],
+        "quantile_upper_bounds_seconds": {
+          "0.5": 10.0,
+          "0.95": 10.0,
+          "0.99": 10.0
+        }
+      },
+      "b": {
+        "count": 10,
+        "sum_seconds": 61.25276653797482,
+        "maximum_seconds": 6.20016626798315,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ],
+        "quantile_upper_bounds_seconds": {
+          "0.5": 10.0,
+          "0.95": 10.0,
+          "0.99": 10.0
+        }
+      }
+    },
+    "cancel": {
+      "a": {
+        "count": 10,
+        "sum_seconds": 10.13865799101768,
+        "maximum_seconds": 1.0162426619790494,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ],
+        "quantile_upper_bounds_seconds": {
+          "0.5": 2.0,
+          "0.95": 2.0,
+          "0.99": 2.0
+        }
+      },
+      "b": {
+        "count": 10,
+        "sum_seconds": 10.164576526993187,
+        "maximum_seconds": 1.0197322430030908,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ],
+        "quantile_upper_bounds_seconds": {
+          "0.5": 2.0,
+          "0.95": 2.0,
+          "0.99": 2.0
+        }
+      }
+    }
+  },
+  "latency_scope": "Client elapsed times and dispatch observation upper bounds (50ms polling), not exact distributed queue attribution; node admission histograms exclude dispatch.",
+  "process_sampling": {
+    "interval_ms": 50,
+    "samples": 11749,
+    "process_tree_rss_available": true,
+    "sampled_process_tree_rss_peak_bytes": 739426304,
+    "disappeared_or_exited_process_or_thread_samples": 82,
+    "read_errors": [],
+    "scope": "Owned application parents and observed descendants; excludes brokers/Python. RSS sampling can miss short peaks and double-count shared mappings. Dedicated service cgroup counters include all fixture processes."
+  },
+  "progress_windows": [
+    {
+      "start_seconds": 0.0,
+      "end_seconds": 6.051,
+      "deltas": {
+        "queries": {
+          "a": 9,
+          "b": 9
+        },
+        "slow_readers": {
+          "a": 1,
+          "b": 0
+        },
+        "cancellations": {
+          "a": 0,
+          "b": 0
+        },
+        "refreshes": {
+          "a": 0,
+          "b": 0
+        }
+      },
+      "counts": {
+        "queries": {
+          "a": 9,
+          "b": 9
+        },
+        "slow_readers": {
+          "a": 1,
+          "b": 0
+        },
+        "cancellations": {
+          "a": 0,
+          "b": 0
+        },
+        "refreshes": {
+          "a": 0,
+          "b": 0
+        }
+      }
+    },
+    {
+      "start_seconds": 6.051,
+      "end_seconds": 69.318,
+      "deltas": {
+        "queries": {
+          "a": 84,
+          "b": 83
+        },
+        "slow_readers": {
+          "a": 1,
+          "b": 1
+        },
+        "cancellations": {
+          "a": 2,
+          "b": 1
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      },
+      "counts": {
+        "queries": {
+          "a": 93,
+          "b": 92
+        },
+        "slow_readers": {
+          "a": 2,
+          "b": 1
+        },
+        "cancellations": {
+          "a": 2,
+          "b": 1
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      }
+    },
+    {
+      "start_seconds": 69.318,
+      "end_seconds": 129.783,
+      "deltas": {
+        "queries": {
+          "a": 83,
+          "b": 82
+        },
+        "slow_readers": {
+          "a": 1,
+          "b": 1
+        },
+        "cancellations": {
+          "a": 1,
+          "b": 1
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      },
+      "counts": {
+        "queries": {
+          "a": 176,
+          "b": 174
+        },
+        "slow_readers": {
+          "a": 3,
+          "b": 2
+        },
+        "cancellations": {
+          "a": 3,
+          "b": 2
+        },
+        "refreshes": {
+          "a": 8,
+          "b": 8
+        }
+      }
+    },
+    {
+      "start_seconds": 129.783,
+      "end_seconds": 190.01,
+      "deltas": {
+        "queries": {
+          "a": 80,
+          "b": 80
+        },
+        "slow_readers": {
+          "a": 1,
+          "b": 1
+        },
+        "cancellations": {
+          "a": 1,
+          "b": 1
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      },
+      "counts": {
+        "queries": {
+          "a": 256,
+          "b": 254
+        },
+        "slow_readers": {
+          "a": 4,
+          "b": 3
+        },
+        "cancellations": {
+          "a": 4,
+          "b": 3
+        },
+        "refreshes": {
+          "a": 12,
+          "b": 12
+        }
+      }
+    },
+    {
+      "start_seconds": 190.01,
+      "end_seconds": 250.235,
+      "deltas": {
+        "queries": {
+          "a": 83,
+          "b": 82
+        },
+        "slow_readers": {
+          "a": 1,
+          "b": 1
+        },
+        "cancellations": {
+          "a": 1,
+          "b": 1
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      },
+      "counts": {
+        "queries": {
+          "a": 339,
+          "b": 336
+        },
+        "slow_readers": {
+          "a": 5,
+          "b": 4
+        },
+        "cancellations": {
+          "a": 5,
+          "b": 4
+        },
+        "refreshes": {
+          "a": 16,
+          "b": 16
+        }
+      }
+    },
+    {
+      "start_seconds": 250.235,
+      "end_seconds": 313.136,
+      "deltas": {
+        "queries": {
+          "a": 79,
+          "b": 79
+        },
+        "slow_readers": {
+          "a": 1,
+          "b": 1
+        },
+        "cancellations": {
+          "a": 1,
+          "b": 1
+        },
+        "refreshes": {
+          "a": 5,
+          "b": 5
+        }
+      },
+      "counts": {
+        "queries": {
+          "a": 418,
+          "b": 415
+        },
+        "slow_readers": {
+          "a": 6,
+          "b": 5
+        },
+        "cancellations": {
+          "a": 6,
+          "b": 5
+        },
+        "refreshes": {
+          "a": 21,
+          "b": 21
+        }
+      }
+    },
+    {
+      "start_seconds": 313.136,
+      "end_seconds": 373.511,
+      "deltas": {
+        "queries": {
+          "a": 81,
+          "b": 80
+        },
+        "slow_readers": {
+          "a": 1,
+          "b": 1
+        },
+        "cancellations": {
+          "a": 1,
+          "b": 1
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      },
+      "counts": {
+        "queries": {
+          "a": 499,
+          "b": 495
+        },
+        "slow_readers": {
+          "a": 7,
+          "b": 6
+        },
+        "cancellations": {
+          "a": 7,
+          "b": 6
+        },
+        "refreshes": {
+          "a": 25,
+          "b": 25
+        }
+      }
+    },
+    {
+      "start_seconds": 373.511,
+      "end_seconds": 433.737,
+      "deltas": {
+        "queries": {
+          "a": 83,
+          "b": 83
+        },
+        "slow_readers": {
+          "a": 1,
+          "b": 1
+        },
+        "cancellations": {
+          "a": 1,
+          "b": 1
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      },
+      "counts": {
+        "queries": {
+          "a": 582,
+          "b": 578
+        },
+        "slow_readers": {
+          "a": 8,
+          "b": 7
+        },
+        "cancellations": {
+          "a": 8,
+          "b": 7
+        },
+        "refreshes": {
+          "a": 29,
+          "b": 29
+        }
+      }
+    },
+    {
+      "start_seconds": 433.737,
+      "end_seconds": 500.785,
+      "deltas": {
+        "queries": {
+          "a": 74,
+          "b": 73
+        },
+        "slow_readers": {
+          "a": 1,
+          "b": 1
+        },
+        "cancellations": {
+          "a": 1,
+          "b": 1
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      },
+      "counts": {
+        "queries": {
+          "a": 656,
+          "b": 651
+        },
+        "slow_readers": {
+          "a": 9,
+          "b": 8
+        },
+        "cancellations": {
+          "a": 9,
+          "b": 8
+        },
+        "refreshes": {
+          "a": 33,
+          "b": 33
+        }
+      }
+    },
+    {
+      "start_seconds": 500.785,
+      "end_seconds": 561.303,
+      "deltas": {
+        "queries": {
+          "a": 82,
+          "b": 81
+        },
+        "slow_readers": {
+          "a": 1,
+          "b": 1
+        },
+        "cancellations": {
+          "a": 1,
+          "b": 1
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      },
+      "counts": {
+        "queries": {
+          "a": 738,
+          "b": 732
+        },
+        "slow_readers": {
+          "a": 10,
+          "b": 9
+        },
+        "cancellations": {
+          "a": 10,
+          "b": 9
+        },
+        "refreshes": {
+          "a": 37,
+          "b": 37
+        }
+      }
+    },
+    {
+      "start_seconds": 561.303,
+      "end_seconds": 600.15,
+      "deltas": {
+        "queries": {
+          "a": 54,
+          "b": 53
+        },
+        "slow_readers": {
+          "a": 0,
+          "b": 1
+        },
+        "cancellations": {
+          "a": 0,
+          "b": 1
+        },
+        "refreshes": {
+          "a": 3,
+          "b": 2
+        }
+      },
+      "counts": {
+        "queries": {
+          "a": 792,
+          "b": 785
+        },
+        "slow_readers": {
+          "a": 10,
+          "b": 10
+        },
+        "cancellations": {
+          "a": 10,
+          "b": 10
+        },
+        "refreshes": {
+          "a": 40,
+          "b": 39
+        }
+      }
+    }
+  ],
+  "resources": {
+    "samples": 591,
+    "peak_cgroup_bytes": 761511936,
+    "peak_cgroup_current_bytes": 701317120,
+    "peak_scratch_bytes": 228,
+    "peak_artifact_bytes": 83148198,
+    "query_refresh_overlap_samples": 16,
+    "cgroup_memory_events_delta": {
+      "low": 0,
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0
+    },
+    "final_cpu_stat": {
+      "usage_usec": 407313487,
+      "user_usec": 320482398,
+      "system_usec": 86831089,
+      "nice_usec": 0,
+      "nr_periods": 6136,
+      "nr_throttled": 308,
+      "throttled_usec": 15036167,
+      "nr_bursts": 0,
+      "burst_usec": 0
+    },
+    "final_cgroup_sample_after_shutdown": true
+  },
+  "resource_error_count": 0,
+  "client_failure_count": 0,
+  "checks": [
+    {
+      "broker_replicas": 3,
+      "containment_enabled": true,
+      "gateways": 2,
+      "managed_scratch": true,
+      "passed": true,
+      "seconds": 7.834,
+      "source_rows_per_tenant": 1000000,
+      "tenants": 2,
+      "test": "startup",
+      "workers": 2
+    },
+    {
+      "foreign_status_results_cancel_rejected": true,
+      "owner_exact_result": true,
+      "passed": true,
+      "seconds": 0.204,
+      "test": "tenant_isolation"
+    },
+    {
+      "cancel_recovered": true,
+      "passed": true,
+      "rejected_http": 429,
+      "seconds": 1.418,
+      "surviving_tenant_exact_result": true,
+      "test": "saturation"
+    },
+    {
+      "failed_attempt_result_rejected": true,
+      "passed": true,
+      "queued_before_fault": 2,
+      "queued_handles_preserved": true,
+      "replacement_gateway_ready": true,
+      "running_before_fault": 2,
+      "seconds": 1.577,
+      "surviving_gateway": 2,
+      "surviving_tenant_exact_result": true,
+      "test": "gateway_loss"
+    },
+    {
+      "failed_attempt_result_rejected": true,
+      "inherited_sandbox_lease_children": 1,
+      "passed": true,
+      "queued_before_fault": 2,
+      "queued_handles_preserved": true,
+      "running_before_fault": 2,
+      "running_crash_children": 0,
+      "same_worker_identity_recovered": true,
+      "scratch_directories_after_crash": 1,
+      "scratch_reclamation_checked_at_cleanup": true,
+      "seconds": 5.101,
+      "surviving_tenant_exact_result": true,
+      "test": "worker_loss"
+    },
+    {
+      "current_replicas_after_rejoin": 3,
+      "failed_attempt_result_rejected": true,
+      "lease_supervision": {
+        "schema": 1,
+        "deadline_seconds": 25.0,
+        "expiry_basis": "observed_exact_parent_exit_plus_configured_lease_upper_bound",
+        "original_query_deadlines_unchanged": true,
+        "query_resubmissions": 0,
+        "errors": [],
+        "nodes": [
+          {
+            "node": "a1",
+            "fenced_exit_observed": false,
+            "restart_attempts": 0,
+            "lease_seconds": 5.0,
+            "final_running_verified": true,
+            "attempts": []
+          },
+          {
+            "node": "b1",
+            "fenced_exit_observed": true,
+            "restart_attempts": 1,
+            "lease_seconds": 5.0,
+            "final_running_verified": true,
+            "attempts": [
+              {
+                "number": 1,
+                "started_seconds": 11.18988
+              }
+            ],
+            "exit_observed_seconds": 6.16806,
+            "lease_expiry_upper_bound_seconds": 11.16806,
+            "old_children_gone_seconds": 11.18988,
+            "restart_started_seconds": 11.18988,
+            "replacement_ready_seconds": 11.396861,
+            "same_configuration_verified": true,
+            "fresh_owner_claimed": true
+          }
+        ]
+      },
+      "passed": true,
+      "post_rejoin_queries_correct": true,
+      "queued_before_fault": 2,
+      "queued_handles_preserved": true,
+      "running_before_fault": 2,
+      "seconds": 12.828,
+      "surviving_tenant_exact_result": true,
+      "test": "broker_loss",
+      "unavailable_brokers_during_delivery": 1
+    },
+    {
+      "client_threads": 2,
+      "fault_phase_workload": "Normal clients briefly quiesce for control gates and explicit cancellation checks; each fault gate establishes its own two running and two queued tenant queries before disruption.",
+      "observed_seconds": 600.15,
+      "pace_seconds_after_query": 0.5,
+      "passed": true,
+      "query_refresh_overlap_samples": 16,
+      "scheduled_fault_gates": 4,
+      "seconds": 600.181,
+      "test": "mixed_load"
+    },
+    {
+      "counts": {
+        "a": 10,
+        "b": 10
+      },
+      "passed": true,
+      "seconds": 0.0,
+      "test": "slow_readers"
+    },
+    {
+      "counts": {
+        "a": 10,
+        "b": 10
+      },
+      "passed": true,
+      "seconds": 0.0,
+      "test": "cancellations"
+    },
+    {
+      "all_owned_brokers_healthy": true,
+      "all_owned_brokers_stopped": true,
+      "forced_application_kills": 0,
+      "intentional_fault_kills": 3,
+      "observed_live_descendants": 0,
+      "original_configurations_untouched": true,
+      "original_configurations_verified": true,
+      "passed": true,
+      "remaining_containment_records": 0,
+      "seconds": 2.616,
+      "test": "cleanup",
+      "worker_scratch_directories": 0
+    }
+  ]
+}
