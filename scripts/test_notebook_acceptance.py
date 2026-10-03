@@ -131,6 +131,38 @@ class NotebookAcceptanceTests(unittest.TestCase):
         self.assertEqual(env["KELVO_NOTEBOOK_SKIP_INSTALL"], "1")
         self.assertEqual(env["KELVO_BINARY"], "binary")
 
+    def test_public_bootstrap_removes_all_local_execution_overrides(self):
+        inherited = {"KELVO_BINARY": "old-binary", "KELVO_NOTEBOOK_HELPER": "old-helper",
+                     "KELVO_NOTEBOOK_SKIP_INSTALL": "1", "KELVO_REMOTE_URL": "https://private.invalid",
+                     "PYTHONOPTIMIZE": "2"}
+        with mock.patch.dict(os.environ, inherited):
+            env = gate.kernel_environment(Path("reference-binary"), Path("reference-helper"),
+                                          Path("verified-cache"), public_bootstrap=True)
+        for name in inherited:
+            self.assertNotIn(name, env)
+        self.assertEqual(env["KELVO_NOTEBOOK_DATA"], "verified-cache")
+        self.assertEqual(env["MPLBACKEND"], "module://matplotlib_inline.backend_inline")
+
+    def test_installer_success_requires_complete_frozen_public_execution(self):
+        cases = [{"status": "passed", "pins_verified": True} for _ in range(gate.NOTEBOOK_COUNT)]
+        good = {"notebooks": cases}
+        gate.summarize_cases(good, public_bootstrap=True, allow_unpinned=False)
+        self.assertTrue(good["release_installer_validated"])
+        self.assertTrue(good["complete_curriculum_passed"])
+        negative = [
+            (cases, False, False),
+            (cases, True, True),
+            (cases[:-1], True, False),
+            ([], True, False),
+            ([*cases[:-1], {"status": "failed", "pins_verified": True}], True, False),
+            ([*cases[:-1], {"status": "passed", "pins_verified": False}], True, False),
+        ]
+        for selected, public, unpinned in negative:
+            with self.subTest(count=len(selected), public=public, unpinned=unpinned):
+                report = {"notebooks": selected}
+                gate.summarize_cases(report, public_bootstrap=public, allow_unpinned=unpinned)
+                self.assertFalse(report["release_installer_validated"])
+
     def test_dataset_hash_mismatch_rejects_untrusted_cache(self):
         (self.root / "data.csv").write_text("changed")
         with self.assertRaises(gate.ValidationError):
@@ -138,7 +170,7 @@ class NotebookAcceptanceTests(unittest.TestCase):
 
     def test_setup_failure_still_has_nonzero_failure_evidence(self):
         args = Namespace(output_dir=Path("artifacts/failure"), binary=Path("missing"),
-                         data_cache=self.root, notebook=[], cell_timeout=1, allow_unpinned=True)
+                         data_cache=self.root, notebook=[], cell_timeout=1, allow_unpinned=True, public_bootstrap=False)
         with mock.patch.object(gate.importlib.metadata, "version", return_value="test"):
             result = gate.run(args, repo=self.root)
         report = json.loads((self.root / "artifacts/failure/report.json").read_text())

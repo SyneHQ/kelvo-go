@@ -113,18 +113,28 @@ def verify_execution(notebook):
         raise ValidationError("Executed notebook contains an error output")
 
 
-def kernel_environment(binary, helper, data_cache):
+def kernel_environment(binary, helper, data_cache, *, public_bootstrap=False):
     environment = os.environ.copy()
+    # Acceptance must execute notebook answer assertions even if the launcher
+    # environment normally requests optimized Python.
+    environment.pop("PYTHONOPTIMIZE", None)
     # Always exercise the self-contained route; inherited secrets must not turn
     # a validation run into requests against an operator's real database.
     for name in list(environment):
         if name.startswith("KELVO_REMOTE_"):
             environment.pop(name, None)
-    environment.update({
+    overrides = {
         "KELVO_BINARY": str(binary),
         "KELVO_NOTEBOOK_HELPER": str(helper),
-        "KELVO_NOTEBOOK_DATA": str(data_cache),
         "KELVO_NOTEBOOK_SKIP_INSTALL": "1",
+    }
+    if public_bootstrap:
+        for name in overrides:
+            environment.pop(name, None)
+    else:
+        environment.update(overrides)
+    environment.update({
+        "KELVO_NOTEBOOK_DATA": str(data_cache),
         "MPLBACKEND": "module://matplotlib_inline.backend_inline",
         "PYTHONUNBUFFERED": "1",
     })
@@ -240,7 +250,8 @@ def execute_case(path, notebook, *, directory, environment, cell_timeout, pins, 
 
 def parser():
     value = argparse.ArgumentParser(description=__doc__)
-    value.add_argument("--binary", required=True, type=Path)
+    value.add_argument("--binary", required=True, type=Path,
+                       help="Executed local override, or expected package reference in public-bootstrap mode")
     value.add_argument("--data-cache", required=True, type=Path,
                        help="Existing cache containing the three digest-pinned public datasets")
     value.add_argument("--output-dir", required=True, type=Path,
@@ -248,21 +259,36 @@ def parser():
     value.add_argument("--notebook", action="append", default=[],
                        help="A notebook basename for a focused partial rerun; default is all 15")
     value.add_argument("--cell-timeout", type=int, default=240)
+    value.add_argument("--public-bootstrap", action="store_true",
+                       help="Execute each default pip/helper/release download path without local overrides")
     value.add_argument("--allow-unpinned", action="store_true", help="Draft validation only; never publication-ready evidence")
     return value
+
+
+def summarize_cases(report, *, public_bootstrap, allow_unpinned):
+    cases = report["notebooks"]
+    all_passed = bool(cases) and all(case["status"] == "passed" for case in cases)
+    report["status"] = "passed" if all_passed else "failed"
+    report["complete_curriculum_passed"] = all_passed and len(cases) == NOTEBOOK_COUNT
+    report["frozen_curriculum_passed"] = (report["complete_curriculum_passed"] and not allow_unpinned
+                                          and all(case.get("pins_verified") for case in cases))
+    report["release_installer_validated"] = public_bootstrap and report["frozen_curriculum_passed"]
 
 
 def run(args, *, repo=None, execute=execute_notebook):
     repo = (Path(repo) if repo is not None else Path(__file__).resolve().parents[1]).resolve()
     output = prepare_output(repo, args.output_dir)
     report_path = output / "report.json"
+    public_bootstrap = args.public_bootstrap
     report = {"schema_version": 1, "started_at": now(), "status": "running", "notebooks": [],
               "expected_curriculum_count": NOTEBOOK_COUNT, "complete_curriculum_passed": False,
               "all_code_cells": {"expected": 0, "executed": 0},
               "frozen_curriculum_passed": False, "allow_unpinned": args.allow_unpinned,
               "release_installer_validated": False,
+              "bootstrap_mode": "public_bootstrap" if public_bootstrap else "local_override",
               "execution_boundary": "Kelvo CLI plus authenticated loopback API; isolated Python kernel per notebook",
-              "limitations": ["Uses explicitly supplied local binary and helper, not the public release installer",
+              "limitations": [("Exercises released helper/archive URLs in isolated Jupyter kernels, not Google's hosted Colab runtime"
+                               if public_bootstrap else "Uses explicitly supplied local binary and helper, not the public release installer"),
                               "Validates reproducible notebook answers, not production throughput or tenant isolation",
                               "Optional external gateway branch is disabled; authenticated local gateway branch executes"],
               "runtime": {"python": platform.python_version(), "system": platform.system(),
@@ -276,11 +302,13 @@ def run(args, *, repo=None, execute=execute_notebook):
         binary = args.binary.expanduser().resolve(strict=True)
         if not binary.is_file() or not os.access(binary, os.X_OK):
             raise ValidationError("Kelvo binary must be an executable regular file")
-        report["binary"] = {"name": binary.name, "sha256": sha256(binary), "bytes": binary.stat().st_size}
+        report["binary"] = {"name": binary.name, "sha256": sha256(binary), "bytes": binary.stat().st_size,
+                            "role": "expected_release_reference" if public_bootstrap else "executed_binary_override"}
         version = subprocess.run([str(binary), "version"], check=True, capture_output=True, text=True, timeout=15)
         report["binary"]["version"] = version.stdout.strip()[:1024]
         helper = repo / "notebooks" / "kelvo_notebooks.py"
-        report["helper"] = {"path": "notebooks/kelvo_notebooks.py", "sha256": sha256(helper)}
+        report["helper"] = {"path": "notebooks/kelvo_notebooks.py", "sha256": sha256(helper),
+                            "role": "expected_frozen_reference" if public_bootstrap else "executed_helper_override"}
         data_cache = args.data_cache.expanduser().resolve(strict=True)
         report["datasets"] = dataset_provenance(data_cache, load_helper(helper).DATASETS)
         paths = sorted((repo / "notebooks").glob("*.ipynb"))
@@ -292,7 +320,7 @@ def run(args, *, repo=None, execute=execute_notebook):
                 raise ValidationError("Focused selection must contain unique known notebook basenames")
             paths = [path for path in paths if path.name in requested]
         report["requested_notebooks"] = [path.name for path in paths]
-        environment = kernel_environment(binary, helper, data_cache)
+        environment = kernel_environment(binary, helper, data_cache, public_bootstrap=public_bootstrap)
         save_report(report_path, report)
         for path in paths:
             try:
@@ -306,11 +334,7 @@ def run(args, *, repo=None, execute=execute_notebook):
             report["notebooks"].append(case)
             save_report(report_path, report)
             print(f"{path.name}: {case['status']}", flush=True)
-        all_passed = bool(report["notebooks"]) and all(case["status"] == "passed" for case in report["notebooks"])
-        report["status"] = "passed" if all_passed else "failed"
-        report["complete_curriculum_passed"] = all_passed and len(paths) == NOTEBOOK_COUNT
-        report["frozen_curriculum_passed"] = (report["complete_curriculum_passed"] and not args.allow_unpinned
-                                        and all(case.get("pins_verified") for case in report["notebooks"]))
+        summarize_cases(report, public_bootstrap=public_bootstrap, allow_unpinned=args.allow_unpinned)
     except Exception as error:
         report["status"] = "failed"
         report["error"] = public_failure(error)

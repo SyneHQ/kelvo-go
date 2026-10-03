@@ -303,8 +303,56 @@ class _ReadDeadline:
             connection.close()
 
 
+class _StrictHTTPResponse(http.client.HTTPResponse):
+    """Reject truncated or malformed chunk framing tolerated by the stdlib."""
+    def _read_next_chunk_size(self):
+        line = self.fp.readline(8193)
+        if len(line) > 8192 or not line.endswith(b"\r\n"):
+            raise ValueError("Invalid HTTP chunk size line")
+        size, separator, extension = line[:-2].partition(b";")
+        if not re.fullmatch(rb"[0-9a-fA-F]{1,16}", size):
+            raise ValueError("Invalid HTTP chunk size")
+        # Extensions do not change framing. Keep ignored text bounded and free
+        # of control bytes; the length and terminating CRLF remain authoritative.
+        if separator and (not extension.strip() or any(value < 32 and value != 9 or value == 127 for value in extension)):
+            raise ValueError("Invalid HTTP chunk extension")
+        return int(size, 16)
+
+    def _read_and_discard_trailer(self):
+        total = 0
+        for _ in range(101):
+            line = self.fp.readline(8193)
+            total += len(line)
+            if not line or not line.endswith(b"\r\n"):
+                raise http.client.IncompleteRead(b"")
+            if len(line) > 8192 or total > 65536:
+                raise ValueError("HTTP trailers exceed metadata budget")
+            if line == b"\r\n":
+                return
+            if not re.fullmatch(rb"[!#$%&'*+.^_`|~0-9A-Za-z-]+:[\t\x20-\x7e\x80-\xff]*\r\n", line):
+                raise ValueError("Invalid HTTP trailer")
+            if line.split(b":", 1)[0].lower() in (b"content-length", b"transfer-encoding", b"kelvo-result-completion"):
+                raise ValueError("Protocol headers are not accepted in HTTP trailers")
+        raise ValueError("Too many HTTP trailers")
+
+    def _get_chunk_left(self):
+        remaining = self.chunk_left
+        if not remaining:
+            if remaining is not None and self._safe_read(2) != b"\r\n":
+                raise ValueError("Invalid HTTP chunk separator")
+            remaining = self._read_next_chunk_size()
+            if remaining == 0:
+                self._read_and_discard_trailer()
+                self._close_conn()
+                remaining = None
+            self.chunk_left = remaining
+        return remaining
+
+
 class _DeadlineConnection:
     """Track socket assignment before HTTPSConnection starts a TLS handshake."""
+    response_class = _StrictHTTPResponse
+
     def __init__(self, *args, read_deadline, **kwargs):
         self._read_deadline = read_deadline
         self._deadline_socket = None
@@ -366,6 +414,27 @@ class _DeadlineResponse:
         self._read_deadline.check()
         return result
 
+    def require_complete_body(self, downloaded):
+        """Require HTTP framing completion before using a gated Arrow EOS receipt."""
+        self._read_deadline.check()
+        encodings = self.headers.get_all("Transfer-Encoding", [])
+        lengths = self.headers.get_all("Content-Length", [])
+        if encodings:
+            if lengths or len(encodings) != 1 or encodings[0].strip().lower() != "chunked":
+                raise ValueError("Ambiguous or unsupported HTTP result framing")
+            if not self._response.chunked or self._response.chunk_left is not None:
+                raise ValueError("Incomplete chunked HTTP result framing")
+        elif lengths:
+            if len(lengths) != 1 or not re.fullmatch(r"[0-9]{1,20}", lengths[0].strip()):
+                raise ValueError("Invalid HTTP result content length")
+            if downloaded != int(lengths[0].strip()):
+                raise ValueError("Incomplete HTTP result content length")
+        # Close-delimited bodies require EOF; fixed/chunked bodies must have
+        # consumed their declared length or terminating chunk. A sized read can
+        # otherwise silently return EOF before Content-Length has been met.
+        if not self._response.isclosed():
+            raise ValueError("Incomplete HTTP result framing")
+
     def close(self):
         try:
             self._response.close()
@@ -418,7 +487,7 @@ def _endpoint(url):
 
 
 def remote_query(url, token, request, *, timeout=120, max_bytes=67108864):
-    """Consume Arrow, require terminal success, and reject partial/oversize data.
+    """Consume complete Arrow and require durable or recorded terminal success.
 
     max_bytes bounds both encoded download and accumulated logical Arrow buffers;
     it is not a hard native allocation/RSS bound during IPC decompression. Connect
@@ -426,6 +495,12 @@ def remote_query(url, token, request, *, timeout=120, max_bytes=67108864):
     watchdog bounds socket I/O, including headers and slow response bodies.
     Synchronous stdlib DNS/address connection cannot be interrupted before a
     socket is available; the timeout is not a hard DNS-resolution bound.
+
+    Only the exact `Kelvo-Result-Completion: durable-eos-v1` gateway protocol
+    allows a reclaimed (404) status handle after complete HTTP framing and one
+    fully validated Arrow stream. Its EOS is withheld until durable success.
+    The header alone proves nothing; an available terminal failure still wins.
+    Standalone/older servers without the receipt require recorded success.
     """
     import pyarrow as pa
     import pyarrow.ipc as ipc
@@ -447,10 +522,13 @@ def remote_query(url, token, request, *, timeout=120, max_bytes=67108864):
         return _deadline_open(req, deadline)
 
     def read_json(response):
+        raw = bytearray()
         with response:
-            raw = response.read((1 << 20) + 1)
-        if len(raw) > 1 << 20:
-            raise ValueError("Gateway metadata exceeded byte budget")
+            while block := response.read(min(64 << 10, (1 << 20) + 1 - len(raw))):
+                raw.extend(block)
+                if len(raw) > 1 << 20:
+                    raise ValueError("Gateway metadata exceeded byte budget")
+            response.require_complete_body(len(raw))
         return json.loads(raw)
 
     try:
@@ -463,6 +541,10 @@ def remote_query(url, token, request, *, timeout=120, max_bytes=67108864):
             with call(f"/v1/queries/{query_id}/results") as response:
                 if response.headers.get_content_type() != "application/vnd.apache.arrow.stream":
                     raise ValueError("Gateway did not return an Arrow stream")
+                receipts = response.headers.get_all("Kelvo-Result-Completion", [])
+                if len(receipts) > 1:
+                    raise ValueError("Ambiguous HTTP completion receipt")
+                durable_eos = receipts == ["durable-eos-v1"]
                 while block := response.read(256 << 10):
                     if time.monotonic() >= deadline:
                         raise TimeoutError("Notebook query deadline expired")
@@ -470,17 +552,9 @@ def remote_query(url, token, request, *, timeout=120, max_bytes=67108864):
                     if downloaded > max_bytes:
                         raise ValueError("Encoded result exceeds notebook byte budget")
                     encoded.write(block)
-            # Arrow EOF alone does not establish successful execution.
-            while True:
-                status = read_json(call(f"/v1/queries/{query_id}"))
-                state = status.get("state")
-                if state == "succeeded":
-                    break
-                if state in ("failed", "cancelled", "expired"):
-                    raise RuntimeError("Kelvo query did not succeed; partial results discarded")
-                if state not in ("queued", "running", "streaming", "assigned"):
-                    raise ValueError("Unknown gateway query state")
-                time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+                response.require_complete_body(downloaded)
+            # Validate the complete transport and Arrow payload before looking
+            # at status. A header never upgrades an incomplete or corrupt stream.
             if downloaded < 8:
                 raise ValueError("Incomplete Arrow stream")
             encoded.seek(-8, 2)
@@ -498,9 +572,28 @@ def remote_query(url, token, request, *, timeout=120, max_bytes=67108864):
             if encoded.tell() != downloaded:
                 raise ValueError("Unexpected bytes after Arrow stream")
             table = pa.Table.from_batches(batches, schema=schema)
-            if status.get("stats", {}).get("rows") != table.num_rows:
-                raise ValueError("Terminal row count does not match the complete result")
-            return table
+            while True:
+                try:
+                    status = read_json(call(f"/v1/queries/{query_id}"))
+                except urllib.error.HTTPError as error:
+                    # The result's validated EOS certifies durable success only
+                    # for the explicitly recognized gateway protocol. Capacity
+                    # reclamation can remove that handle before this status read.
+                    # _deadline_open already closed the HTTP error and watchdog.
+                    if error.code == 404 and durable_eos:
+                        return table
+                    raise
+                state = status.get("state")
+                if state == "succeeded":
+                    rows = status.get("stats", {}).get("rows")
+                    if isinstance(rows, bool) or not isinstance(rows, int) or rows != table.num_rows:
+                        raise ValueError("Terminal row count does not match the complete result")
+                    return table
+                if state in ("failed", "cancelled", "expired"):
+                    raise RuntimeError("Kelvo query did not succeed; partial results discarded")
+                if state not in ("queued", "running", "streaming", "assigned"):
+                    raise ValueError("Unknown gateway query state")
+                time.sleep(min(0.05, max(0, deadline - time.monotonic())))
     except BaseException:
         # Best effort only, with its own short timeout after the main deadline.
         if query_id and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", query_id):
