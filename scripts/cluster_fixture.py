@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import secrets
+import shutil
 import signal
 import subprocess
 import tarfile
@@ -233,14 +234,20 @@ def stop():
     time.sleep(1)
 
 
-def provision():
+def provision(nats_archive=None):
     DIR.mkdir(parents=True, exist_ok=True)
     DIR.chmod(0o700)
     if (DIR / "manifest.json").exists():
         raise SystemExit("Fixture exists; stop it and use its existing configuration or a clean checkout")
     os.umask(0o077)
     archive = DIR / "nats.tar.gz"
-    archive.write_bytes(urllib.request.urlopen(f"https://github.com/nats-io/nats-server/releases/download/v{VERSION}/nats-server-v{VERSION}-linux-amd64.tar.gz", timeout=60).read())
+    if nats_archive is None:
+        archive.write_bytes(urllib.request.urlopen(f"https://github.com/nats-io/nats-server/releases/download/v{VERSION}/nats-server-v{VERSION}-linux-amd64.tar.gz", timeout=60).read())
+    else:
+        source = Path(nats_archive)
+        if source.is_symlink() or not source.is_file() or not 0 < source.stat().st_size <= 64 << 20:
+            raise SystemExit("Cached NATS archive must be a bounded regular file")
+        shutil.copyfile(source, archive)
     if hashlib.sha256(archive.read_bytes()).hexdigest() != DIGEST:
         raise SystemExit("NATS release checksum mismatch")
     with tarfile.open(archive) as tar:
@@ -354,9 +361,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("action", choices=["provision", "stop", "test-store"])
     parser.add_argument("--go", default="go", dest="go_binary", help="Go binary for test-store (use the VM toolchain path)")
+    parser.add_argument("--nats-archive", type=Path, help="Use a cached checksum-pinned NATS archive without downloads")
     args = parser.parse_args()
     if args.action == "provision":
-        provision()
+        provision(args.nats_archive)
     elif args.action == "stop":
         stop()
     else:
