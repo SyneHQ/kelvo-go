@@ -231,6 +231,17 @@ func nextRefreshAt(snapshot Snapshot, interval time.Duration) time.Time {
 // process has exited. Child processes see immutable Parquet paths, never the
 // acceleration directory, refresh SQL, or credentials for the original source.
 func Resolve(ctx context.Context, c catalog.Config, request query.Request) ([]catalog.Source, []query.AccelerationVersion, func(), error) {
+	return resolve(ctx, c, request, resolveResources{openBackend: OpenBackend, openRanges: OpenObjectRanges})
+}
+
+// Explicit dependencies keep the complete lease/range lifetime testable without
+// provider credentials. The exported entrypoint always uses the real backends.
+type resolveResources struct {
+	openBackend func(catalog.AccelerationConfig) (Backend, error)
+	openRanges  func(context.Context, catalog.ObjectStorage, []Snapshot) (map[string]catalog.Source, func(), error)
+}
+
+func resolve(ctx context.Context, c catalog.Config, request query.Request, resources resolveResources) ([]catalog.Source, []query.AccelerationVersion, func(), error) {
 	ids := request.Sources
 	if request.Mode == "native" {
 		ids = []string{request.ConnectionID}
@@ -264,7 +275,7 @@ func Resolve(ctx context.Context, c catalog.Config, request query.Request) ([]ca
 			return nil, nil, func() {}, query.NewError("INVALID_ARGUMENT", "Accelerated datasets require federated mode")
 		}
 		if store == nil {
-			store, err = OpenBackend(*c.Acceleration)
+			store, err = resources.openBackend(*c.Acceleration)
 			if err != nil {
 				closeAll()
 				return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Accelerated dataset storage is unavailable")
@@ -345,10 +356,24 @@ func Resolve(ctx context.Context, c catalog.Config, request query.Request) ([]ca
 	}
 	if len(objects) > 0 {
 		var ranges map[string]catalog.Source
-		ranges, bridgeClose, err = OpenObjectRanges(ctx, *c.Acceleration.ObjectStorage, objects)
+		ranges, bridgeClose, err = resources.openRanges(ctx, *c.Acceleration.ObjectStorage, objects)
 		if err != nil {
 			closeAll()
 			return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Object snapshot range reader is unavailable")
+		}
+		for _, snapshot := range objects {
+			dataset, configured := c.Dataset(snapshot.Dataset)
+			resolved, minted := ranges[snapshot.Dataset]
+			if !configured || !minted {
+				closeAll()
+				return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Object snapshot provenance is unavailable")
+			}
+			resolved, err = withObjectSnapshotProvenance(resolved, snapshot, dataset)
+			if err != nil {
+				closeAll()
+				return nil, nil, func() {}, query.NewError("DATASET_UNAVAILABLE", "Object snapshot provenance is unavailable")
+			}
+			ranges[snapshot.Dataset] = resolved
 		}
 		for i, source := range sources {
 			if resolved, ok := ranges[source.ID]; ok {
