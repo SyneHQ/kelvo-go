@@ -136,15 +136,21 @@ func LoadNode(path string) (NodeConfig, error) {
 		}
 	}
 	if c.Secrets != nil {
-		for key, path := range c.Secrets.Files {
+		for _, key := range c.Secrets.Keys() {
 			if err := catalog.ValidateEnvironment(key); err != nil {
 				return c, errors.New("invalid secret environment reference")
 			}
+		}
+		for key, path := range c.Secrets.Files {
 			c.Secrets.Files[key] = relativePath(base, path)
+		}
+		for name, provider := range c.Secrets.Providers {
+			provider.CredentialsFile = relativePath(base, provider.CredentialsFile)
+			c.Secrets.Providers[name] = provider
 		}
 		provider, err := secrets.New(*c.Secrets)
 		if err != nil {
-			return c, errors.New("invalid file secret provider configuration")
+			return c, errors.New("invalid source secret provider configuration")
 		}
 		_ = provider.Close()
 	}

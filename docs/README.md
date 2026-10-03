@@ -31,7 +31,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Enforce native process-tree limits | [Linux containment](process-containment.md) |
 | Configure budgets, probes, quotas and drain | [Operations](operations.md) |
 | Restrict users and services | [Principal source grants](principal-access.md) |
-| Rotate credentials | [API keys](gateway-key-rotation.md) · [Source files](operations.md#file-based-source-credential-rotation) · [TLS identity](tls-identity-rotation.md) · [TLS trust](tls-trust-rotation.md) |
+| Rotate credentials | [API keys](gateway-key-rotation.md) · [Source files](operations.md#file-based-source-credential-rotation) · [Cloud source secrets](cloud-secrets.md) · [TLS identity](tls-identity-rotation.md) · [TLS trust](tls-trust-rotation.md) |
 | Inspect query/refresh outcomes | [Tracing](tracing.md) · [Passive source health](source-health.md) · [Native errors](native-error-classification.md) |
 | Recover failed workers and scratch | [Worker failures](worker-failures.md) · [Managed scratch](worker-scratch.md) |
 | Understand internal export controls | [Storage API](export-storage.md) · [Workload admission](workload-admission.md) |

@@ -10,7 +10,7 @@ Status reviewed 3 October 2026. This is a capability checklist, not production c
 | Opt-in Linux process-tree memory, CPU and PID limits | Deployment-specific headroom, restart recovery and sustained fault/load validation |
 | Independent probes, dataset readiness and phased drain | Rolling cluster upgrades and multi-hour fault/load campaigns |
 | Metrics, bounded history, local tracing and passive source observations | Distributed attribution, durable audit and instrumentation-cost measurements |
-| Selected-secret forwarding, credential files, API-key and TLS rotation | Live-provider coverage, external secret providers and coordinated enrollment/revocation |
+| Selected-secret forwarding, files, opt-in cloud secrets, API-key and TLS rotation | Live-provider IAM/rotation coverage and coordinated enrollment/revocation |
 | Managed Linux scratch with inherited leases | Deployment-specific disk capacity and recovery validation |
 | CI, 15 executed notebooks, process-loss and snapshot-upgrade gates | Recurring real-provider tests on each release candidate |
 
