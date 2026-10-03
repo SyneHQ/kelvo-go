@@ -217,9 +217,22 @@ plus at most 16 historical entries, rather than listing storage. See
 [remote recovery and protocol upgrades](operations.md#remote-generation-inventory-and-restore).
 Schema evolution never relaxes restore: old-policy fingerprints and backward
 schema changes remain rejected. Recovery requires a verifiable current generation;
-repair of a corrupt current payload is a separate procedure. Keep verified backups
-of manifests, descriptors and referenced data together; this feature does not
-establish measured RTO/RPO.
+repair of a corrupt current payload is a separate procedure. Use [verified local backups](snapshot-backup.md) for separate recovery roots.
+Remote backup remains an operator-managed procedure. Generation restore alone
+does not establish measured RTO/RPO.
+
+## Verified local snapshot backups
+
+On Linux, `kelvo accelerate backup --config kelvo.yml --dataset sales_snapshot --destination /absolute/new-root` copies one verified current generation into a
+new private root. It preserves schema, checksums, authorization fingerprint and
+refresh time, including stale data. The configured snapshot byte budget also
+bounds the copy. Source queries and database secrets are not needed.
+
+Recovery uses the same command with a catalog pointing at the backup and another
+new destination; the operator explicitly switches the service afterward. Existing
+roots are never overwritten, and object-storage backup is unsupported. See the
+[backup and recovery guide](snapshot-backup.md) for private-directory requirements,
+per-dataset scope, error ambiguity after publication and freshness checks.
 
 ## Durable refresh failures
 

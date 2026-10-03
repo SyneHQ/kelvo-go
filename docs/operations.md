@@ -116,6 +116,17 @@ prove a full checksum, decoded Parquet schema, source connectivity or sufficient
 execution capacity. Use explicit verification and recovery checks for payload
 integrity; a copied schema hash in diagnostics is not fresh schema validation.
 
+## Local snapshot backups
+
+Use `kelvo accelerate backup --config kelvo.yml --dataset orders_daily --destination /absolute/new-root`
+for a verified copy of one current local generation on Linux. The destination
+must be absent under an existing private parent; the active catalog supplies the
+authorization fingerprint and byte budget. Recovery copies from that backup into
+another fresh root before an explicit operator configuration switch. Refresh time
+is preserved, so integrity verification does not make stale data ready. A failed
+command may have published a destination before a directory-sync error; do not
+delete or overwrite it automatically. Follow the [backup and recovery procedure](snapshot-backup.md).
+
 ## Remote generation inventory and restore
 
 The existing operator CLI now supports both local and remote backends:

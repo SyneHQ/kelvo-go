@@ -1,0 +1,83 @@
+{
+  "artifacts": {
+    "binary_sha256": "7986a6593a1d6e84e271a7416d5318c0d21d845ab6281cca575f533ec21a3dac",
+    "launcher_sha256": "cb09cd6b1bcf29a50b7436e02f3aebc9c2f47b1cca74a27c4fe5a7b9ec2bfb6f",
+    "runner_sha256": "053810143642a94ab40025a322af9077726b9ef4281e206b0c753f35175c1383"
+  },
+  "checked_at": "2026-10-03T04:20:34.301733+00:00",
+  "checks": [
+    {
+      "authorization_and_staleness_enforced": true,
+      "backup_seconds": 0.8654970170173328,
+      "encoded_bytes": 120907846,
+      "exact_typed_values_and_nulls": true,
+      "existing_destination_preserved": true,
+      "fixture_rows_not_in_backup": 7,
+      "layout": "single",
+      "lost_live_refreshed_at": "2026-10-03T04:20:43.366882817Z",
+      "parts": 1,
+      "passed": true,
+      "recovered_refreshed_at": "2026-10-03T04:20:37.979617081Z",
+      "recovery_copy_seconds": 0.8653746460040566,
+      "recovery_through_verified_first_query_seconds": 2.6106254660116974,
+      "rows": 1000000,
+      "source_and_live_store_absent_during_recovery": true
+    },
+    {
+      "authorization_and_staleness_enforced": true,
+      "backup_seconds": 1.8186852659855504,
+      "encoded_bytes": 122068203,
+      "exact_typed_values_and_nulls": true,
+      "existing_destination_preserved": true,
+      "fixture_rows_not_in_backup": 7,
+      "layout": "multipart",
+      "lost_live_refreshed_at": "2026-10-03T04:20:59.494784903Z",
+      "parts": 145,
+      "passed": true,
+      "recovered_refreshed_at": "2026-10-03T04:20:51.904248377Z",
+      "recovery_copy_seconds": 1.9187597520067357,
+      "recovery_through_verified_first_query_seconds": 3.768702914007008,
+      "rows": 1000000,
+      "source_and_live_store_absent_during_recovery": true
+    },
+    {
+      "authorization_and_staleness_enforced": true,
+      "backup_seconds": 0.06393141599255614,
+      "encoded_bytes": 712,
+      "exact_typed_values_and_nulls": true,
+      "existing_destination_preserved": true,
+      "fixture_rows_not_in_backup": 7,
+      "layout": "single_empty",
+      "lost_live_refreshed_at": "2026-10-03T04:21:05.825229607Z",
+      "parts": 1,
+      "passed": true,
+      "recovered_refreshed_at": "2026-10-03T04:21:05.648042255Z",
+      "recovery_copy_seconds": 0.06403213398880325,
+      "recovery_through_verified_first_query_seconds": 0.1602509619842749,
+      "rows": 0,
+      "source_and_live_store_absent_during_recovery": true
+    },
+    {
+      "authorization_and_staleness_enforced": true,
+      "backup_seconds": 0.0640415140078403,
+      "encoded_bytes": 712,
+      "exact_typed_values_and_nulls": true,
+      "existing_destination_preserved": true,
+      "fixture_rows_not_in_backup": 7,
+      "layout": "multipart_empty",
+      "lost_live_refreshed_at": "2026-10-03T04:21:06.424377343Z",
+      "parts": 1,
+      "passed": true,
+      "recovered_refreshed_at": "2026-10-03T04:21:06.241783732Z",
+      "recovery_copy_seconds": 0.06400459201540798,
+      "recovery_through_verified_first_query_seconds": 0.14406974302255549,
+      "rows": 0,
+      "source_and_live_store_absent_during_recovery": true
+    }
+  ],
+  "kernel_release": "6.12.95+deb12-cloud-amd64",
+  "passed": true,
+  "private_temp_cleanup": true,
+  "pyarrow_version": "25.0.1",
+  "scope": "Local synthetic snapshot copy/recovery with actual sandboxed query. Timings include process startup, verification and exact result comparison; warm OS cache, no service failover or cold-cache control. Row loss is a fixture example, not source transaction RPO."
+}

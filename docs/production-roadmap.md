@@ -81,9 +81,17 @@ by real planner tests. Opt-in [CSV buffers](csv-memory.md) also let operators
 reduce scanner allocation with an explicit supported line-size policy. Both
 features preserve the existing execution and authorization boundaries.
 
+[Verified local snapshot backup/recovery](snapshot-backup.md) now copies one
+current dataset to a new private root, preserving its authorization fingerprint,
+exact payloads and original age. Atomic no-replace publication, source leases and
+explicit post-publication uncertainty protect recovery while refreshes continue.
+The sandboxed recovery runner deletes only its generated source and live store,
+then compares every recovered Arrow value, type and NULL. This is a local
+correctness gate; cross-host replication and service failover remain separate.
+
 Provider-wide conformance/rotation coverage, full queue/stage timing,
 export-specific admission, safe remote GC,
-backup recovery and sustained fault/capacity gates remain pending. The validation
+remote backup recovery and sustained fault/capacity gates remain pending. The validation
 records in [operations](operations.md) identify their tested runtime commits;
 implementation status does not extend those results to later unvalidated changes.
 No new throughput results are claimed.

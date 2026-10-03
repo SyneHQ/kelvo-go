@@ -65,6 +65,8 @@ bin/kelvo query --config examples/acceleration.yml --sources sales_fast \
 
 Snapshots default to local storage. Opt into [S3, R2, GCS or Azure Blob](docs/object-storage.md) for shared object storage with separate reader/publisher credentials and bounded range reads. MongoDB refreshes also accept read-only aggregation pipelines in YAML.
 
+Linux local snapshots support [verified backups and recovery](docs/snapshot-backup.md) into a new private root, preserving schema, authorization fingerprints and the original refresh time.
+
 This is full-refresh dataset acceleration. Incremental loading, CDC and query-result caching remain separate work.
 
 ## Security and cluster operation
