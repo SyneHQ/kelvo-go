@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "passed": true,
+  "source": "9cad90497daa23b23543a8dbbea622449e313ecf",
+  "archive_sha256": "36b0002af8fa1959c92fa1696b237e04c49bd2bc602cee58dc414448264c9466",
+  "source_files": 842,
+  "source_unchanged": true,
+  "environment": {"platform": "dedicated Linux x86_64 VM", "cpu_quota": 1, "memory_max_bytes": 1073741824, "swap_max_bytes": 0, "private_network": true, "no_new_privileges": true, "capabilities": []},
+  "prior_code_control": {
+    "observer_sha256": "bcd3857e77c33bdd48a297236dbc01764f7dd47ee6cd878fbb8a0e660df0b699",
+    "command": "python -m unittest -v test_node_capacity_worker.CapacityControls.test_digest_uses_bounded_reads_and_preserves_digest",
+    "exit": 1,
+    "expected_failure": "The prior whole-file implementation requests read(-1), violating the test's positive read bound.",
+    "log_sha256": "5bae53da045c2b1825985199eff9b456f3ccc08792192648acfb15c3135e30ce"
+  },
+  "corrected_controls": {
+    "command": "python -m unittest -v test_node_capacity_worker test_node_capacity_client test_summarize_node_capacity",
+    "tests": 17,
+    "exit": 0,
+    "log_sha256": "4e10a1561920e8374f8bb83434b4e856ed517b2511588bd82599effcee5de53c",
+    "coverage": [
+      "Identity hashing requests at most 1 MiB per read and retains the expected digest",
+      "Node shutdown and final resource sample precede identity verification",
+      "A surviving worker, raised final-sample error or recorded sample read error prevents hashing",
+      "Configuration, binary and catalog mutations remain failures after sampling ends",
+      "Missing input files fail independently without overwriting an earlier process failure",
+      "Existing sample-gap, metrics, cleanup, exact-result and matched-profile gates remain enforced"
+    ]
+  },
+  "service": {"result": "success", "exit": 0, "state": "inactive/dead", "cgroup_absent": true},
+  "measurement_boundary": "The final resource snapshot is taken after node/worker shutdown and before post-run identity verification. Post-run hashing is excluded from reported active/shutdown counters, peaks and sampling gaps; startup setup remains included in whole-cgroup counters. Old-observer reports must not be pooled with new-observer pairs.",
+  "scope": "Observer/client/reconciler unit controls; no source database, query workload or capacity campaign was started. Ordering uses controlled process/sample fixtures. This does not establish successful micro-VM capacity or explain every part of the earlier sampling gaps."
+}

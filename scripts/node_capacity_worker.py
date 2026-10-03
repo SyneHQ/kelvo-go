@@ -28,7 +28,11 @@ MIB = 1 << 20
 
 
 def digest(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    value = hashlib.sha256()
+    with Path(path).open('rb') as source:
+        for block in iter(lambda: source.read(1 << 20), b''):
+            value.update(block)
+    return value.hexdigest()
 
 
 def private_json(path):
@@ -193,9 +197,54 @@ def valid_profile(report):
         return False
 
 
+def verify_final_inputs(directory, config, config_hash, binary, binary_hash, before_inputs, report):
+    checks = [('config_unchanged', lambda: digest(config) == config_hash),
+              ('binary_unchanged', lambda: digest(binary) == binary_hash),
+              ('inputs_unchanged', lambda: input_identity(directory) == before_inputs)]
+    for name, check in checks:
+        try:
+            report[name] = check()
+        except Exception as error:
+            report[name] = False
+            report.setdefault('identity_verification_errors', []).append({'check': name, 'error': type(error).__name__})
+    if not all(report[name] for name, _ in checks):
+        report.setdefault('failure', 'INPUT_IDENTITY_VERIFICATION_FAILED')
+
+
+def finish_observation(process, sampler, profile, report, verify_inputs):
+    if process is not None:
+        if process.poll() is None:
+            process.send_signal(signal.SIGTERM)
+            deadline = time.monotonic() + 12
+            while process.poll() is None and time.monotonic() < deadline:
+                if sampler is not None:
+                    sampler.sample()
+                time.sleep(.1)
+            if process.poll() is None:
+                report['forced_node_kill'] = True
+                process.kill()
+                process.wait(timeout=3)
+        report['node_exit_code'] = process.returncode
+    if sampler is not None:
+        report['resources'] = sampler.final()
+        report['scratch_directories_remaining'] = len(list((profile / 'scratch').glob('kelvo-worker-*')))
+        report['containment_records_remaining'] = sum(path.name != '.kelvo-containment.lock' for path in (profile / 'containment').iterdir())
+        if report['resources'].get('read_errors'):
+            report.setdefault('failure', 'RESOURCE_OBSERVATION_FAILED')
+            return
+        if report['resources']['live_owned_processes_after_shutdown']:
+            report.setdefault('failure', 'OWNED_PROCESS_SURVIVED_SHUTDOWN')
+            return
+    # Identity hashing is outside the active and shutdown sampling interval.
+    # A missing final sample or an unreaped node must never reach this stage.
+    if process is not None and process.poll() is not None and sampler is not None:
+        verify_inputs()
+
+
 def inside(args, directory, profile):
     group = Path('/sys/fs/cgroup/system.slice') / (args.unit + '.service')
-    report = {'interrupted': False, 'metrics_enabled': args.metrics == 'enabled', 'forced_node_kill': False}
+    report = {'interrupted': False, 'metrics_enabled': args.metrics == 'enabled', 'forced_node_kill': False,
+              'config_unchanged': False, 'binary_unchanged': False, 'inputs_unchanged': False}
     process = sampler = None
     try:
         ops.require(Path('/proc/self/cgroup').read_text().strip() == '0::/system.slice/' + args.unit + '.service', 'OWNED_SERVICE_REQUIRED')
@@ -224,6 +273,7 @@ def inside(args, directory, profile):
         env.update(PATH='/usr/local/bin:/usr/bin:/bin', HOME=str(profile), TMPDIR=str(scratch), GOMAXPROCS='1', LANG='C.UTF-8')
         binary = directory / 'bin/kelvo'
         binary_hash = digest(binary)
+        report['config_sha256'], report['binary_sha256'] = config_hash, binary_hash
         sampler = Samples(group, scratch, binary)
         with (profile / 'node.log').open('w') as log:
             process = subprocess.Popen([str(binary), 'node', '--config', str(config), '--drain-timeout', '8s'], env=env, cwd=profile, stdout=log, stderr=subprocess.STDOUT)
@@ -236,31 +286,16 @@ def inside(args, directory, profile):
                 time.sleep(.1)
             report['stop_file_observed'] = (profile / 'stop').is_file()
             report['elapsed_seconds'] = time.monotonic() - started
-            report['config_unchanged'] = digest(config) == config_hash
-            report['binary_unchanged'] = digest(binary) == binary_hash
-            report['inputs_unchanged'] = input_identity(directory) == before_inputs
-            report['config_sha256'], report['binary_sha256'] = config_hash, binary_hash
     except BaseException as error:
         report['interrupted'] = isinstance(error, (KeyboardInterrupt, InterruptedError))
         report['failure'] = str(error) if isinstance(error, ops.AcceptanceError) else type(error).__name__
     finally:
-        if process is not None:
-            if process.poll() is None:
-                process.send_signal(signal.SIGTERM)
-                deadline = time.monotonic() + 12
-                while process.poll() is None and time.monotonic() < deadline:
-                    if sampler is not None:
-                        sampler.sample()
-                    time.sleep(.1)
-                if process.poll() is None:
-                    report['forced_node_kill'] = True
-                    process.kill()
-                    process.wait(timeout=3)
-            report['node_exit_code'] = process.returncode
-        if sampler is not None:
-            report['resources'] = sampler.final()
-            report['scratch_directories_remaining'] = len(list((profile / 'scratch').glob('kelvo-worker-*')))
-            report['containment_records_remaining'] = sum(path.name != '.kelvo-containment.lock' for path in (profile / 'containment').iterdir())
+        try:
+            finish_observation(process, sampler, profile, report,
+                               lambda: verify_final_inputs(directory, config, config_hash, binary, binary_hash, before_inputs, report))
+        except BaseException as error:
+            report['interrupted'] = report['interrupted'] or isinstance(error, (KeyboardInterrupt, InterruptedError))
+            report.setdefault('failure', str(error) if isinstance(error, ops.AcceptanceError) else type(error).__name__)
         save(profile / 'inside.json', report)
     return 0 if not report.get('failure') and report.get('node_exit_code') == 0 else 1
 
