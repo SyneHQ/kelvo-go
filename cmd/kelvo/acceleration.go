@@ -16,6 +16,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/cluster"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/tracing"
@@ -24,10 +25,13 @@ import (
 )
 
 type refreshOptions struct {
-	ScratchRoot  *worker.ScratchRoot
-	SourceHealth *telemetry.SourceHealth
-	Admission    worker.SourceAdmitter
-	Secrets      worker.SecretResolver
+	Containment           *containment.Manager
+	ContainmentBudget     containment.Budget
+	ResourceOverheadBytes int64
+	ScratchRoot           *worker.ScratchRoot
+	SourceHealth          *telemetry.SourceHealth
+	Admission             worker.SourceAdmitter
+	Secrets               worker.SecretResolver
 }
 
 func refreshFactory(sandbox string, options ...refreshOptions) acceleration.ExecutorFactory {
@@ -40,6 +44,9 @@ func refreshFactory(sandbox string, options ...refreshOptions) acceleration.Exec
 				e.Secrets = options[0].Secrets
 				e.SourceHealth = options[0].SourceHealth
 				e.ScratchRoot = options[0].ScratchRoot
+				e.Containment = options[0].Containment
+				e.ContainmentBudget = options[0].ContainmentBudget
+				e.ResourceOverheadBytes = options[0].ResourceOverheadBytes
 			}
 		}
 		return e, err
@@ -185,8 +192,8 @@ func backupCLIError(snapshot acceleration.Snapshot, err error) error {
 // Cluster dispatch uses a tenant's existing authenticated JetStream account.
 // Messages contain dataset identity and definition fingerprint only. Every node
 // must mount the same tenant snapshot store with working POSIX flock semantics.
-func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate, sourceQuotas worker.SourceAdmitter, secrets worker.SecretResolver, sourceHealth *telemetry.SourceHealth, scratchRoot *worker.ScratchRoot, recorders ...*tracing.Recorder) error {
-	m, err := acceleration.NewManager(c, refreshFactory(sandbox, refreshOptions{Admission: sourceQuotas, Secrets: secrets, SourceHealth: sourceHealth, ScratchRoot: scratchRoot}))
+func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate, sourceQuotas worker.SourceAdmitter, secrets worker.SecretResolver, sourceHealth *telemetry.SourceHealth, scratchRoot *worker.ScratchRoot, processManager *containment.Manager, processBudget containment.Budget, recorders ...*tracing.Recorder) error {
+	m, err := acceleration.NewManager(c, refreshFactory(sandbox, refreshOptions{Admission: sourceQuotas, Secrets: secrets, SourceHealth: sourceHealth, ScratchRoot: scratchRoot, Containment: processManager, ContainmentBudget: processBudget, ResourceOverheadBytes: overhead}))
 	if err != nil {
 		return err
 	}

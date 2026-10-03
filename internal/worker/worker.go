@@ -19,6 +19,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/tracing"
@@ -37,11 +38,13 @@ type Outcome struct {
 	Error *query.Error `json:"error,omitempty"`
 }
 type Executor struct {
-	Tracing     *tracing.Recorder
-	Config      catalog.Config
-	Limits      query.Limits
-	Binary      string
-	SandboxPath string
+	Containment       *containment.Manager
+	ContainmentBudget containment.Budget
+	Tracing           *tracing.Recorder
+	Config            catalog.Config
+	Limits            query.Limits
+	Binary            string
+	SandboxPath       string
 	// ScratchRoot optionally owns private crash-recoverable query workspaces.
 	ScratchRoot *ScratchRoot
 	// ResourcePool must be shared by query and refresh executors on this process.
@@ -100,6 +103,19 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.Limits.Timeout)
 	defer cancel()
+
+	custody := containment.FromContext(ctx)
+	if e.Containment != nil {
+		if e.Containment.Err() != nil {
+			return stats, query.NewError("RESOURCE_EXHAUSTED", "Worker process containment is unavailable")
+		}
+		if !e.ContainmentBudget.FitsOverhead(int64(e.Limits.MemoryMB), e.ResourceOverheadBytes>>20) || e.SandboxPath == "" || e.ScratchRoot == nil || (e.ResourcePool == nil && custody == nil) {
+			return stats, query.NewError("CONFIGURATION_ERROR", "Contained workers require sandbox, managed scratch, and separate native and parent reservations")
+		}
+	}
+	if custody != nil && e.ResourcePool != nil {
+		return stats, admission.ErrInvalid
+	}
 	if e.ResourcePool != nil {
 		memoryBytes := int64(e.Limits.MemoryMB) << 20
 		if e.ResourceOverheadBytes < 0 || e.ResourceOverheadBytes > math.MaxInt64-memoryBytes {
@@ -117,7 +133,8 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		}
 		// Registered before snapshot leases, temp files and child cleanup so those
 		// resources are released before a competing job can take this reservation.
-		defer reservation.Release()
+		custody, _ = containment.NewCustody(reservation.Release)
+		defer custody.Complete()
 	}
 	executionCtx := ctx // retain the deadline even if a quota child cancels first
 	if e.SourceAdmission != nil {
@@ -142,10 +159,25 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		return stats, query.NewError("RESOURCE_EXHAUSTED", "Worker scratch workspace is unavailable")
 	}
 	dir := workspace.path
-	defer func() {
-		if err := workspace.cleanup(); err != nil && resultErr == nil {
-			resultErr = query.NewError("RESOURCE_EXHAUSTED", "Worker scratch cleanup failed")
+	releaseScratch := func() {}
+	if e.Containment != nil {
+		releaseScratch, err = custody.Hold()
+		if err != nil {
+			_ = workspace.cleanup()
+			return stats, err
 		}
+	}
+	defer func() {
+		if err := workspace.cleanup(); err != nil {
+			if e.Containment != nil {
+				e.Containment.QuarantineOperation()
+			}
+			if resultErr == nil {
+				resultErr = query.NewError("RESOURCE_EXHAUSTED", "Worker scratch cleanup failed")
+			}
+			return // Retain scratch custody while owned files remain uncertain.
+		}
+		releaseScratch()
 	}()
 	cfg := catalog.Config{Sources: sources, ExtensionDirectory: e.Config.ExtensionDirectory}
 	payload, err := json.Marshal(Input{cfg, e.Limits, r})
@@ -193,12 +225,46 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	var stderr boundedBuffer
 	cmd.Stderr = &stderr
 	cmd.WaitDelay = 3 * time.Second
+	var processJob *containment.Job
+	processFinished := false
+	if e.Containment != nil {
+		processLimits, prepErr := e.ContainmentBudget.ProcessLimits(int64(e.Limits.MemoryMB), e.Limits.Threads)
+		if prepErr != nil {
+			return stats, prepErr
+		}
+		token, prepErr := custody.Hold()
+		if prepErr != nil {
+			return stats, prepErr
+		}
+		processJob, prepErr = e.Containment.Prepare(processLimits, token)
+		if prepErr != nil {
+			token()
+			return stats, query.NewError("RESOURCE_EXHAUSTED", "Worker process containment is unavailable")
+		}
+		defer func() {
+			if !processFinished {
+				if _, err := processJob.Finish(context.Background()); err != nil {
+					resultErr = query.NewError("RESOURCE_EXHAUSTED", "Worker process cleanup is uncertain")
+				}
+			}
+		}()
+	}
+	// Allocate pipes only once every fallible preparation step is complete.
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return stats, err
 	}
 	phases.enter(telemetry.PhaseExecutionDelivery)
-	if err = cmd.Start(); err != nil {
+	if processJob != nil {
+		err = processJob.Start(cmd)
+	} else {
+		err = cmd.Start()
+	}
+	if err != nil {
+		_ = stdout.Close()
+		if childPipe, ok := cmd.Stdout.(*os.File); ok {
+			_ = childPipe.Close()
+		}
 		return stats, err
 	}
 	stopClose := context.AfterFunc(ctx, func() { _ = stdout.Close() })
@@ -213,6 +279,13 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	// output pipe and would otherwise survive a successful leader exit.
 	cleanupErr := finishProcess(cmd, ctx.Err() != nil)
 	waitErr := cmd.Wait()
+	if processJob != nil {
+		_, containedErr := processJob.Finish(context.Background())
+		processFinished = true
+		if containedErr != nil {
+			cleanupErr = containedErr
+		}
+	}
 	var outcome Outcome
 	decodeErr := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &outcome)
 	stats = outcome.Stats
