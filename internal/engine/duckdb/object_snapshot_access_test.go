@@ -254,6 +254,7 @@ func TestObjectSnapshotEngineExactTypesNullsAndMultipart(t *testing.T) {
 
 func TestObjectSnapshotEngineJoinsLocalAndCallback(t *testing.T) {
 	engine, ctx, object, _, _ := objectAccessFixture(t, 2)
+	engine.limits.Threads = 3 // One independent scan slot for each joined relation.
 	_, localCtx, _, local, _, _ := snapshotAccessFixture(t)
 	policy, _ := access.PolicyFromContext(ctx)
 	localPolicy, _ := access.PolicyFromContext(localCtx)

@@ -42,6 +42,7 @@ type objectAccessClient struct {
 	wrongVersion                  atomic.Bool
 	blocked                       atomic.Bool
 	started                       chan struct{}
+	pause                         chan struct{}
 	startOnce                     sync.Once
 	calls, active, bodies, closed atomic.Int64
 }
@@ -67,6 +68,14 @@ func (c *objectAccessClient) GetRange(ctx context.Context, key, version string, 
 		c.startOnce.Do(func() { close(c.started) })
 		<-ctx.Done()
 		return nil, objectstore.Info{}, ctx.Err()
+	}
+	if c.pause != nil {
+		c.startOnce.Do(func() { close(c.started) })
+		select {
+		case <-c.pause:
+		case <-ctx.Done():
+			return nil, objectstore.Info{}, ctx.Err()
+		}
 	}
 	info := objectstore.Info{Size: int64(len(c.data)), Version: version, SHA256: c.digest}
 	if c.wrongVersion.Load() {
@@ -383,18 +392,16 @@ func TestObjectSnapshotWorkerActualChildCancellationDrainsResources(t *testing.T
 			if phase == "source-range" {
 				client.blocked.Store(true)
 				sink = &snapshotWorkerSink{}
+			} else {
+				client.pause = make(chan struct{})
 			}
 			done := make(chan error, 1)
 			go func() {
 				_, err := executor.Execute(ctx, query.Request{Sources: []string{source.ID}, SQL: "SELECT id,amount FROM orders_object"}, sink)
 				done <- err
 			}()
-			ready := blocked.entered
-			if phase == "source-range" {
-				ready = client.started
-			}
 			select {
-			case <-ready:
+			case <-client.started:
 			case err := <-done:
 				t.Fatalf("child stopped before cancellation phase: %v", err)
 			case <-time.After(10 * time.Second):
@@ -403,6 +410,18 @@ func TestObjectSnapshotWorkerActualChildCancellationDrainsResources(t *testing.T
 			children := objectWorkerChildren(t, executor.Binary)
 			if len(children) != 1 {
 				t.Fatalf("expected one actual child, found %d", len(children))
+			}
+			if phase == "result-delivery" {
+				// Capture the live child while it is reading. A tiny result may
+				// finish writing IPC and exit before the parent sink is blocked.
+				close(client.pause)
+				select {
+				case <-blocked.entered:
+				case err := <-done:
+					t.Fatalf("child stopped before result delivery: %v", err)
+				case <-time.After(10 * time.Second):
+					t.Fatal("actual child did not reach result delivery")
+				}
 			}
 			cancel()
 			select {
