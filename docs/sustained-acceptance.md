@@ -30,6 +30,21 @@ and [600-second run on `0da7523`](evidence/sustained-smoke-failed-0da7523.json),
 remain failed and retained. The passing smoke's raw report SHA-256 is
 `e3d3ee6da61fd97b76d780b41f38de0b57916657587af01a8e1fcc05ebcadad7`.
 
+## Combined candidate: startup failed
+
+The next candidate, `40965ef`, [built successfully](evidence/sustained-build-40965ef.json)
+and passed all 56 controls. Its [smoke failed before workload](evidence/sustained-smoke-failed-40965ef.json):
+`cluster-init` exited 1 with `cluster metadata unavailable`. No queries or
+refreshes ran. The [diagnosis](evidence/sustained-startup-diagnostics-40965ef.json)
+could not identify the failing metadata operation; broker logs did not establish
+a cause.
+
+Cleanup then tried to list a worker directory that startup had never created.
+The outer controller independently removed the owned service and cgroup. These
+are separate outcomes: startup and internal cleanup failed; outer cleanup passed.
+The earlier passing smoke does not validate this combined candidate. No new
+two-hour campaign has started.
+
 ## Workload and limits
 
 The runner provisions two gateways, two workers and three NATS brokers in one
