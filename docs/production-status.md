@@ -29,14 +29,14 @@ Admission reserves budgets; optional containment enforces native process-tree li
 | Verified inventory/restore, local backup and remote-to-local migration | Remote-destination recovery, cross-host cutover and measured RTO/RPO |
 | Local pruning with reader protection | Durable remote reader protection, orphan accounting, GC and compaction |
 
-The [durable reader registry](durable-reader-registry.md) passed isolated race tests; provider, publication and query integration remain open. Remote pruning intentionally deletes nothing. Protect current, retained, pinned, staging and orphan data before adding GC. Remote v4 writes require coordinated reader/writer upgrades. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
+The [durable reader registry](durable-reader-registry.md), [object-store adapter and immutable binding](reader-objectstore.md) passed isolated race tests and vet; runtime integration and live-provider acceptance remain open. Remote pruning intentionally deletes nothing. Protect current, retained, pinned, staging and orphan data before adding GC. Remote v4 writes require coordinated reader/writer upgrades. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
 
 ## Results and interoperability
 
 | Capability | Status |
 | --- | --- |
 | Arrow delivery and optional LZ4 | Available; decoded limits remain unchanged |
-| Durable exports | [Opt-in federated jobs and repeat downloads](exports.md); [combined worker/broker/transport gates passed](export-validation.md). Sustained capacity and deployment acceptance remain separate |
+| Durable exports | [Opt-in federated jobs and repeat downloads](exports.md); [earlier combined gates passed](export-validation.md). A [later CI failure remains unresolved despite a passing isolated reproduction](export-ci-diagnostics.md). Sustained capacity and deployment acceptance remain separate |
 | Result cache | Pending authorization/generation keys, bounded fills and revocation fencing |
 | Eight federation adapters | Available; live Oracle/warehouse gates remain open |
 | Automatic remote joins/aggregates | Pending bound-plan integration and parity checks |
