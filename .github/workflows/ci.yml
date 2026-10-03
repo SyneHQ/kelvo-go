@@ -96,6 +96,8 @@ jobs:
         run: python3 scripts/process_loss_acceptance.py --binary bin/kelvo --sandbox bin/kelvo-landlock --fixture artifacts/cluster-private --managed-scratch --output artifacts/process-loss-ci.json
       - name: Verify rolling-upgrade evidence and source controls
         run: python3 scripts/test_rolling_upgrade_acceptance.py
+      - name: Verify sustained acceptance evidence controls
+        run: python3 -m unittest discover -s scripts -p test_sustained_acceptance.py
       - name: Verify release compatibility controls
         run: python3 -m unittest discover -s scripts -p test_release_upgrade_acceptance.py
       - name: Install checksum-pinned previous release fixture

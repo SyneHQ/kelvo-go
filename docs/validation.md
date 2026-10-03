@@ -210,6 +210,10 @@ RSS samples every 20ms can miss peaks. Separate process peaks exclude source/cli
 | [512 MiB attempt](evidence/clickhouse-transfer-initial-failure.json) | Source error 241 after ~69 MB/HTTP 200 was initially misclassified as Arrow allocation; [recheck](evidence/clickhouse-transfer-512-recheck.json) reports source memory correctly. Successful trials used 1 GiB |
 | [Timestamp assertion](evidence/benchmark-harness-initial-failure.json) | Export succeeded but harness expected Arrow timestamp; ClickHouse DateTime was UInt32 Unix seconds. Corrected exact mapping preceded successful trials; see [cast/mapping guide](../internal/sources/clickhouse/README.md) |
 
+## Runtime recovery
+
+[Focused recovery checks](runtime-recovery.md) cover heartbeat/result handoff, startup request budgets and bounded scratch lease cleanup. The combined candidate passed race/vet and isolated broker checks. Multi-hour and WAN capacity acceptance remain separate gates.
+
 ## Remaining acceptance work
 
-Track current work in [production status](production-status.md): deployment review, multi-zone recovery, provider acceptance and representative sustained/memory capacity remain separate gates. Per-user row/column policy, management APIs, durable query-result storage, CDC, Flight SQL server and cross-node execution of one SQL plan remain absent. The pinned DuckDB path materializes execution before Arrow delivery.
+Track current work in [production status](production-status.md): deployment review, multi-zone recovery, provider acceptance and representative sustained/memory capacity remain separate gates. Callback federation has per-user row/column policies; other execution paths and coordinated policy lifecycle remain open. Export jobs/downloads, result caching, CDC, a Flight SQL server and cross-node execution of one SQL plan remain absent. The pinned DuckDB path materializes execution before Arrow delivery.

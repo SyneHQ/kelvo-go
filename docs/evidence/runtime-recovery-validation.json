@@ -1,0 +1,132 @@
+{
+  "runtime_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+  "status": "package and isolated broker validation passed; sustained and capacity gates pending",
+  "build": {
+    "revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+    "source_manifest_sha256": "ef8207e20cd5f811866fe83d48852b26890a694fa667c56c3502890dad80f2c4",
+    "stages": {
+      "startup-race": {
+        "exit_code": 0,
+        "seconds": 9.581,
+        "log_sha256": "b49cee1f68909a3ae379b7f6fa7e67117c8cbbac89bc0762527665f3ec601a3a"
+      },
+      "combined-race": {
+        "exit_code": 0,
+        "seconds": 156.455,
+        "log_sha256": "3f5d45ca699e19e7d97da5a0e2337677d4dd9dafc7a8f6c41b3ecbf943050873"
+      },
+      "combined-vet": {
+        "exit_code": 0,
+        "seconds": 19.452,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "sustained-controls": {
+        "exit_code": 0,
+        "seconds": 0.214,
+        "log_sha256": "c4153b25409bdc9503ced903d758cb9c580ade896f5a7ebc8d0d9a1a26b11df6"
+      },
+      "build": {
+        "exit_code": 0,
+        "seconds": 6.226,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "launcher": {
+        "exit_code": 0,
+        "seconds": 0.114,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "failures": [],
+    "skips": [
+      "github.com/SYNEHQ/kelvo-go/internal/audit/TestAuditActualDiskFull",
+      "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestExecuteRealPostgresMySQLFederation",
+      "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestRealConnectionMetadataDoesNotExposeDSNs",
+      "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestExecuteSQLiteFixture",
+      "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestCustomFederationNeedsExplicitBridgeBuild",
+      "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestPinnedMultipartObjectRangeQuery",
+      "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestPinnedObjectRangesUseRangesAndExactAllowlist",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshStatusDurabilityResetAndBudget",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshQueueProvisionDedupRetry",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreAdmissionCASAndReuse",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreQueueAndWorkerLease",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreRejectsMetadataMismatch",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreReconcileFailsStaleAssigned",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreCorruptJobFailsClosed",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSAccountIsolation",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster/TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelPrestartMembershipAndControls",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelNativeMemoryOOM",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelCPUQuota",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelPIDsLimit",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelDetachedDescendantCleanup",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelFailedCleanupQuarantinesCustody",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelRestartRecoversOwnedProcess",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelRestartRecoversIncompleteIntent",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelHierarchyOwnershipLock",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelStaleRootIdentityRejected",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelSandboxRuntime",
+      "github.com/SYNEHQ/kelvo-go/internal/containment/TestKernelMissingControllersFailsClosed",
+      "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerSuccessAndCancellation",
+      "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerRefreshCustody",
+      "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerStartFailureCleansOwnership",
+      "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerRealDuckDBCTE",
+      "github.com/SYNEHQ/kelvo-go/cmd/kelvo/TestContainedNodeStartupPlacement"
+    ],
+    "scope": "Combined node lease, startup validation and scratch cleanup candidate; service and capacity acceptance separate",
+    "build_tags": [
+      "duckdb_arrow",
+      "duckbridge"
+    ],
+    "compiler_lanes": 1,
+    "umask": "0077",
+    "source_verified_before": true,
+    "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+    "binaries": {
+      "kelvo": "cef8220459d316abecf7b842ceb57cf835a2cb07d46bb77a76534e67f524b853",
+      "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+    },
+    "source_verified_after": true,
+    "passed": true
+  },
+  "live_store": {
+    "scope": "Isolated TLS three-broker JetStream store integration under real immutable-policy checks",
+    "passed": true,
+    "skips": [],
+    "failures": [],
+    "non_root": true,
+    "exit_code": 0,
+    "log_sha256": "5c5fcc5f91f314f1327e976323d22cc4060637da0fed1c52bc9be0035ee1d68a",
+    "passed_tests": [
+      "TestNATSRefreshStatusDurabilityResetAndBudget/SCHEMA_MISMATCH",
+      "TestNATSRefreshStatusDurabilityResetAndBudget/PERMISSION_DENIED",
+      "TestNATSRefreshStatusDurabilityResetAndBudget/budget_across_scheduled_messages",
+      "TestNATSRefreshStatusDurabilityResetAndBudget",
+      "TestNATSRefreshQueueProvisionDedupRetry",
+      "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+      "TestNATSStoreAdmissionCASAndReuse",
+      "TestNATSStoreQueueAndWorkerLease",
+      "TestNATSStoreRejectsMetadataMismatch",
+      "TestNATSStoreReconcileFailsStaleAssigned",
+      "TestNATSStoreCorruptJobFailsClosed",
+      "TestNATSAccountIsolation"
+    ],
+    "remaining_brokers": [],
+    "seconds": 38.591,
+    "revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+    "source_manifest_sha256": "ef8207e20cd5f811866fe83d48852b26890a694fa667c56c3502890dad80f2c4",
+    "service_removed": true,
+    "service_result": "success",
+    "resource_budget": {
+      "cpu_percent": 100,
+      "memory_bytes": 3221225472,
+      "swap_bytes": 0,
+      "tasks": 256
+    }
+  },
+  "limits": [
+    "Kernel containment acceptance is exercised separately by the sustained service campaign.",
+    "Provider-dependent skipped tests remain unrun; the owner has no live fixtures.",
+    "No new WAN throughput, sustained-load, or production-complete claim."
+  ]
+}
