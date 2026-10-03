@@ -46,3 +46,11 @@ Workload client failures, resource-counter errors, resource-limit violations, an
 Final cleanup left zero live descendants, worker scratch directories, and containment records, with zero forced application kills. The owned service and cgroup were removed, source identity remained unchanged, and the build/source identities matched. The failed raw report remains identified by SHA-256 `c2a7ddf4ef219a471c369a85a122d8c2e5623850bfb84ec2a3e9d720bdd76158`.
 
 This run predates later object-snapshot, retained-export, and TLS-delivery changes. It provides operational observations for the frozen revision, not a passed sustained gate, a maximum-throughput result, or WAN, provider, multi-host, or sizing certification.
+
+## Process-sampling correction
+
+The [focused correction receipt](evidence/process-sampling-exit-correction-0e80e9e.json) records 38 passing Linux sampler/lease controls with no failures, errors, or skips. A deterministic test opens its own live child's `/proc` stat and status files, terminates and reaps that child, then reads the already-open descriptors. Linux returns `ESRCH`; the old sampler treated this known exit race as an observation failure. This proves a sampler defect, without establishing the cause of either category retained by the historical campaign.
+
+The corrected observer classifies only `ENOENT` and `ESRCH` as disappearance across stat, status, task enumeration, and child-list reads. Permission errors, other I/O errors, and malformed data remain hard failures. Child PIDs and process start ticks are bounded ASCII integers; malformed Unicode or oversized values cannot terminate the sampling loop. Explicit zombie state is recorded as exit. Diagnostics retain operation, outcome, errno, occurrence count, and first/last elapsed time in at most 32 buckets plus an overflow count. They contain no PID, path, command line, payload, or exception text; overflow never removes hard-error flags.
+
+The focused service used one CPU and 1 GiB, with no swap or capabilities, and exited successfully with an empty cgroup. No replacement campaign was launched as part of this correction. The original two-hour report remains failed; a matching smoke and a new sustained run on the frozen integrated revision are still required.

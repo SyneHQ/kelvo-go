@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "implementation_commit": "0e80e9e059ce49e682167a5fa5fdd0c68eec6bd9",
+  "passed": true,
+  "scope": "Focused Linux process-sampler and lease-evidence controls. This does not reclassify the prior failed sustained campaign or replace matching smoke and new sustained validation.",
+  "report_sha256": "685462e1fd197ab028fe6053a402194dd1b410d047b067f20cc12a3113150918",
+  "log_sha256": "4dbae3e6adec0a5696fc4a09c1bdb5871b3a670b400649bc066fd1c010b55a0d",
+  "tests_run": 38,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "seconds": 0.255,
+  "source_unchanged": true,
+  "source_sha256": {
+    "scripts/sustained_acceptance.py": "425a3ce69566aeee9a13a6c6b7b7a9c75d7c770f128d60e9a1a6cd725b4fa6a3",
+    "scripts/test_sustained_acceptance.py": "9918e96c89433051a3515b740068667bd52dcd6aa13d623cc6205b0238ac75dc"
+  },
+  "isolated_service": {
+    "nonroot": true,
+    "private_network": true,
+    "private_tmp": true,
+    "no_new_privileges": true,
+    "capabilities": [],
+    "cpu_percent": 100,
+    "memory_bytes": 1073741824,
+    "swap_bytes": 0,
+    "tasks_max": 64,
+    "runtime_limit_seconds": 180,
+    "result": "success",
+    "active_state": "inactive",
+    "sub_state": "dead",
+    "cgroup_empty": true
+  },
+  "real_linux_exit_probe": {
+    "owned_child_reaped": true,
+    "opened_before_exit_operations": [
+      "stat",
+      "status"
+    ],
+    "observed_errno": 3,
+    "errno_name": "ESRCH",
+    "read_errors_after_correction": 0,
+    "normal_exit_observations": 2
+  },
+  "covered_cases": {
+    "exit_errno": [
+      "ENOENT",
+      "ESRCH"
+    ],
+    "hard_error_errno": [
+      "EACCES",
+      "EPERM",
+      "EIO"
+    ],
+    "operations": [
+      "stat",
+      "status",
+      "tasks",
+      "children"
+    ],
+    "malformed_hard_failures": [
+      "stat syntax and identity",
+      "missing or invalid live RSS",
+      "negative child PID",
+      "Unicode child PID",
+      "oversized child PID",
+      "out of range child PID"
+    ],
+    "explicit_zombie_status": true,
+    "maximum_diagnostic_buckets": 32,
+    "diagnostic_overflow_preserves_error_flags": true,
+    "diagnostic_fields": [
+      "operation",
+      "outcome",
+      "errno",
+      "count",
+      "first_elapsed_seconds",
+      "last_elapsed_seconds"
+    ],
+    "no_pid_path_payload_or_exception_text_in_diagnostics": true
+  },
+  "prior_failed_campaign_sha256": "c2a7ddf4ef219a471c369a85a122d8c2e5623850bfb84ec2a3e9d720bdd76158"
+}
