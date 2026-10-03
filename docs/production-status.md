@@ -9,7 +9,7 @@ Status reviewed 3 October 2026. This is a capability checklist, not production c
 | Shared query/refresh budgets, interactive reserves and source quotas | Export dispatch integration and sustained capacity gates |
 | Opt-in Linux process-tree memory, CPU and PID limits | Deployment-specific headroom, restart recovery and sustained fault/load validation |
 | Independent probes, dataset readiness and phased drain | Rolling cluster upgrades and multi-hour fault/load campaigns |
-| Metrics, bounded history, local tracing and passive source observations | Distributed attribution, durable audit and instrumentation-cost measurements |
+| Metrics opt-out, bounded history, tracing, source observations and [local audit](durable-audit.md) | Distributed attribution, audit archival and combined workload-cost measurements |
 | Selected-secret forwarding, files, opt-in cloud secrets, API-key and TLS rotation | Live-provider IAM/rotation coverage and coordinated enrollment/revocation |
 | Managed Linux scratch with inherited leases | Deployment-specific disk capacity and recovery validation |
 | CI, 15 executed notebooks, process-loss and snapshot-upgrade gates | Recurring real-provider tests on each release candidate |
@@ -55,6 +55,8 @@ Remote pruning intentionally deletes nothing. Protect current, retained, pinned,
 Use the designated Linux build hosts per [AGENTS.md](../AGENTS.md). Entry points: [CI](../.github/workflows/ci.yml), [operational acceptance](operational-acceptance.md), [worker failures](worker-failures.md), [benchmarks](analytics-workflow-benchmarks.md).
 
 ## Gates requiring real provider access or deployment decisions
+
+No dedicated live-provider fixtures are available. Tickets [#9](https://github.com/SyneHQ/kelvo-go/issues/9), [#10](https://github.com/SyneHQ/kelvo-go/issues/10) and [#11](https://github.com/SyneHQ/kelvo-go/issues/11) remain blocked.
 
 - Oracle TCPS, Snowflake, BigQuery and Databricks: real grants, TLS, types, cancellation and rotation.
 - S3, R2, Azure Blob and GCS: dedicated namespaces and scoped fixture identities.

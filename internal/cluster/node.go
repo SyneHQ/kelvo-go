@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 	"github.com/apache/arrow-go/v18/arrow"
@@ -29,6 +30,9 @@ type reservation struct {
 }
 
 type Node struct {
+	audit          *ServiceAudit
+	ownAudit       bool
+	closeErr       error
 	cfg            NodeConfig
 	store          Store
 	executor       query.Executor
@@ -68,6 +72,9 @@ func NewNode(cfg NodeConfig, store Store, executor *worker.Executor) (*Node, err
 }
 
 func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error) {
+	if err := validateNodeAudit(cfg); err != nil {
+		return nil, err
+	}
 	if err := ValidatePolicy(cfg.Policy); err != nil {
 		return nil, err
 	}
@@ -80,11 +87,41 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	n := &Node{cfg: cfg, store: store, executor: executor, owner: owner, ctx: ctx, cancel: cancel, permits: make(chan struct{}, cfg.Policy.Workers[cfg.WorkerID]), jobs: map[string]*reservation{}}
+
+	if cfg.RuntimeAudit != nil {
+		if !cfg.RuntimeAudit.matches(cfg.Audit, "worker", []string{cfg.Policy.TenantID}) {
+			cancel()
+			return nil, audit.ErrInvalid
+		}
+		n.audit = cfg.RuntimeAudit
+	} else {
+		n.audit, err = OpenServiceAudit(cfg.Audit, "worker", []string{cfg.Policy.TenantID})
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		n.ownAudit = true
+	}
+	started := false
+	defer func() {
+		if !started && n.ownAudit {
+			_ = n.audit.CloseBounded()
+		}
+	}()
 	n.dispatchCtx, n.dispatchCancel = context.WithCancel(ctx)
 	n.dispatchDone = make(chan struct{})
 	probe, stop := context.WithTimeout(ctx, 10*time.Second)
 	defer stop()
-	if _, err = executor.Execute(probe, query.Request{Mode: "federated", SQL: "SELECT 1"}, discardSink{}); err != nil {
+
+	probeAudit, err := n.audit.beginService(probe, cfg.Policy, audit.QueryExecution)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	defer probeAudit.abort(probe)
+	_, err = executor.Execute(probe, query.Request{Mode: "federated", SQL: "SELECT 1"}, discardSink{})
+	err = errors.Join(err, probeAudit.complete(err))
+	if err != nil {
 		cancel()
 		return nil, errors.New("sandboxed worker startup probe failed")
 	}
@@ -95,6 +132,7 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 	n.wg.Add(2)
 	go n.dispatch()
 	go n.heartbeat()
+	started = true
 	return n, nil
 }
 
@@ -107,6 +145,14 @@ func (n *Node) dispatch() {
 	defer n.wg.Done()
 	defer close(n.dispatchDone)
 	for {
+		if !n.audit.Ready() {
+			select {
+			case <-n.dispatchCtx.Done():
+				return
+			case <-time.After(200 * time.Millisecond):
+				continue
+			}
+		}
 		select {
 		case <-n.dispatchCtx.Done():
 			return
@@ -125,6 +171,11 @@ func (n *Node) dispatch() {
 				case <-time.After(200 * time.Millisecond):
 				}
 			}
+			continue
+		}
+		if !n.audit.Ready() {
+			_ = d.Retry(n.ctx)
+			<-n.permits
 			continue
 		}
 		s, err := n.store.Get(n.ctx, d.ID())
@@ -341,13 +392,17 @@ func (n *Node) Close() error {
 		n.mu.Unlock()
 		n.wg.Wait()
 		n.streams.Wait()
+		if n.ownAudit {
+			n.closeErr = n.audit.CloseBounded()
+		}
 		_ = n.store.Close()
 	})
-	return nil
+	return n.closeErr
 }
 
 func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 || r.TLS.PeerCertificates[0] == nil || !hasURI(r.TLS.PeerCertificates[0], GatewayIdentity) {
+		n.audit.authenticationDenied()
 		http.Error(w, "mutual TLS gateway identity required", http.StatusUnauthorized)
 		return
 	}
@@ -397,7 +452,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/ready" {
 		n.mu.Lock()
-		ready := !n.draining && n.ctx.Err() == nil
+		ready := !n.draining && n.ctx.Err() == nil && n.audit.Ready()
 		n.mu.Unlock()
 		if ready && !n.cfg.RuntimeDatasets.hasRequired(n.cfg.RequiredDatasets) {
 			ready = false
@@ -426,8 +481,22 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if parts[3] == "cancel" && r.Method == http.MethodPost {
-		_ = n.finish(id, Cancelled, query.Stats{}, query.NewError("CANCELLED", "Query cancelled"))
+		op, err := n.audit.beginGateway(r.Context(), n.cfg.Policy, audit.QueryCancel)
+		if err != nil {
+			http.Error(w, "audit storage unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		defer op.abort(r.Context())
+		err = n.finish(id, Cancelled, query.Stats{}, query.NewError("CANCELLED", "Query cancelled"))
 		reserved.cancel()
+		if auditErr := op.complete(err); auditErr != nil {
+			http.Error(w, "audit storage unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if err != nil {
+			http.Error(w, "query cancellation state unavailable", http.StatusConflict)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -476,6 +545,13 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	stopClient := context.AfterFunc(r.Context(), cancel)
 	defer func() { stopClient(); cancel() }()
+	op, auditErr := n.audit.begin(ctx, n.cfg.Policy.TenantID, authority, audit.QueryExecution)
+	if auditErr != nil {
+		_ = n.finish(id, Failed, query.Stats{}, query.NewError("UNAVAILABLE", "Audit storage unavailable"))
+		http.Error(w, "audit storage unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	defer op.abort(ctx)
 	controller := http.NewResponseController(w)
 	deadline, _ := ctx.Deadline()
 	_ = controller.SetWriteDeadline(deadline)
@@ -490,7 +566,8 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	defer func() { close(stopWrite); <-done; _ = controller.SetWriteDeadline(time.Time{}) }()
-	sink := &nodeSink{w: w, sink: worker.NewIPCSink(w, n.cfg.Policy.Limits)}
+	tail := &arrowEOSTail{w: w}
+	sink := &nodeSink{w: w, sink: worker.NewIPCSink(tail, n.cfg.Policy.Limits)}
 	defer sink.sink.Abort()
 	executionStarted := time.Now()
 	var stats query.Stats
@@ -501,13 +578,24 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = sink.sink.Finish()
 	}
+	if err == nil && !tail.validEOS() {
+		err = query.NewError("QUERY_FAILED", "Incomplete Arrow stream")
+	}
 	stats.WireBytes = sink.sink.EncodedBytes()
 	if err == nil {
 		err = ctx.Err()
 	}
+	err = errors.Join(err, op.complete(err))
 	if err == nil {
 		err = n.finish(id, ResultReady, stats, nil)
-	} else {
+	}
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err == nil {
+		err = tail.FlushEOS()
+	}
+	if err != nil {
 		_ = n.finish(id, Failed, stats, err)
 	}
 	recordNodeHistory(n.cfg.RuntimeHistory, id, executionStarted, err)

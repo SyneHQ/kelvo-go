@@ -90,7 +90,18 @@ func runCluster(args []string) error {
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
-	return serveCluster(ctx, ln, serverTLS.Config, serverTLS.Handler(gateway), func() { _ = gateway.Close() }, *drainTimeout)
+
+	var closeErr error
+	closed := make(chan struct{})
+	result := serveCluster(ctx, ln, serverTLS.Config, serverTLS.Handler(gateway), func() { closeErr = gateway.Close(); close(closed) }, *drainTimeout)
+	select {
+	case <-closed:
+		if result == nil && closeErr != nil {
+			return query.NewError("UNAVAILABLE", "Gateway audit shutdown remains uncertain")
+		}
+	default:
+	}
+	return result
 }
 
 func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resultErr error) {
@@ -98,6 +109,19 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
+
+	cfg.RuntimeAudit, err = cluster.OpenServiceAudit(cfg.Audit, "worker", []string{cfg.Policy.TenantID})
+	if err != nil {
+		return query.NewError("CONFIGURATION_ERROR", "Worker audit storage is unavailable")
+	}
+	auditTransferred := false
+	defer func() {
+		if !auditTransferred {
+			if err := cfg.RuntimeAudit.CloseBounded(); err != nil && resultErr == nil {
+				resultErr = query.NewError("UNAVAILABLE", "Worker audit shutdown remains uncertain")
+			}
+		}
+	}()
 	serverTLS, err := cluster.OpenServerTLS(cfg.TLS, cluster.WorkerIdentity(cfg.Policy.TenantID, cfg.WorkerID), cluster.GatewayIdentity)
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
@@ -276,14 +300,15 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	if refreshQueue != nil {
 		refreshDone = make(chan error, 1)
 		go func() {
-			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeSourceHealth, executor.ScratchRoot, executor.Containment, executor.ContainmentBudget, cfg.RuntimeTracing)
+			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeSourceHealth, executor.ScratchRoot, executor.Containment, executor.ContainmentBudget, cfg.RuntimeAudit, cfg.Policy, cfg.RuntimeTracing)
 			stop()
 		}()
 	}
 	lifecycle := &nodeLifecycle{Node: node, pool: pool, refresh: refreshGate, stopRefresh: stopRefresh}
 	cleanupDone := make(chan struct{})
-	var refreshErr error // read only after cleanupDone closes
+	var refreshErr, auditCloseErr error // read only after cleanupDone closes
 	datasetsTransferred = true
+	auditTransferred = true
 	result := serveCluster(runCtx, ln, serverTLS.Config, serverTLS.Handler(lifecycle), func() {
 		defer close(cleanupDone)
 		stopRefresh()
@@ -296,11 +321,15 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 		}
 		<-nodeDone
 		<-datasetsDone
+		auditCloseErr = cfg.RuntimeAudit.CloseBounded()
 	}, drainTimeout)
 	stop()
 	// serveCluster bounds both joins; never wait again after its deadline.
 	select {
 	case <-cleanupDone:
+		if auditCloseErr != nil && result == nil {
+			result = query.NewError("UNAVAILABLE", "Worker audit shutdown remains uncertain")
+		}
 		if refreshErr != nil && !errors.Is(refreshErr, context.Canceled) && result == nil {
 			result = refreshErr
 		}

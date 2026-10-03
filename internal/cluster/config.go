@@ -27,6 +27,9 @@ func LoadGateway(path string) (GatewayConfig, error) {
 	if err != nil {
 		return c, err
 	}
+	if err := c.Audit.Validate(); err != nil {
+		return c, err
+	}
 	resolveTLS(base, &c.TLS)
 	resolveTLS(base, &c.WorkerTLS)
 	if c.TLS.Trust != nil {
@@ -84,6 +87,9 @@ func LoadNode(path string) (NodeConfig, error) {
 	var c NodeConfig
 	base, err := decodeConfig(path, &c)
 	if err != nil {
+		return c, err
+	}
+	if err := validateNodeAudit(c); err != nil {
 		return c, err
 	}
 	if c.ScratchDirectory != "" && (!filepath.IsAbs(c.ScratchDirectory) || filepath.Clean(c.ScratchDirectory) != c.ScratchDirectory || c.ScratchDirectory == string(filepath.Separator) || len(c.ScratchDirectory) > 4096) {

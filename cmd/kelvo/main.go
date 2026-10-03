@@ -47,6 +47,9 @@ func run(args []string) error {
 	if args[0] == "accelerate" {
 		return runAcceleration(args[1:])
 	}
+	if args[0] == "audit" {
+		return runAudit(args[1:], os.Stdout)
+	}
 	if args[0] == "cluster-init" || args[0] == "gateway" || args[0] == "node" {
 		return runCluster(args)
 	}
@@ -287,5 +290,5 @@ func makeRequest(sql, mode, connection, sources, parameters, collection, pipelin
 	return r, query.ValidateRequest(r)
 }
 func usage() {
-	fmt.Println("Kelvo Go by SYNEHQ\n\nUsage: kelvo serve|query|accelerate|refresh-status|refresh-reset|cluster-init|gateway|node|version\nBuild: go build -tags duckdb_arrow ./cmd/kelvo\nUse kelvo <command> -h for flags.")
+	fmt.Println("Kelvo Go by SYNEHQ\n\nUsage: kelvo serve|query|accelerate|audit|refresh-status|refresh-reset|cluster-init|gateway|node|version\nBuild: go build -tags duckdb_arrow ./cmd/kelvo\nUse kelvo <command> -h for flags.")
 }
