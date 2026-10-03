@@ -1,0 +1,136 @@
+{
+  "scope": "Linux local audit package; cluster runtime integration is not validated by this evidence",
+  "date": "2026-10-03",
+  "base_revision": "8f4b64ba3cf76b9aa676ef7eec459065190ea85e",
+  "environment": {
+    "provider": "Azure dedicated test VM",
+    "os": "Linux 6.12.95+deb12-cloud-amd64",
+    "arch": "amd64",
+    "cpu": "Intel Xeon Platinum 8573C",
+    "visible_cpus": 4,
+    "go": "1.26.8",
+    "gomaxprocs": 2,
+    "package_parallelism": 1,
+    "other_validation_on_host": true
+  },
+  "checks": {
+    "race_before_reserved_full_filesystem_extension": {
+      "count": 20,
+      "seconds": 43.957,
+      "passed": true
+    },
+    "final_race": {
+      "count": 3,
+      "seconds": 8.134,
+      "passed": true
+    },
+    "final_vet": {
+      "passed": true
+    },
+    "real_full_filesystem": {
+      "fixture": "disposable tmpfs",
+      "max_bytes": 1048576,
+      "flags": [
+        "nosuid",
+        "nodev",
+        "noexec"
+      ],
+      "oversized_preallocation_rejected": true,
+      "reserved_start_and_terminal_succeeded_after_ENOSPC": true,
+      "race_enabled": true,
+      "passed": true,
+      "unmounted_and_removed": true
+    },
+    "cluster_integration": "not covered",
+    "power_loss": "not simulated",
+    "native_query_memory": "not measured"
+  },
+  "durable_receipt_benchmark": {
+    "description": "Sequential Begin plus Finish, two fsync calls per receipt",
+    "operations_per_run": 1000,
+    "runs": [
+      {
+        "nanoseconds_per_operation": 12442776,
+        "allocated_bytes_per_operation": 10442,
+        "allocations_per_operation": 58
+      },
+      {
+        "nanoseconds_per_operation": 12762754,
+        "allocated_bytes_per_operation": 10436,
+        "allocations_per_operation": 58
+      },
+      {
+        "nanoseconds_per_operation": 12739933,
+        "allocated_bytes_per_operation": 10438,
+        "allocations_per_operation": 58
+      }
+    ],
+    "not_row_or_query_throughput": true
+  },
+  "fresh_open_benchmark": {
+    "max_pending": 4,
+    "tenants": 2,
+    "runs": [
+      {
+        "entries": 4096,
+        "nanoseconds": 21560496,
+        "disk_bytes": 8404992,
+        "live_heap_delta_bytes": 303608,
+        "rss_delta_bytes": 352256
+      },
+      {
+        "entries": 4096,
+        "nanoseconds": 19036357,
+        "disk_bytes": 8404992,
+        "live_heap_delta_bytes": 296744,
+        "rss_delta_bytes": -229376
+      },
+      {
+        "entries": 4096,
+        "nanoseconds": 19729041,
+        "disk_bytes": 8404992,
+        "live_heap_delta_bytes": 296216,
+        "rss_delta_bytes": -65536
+      },
+      {
+        "entries": 65536,
+        "nanoseconds": 24155241,
+        "disk_bytes": 134234112,
+        "live_heap_delta_bytes": 4719792,
+        "rss_delta_bytes": 491520
+      },
+      {
+        "entries": 65536,
+        "nanoseconds": 30794942,
+        "disk_bytes": 134234112,
+        "live_heap_delta_bytes": 4724520,
+        "rss_delta_bytes": -790528
+      },
+      {
+        "entries": 65536,
+        "nanoseconds": 23082584,
+        "disk_bytes": 134234112,
+        "live_heap_delta_bytes": 4719968,
+        "rss_delta_bytes": 40960
+      }
+    ],
+    "limits": [
+      "fresh journal only, excludes mature retained-entry indexes",
+      "RSS deltas reflect GC, allocator reuse and lazy pages; not a memory ceiling",
+      "excludes queries, surrounding runtime and filesystem cache"
+    ]
+  },
+  "source_sha256": {
+    "internal/audit/._types.go": "7e0dc3a13324b0670287ae76d49b3d6a86bf2066f88e0fed0f05f28b07270bf1",
+    "internal/audit/benchmark_linux_test.go": "c916f7716a68387842690720e5e4f6b5be57b7bec21154a32a934d8f3840f471",
+    "internal/audit/codec.go": "f168fd0aca81cd24ca4eaa4448ef46380d8cc10d036a9934b1f8f195dc03f1ca",
+    "internal/audit/faults_linux_test.go": "b598c0a45c97ed4b4e6892557c18558ce9157aa9efc19728696bfc0f7bd61ae2",
+    "internal/audit/files_linux.go": "34e3b137aff4aaaedddd35dde37ffcf5e1d6cd24087b9fe183f378fa4b786c8b",
+    "internal/audit/journal_linux.go": "7fb8179c493d24907381f13882d36eba4de7084bc5a7bfa961bb1618c7e1b54b",
+    "internal/audit/journal_linux_test.go": "89c51976a13ef1c90910fb79bfb4fe4ac22483727bdd5111d94981c1d2c5673d",
+    "internal/audit/journal_other.go": "72d588a333ecd68ff699fc6320adbd840923338407344fbf1726ebac8c910562",
+    "internal/audit/operation.go": "b4c14428cd05946c545cdef87e5cde7326e3cbf67a511aa8c94ce69dc54447a9",
+    "internal/audit/reader_linux.go": "b31c8cf1f20ac88a607b1d16bbb3d6326abf89b9bac76bbe901b97852b73e265",
+    "internal/audit/types.go": "a3ff5e0e13297876b32b07863cbfdeb51643ae22fffac408c95ec3693a6dda4e"
+  }
+}
