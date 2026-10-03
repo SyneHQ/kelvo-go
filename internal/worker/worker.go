@@ -371,6 +371,9 @@ func workerResultError(parent, executionCtx, ctx context.Context, readErr, waitE
 // The parent retains cloud reader and writer credentials. Query children only
 // receive a range capability with no provider identity or upstream object URL.
 func sourceEnvironmentNames(source catalog.Source) ([]string, error) {
+	if err := source.ValidateObjectSnapshot(); err != nil {
+		return nil, query.NewError("CONFIGURATION_ERROR", "Invalid isolated object snapshot")
+	}
 	if err := source.ValidateObjectRanges(); err != nil {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Invalid isolated object range capabilities")
 	}

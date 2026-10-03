@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"os"
 	"sync"
 
 	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
@@ -36,11 +35,14 @@ type snapshotTable struct {
 	columns     map[string]int
 	limits      query.Limits
 	memory      *snapshotAllocator
+	parts       []catalog.LocalSnapshotPart
+	scan        catalog.SnapshotScanLimits
+	schemaHash  string
 	mu          sync.Mutex
 	rows, bytes int64
 }
 
-// NewSnapshot exposes only an authenticated local-generation relation. Its
+// NewSnapshot exposes only an authenticated immutable-generation relation. Its
 // private scan executor never accepts SQL, cloud credentials or a public driver.
 func NewSnapshot(ctx context.Context, source catalog.Source, limits query.Limits) (result *Table, err error) {
 	defer func() {
@@ -52,7 +54,8 @@ func NewSnapshot(ctx context.Context, source catalog.Source, limits query.Limits
 			err = snapshotPanic(recovered)
 		}
 	}()
-	if limits.Validate() != nil || source.LocalSnapshot == nil || source.ValidateLocalSnapshot() != nil || source.LocalSnapshot.SchemaSHA256 == "" {
+	if limits.Validate() != nil || (source.LocalSnapshot == nil) == (source.ObjectSnapshot == nil) ||
+		source.ValidateLocalSnapshot() != nil || source.ValidateObjectSnapshot() != nil {
 		return nil, snapshotUnavailable()
 	}
 	policy, restricted, allowed := access.Lookup(ctx, source.ID, source.ID)
@@ -60,14 +63,33 @@ func NewSnapshot(ctx context.Context, source catalog.Source, limits query.Limits
 		return nil, query.NewError("PERMISSION_DENIED", "Query access denied")
 	}
 	// Retain immutable provenance even if the caller later reuses its envelope.
-	read := *source.LocalSnapshot
-	read.Parts = append([]catalog.LocalSnapshotPart(nil), read.Parts...)
-	source.LocalSnapshot = &read
 	source.ParquetPaths = append([]string(nil), source.ParquetPaths...)
 	budget := budgetFromContext(ctx)
 	snapshot := &snapshotTable{source: source, columns: make(map[string]int), limits: limits,
 		memory: budget.snapshotAllocator(min(64<<20, int64(limits.MemoryMB)<<19))}
-	for index := range source.LocalSnapshot.Parts {
+	if source.LocalSnapshot != nil {
+		read := *source.LocalSnapshot
+		read.Parts = append([]catalog.LocalSnapshotPart(nil), read.Parts...)
+		snapshot.source.LocalSnapshot = &read
+		snapshot.parts, snapshot.scan, snapshot.schemaHash = read.Parts, read.Scan, read.SchemaSHA256
+	} else {
+		read := *source.ObjectSnapshot
+		read.Parts = append([]catalog.ObjectSnapshotPart(nil), read.Parts...)
+		snapshot.source.ObjectSnapshot = &read
+		if source.Range != nil {
+			rangeCopy := *source.Range
+			snapshot.source.Range = &rangeCopy
+		}
+		snapshot.source.Ranges = append([]catalog.ObjectRange(nil), source.Ranges...)
+		snapshot.scan, snapshot.schemaHash = read.Scan, read.SchemaSHA256
+		for _, part := range read.Parts {
+			snapshot.parts = append(snapshot.parts, catalog.LocalSnapshotPart{Rows: part.Rows, Bytes: part.Bytes, SHA256: part.SHA256})
+		}
+	}
+	if snapshot.schemaHash == "" {
+		return nil, snapshotUnavailable()
+	}
+	for index := range snapshot.parts {
 		part, openErr := snapshot.open(ctx, index)
 		if openErr != nil {
 			return nil, openErr
@@ -85,7 +107,7 @@ func NewSnapshot(ctx context.Context, source catalog.Source, limits query.Limits
 		snapshot.columns[field.Name] = index
 	}
 	lifetime, cancel := context.WithCancel(ctx)
-	limits.MaxRows, limits.MaxBytes = source.LocalSnapshot.Scan.MaxRows, source.LocalSnapshot.Scan.MaxBytes
+	limits.MaxRows, limits.MaxBytes = snapshot.scan.MaxRows, snapshot.scan.MaxBytes
 	result = &Table{snapshot: snapshot, ctx: lifetime, cancel: cancel, schema: snapshot.schema,
 		sourceID: source.ID, selected: catalog.FederationTable{Name: source.ID}, limits: limits,
 		budget: budget, active: make(map[*scanReader]struct{}), closeDone: make(chan struct{})}
@@ -107,7 +129,7 @@ func snapshotPanic(value any) error {
 func (s *snapshotTable) charge(rows, bytes int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	limit := s.source.LocalSnapshot.Scan
+	limit := s.scan
 	if rows < 0 || bytes < 0 || rows > limit.MaxRows-s.rows || bytes > limit.MaxBytes-s.bytes {
 		return snapshotLimit()
 	}
@@ -135,9 +157,14 @@ func (s *snapshotTable) prepare(plan duckbridge.ScanPlan) (duckbridge.ScanPlan, 
 }
 
 type snapshotPartReader struct {
-	file    *os.File
+	file    snapshotInput
 	parquet *file.Reader
 	schema  *arrow.Schema
+}
+
+type snapshotInput interface {
+	io.ReaderAt
+	io.Closer
 }
 
 func (p *snapshotPartReader) Close() error { return errors.Join(p.parquet.Close(), p.file.Close()) }
@@ -158,13 +185,28 @@ func (s *snapshotTable) open(ctx context.Context, index int) (result *snapshotPa
 	if err := ctx.Err(); err != nil {
 		return nil, query.PublicError(err)
 	}
-	path := s.source.Path
-	if s.source.ParquetPaths != nil {
-		path = s.source.ParquetPaths[index]
+	part := s.parts[index]
+	var input snapshotInput
+	if s.source.ObjectSnapshot != nil {
+		input, err = newSnapshotRange(ctx, s.source.ObjectSnapshot.Parts[index].URL, part.Bytes, part.SHA256, s.memory)
+	} else {
+		path := s.source.Path
+		if s.source.ParquetPaths != nil {
+			path = s.source.ParquetPaths[index]
+		}
+		file, openErr := openSnapshotFile(path)
+		if openErr != nil {
+			return nil, snapshotUnavailable()
+		}
+		info, statErr := file.Stat()
+		if statErr != nil || !info.Mode().IsRegular() || info.Size() != part.Bytes {
+			_ = file.Close()
+			return nil, snapshotUnavailable()
+		}
+		input = file
 	}
-	input, err := openSnapshotFile(path)
 	if err != nil {
-		return nil, snapshotUnavailable()
+		return nil, query.PublicError(err)
 	}
 	var reader *file.Reader
 	defer func() {
@@ -179,33 +221,34 @@ func (s *snapshotTable) open(ctx context.Context, index int) (result *snapshotPa
 			_ = input.Close()
 		}
 	}()
-	info, err := input.Stat()
-	part := s.source.LocalSnapshot.Parts[index]
-	if err != nil || !info.Mode().IsRegular() || info.Size() != part.Bytes {
-		return nil, snapshotUnavailable()
-	}
 	var trailer [8]byte
 	if _, err := input.ReadAt(trailer[:], part.Bytes-8); err != nil {
 		return nil, snapshotUnavailable()
 	}
 	footer := int64(binary.LittleEndian.Uint32(trailer[:4]))
-	footerLimit := min(64<<20, int64(s.limits.MemoryMB)<<17, s.source.LocalSnapshot.Scan.MaxBytes)
+	footerLimit := min(64<<20, int64(s.limits.MemoryMB)<<17, s.scan.MaxBytes)
 	if string(trailer[4:]) != "PAR1" || footer <= 0 || footer > footerLimit || footer > part.Bytes-12 {
 		return nil, snapshotLimit()
 	}
-	digest := sha256.New()
-	if _, err := io.CopyBuffer(digest, snapshotContextReader{ctx, io.NewSectionReader(input, 0, part.Bytes)}, make([]byte, 32<<10)); err != nil {
-		return nil, query.PublicError(err)
-	}
-	if hex.EncodeToString(digest.Sum(nil)) != part.SHA256 {
-		return nil, snapshotUnavailable()
+	if ranges, ok := input.(*snapshotRange); ok {
+		if err := ranges.verifyDigest(); err != nil {
+			return nil, query.PublicError(err)
+		}
+	} else {
+		digest := sha256.New()
+		if _, err := io.CopyBuffer(digest, snapshotContextReader{ctx, io.NewSectionReader(input, 0, part.Bytes)}, make([]byte, 32<<10)); err != nil {
+			return nil, query.PublicError(err)
+		}
+		if hex.EncodeToString(digest.Sum(nil)) != part.SHA256 {
+			return nil, snapshotUnavailable()
+		}
 	}
 	schema, err := acceleration.ReadParquetSchema(input, part.Bytes)
 	if err != nil || schema == nil || schema.NumFields() == 0 || schema.NumFields() > access.MaxColumns {
 		return nil, snapshotUnavailable()
 	}
 	fingerprint, err := acceleration.SchemaFingerprint(schema)
-	if err != nil || fingerprint != s.source.LocalSnapshot.SchemaSHA256 {
+	if err != nil || fingerprint != s.schemaHash {
 		return nil, snapshotUnavailable()
 	}
 	// Kelvo's persisted acceleration contract is flat. Reject nested/extension
@@ -223,7 +266,7 @@ func (s *snapshotTable) open(ctx context.Context, index int) (result *snapshotPa
 	if err != nil || reader.NumRows() != part.Rows || reader.NumRowGroups() > 65536 {
 		return nil, snapshotUnavailable()
 	}
-	groupLimit := min(32<<20, int64(s.limits.MemoryMB)<<18, s.source.LocalSnapshot.Scan.MaxBytes)
+	groupLimit := min(32<<20, int64(s.limits.MemoryMB)<<18, s.scan.MaxBytes)
 	for index := 0; index < reader.NumRowGroups(); index++ {
 		group := reader.MetaData().RowGroup(index)
 		if group.NumRows() < 0 || group.NumRows() > 8192 || group.NumColumns() != schema.NumFields() || group.TotalByteSize() < 0 || group.TotalByteSize() > groupLimit {
@@ -249,7 +292,7 @@ func (e *snapshotExecution) Execute(ctx context.Context, _ query.Request, sink q
 	if err := sink.Schema(e.schema); err != nil {
 		return stats, err
 	}
-	for index := range e.table.source.LocalSnapshot.Parts {
+	for index := range e.table.parts {
 		if err := e.part(ctx, index, sink); err != nil {
 			return stats, err
 		}

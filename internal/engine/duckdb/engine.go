@@ -53,6 +53,9 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		if err := source.ValidateLocalSnapshot(); err != nil {
 			return nil, query.NewError("CONFIGURATION_ERROR", "Invalid local snapshot source")
 		}
+		if err := source.ValidateObjectSnapshot(); err != nil {
+			return nil, query.NewError("CONFIGURATION_ERROR", "Invalid object snapshot source")
+		}
 		if !catalog.ValidID(source.ID) {
 			return nil, query.NewError("INVALID_ARGUMENT", "Source ID is invalid")
 		}
