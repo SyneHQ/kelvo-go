@@ -139,6 +139,8 @@ def reconcile(report, expected_revision):
                         or check.get("failed_attempt_result_rejected") is not True
                         or check.get("queued_handles_preserved") is not True):
                     return False
+            if check['test'] == 'broker_loss' and not loss.lease_supervision.valid_evidence(check.get('lease_supervision')):
+                return False
         windows = report["progress_windows"]
         if not finite_number(report["requested_seconds"], 60) or report["requested_seconds"] > 14400:
             return False
@@ -648,7 +650,7 @@ class Campaign(loss.LossAcceptance):
     def evidence(self):
         with self.data_lock:
             return {"workload": json.loads(json.dumps(self.workload)), "resources": json.loads(json.dumps(self.resource_samples)),
-                    "control_response_counts": dict(self.control_response_counts),
+                    "control_response_counts": dict(self.control_response_counts), "broker_supervision": self.broker_supervision,
                     "latencies": {kind: {tenant: histogram_evidence(value) for tenant, value in values.items()} for kind, values in self.latencies.items()},
                     "latency_scope": "Client elapsed times and dispatch observation upper bounds (50ms polling), not exact distributed queue attribution; node admission histograms exclude dispatch.",
                     "client_failures": list(self.client_failures), "progress_windows": json.loads(json.dumps(self.window_counts)), "process_sampling": self.samples.evidence(),
