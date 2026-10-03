@@ -4,13 +4,75 @@
 package exports
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestCustodyCrashReleasesOnlyProcessLock(t *testing.T) {
+	if directory := os.Getenv("KELVO_TEST_CUSTODY_CHILD"); directory != "" {
+		c, err := OpenCustody(context.Background(), directory, "tenant", "worker")
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println(c.ID())
+		for {
+			time.Sleep(time.Hour)
+		}
+	}
+	directory := filepath.Join(t.TempDir(), "runtime")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestCustodyCrashReleasesOnlyProcessLock$")
+	child.Env = append(os.Environ(), "KELVO_TEST_CUSTODY_CHILD="+directory)
+	output, err := child.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if child.ProcessState == nil {
+			_ = child.Process.Kill()
+			_ = child.Wait()
+		}
+	}()
+	scanner := bufio.NewScanner(output)
+	if !scanner.Scan() {
+		t.Fatal("child did not acquire custody")
+	}
+	id := scanner.Text()
+	if !idPattern.MatchString(id) {
+		t.Fatal("invalid child custody identity", id)
+	}
+	locked, stop := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	if other, err := OpenCustody(locked, directory, "tenant", "worker"); !errors.Is(err, context.DeadlineExceeded) || other != nil {
+		stop()
+		t.Fatal("live process custody stolen", err)
+	}
+	stop()
+	if err = child.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if err = child.Wait(); err == nil {
+		t.Fatal("crash control exited successfully")
+	}
+	reopened, err := OpenCustody(context.Background(), directory, "tenant", "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if reopened.ID() != id {
+		t.Fatal("crash changed persisted identity")
+	}
+}
 
 func TestCustodyPersistsIdentityAndExcludesConcurrentRuntime(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "runtime")
