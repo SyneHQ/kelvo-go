@@ -103,7 +103,7 @@ func runCluster(args []string) error {
 	select {
 	case <-closed:
 		if result == nil && closeErr != nil {
-			return query.NewError("UNAVAILABLE", "Gateway audit shutdown remains uncertain")
+			return query.NewError("UNAVAILABLE", "Gateway shutdown remains uncertain")
 		}
 	default:
 	}

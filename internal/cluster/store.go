@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"net/url"
@@ -287,10 +288,24 @@ func newID(n int) (string, error) {
 	}
 	return fmt.Sprintf("%x-%s", n, hex.EncodeToString(b)), nil
 }
-func enc(v any) []byte          { b, _ := json.Marshal(v); return b }
-func dec(b []byte) (Job, error) { var j Job; e := json.Unmarshal(b, &j); return j, e }
-func encodeJob(j Job) ([]byte, error) {
+func enc(v any) []byte { b, _ := json.Marshal(v); return b }
+func dec(b []byte) (Job, error) {
+	var j Job
+	err := json.Unmarshal(b, &j)
+	j.Trace = copyJobTrace(j.Trace)
+	return j, err
+}
+func encodeJob(j Job) ([]byte, error) { return encodePersistedJob(&j) }
+
+// Optional diagnostics never consume the space required for authoritative state.
+// Update the snapshot too, so callers see exactly what was persisted.
+func encodePersistedJob(j *Job) ([]byte, error) {
+	j.Trace = copyJobTrace(j.Trace)
 	b, err := json.Marshal(j)
+	if err == nil && len(b) > jobValueLimit && j.Trace != nil {
+		j.Trace = nil
+		b, err = json.Marshal(j)
+	}
 	if err != nil || len(b) > jobValueLimit {
 		return nil, errors.New("query state exceeds its size limit")
 	}
@@ -311,8 +326,8 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 		if err != nil {
 			return Snapshot{}, errors.New("query ID generation failed")
 		}
-		j := Job{Authority: authority, ID: id, TenantID: s.policy.TenantID, State: Queued, Request: r, CreatedAt: now, ExpiresAt: now.Add(s.policy.JobTTL), HeartbeatAt: now}
-		b, err := encodeJob(j)
+		j := Job{Trace: copyJobTraceValue(tracing.CarrierFromContext(ctx)), Authority: authority, ID: id, TenantID: s.policy.TenantID, State: Queued, Request: r, CreatedAt: now, ExpiresAt: now.Add(s.policy.JobTTL), HeartbeatAt: now}
+		b, err := encodePersistedJob(&j)
 		if err != nil {
 			return Snapshot{}, err
 		}
@@ -441,8 +456,10 @@ func (s *NATSStore) CompareAndSwap(ctx context.Context, old Snapshot, next Job) 
 			return Snapshot{}, ErrConflict
 		}
 	}
+	// Re-read durable context, ignoring attempted replacement or pointer mutation.
+	next.Trace = copyJobTrace(cur.Job.Trace)
 	next.HeartbeatAt = time.Now().UTC()
-	b, err := encodeJob(next)
+	b, err := encodePersistedJob(&next)
 	if err != nil {
 		return Snapshot{}, ErrConflict
 	}

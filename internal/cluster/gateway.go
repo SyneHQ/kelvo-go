@@ -22,6 +22,8 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 )
 
 const gatewayRequestLimit = 1 << 20
@@ -39,6 +41,7 @@ type Gateway struct {
 	exportSupervisors chan struct{}
 	exportDownloads   chan struct{}
 	exportOwner       string
+	tracing           *tracing.Recorder
 	audit             *ServiceAudit
 	closeErr          error
 	tenants           map[string]gatewayTenant
@@ -81,6 +84,7 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 	defer func() {
 		if !started {
 			_ = g.audit.CloseBounded()
+			_ = g.closeTracing()
 			if g.workerIdentity != nil {
 				g.workerIdentity.close()
 			}
@@ -89,6 +93,14 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 			}
 		}
 	}()
+	if cfg.Tracing != nil {
+		var err error
+		g.tracing, err = tracing.New(*cfg.Tracing)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+	}
 	if cfg.WorkerTLS.Trust != nil {
 		var err error
 		g.workerTrust, err = newTLSTrust(*cfg.WorkerTLS.Trust, nil)
@@ -238,7 +250,7 @@ func (g *Gateway) Close() error {
 		}
 		g.handlers.Wait()
 		g.wg.Wait()
-		g.closeErr = g.audit.CloseBounded()
+		g.closeErr = errors.Join(g.audit.CloseBounded(), g.closeTracing())
 		for _, t := range g.tenants {
 			for _, endpoint := range t.workers {
 				endpoint.client.CloseIdleConnections()
@@ -435,7 +447,13 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant
 		g.auditError(w, op, 403, "PERMISSION_DENIED", "Query access denied")
 		return
 	}
-	s, e := t.store.Submit(r.Context(), req)
+	// Mint context only after authorization; client headers and ambient context
+	// cannot choose a trace, including when tracing is disabled.
+	span := g.tracing.Start(tracing.Carrier{}, tracing.ClusterSubmit)
+	outcome := telemetry.OutcomeError
+	defer finishClusterTrace(span, r.Context(), &outcome)
+	ctx := tracing.WithCarrier(r.Context(), span.Carrier())
+	s, e := t.store.Submit(ctx, req)
 	if errors.Is(e, ErrCapacity) {
 		g.auditError(w, op, 429, "RESOURCE_EXHAUSTED", "Query capacity unavailable")
 		return
@@ -451,6 +469,7 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant
 		return
 	}
 	g.json(w, 201, map[string]string{"id": s.Job.ID, "state": s.Job.State})
+	outcome = telemetry.OutcomeSuccess
 }
 func (g *Gateway) status(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string) {
 	s, e := principalSnapshot(r.Context(), t, id)
@@ -513,6 +532,10 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 
 	var s Snapshot
 	var e error
+	var wait *tracing.Lifecycle
+	waitStarted := false
+	waitOutcome := telemetry.OutcomeError
+	defer func() { finishClusterTrace(wait, r.Context(), &waitOutcome) }()
 	poll := time.NewTicker(50 * time.Millisecond)
 	defer poll.Stop()
 	for {
@@ -530,6 +553,8 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 			return
 		}
 		if s.Job.State == Assigned {
+			waitOutcome = telemetry.OutcomeSuccess
+			wait.End(waitOutcome)
 			if !admission.activate() {
 				w.Header().Set("Retry-After", "1")
 				g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Result request capacity unavailable")
@@ -538,6 +563,11 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 			break
 		}
 		if s.Job.State == Queued {
+			if !waitStarted {
+				// This is locally observed polling wait, not broker queue latency.
+				wait = g.tracing.Start(jobTrace(s.Job.Trace), tracing.ClusterResultWait)
+				waitStarted = true
+			}
 			if !admission.park() {
 				w.Header().Set("Retry-After", "1")
 				g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Queued result wait capacity unavailable")
@@ -557,6 +587,11 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 		g.auditError(w, op, 409, "QUERY_FAILED", "Query is not available")
 		return
 	}
+	// Authorization was checked on the durable snapshot above. This interval
+	// includes worker execution and backpressure; it is not pure network time.
+	relay := g.tracing.Start(jobTrace(s.Job.Trace), tracing.ClusterRelay)
+	relayOutcome := telemetry.OutcomeError
+	defer finishClusterTrace(relay, r.Context(), &relayOutcome)
 	claim := make([]byte, 16)
 	if _, e = rand.Read(claim); e != nil {
 		g.auditError(w, op, 500, "INTERNAL", "Unable to claim query")
@@ -621,6 +656,7 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 		g.fail(t, s, "Arrow stream incomplete")
 		panic(http.ErrAbortHandler)
 	}
+	relayOutcome = telemetry.OutcomeSuccess
 }
 
 // Pin the durable slot until the gateway has checked the worker's completion.

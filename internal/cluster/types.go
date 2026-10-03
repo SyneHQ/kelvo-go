@@ -51,19 +51,20 @@ type Policy struct {
 }
 
 type Job struct {
-	Authority   *JobAuthority `json:"authority,omitempty"`
-	ID          string        `json:"id"`
-	TenantID    string        `json:"tenant_id"`
-	State       string        `json:"state"`
-	Request     query.Request `json:"request"`
-	CreatedAt   time.Time     `json:"created_at"`
-	ExpiresAt   time.Time     `json:"expires_at"`
-	HeartbeatAt time.Time     `json:"heartbeat_at,omitempty"`
-	WorkerID    string        `json:"worker_id,omitempty"`
-	Owner       string        `json:"owner,omitempty"`
-	Claim       string        `json:"claim,omitempty"`
-	Stats       query.Stats   `json:"stats"`
-	Error       *query.Error  `json:"error,omitempty"`
+	Trace       *tracing.Carrier `json:"trace,omitempty"`
+	Authority   *JobAuthority    `json:"authority,omitempty"`
+	ID          string           `json:"id"`
+	TenantID    string           `json:"tenant_id"`
+	State       string           `json:"state"`
+	Request     query.Request    `json:"request"`
+	CreatedAt   time.Time        `json:"created_at"`
+	ExpiresAt   time.Time        `json:"expires_at"`
+	HeartbeatAt time.Time        `json:"heartbeat_at,omitempty"`
+	WorkerID    string           `json:"worker_id,omitempty"`
+	Owner       string           `json:"owner,omitempty"`
+	Claim       string           `json:"claim,omitempty"`
+	Stats       query.Stats      `json:"stats"`
+	Error       *query.Error     `json:"error,omitempty"`
 }
 
 func (j Job) Terminal() bool {
@@ -128,6 +129,7 @@ type TenantConfig struct {
 }
 
 type GatewayConfig struct {
+	Tracing             *tracing.Config              `yaml:"tracing,omitempty"`
 	Exports             *GatewayExportConfig         `yaml:"exports,omitempty"`
 	RuntimeExportStores map[string]ExportStore       `yaml:"-"`
 	Audit               *ServiceAuditConfig          `yaml:"audit,omitempty"`

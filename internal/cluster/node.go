@@ -18,6 +18,8 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 	"github.com/apache/arrow-go/v18/arrow"
 )
@@ -237,11 +239,13 @@ func (n *Node) dispatch() {
 			<-n.permits
 			continue
 		}
+		span := n.cfg.RuntimeTracing.Start(jobTrace(s.Job.Trace), tracing.ClusterDispatch)
 		ctx, cancel := context.WithDeadline(n.ctx, s.Job.ExpiresAt)
 		r := &reservation{ctx: ctx, cancel: cancel, done: make(chan struct{})}
 		n.mu.Lock()
 		if n.draining {
 			n.mu.Unlock()
+			span.End(telemetry.OutcomeCanceled)
 			cancel()
 			_ = d.Retry(n.ctx)
 			<-n.permits
@@ -255,6 +259,8 @@ func (n *Node) dispatch() {
 		j.Owner = n.owner
 		j.HeartbeatAt = time.Now().UTC()
 		if _, err = n.store.CompareAndSwap(n.ctx, s, j); err != nil {
+			outcome := telemetry.OutcomeError
+			finishClusterTrace(span, n.ctx, &outcome)
 			n.release(s.Job.ID, r)
 			if errors.Is(err, ErrConflict) {
 				_ = d.Ack(n.ctx)
@@ -263,6 +269,7 @@ func (n *Node) dispatch() {
 			}
 			continue
 		}
+		span.End(telemetry.OutcomeSuccess)
 		// An ACK failure may redeliver the envelope. Its durable state is already
 		// ASSIGNED, so another node must acknowledge it without another execution.
 		_ = d.Ack(n.ctx)
@@ -668,6 +675,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	claim := r.Header.Get("X-Kelvo-Claim")
 	var request query.Request
 	var authority *JobAuthority
+	var carrier tracing.Carrier
 	err := n.mutate(r.Context(), id, func(j *Job) error {
 		if j.State != Claimed || len(claim) != 32 || subtle.ConstantTimeCompare([]byte(j.Claim), []byte(claim)) != 1 {
 			return ErrConflict
@@ -682,6 +690,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		j.HeartbeatAt = time.Now().UTC()
 		request = j.Request
 		authority = j.Authority
+		carrier = jobTrace(j.Trace)
 		return nil
 	})
 	if err != nil {
@@ -690,6 +699,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(reserved.ctx, n.cfg.Policy.Limits.Timeout)
+	ctx = tracing.WithCarrier(ctx, carrier)
 	if authority != nil {
 		ctx = context.WithValue(ctx, jobAuthorityKey{}, *authority)
 	}
