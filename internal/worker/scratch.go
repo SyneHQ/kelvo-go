@@ -2,9 +2,30 @@
 package worker
 
 import (
+	"errors"
+	"log"
 	"os"
 	"os/exec"
 )
+
+type scratchCleanupError struct {
+	stage string
+	cause error
+}
+
+func (e *scratchCleanupError) Error() string { return e.cause.Error() }
+func (e *scratchCleanupError) Unwrap() error { return e.cause }
+
+// reportScratchCleanupFailure runs only after caller-side quarantine. It emits
+// fixed labels, never ownership IDs, paths, records or underlying error text.
+func reportScratchCleanupFailure(err error) {
+	stage := "unmanaged_remove"
+	var failure *scratchCleanupError
+	if errors.As(err, &failure) {
+		stage = failure.stage
+	}
+	log.Printf("Kelvo scratch cleanup uncertain: stage=%s", stage)
+}
 
 // scratchWorkspace keeps its ownership lock open until the executor and child
 // have both finished. The child inherits the same open file description.

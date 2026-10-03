@@ -1,0 +1,15 @@
+{
+  "test_sha256": "a7406f9cfd81bbe6d70da91ecc7baffb1662345aa0f4e202c5e15f551623f6c2",
+  "before_guard": {
+    "exit_code": 1,
+    "node_sha256": "cf6e716b7a509076e95600d06438550ebd573c839b9a85492b78bcb08d046c35",
+    "log_sha256": "b119654dfd55f7dc9d90a4700f82450fbfae6fd8575fdff27f81b58a7a19576f"
+  },
+  "after_guard": {
+    "exit_code": 0,
+    "node_sha256": "ef3a56123dba4bff3eca35448f3cb782324ebc2936de68ee0abf3d01a884b8d3",
+    "log_sha256": "4b1aaec4f8360a6c621761c616d46cc285eb64e5014320af863ddf75a9de4dd5"
+  },
+  "commit": "e0219876bb7b051f61ebd99d7b649dac1bfe8762",
+  "scope": "Deterministic completed-result handoff regression under race detector; not WAN capacity acceptance"
+}

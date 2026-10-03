@@ -18,6 +18,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -211,8 +212,10 @@ func configureKVDirect(ctx context.Context, js jetstream.JetStream, bucket strin
 	if err != nil {
 		return errors.New("KV store configuration unavailable")
 	}
-	info, err := stream.Info(ctx)
-	if err != nil {
+	// Stream just fetched its metadata. Do not issue the same request twice;
+	// this object is local to this validation and is never reused across opens.
+	info := stream.CachedInfo()
+	if info == nil {
 		return errors.New("KV store configuration unavailable")
 	}
 	if !info.Config.AllowDirect {
@@ -230,20 +233,52 @@ func configureKVDirect(ctx context.Context, js jetstream.JetStream, bucket strin
 }
 
 func validateResources(ctx context.Context, js jetstream.JetStream, meta, jobs jetstream.KeyValue, stream jetstream.Stream, consumer jetstream.Consumer, p Policy) error {
+	// These four read-only checks are independent. Keep startup within the
+	// existing deadline over WAN without skipping any immutable-policy checks.
+	checks := [...]func() error{
+		func() error { return validateMetadataResource(ctx, js, meta, p) },
+		func() error { return validateJobsResource(ctx, js, jobs, p) },
+		func() error { return validateDispatchStream(ctx, stream, p) },
+		func() error { return validateDispatchConsumer(ctx, consumer, p) },
+	}
+	var results [len(checks)]error
+	var pending sync.WaitGroup
+	for i, check := range checks {
+		pending.Go(func() { results[i] = check() })
+	}
+	pending.Wait()
+	// Deterministic error precedence, after every bounded request has returned.
+	for _, err := range results {
+		if err != nil {
+			return err
+		}
+	}
+	return ctx.Err()
+}
+
+func validateMetadataResource(ctx context.Context, js jetstream.JetStream, meta jetstream.KeyValue, p Policy) error {
 	if err := configureKVDirect(ctx, js, metaBucket, false); err != nil {
 		return errors.New("metadata store configuration mismatch")
-	}
-	if err := configureKVDirect(ctx, js, jobsBucket, false); err != nil {
-		return errors.New("job store configuration mismatch")
 	}
 	metaStatus, err := meta.Status(ctx)
 	if err != nil || metaStatus.Config().TTL != 0 || metaStatus.Config().History != 1 || metaStatus.Config().Replicas != p.Replicas {
 		return errors.New("metadata store configuration mismatch")
 	}
+	return nil
+}
+
+func validateJobsResource(ctx context.Context, js jetstream.JetStream, jobs jetstream.KeyValue, p Policy) error {
+	if err := configureKVDirect(ctx, js, jobsBucket, false); err != nil {
+		return errors.New("job store configuration mismatch")
+	}
 	jobStatus, err := jobs.Status(ctx)
 	if err != nil || jobStatus.Config().TTL != 2*p.JobTTL || jobStatus.Config().History != 1 || jobStatus.Config().Replicas != p.Replicas || jobStatus.Config().MaxValueSize != jobValueLimit || jobStatus.Config().MaxBytes != jobStoreBytes(p) {
 		return errors.New("job store configuration mismatch")
 	}
+	return nil
+}
+
+func validateDispatchStream(ctx context.Context, stream jetstream.Stream, p Policy) error {
 	info, err := stream.Info(ctx)
 	if err != nil {
 		return errors.New("dispatch stream configuration unavailable")
@@ -252,6 +287,10 @@ func validateResources(ctx context.Context, js jetstream.JetStream, meta, jobs j
 	if cfg.Retention != jetstream.WorkQueuePolicy || cfg.MaxMsgs != int64(p.MaxQueries) || cfg.MaxMsgSize != 1024 || cfg.MaxAge != p.JobTTL+time.Minute || cfg.Replicas != p.Replicas || cfg.AllowDirect || len(cfg.Subjects) != 1 || cfg.Subjects[0] != queueSubject {
 		return errors.New("dispatch stream configuration mismatch")
 	}
+	return nil
+}
+
+func validateDispatchConsumer(ctx context.Context, consumer jetstream.Consumer, p Policy) error {
 	ci, err := consumer.Info(ctx)
 	if err != nil {
 		return errors.New("dispatch consumer configuration unavailable")

@@ -14,7 +14,7 @@ Status reviewed 3 October 2026. This is a capability checklist, not production c
 | Managed Linux scratch with inherited leases | Deployment-specific disk capacity and recovery validation |
 | CI, 15 executed notebooks, process-loss and snapshot-upgrade gates | Recurring real-provider tests on each release candidate |
 
-See [operations](operations.md), [process containment](process-containment.md), [process-loss acceptance](process-loss-acceptance.md), [snapshot upgrades](release-upgrades.md), [rolling applications](rolling-upgrades.md) and [worker scratch](worker-scratch.md).
+See [operations](operations.md), [process containment](process-containment.md), [process-loss acceptance](process-loss-acceptance.md), [snapshot upgrades](release-upgrades.md), [rolling applications](rolling-upgrades.md) [worker scratch](worker-scratch.md) and [runtime recovery](runtime-recovery.md).
 
 Admission reserves budgets; optional containment enforces native process-tree limits. Parent allocations still need host/container limits and measured headroom. DuckDB materializes before Arrow delivery.
 

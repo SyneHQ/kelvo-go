@@ -194,6 +194,7 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 			if e.Containment != nil {
 				e.Containment.QuarantineOperation()
 			}
+			reportScratchCleanupFailure(err)
 			if resultErr == nil {
 				resultErr = query.NewError("RESOURCE_EXHAUSTED", "Worker scratch cleanup failed")
 			}

@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -330,6 +331,7 @@ func (j *Job) Finish(parent context.Context) (Usage, error) {
 	j.mu.Lock()
 	var notify func(error)
 	var releaseAfterUnlock func()
+	var failedStage string
 	defer func() {
 		j.mu.Unlock()
 		if releaseAfterUnlock != nil {
@@ -338,21 +340,35 @@ func (j *Job) Finish(parent context.Context) (Usage, error) {
 		if notify != nil {
 			notify(ErrQuarantined)
 		}
+		if failedStage != "" {
+			// Emit after unlocking and notifying admission. A slow log sink must
+			// never keep an uncertain manager available for new work.
+			log.Printf("Kelvo process cleanup uncertain: stage=%s", failedStage)
+		}
 	}()
 	if j.complete {
 		return j.observed, nil
 	}
 	ctx, cancel := context.WithTimeout(parent, j.manager.config.CleanupTimeout)
 	defer cancel()
-	fail := func() (Usage, error) { notify = j.manager.quarantine(j.name); return j.observed, ErrQuarantined }
+	fail := func(stage string) (Usage, error) {
+		// Fixed labels identify failures even if Close later succeeds in a retry.
+		// Never log cgroup paths, operation IDs or underlying OS error strings.
+		failedStage = stage
+		notify = j.manager.quarantine(j.name)
+		return j.observed, ErrQuarantined
+	}
 	if !j.empty {
-		if ctx.Err() != nil || j.group.kill() != nil {
-			return fail()
+		if ctx.Err() != nil {
+			return fail("deadline_before_kill")
+		}
+		if j.group.kill() != nil {
+			return fail("group_kill")
 		}
 		for {
 			populated, err := j.group.populated()
 			if err != nil {
-				return fail()
+				return fail("population_read")
 			}
 			if !populated {
 				j.empty = true
@@ -360,28 +376,31 @@ func (j *Job) Finish(parent context.Context) (Usage, error) {
 			}
 			select {
 			case <-ctx.Done():
-				return fail()
+				return fail("population_deadline")
 			case <-time.After(10 * time.Millisecond):
 			}
 		}
 		observed, err := j.group.usage()
 		if err != nil {
 			j.empty = false
-			return fail()
+			return fail("usage_read")
 		}
 		j.observed = observed
 	}
 	if !j.removed {
 		if err := j.group.remove(); err != nil {
-			return fail()
+			return fail("group_remove")
 		}
 		j.removed = true
 		if err := j.group.close(); err != nil {
-			return fail()
+			return fail("group_close")
 		}
 	}
-	if j.manager.removeState(j.name+".owned") != nil || j.manager.removeState(j.name+".intent") != nil {
-		return fail()
+	if j.manager.removeState(j.name+".owned") != nil {
+		return fail("owned_record_remove")
+	}
+	if j.manager.removeState(j.name+".intent") != nil {
+		return fail("intent_record_remove")
 	}
 	j.complete = true
 	j.manager.mu.Lock()
