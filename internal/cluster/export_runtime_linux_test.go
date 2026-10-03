@@ -162,11 +162,15 @@ func addRuntimeExport(t *testing.T, s *exportRuntimeStore) string {
 }
 
 func addRuntimeExportSQL(t *testing.T, s *exportRuntimeStore, sql string) string {
+	return addRuntimeExportRequest(t, s, query.Request{Mode: "federated", SQL: sql})
+}
+
+func addRuntimeExportRequest(t *testing.T, s *exportRuntimeStore, request query.Request) string {
 	t.Helper()
 	a, _ := authorityForPrincipal(s.p, "reports")
 	ctx := context.WithValue(context.Background(), jobAuthorityKey{}, a)
 	now := time.Now().UTC()
-	j, err := normalizeExportSubmission(ctx, s.p, ExportSubmission{Request: query.Request{Mode: "federated", SQL: sql}, SupervisorOwner: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", AuthorityUntil: now.Add(s.p.LeaseDuration)}, now)
+	j, err := normalizeExportSubmission(ctx, s.p, ExportSubmission{Request: request, SupervisorOwner: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", AuthorityUntil: now.Add(s.p.LeaseDuration)}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
