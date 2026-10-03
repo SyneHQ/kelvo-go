@@ -95,6 +95,8 @@ jobs:
         run: python3 scripts/gateway_key_rotation_acceptance.py --binary bin/kelvo --sandbox bin/kelvo-landlock --output artifacts/gateway-key-rotation-ci.json
       - name: Verify process-loss acceptance controls
         run: python3 -m unittest discover -s scripts -p test_process_loss_acceptance.py
+      - name: Verify fenced-worker supervision controls
+        run: python3 -m unittest discover -s scripts -p test_lease_supervision.py
       - name: Verify gateway, worker and broker crash recovery
         run: python3 scripts/process_loss_acceptance.py --binary bin/kelvo --sandbox bin/kelvo-landlock --fixture artifacts/cluster-private --managed-scratch --output artifacts/process-loss-ci.json
       - name: Verify rolling-upgrade evidence and source controls

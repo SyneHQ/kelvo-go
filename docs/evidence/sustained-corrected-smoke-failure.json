@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "scope": "Retained failure from a bounded single-host synthetic Parquet correctness and lifecycle campaign; not provider, WAN, multi-host or sustained-capacity acceptance",
+  "passed": false,
+  "mode": "smoke",
+  "checked_at": "2026-10-03T14:14:39.369156+00:00",
+  "revision": "67493699eb0ec97857a685923df225ad19b0cf62",
+  "requested_seconds": 600,
+  "elapsed_seconds": 475.543,
+  "service_exit_code": 1,
+  "interrupted": false,
+  "multi_hour_run_attempted": false,
+  "multi_hour_gate_passed": false,
+  "provenance": {
+    "original_report_sha256": "b70e5269b9127c5bfdca1137e8a6f2510f3419bb62dc33d0e08a520e266c46c6",
+    "source_manifest_sha256": "e8b13ce4bad3455ed04876f9d5d32c179d3f861b87ce711d30f8458ddc1b72fe",
+    "source_file_count": 805,
+    "build_and_execution_source_verified": true,
+    "source_unchanged": true,
+    "binary_sha256": {
+      "kelvo": "e6ace8d4c560198c801ba531952bc9e10b3d83ac36e1f6bc5950a329e765c71c",
+      "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+    },
+    "script_sha256": {
+      "scripts/sustained_acceptance.py": "d1dd45b3b2343e595580cd5f95d918c0b073efd66a852a977976c7bad4b87403",
+      "scripts/process_loss_acceptance.py": "bc0206bdf0598257f38f77672f2e4ac25588a05ede6cfc836ada5a68c96e0f89"
+    },
+    "publication": "Sanitized summary; original report and fixture diagnostics retained outside the repository"
+  },
+  "topology": {
+    "tenants": 2,
+    "gateways": 2,
+    "initial_workers": 2,
+    "broker_replicas": 3,
+    "source_rows_per_tenant": 1000000,
+    "dataset": "Deterministic synthetic Parquet with nullable integers and tenant markers",
+    "managed_scratch": true,
+    "containment_enabled": true,
+    "resource_budget": {
+      "cpu_percent": 200,
+      "memory_bytes": 6442450944,
+      "swap_bytes": 0,
+      "tasks": 512
+    }
+  },
+  "failed_checks": [
+    {
+      "test": "broker_loss",
+      "category": "SURVIVING_CANCELLATION_DEADLINE",
+      "seconds": 11.355
+    },
+    {
+      "test": "mixed_load",
+      "category": "FAULT_GATE_FAILED",
+      "seconds": 461.606
+    }
+  ],
+  "cancellation_observation": {
+    "same_handle_retried": true,
+    "overall_deadline_seconds": 10,
+    "per_request_timeout_seconds": 2,
+    "retry_interval_seconds": 0.05,
+    "transport_errors": 5,
+    "exception_types_recorded": false,
+    "interpretation": "Cancellation was not confirmed before its deadline during broker loss. This report alone does not establish the underlying transport or worker failure cause."
+  },
+  "other_exercised_checks_passed": [
+    "startup",
+    "tenant_isolation",
+    "saturation",
+    "gateway_loss",
+    "worker_loss",
+    "slow_readers",
+    "cancellations",
+    "cleanup"
+  ],
+  "completed_workload": {
+    "queries": {"a": 601, "b": 601},
+    "refreshes": {"a": 31, "b": 31},
+    "slow_readers": {"a": 8, "b": 7},
+    "cancellations": {"a": 8, "b": 7}
+  },
+  "resource_observations": {
+    "peak_cgroup_bytes": 765194240,
+    "sampled_application_tree_rss_peak_bytes": 730165248,
+    "application_rss_sampling_interval_ms": 50,
+    "cgroup_oom_events": 0,
+    "cgroup_oom_kill_events": 0,
+    "cgroup_oom_group_kill_events": 0,
+    "recorded_counter_errors": 0,
+    "recorded_resource_violations": 0,
+    "query_refresh_overlap_samples": 15,
+    "scope": "Cgroup includes all fixture processes. Application RSS excludes brokers and Python, can miss short peaks, and can double-count shared mappings."
+  },
+  "cleanup": {
+    "passed": true,
+    "forced_application_kills": 0,
+    "observed_live_descendants": 0,
+    "worker_scratch_directories": 0,
+    "remaining_containment_records": 0,
+    "original_configurations_verified": true,
+    "all_owned_brokers_stopped": true,
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true
+  },
+  "acceptance_status": "Failed smoke retained as evidence. A corrected candidate must pass smoke before the multi-hour campaign; these counts are not throughput claims."
+}

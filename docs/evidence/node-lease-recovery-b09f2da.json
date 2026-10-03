@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "scope": "One contained broker-loss gate on the combined candidate. Matched smoke and sustained campaigns are separate gates.",
+  "runtime_commit": "b09f2daad7caccf5caa7e35df5805696c9bc13ba",
+  "source_manifest_sha256": "d40a0906584ab5e89d1a316d17596cf16d54993fc0c4dade8b894fef97e4583a",
+  "raw_report_sha256": "97cce90d438a487830a4678b893085ea9a8976d8aa17abade3fa0c79502d811b",
+  "broker_gate": {
+    "passed": true,
+    "broker_gate_passed": true,
+    "fenced_recovery_covered": true,
+    "elapsed_seconds": 22.042277,
+    "source_unchanged": true,
+    "source_scripts_unchanged": true,
+    "script_sha256": "d47a828c48dad2dc8192a0344860af6994ee18848f175be9590309341249989c",
+    "source_scripts": {
+      "lease_supervision.py": "e3fe1e889b2d4e8e694f33efee890dc5d223ca4542ccccd9eecc0080e230d4b3",
+      "sustained_acceptance.py": "ae49f8195fb123972d2c948d2c0efe463a11c7c2ec9031ef467df9b2da504bc6",
+      "process_loss_acceptance.py": "8ce67ca9f2f5972de28be2b655b4764f96bb0a65c8f68e4ef29860af5c9c8df8",
+      "operational_acceptance.py": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639",
+      "cluster_fixture.py": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1"
+    },
+    "binary_sha256": "26ea84328e850116f4d5f31ab758bea1f5c57b7161eca0d61ddd63f9d714af26",
+    "sandbox_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+    "resource_budget": {
+      "cpu_percent": 200,
+      "memory_bytes": 6442450944,
+      "tasks": 512,
+      "swap_bytes": 0
+    },
+    "broker_supervision": {
+      "schema": 1,
+      "deadline_seconds": 25.0,
+      "expiry_basis": "observed_exact_parent_exit_plus_configured_lease_upper_bound",
+      "original_query_deadlines_unchanged": true,
+      "query_resubmissions": 0,
+      "errors": [],
+      "nodes": [
+        {
+          "node": "a1",
+          "fenced_exit_observed": false,
+          "restart_attempts": 0,
+          "lease_seconds": 5.0,
+          "final_running_verified": true,
+          "attempts": []
+        },
+        {
+          "node": "b1",
+          "fenced_exit_observed": true,
+          "restart_attempts": 1,
+          "lease_seconds": 5.0,
+          "final_running_verified": true,
+          "attempts": [
+            {
+              "number": 1,
+              "started_seconds": 9.98101
+            }
+          ],
+          "exit_observed_seconds": 4.960175,
+          "lease_expiry_upper_bound_seconds": 9.960175,
+          "old_children_gone_seconds": 9.98101,
+          "restart_started_seconds": 9.98101,
+          "replacement_ready_seconds": 10.20149,
+          "same_configuration_verified": true,
+          "fresh_owner_claimed": true
+        }
+      ]
+    },
+    "control_response_counts": {
+      "cancel_http_200": 2,
+      "status_http_200": 2,
+      "queued_status_http_200": 96,
+      "cancel_transport_error": 2
+    },
+    "checks": [
+      {
+        "test": "startup",
+        "passed": true,
+        "seconds": 7.669
+      },
+      {
+        "test": "broker_loss",
+        "passed": true,
+        "seconds": 11.73,
+        "running_before_fault": 2,
+        "queued_before_fault": 2,
+        "surviving_tenant_exact_result": true,
+        "failed_attempt_result_rejected": true,
+        "queued_handles_preserved": true,
+        "post_rejoin_queries_correct": true
+      },
+      {
+        "test": "cleanup",
+        "passed": true,
+        "seconds": 2.641,
+        "forced_application_kills": 0,
+        "observed_live_descendants": 0,
+        "worker_scratch_directories": 0,
+        "remaining_containment_records": 0,
+        "all_owned_brokers_stopped": true,
+        "original_configurations_verified": true
+      }
+    ]
+  },
+  "owned_unit": {
+    "inactive": true,
+    "result": "success",
+    "tasks_unset": true,
+    "cgroup_absent": true
+  }
+}
