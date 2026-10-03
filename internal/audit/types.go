@@ -101,6 +101,10 @@ const (
 	QueryCancel      Kind = "query_cancel"
 	QueryResults     Kind = "query_results"
 	QueryExecution   Kind = "query_execution"
+	ExportSubmit     Kind = "export_submit"
+	ExportCancel     Kind = "export_cancel"
+	ExportResults    Kind = "export_results"
+	ExportExecution  Kind = "export_execution"
 	RefreshExecution Kind = "refresh_execution"
 )
 
@@ -150,7 +154,8 @@ type Page struct {
 
 func validKind(kind Kind) bool {
 	switch kind {
-	case Authentication, QuerySubmit, QueryCancel, QueryResults, QueryExecution, RefreshExecution:
+	case Authentication, QuerySubmit, QueryCancel, QueryResults, QueryExecution, RefreshExecution,
+		ExportSubmit, ExportCancel, ExportResults, ExportExecution:
 		return true
 	}
 	return false

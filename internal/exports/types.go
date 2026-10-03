@@ -88,6 +88,15 @@ func (l Limits) valid() bool {
 		l.MaxParts > 0 && l.MaxParts <= maximumParts && (l.Compression == "" || l.Compression == "none" || l.Compression == "lz4_frame")
 }
 
+// Validate checks the same bounded storage contract used by Reserve. Runtime
+// callers must separately validate their execution and resource reservations.
+func (l Limits) Validate() error {
+	if !l.valid() {
+		return ErrInvalid
+	}
+	return nil
+}
+
 type Request struct {
 	Identity  Identity
 	ExpiresAt time.Time
