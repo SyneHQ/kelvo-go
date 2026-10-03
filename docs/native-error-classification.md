@@ -1,29 +1,16 @@
 # Native source error classification
 
-Kelvo classifies PostgreSQL and MySQL-family failures using typed driver metadata.
-This lets scheduled acceleration stop on a known access or configuration failure
-without exposing a server error message or repeatedly querying a broken source.
-It is a bounded classification policy, not complete coverage of every vendor error.
+PostgreSQL/MySQL adapters classify exact typed driver codes so scheduled refreshes can stop on known access/configuration failures. Raw server messages remain private.
 
 ## Public error boundary
 
-The native SQL engine checks the caller context first. An expired or cancelled
-context wins over driver metadata; wrapped `context.DeadlineExceeded` and
-`context.Canceled` also retain their public timeout/cancellation classification.
-Otherwise, the adapter maps recognized typed driver codes. Raw driver text,
-SQL, object names, usernames and connection strings do not enter public messages.
-Messages describe the failed stage, such as `Could not connect to source` or
-`Source rejected query`. The public code carries the classification separately.
+Caller cancellation/deadlines take precedence. Otherwise, recognized driver metadata maps to public codes; unknown, untyped or conflicting metadata stays `QUERY_FAILED`. No text matching is used.
 
-Unknown codes, untyped errors and conflicting protocol metadata remain
-`QUERY_FAILED`. Kelvo does not guess from error text or broad SQLSTATE classes.
-Trusted configuration callbacks and result sinks can return explicit public
-errors; unsupported result types retain their `UNSUPPORTED` code.
+Trusted configuration/sink errors keep their public code, including `UNSUPPORTED` result types. Messages identify the failed stage without SQL, names or connection strings.
 
 ## PostgreSQL
 
-The adapter uses `errors.As` to inspect `pgconn.PgError`, including wrapped errors.
-Only the following exact SQLSTATE values are mapped:
+Wrapped `pgconn.PgError` values use these exact SQLSTATE mappings:
 
 | SQLSTATE | Public code |
 | --- | --- |
@@ -33,20 +20,11 @@ Only the following exact SQLSTATE values are mapped:
 | `42601`, `42703`, `42883`, `42P01`, `42P02` | `INVALID_ARGUMENT` |
 | `08000`, `08001`, `08003`, `08006`, `40001`, `40P01`, `53300`, `55P03`, `57P01`, `57P02`, `57P03`, `57014` | `UNAVAILABLE` |
 
-`57014` indicates server cancellation, which alone does not distinguish statement
-timeout from administrative cancellation. It therefore maps to `UNAVAILABLE`
-unless the context establishes cancellation or a deadline. Compatible adapters
-using this PostgreSQL driver path receive the same exact-code policy; that does
-not establish live acceptance against every compatible engine.
-
-Reference: [PostgreSQL error codes](https://www.postgresql.org/docs/current/errcodes-appendix.html).
+`57014` alone cannot distinguish timeout from administrative cancellation; context can override it. Compatible PostgreSQL adapters inherit this policy, not automatic product validation. [PostgreSQL reference](https://www.postgresql.org/docs/current/errcodes-appendix.html)
 
 ## MySQL and MariaDB
 
-For configured `mysql` and `mariadb` sources, the adapter inspects typed
-`mysql.MySQLError`. The numeric code must be recognized. If the server supplies
-a nonzero SQLSTATE, it must also match the expected value below; an omitted
-SQLSTATE is accepted. A conflicting SQLSTATE stays unknown.
+Configured MySQL/MariaDB sources inspect `mysql.MySQLError`. The number must match; an omitted SQLSTATE is accepted, but a conflicting supplied state remains unknown.
 
 | Server number | Expected SQLSTATE | Public code |
 | --- | --- | --- |
@@ -64,12 +42,7 @@ SQLSTATE is accepted. A conflicting SQLSTATE stays unknown.
 | `1317` | `70100` | `UNAVAILABLE` |
 | `3024` (MySQL only) | `HY000` | `DEADLINE_EXCEEDED` |
 
-MariaDB assigns a different meaning to number `3024`; it remains unknown for a
-MariaDB source. Code `1317` alone does not establish a deadline. Other adapters
-that share the generic SQL engine do not inherit this MySQL-family mapper.
-
-References: [MySQL server error reference](https://dev.mysql.com/doc/mysql-errors/8.4/en/server-error-reference.html)
-and [MariaDB error 3024](https://mariadb.com/docs/server/reference/error-codes/mariadb-error-codes-3000-to-3099/e3024).
+MariaDB's `3024` means something different and stays unknown. `1317` alone does not establish a deadline. Other generic SQL adapters do not inherit this mapper. [MySQL codes](https://dev.mysql.com/doc/mysql-errors/8.4/en/server-error-reference.html) · [MariaDB 3024](https://mariadb.com/docs/server/reference/error-codes/mariadb-error-codes-3000-to-3099/e3024)
 
 ## Scheduled acceleration consequences
 
@@ -83,45 +56,14 @@ and [MariaDB error 3024](https://mariadb.com/docs/server/reference/error-codes/m
 | Source unavailable | Retryable `unavailable` failure |
 | Unknown driver error | Retryable `unknown` failure |
 
-Retryable failures share a five-failure budget for the exact dataset/configuration
-fingerprint across scheduled jobs, with exponential jitter capped at five minutes.
-Permanent failures stop immediately and persist across worker restarts. Inspect
-status, repair the cause, and explicitly reset the current fingerprint using the
-[operator procedure](operations.md#source-refresh-failures-and-recovery). This
-policy applies to clustered scheduled refreshes, not automatic replay of user
-queries or durable retries in standalone `accelerate watch`.
+Retries share five failures per exact dataset/configuration, with jitter capped at five minutes. Permanent errors persist across restarts. Repair the cause, then [reset explicitly](operations.md#source-refresh-failures-and-recovery). This governs cluster refreshes, not user-query replay or standalone `watch`.
 
-A failed refresh preserves the last committed snapshot. **Source authentication
-failure or revoked source grants do not revoke access to retained snapshots.**
-If readers must lose that access, operators must bump the dataset's
-`authorization_version` and propagate the updated catalog to serving nodes. The
-new fingerprint makes old snapshots ineligible; changing source credentials or
-resetting retry state alone is not snapshot revocation.
+**Revoked source grants do not revoke retained snapshots.** Change `authorization_version` and propagate the catalog when readers must lose access. Resetting retries or changing secret values alone is insufficient.
 
 ## Validation scope
 
-The [recorded TLS acceptance](evidence/native-error-relational-acceptance.json)
-passed all eight required test/subtest outcomes against isolated PostgreSQL 17.6
-and MySQL 8.4 servers. Wrong-password and revoked-SELECT failures retained their
-public access codes through direct engine execution and in-process Manager
-refreshes. Failed refreshes preserved generation identity, digest, row count and
-original freshness. Both fixture containers and their network were removed
-before the harness emitted success; no host trust or published ports were used.
+[TLS acceptance](evidence/native-error-relational-acceptance.json) passed eight outcomes on isolated PostgreSQL 17.6/MySQL 8.4: wrong passwords and revoked SELECT preserved public codes and previous snapshot identity, bytes, rows and age.
 
-Full ordinary and pinned bridge suites, focused native/cluster race tests,
-`go vet` and the binary build passed on Azure. Ten synthetic harness-control
-checks also passed, covering cleanup failures, stale output refusal, named-test
-proof and private diagnostic redaction. CI includes the control checks; the
-workflow changes remain local and have not run on GitHub.
+Ordinary/bridge suites, focused race checks, vet and build passed on Azure. Ten harness checks covered cleanup, stale outputs and redaction. Earlier fixture failures—invalid secret namespace and nonprivate directories—remain in the evidence; runtime rules were not relaxed.
 
-Validation first exposed two test-fixture errors: a source-secret environment
-reference outside the permitted namespace, and a snapshot root created with
-nonprivate test-directory permissions. Both were corrected without relaxing the
-runtime checks. Earlier failed live runs cleaned up their fixtures and produced
-failure evidence. Private bounded logs now preserve diagnostics needed to debug
-those failures without publishing driver output.
-
-These results do not establish live worker IPC, real NATS retry/admission
-integration for these driver errors, MariaDB/provider-wide compatibility,
-sustained load or production deployment. The native runtime milestone is
-`c3a3935`; the evidence records the exact database image IDs and tested scope.
+Runtime milestone: `c3a3935`. This proves direct engine/in-process refresh behavior, not live worker IPC/NATS retry integration, MariaDB compatibility, sustained load or deployment readiness.
