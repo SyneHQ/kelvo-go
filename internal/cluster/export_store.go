@@ -34,6 +34,21 @@ type natsExportStore struct {
 	now      func() time.Time
 }
 
+type exportDelivery struct {
+	delivery
+	retryDelay time.Duration
+}
+
+func (d exportDelivery) Retry(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if d.retryDelay <= 0 || d.retryDelay > 250*time.Millisecond {
+		return errExportInvalid
+	}
+	return d.msg.NakWithDelay(d.retryDelay)
+}
+
 func exportStreamConfig(p Policy) jetstream.StreamConfig {
 	return jetstream.StreamConfig{
 		Name: exportQueueStream, Subjects: []string{exportQueueSubject},
@@ -365,7 +380,7 @@ func (s *natsExportStore) NextExport(ctx context.Context) (Delivery, error) {
 			_ = msg.Ack()
 			return nil, errors.New("invalid export dispatch")
 		}
-		return delivery{id, msg}, nil
+		return exportDelivery{delivery: delivery{id, msg}, retryDelay: min(s.policy.LeaseDuration/3, 250*time.Millisecond)}, nil
 	}
 	if err = batch.Error(); err != nil {
 		if ctx.Err() != nil {
