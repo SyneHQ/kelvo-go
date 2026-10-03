@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -335,10 +336,13 @@ func TestTLSTrustBlockedReaderBoundAndConcurrentSnapshots(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	first, second := make(chan struct{}), make(chan struct{})
-	defer close(second)
+	firstContext := make(chan context.Context, 1)
+	var releaseOnce sync.Once
+	releaseFirst := func() { releaseOnce.Do(func() { close(first) }) }
 	var reads atomic.Int64
-	trust := &tlsTrust{config: TLSTrustConfig{MinimumEpoch: 1, ReloadInterval: 20 * time.Millisecond}, ctx: ctx, cancel: cancel, done: make(chan struct{}), read: func(context.Context, string, int) ([]byte, error) {
+	trust := &tlsTrust{config: TLSTrustConfig{MinimumEpoch: 1, ReloadInterval: 20 * time.Millisecond}, ctx: ctx, cancel: cancel, done: make(chan struct{}), read: func(readContext context.Context, _ string, _ int) ([]byte, error) {
 		if reads.Add(1) == 1 {
+			firstContext <- readContext
 			<-first
 		} else {
 			<-second
@@ -349,6 +353,16 @@ func TestTLSTrustBlockedReaderBoundAndConcurrentSnapshots(t *testing.T) {
 		t.Fatal("initial state failed")
 	}
 	go trust.run()
+	t.Cleanup(func() {
+		cancel()
+		releaseFirst()
+		close(second)
+		select {
+		case <-trust.done:
+		case <-time.After(time.Second):
+			t.Error("trust reloader did not stop during cleanup")
+		}
+	})
 	var readers sync.WaitGroup
 	for range 8 {
 		readers.Add(1)
@@ -362,10 +376,12 @@ func TestTLSTrustBlockedReaderBoundAndConcurrentSnapshots(t *testing.T) {
 	readers.Wait()
 	waitTLS(t, func() bool { return reads.Load() == 1 })
 	waitTLS(t, func() bool { return !trust.ready() })
+	// Prior snapshot expiry does not establish this pending read's age.
+	waitTLSReadDeadline(t, firstContext)
 	if reads.Load() != 1 {
 		t.Fatal("blocked read spawned more readers")
 	}
-	close(first)
+	releaseFirst()
 	waitTLS(t, func() bool { return reads.Load() == 2 })
 	if trust.ready() {
 		t.Fatal("late result renewed expired trust")
@@ -376,6 +392,34 @@ func TestTLSTrustBlockedReaderBoundAndConcurrentSnapshots(t *testing.T) {
 	case <-closed:
 	case <-time.After(time.Second):
 		t.Fatal("close waited for filesystem syscall")
+	}
+}
+
+func TestTLSTrustReadAgeIsIndependentOfSnapshotExpiry(t *testing.T) {
+	_, ca, _ := tlsFiles(t, GatewayIdentity, nil, nil)
+	raw := trustDoc(t, 1, time.Now().Add(20*time.Minute), ca)
+	snapshot, err := parseTLSTrust(raw, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stale := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stale=%t", stale), func(t *testing.T) {
+			trust := &tlsTrust{config: TLSTrustConfig{MinimumEpoch: 1, ReloadInterval: time.Minute},
+				snapshot: snapshot, validUntil: time.Now().Add(-time.Second), highestEpoch: snapshot.epoch, highestDigest: snapshot.digest}
+			if trust.ready() {
+				t.Fatal("expired prior trust remained ready")
+			}
+			started := time.Now()
+			if stale {
+				started = started.Add(-tlsTrustReadTimeout - time.Second)
+			}
+			// A still-valid, same-epoch snapshot can restore authority only if
+			// the new read itself completed within its deadline.
+			accepted := trust.apply(tlsTrustRead{snapshot: snapshot, started: started})
+			if accepted == stale || trust.ready() == stale {
+				t.Fatal("read age was confused with the previous trust snapshot's expiry")
+			}
+		})
 	}
 }
 

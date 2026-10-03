@@ -1,0 +1,197 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "scope": "TLS identity and trust read deadline synchronization, peer verification, gateway credential reload and node lease compatibility checks. Test-only change; no production timing modification, historical CI schedule reproduction, external provider or performance certification.",
+  "revision": "2bc7dd776307b58925e4bb68e2db8d17a90d2fac",
+  "changed_scope": "Two test files only; production TLS implementation and deadlines are unchanged.",
+  "original_ci": {
+    "run_id": 37150306039,
+    "pull_request": 85,
+    "result": "failed",
+    "assertion": "late reader renewed expired authority",
+    "evidence": "tls-ci-37150306039-failure.json",
+    "exact_scheduler_timing_recorded": false,
+    "rerun_requested": false
+  },
+  "source": {
+    "source_manifest_sha256": "082f6522db6ffa4e964cb884ef2c8fb6a675d68d38d883724155788480762793",
+    "source_file_count": 973,
+    "source_verified_before": true,
+    "source_verified_after": true,
+    "shared_bridge_unchanged": true,
+    "effective_modules_unchanged": true
+  },
+  "toolchain": {
+    "go_version": "go version go1.26.8 linux/amd64",
+    "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+    "compiler_lanes": 1,
+    "build_tags": [
+      "duckdb_arrow",
+      "duckbridge"
+    ]
+  },
+  "isolation": {
+    "effective_uid": 1000,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "memory_max": 3221225472,
+    "swap_max": 0,
+    "tasks_max": 256,
+    "private_network": true,
+    "network_interfaces": [
+      "lo"
+    ]
+  },
+  "tests": {
+    "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+    "top_level_count": 41,
+    "required": [
+      "TestGatewayFileAuthenticationProbesHeadersAndParkedCancellation",
+      "TestGatewayKeyConcurrentReadersAndReloads",
+      "TestGatewayKeyFreshReloadDoesNotReviveExpiredRequestContext",
+      "TestGatewayKeyOverlapAndRevocationPreserveTenantBoundary",
+      "TestGatewayKeyOwnerFenceSurvivesInvalidationAndRepeatedReload",
+      "TestGatewayKeyReadTimeoutHasOneOutstandingReaderAndCancelsWithoutRequests",
+      "TestGatewayKeyRevocationCancelsDeliveryWithoutCompletion",
+      "TestGatewayKeyStartupRejectsPrivateFailuresWithoutDetails",
+      "TestGatewayKeysFailClosedForRevisionEquivocationAndExpiry",
+      "TestMTLSWorkerIdentity",
+      "TestNodeCancellationAndOwnershipFenceWaitingFinalizer",
+      "TestNodeDrainStopsDispatchAndRenewsAcceptedLease",
+      "TestNodeExpiredRenewalWaitDoesNotWriteLater",
+      "TestNodeFinalizationDoesNotCompeteWithItsLeaseMutation",
+      "TestNodeFinalizationWaitingForRenewalRetainsDeadline",
+      "TestNodeLateRenewalErrorPreservesCompletedHandoff",
+      "TestNodeLeaseFailureFencesPermanentlyAndNotifiesLateSubscriber",
+      "TestNodeLeaseFreshnessUsesObservedClockDirection",
+      "TestNodeLeaseGateRevalidatesReservationLifetime",
+      "TestNodeNormalCloseDuringRenewalDoesNotSignalLeaseFailure",
+      "TestNodePollsCancellationWithoutRewritingFreshLease",
+      "TestTLSIdentityCertificateExpiryAndConcurrentSnapshots",
+      "TestTLSIdentityHandlerPreservesDrain",
+      "TestTLSIdentityOneReaderRejectsLateResultAndCloses",
+      "TestTLSIdentityPrivateFilesAndConfig",
+      "TestTLSIdentityReadAgeIsIndependentOfSnapshotExpiry",
+      "TestTLSIdentityRejectsMalformedExpiredAndWrongRole",
+      "TestTLSIdentityRotationLiveMTLS",
+      "TestTLSRotationPreservesPeerVerification",
+      "TestTLSTrustActiveRequestFinishesAndNewRequestsFail",
+      "TestTLSTrustBlockedReaderBoundAndConcurrentSnapshots",
+      "TestTLSTrustExpiredPeerCannotReuseOutboundConnection",
+      "TestTLSTrustGatewayAndServerManagedLifecycle",
+      "TestTLSTrustManagedConfigAndPrivateFiles",
+      "TestTLSTrustOverlapPoolLimitAndBodyOwnership",
+      "TestTLSTrustParserAndEpochFloors",
+      "TestTLSTrustPreservesDNSIPAndIdentityVerification",
+      "TestTLSTrustReadAgeIsIndependentOfSnapshotExpiry",
+      "TestTLSTrustRevokesAcceptedCertificateChain",
+      "TestTLSTrustStaleReplicaExpiryAndRecovery",
+      "TestTLSTrustTwoGatewayTwoWorkerCARollover"
+    ],
+    "passed_top_level": [
+      "TestGatewayFileAuthenticationProbesHeadersAndParkedCancellation",
+      "TestGatewayKeyConcurrentReadersAndReloads",
+      "TestGatewayKeyFreshReloadDoesNotReviveExpiredRequestContext",
+      "TestGatewayKeyOverlapAndRevocationPreserveTenantBoundary",
+      "TestGatewayKeyOwnerFenceSurvivesInvalidationAndRepeatedReload",
+      "TestGatewayKeyReadTimeoutHasOneOutstandingReaderAndCancelsWithoutRequests",
+      "TestGatewayKeyRevocationCancelsDeliveryWithoutCompletion",
+      "TestGatewayKeyStartupRejectsPrivateFailuresWithoutDetails",
+      "TestGatewayKeysFailClosedForRevisionEquivocationAndExpiry",
+      "TestMTLSWorkerIdentity",
+      "TestNodeCancellationAndOwnershipFenceWaitingFinalizer",
+      "TestNodeDrainStopsDispatchAndRenewsAcceptedLease",
+      "TestNodeExpiredRenewalWaitDoesNotWriteLater",
+      "TestNodeFinalizationDoesNotCompeteWithItsLeaseMutation",
+      "TestNodeFinalizationWaitingForRenewalRetainsDeadline",
+      "TestNodeLateRenewalErrorPreservesCompletedHandoff",
+      "TestNodeLeaseFailureFencesPermanentlyAndNotifiesLateSubscriber",
+      "TestNodeLeaseFreshnessUsesObservedClockDirection",
+      "TestNodeLeaseGateRevalidatesReservationLifetime",
+      "TestNodeNormalCloseDuringRenewalDoesNotSignalLeaseFailure",
+      "TestNodePollsCancellationWithoutRewritingFreshLease",
+      "TestTLSIdentityCertificateExpiryAndConcurrentSnapshots",
+      "TestTLSIdentityHandlerPreservesDrain",
+      "TestTLSIdentityOneReaderRejectsLateResultAndCloses",
+      "TestTLSIdentityPrivateFilesAndConfig",
+      "TestTLSIdentityReadAgeIsIndependentOfSnapshotExpiry",
+      "TestTLSIdentityRejectsMalformedExpiredAndWrongRole",
+      "TestTLSIdentityRotationLiveMTLS",
+      "TestTLSRotationPreservesPeerVerification",
+      "TestTLSTrustActiveRequestFinishesAndNewRequestsFail",
+      "TestTLSTrustBlockedReaderBoundAndConcurrentSnapshots",
+      "TestTLSTrustExpiredPeerCannotReuseOutboundConnection",
+      "TestTLSTrustGatewayAndServerManagedLifecycle",
+      "TestTLSTrustManagedConfigAndPrivateFiles",
+      "TestTLSTrustOverlapPoolLimitAndBodyOwnership",
+      "TestTLSTrustParserAndEpochFloors",
+      "TestTLSTrustPreservesDNSIPAndIdentityVerification",
+      "TestTLSTrustReadAgeIsIndependentOfSnapshotExpiry",
+      "TestTLSTrustRevokesAcceptedCertificateChain",
+      "TestTLSTrustStaleReplicaExpiryAndRecovery",
+      "TestTLSTrustTwoGatewayTwoWorkerCARollover"
+    ],
+    "passed_events": 97,
+    "package_passed": true,
+    "failures_or_skips": 0
+  },
+  "stages": {
+    "external-modfile": {
+      "exit_code": 0,
+      "seconds": 0.003,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "race-tests": {
+      "exit_code": 0,
+      "seconds": 66.473,
+      "log_sha256": "792c1f97ff8858702c891facfc892d846d1a2d09fdfc808bce600565c1cb9f38"
+    },
+    "vet": {
+      "exit_code": 0,
+      "seconds": 5.124,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "ssh_systemd_wait_exit_code": 0,
+  "launcher_status_scope": "Observed SSH command status for systemd-run --wait; not an independently retained unit ExecMainStatus.",
+  "cleanup": {
+    "unit_state_after_collection": {
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "MainPID": "0"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true
+  },
+  "shared_inputs_before": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+  },
+  "effective_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "artifact_sha256": {
+    "validation.json": "ee755f47330ced475633462aacdb7daab4c518f32dbc194d83eeaf3bb3f20366",
+    "expected-source.json": "d83ac40bf960f779073f005978cc5261b1270ecddb43925937646440c8304eb6",
+    "staging.json": "dd6013bdb608b5f74f819cc0cfa9e991321316c6a5ac62b976d88538242a88fa",
+    "validate.py": "61fa6bb0dedfd1a97e9af29ec58bd521f6bff2cd817444b49cd44ef5abab3f30",
+    "external-modfile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "race-tests.log": "792c1f97ff8858702c891facfc892d846d1a2d09fdfc808bce600565c1cb9f38",
+    "vet.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "helpers_sha256": {
+    "stage.py": "c4cea7c00480a4755cf0f308b171a0dddb2781e5b1063d41d9d3432cf00df9e1",
+    "launch.py": "b061df2f5c8673b455f9cd063a45072e5c3ffe8d0759393a0dd23aef5cd1f512",
+    "validate.py": "61fa6bb0dedfd1a97e9af29ec58bd521f6bff2cd817444b49cd44ef5abab3f30",
+    "collect.py": "7a8d9c6f7b06a67163b1744c124fc3c59fb6b7dfd27da25b6db3b55a821f50ca"
+  },
+  "private_run_receipt_sha256": "02ed58a76e14631fdd1d2d12b787a0fdc4a2ff8e012287d28e79df0889c1d3e8",
+  "limits": [
+    "Corrected tests establish the pending read deadline directly; the original CI scheduler timing was not recorded.",
+    "Loopback TLS exchanges and in-memory lease controls; no external certificate manager, WAN or multi-host validation.",
+    "Stage durations describe validation execution, not query throughput or capacity."
+  ]
+}
