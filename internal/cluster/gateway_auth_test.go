@@ -101,43 +101,79 @@ func TestGatewayKeysFailClosedForRevisionEquivocationAndExpiry(t *testing.T) {
 
 func TestGatewayKeyReadTimeoutHasOneOutstandingReaderAndCancelsWithoutRequests(t *testing.T) {
 	a := bareAuthenticator(t)
-	a.config.ReloadInterval = 20 * time.Millisecond // exercise the scheduler without a one-second initial wait
-	if !a.apply(rotationSet(t, 1, rotationOld), time.Now()) {
+	a.config.ReloadInterval = 250 * time.Millisecond
+	// An initial read can finish well after it started. Give its authority a
+	// shorter remaining lifetime than the pending read, independent of jitter.
+	if !a.apply(rotationSet(t, 1, rotationOld), time.Now().Add(-gatewayKeyReadTimeout/2)) {
 		t.Fatal("initial keys rejected")
 	}
 	_, active, _ := a.lookup(rotationOld)
 	var calls atomic.Int32
-	entered, release, recovered := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	raw := rotationDocument(t, 1, map[string][]string{"a": {rotationOld}, "b": {rotationOther}})
-	a.read = func(context.Context, string, int) ([]byte, error) {
+	entered, recovered := make(chan context.Context, 1), make(chan context.Context, 1)
+	release, releaseRecovery := make(chan struct{}), make(chan struct{})
+	var releaseOnce, recoveryOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	unblockRecovery := func() { recoveryOnce.Do(func() { close(releaseRecovery) }) }
+	defer unblock()
+	defer unblockRecovery()
+	raw := rotationDocument(t, 2, map[string][]string{"a": {rotationOld}, "b": {rotationOther}})
+	a.read = func(ctx context.Context, _ string, _ int) ([]byte, error) {
 		if calls.Add(1) == 1 {
-			close(entered)
+			entered <- ctx
 			<-release // emulate a filesystem syscall which ignores context
 			return append([]byte(nil), raw...), nil
 		}
 		select {
-		case <-recovered:
+		case recovered <- ctx:
 		default:
-			close(recovered)
 		}
+		// Keep this later error from masking authority incorrectly granted by
+		// the first result. The assertion runs after that result is consumed.
+		<-releaseRecovery
 		return nil, errors.New("unavailable fixture")
 	}
 	go a.run()
 	defer a.close()
-	<-entered
+	var firstRead context.Context
+	select {
+	case firstRead = <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("loader did not start")
+	}
 	select {
 	case <-active.Done():
 	case <-time.After(3 * time.Second):
 		t.Fatal("background expiry did not cancel active request")
 	}
+	// Initial authority expires relative to apply(), while this read starts
+	// later. Expired authority alone does not prove that this read timed out.
+	select {
+	case <-firstRead.Done():
+	case <-time.After(3 * time.Second):
+		t.Fatal("blocked read deadline did not expire")
+	}
+	if !errors.Is(firstRead.Err(), context.DeadlineExceeded) {
+		t.Fatalf("blocked read ended without its deadline: %v", firstRead.Err())
+	}
 	if calls.Load() != 1 {
 		t.Fatal("stuck read spawned replacement goroutines")
 	}
-	close(release)
+	unblock()
 	select {
-	case <-recovered:
+	case nextRead := <-recovered:
+		if nextRead.Err() != nil {
+			t.Fatal("missed late-result observation before next read deadline")
+		}
 	case <-time.After(time.Second):
 		t.Fatal("loader failed to resume after late result")
+	}
+	// Accepted revision survives invalidation. This also catches a brief late
+	// renewal that expires at the next reload tick before ready() observes it.
+	a.mu.Lock()
+	revision := a.revision
+	a.mu.Unlock()
+	if revision != 1 {
+		t.Fatalf("late timed-out read changed accepted revision: %d", revision)
 	}
 	if a.ready() {
 		t.Fatal("late timed-out read repopulated authority")
