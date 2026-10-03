@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
@@ -33,6 +34,8 @@ type workerEndpoint struct {
 	client *http.Client
 }
 type Gateway struct {
+	audit          *ServiceAudit
+	closeErr       error
 	tenants        map[string]gatewayTenant
 	tokens         map[[32]byte]string
 	auth           *gatewayAuthenticator
@@ -72,6 +75,7 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 	started := false
 	defer func() {
 		if !started {
+			_ = g.audit.CloseBounded()
 			if g.workerIdentity != nil {
 				g.workerIdentity.close()
 			}
@@ -162,6 +166,21 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 			return nil, err
 		}
 	}
+	if cfg.Audit != nil {
+		tenants := make([]string, 0, len(g.tenants))
+		for tenant := range g.tenants {
+			tenants = append(tenants, tenant)
+		}
+		var err error
+		g.audit, err = OpenServiceAudit(cfg.Audit, "gateway", tenants)
+		if err != nil {
+			cancel()
+			if g.auth != nil {
+				g.auth.close()
+			}
+			return nil, err
+		}
+	}
 	for tenant := range g.tenants {
 		g.wg.Add(1)
 		go g.reconcile(tenant)
@@ -202,6 +221,7 @@ func (g *Gateway) Close() error {
 		}
 		g.handlers.Wait()
 		g.wg.Wait()
+		g.closeErr = g.audit.CloseBounded()
 		for _, t := range g.tenants {
 			for _, endpoint := range t.workers {
 				endpoint.client.CloseIdleConnections()
@@ -209,7 +229,7 @@ func (g *Gateway) Close() error {
 			_ = t.store.Close()
 		}
 	})
-	return nil
+	return g.closeErr
 }
 func (g *Gateway) reconcile(tenant string) {
 	defer g.wg.Done()
@@ -259,7 +279,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/ready" {
 		g.mu.RLock()
-		ready := !g.draining && len(g.reconcileOK) == len(g.tenants)
+		ready := !g.draining && g.audit.Ready() && len(g.reconcileOK) == len(g.tenants)
 		if g.auth != nil {
 			ready = ready && g.auth.ready()
 		}
@@ -285,6 +305,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	tenant, authContext, ok := g.authenticate(r)
 	if !ok {
 		w.Header().Set("WWW-Authenticate", "Bearer")
+		g.audit.authenticationDenied()
 		g.err(w, 401, "UNAUTHENTICATED", "Authentication required")
 		return
 	}
@@ -293,6 +314,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer stopAuth()
 		if authContext.Err() != nil {
 			w.Header().Set("WWW-Authenticate", "Bearer")
+			g.audit.authenticationDenied()
 			g.err(w, 401, "UNAUTHENTICATED", "Authentication required")
 			return
 		}
@@ -308,11 +330,13 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if policy.Access != nil {
 		authority, permitted := authorityForPrincipal(policy, principalID)
 		if !permitted {
+			g.audit.authenticationDenied()
 			g.err(w, 401, "UNAUTHENTICATED", "Authentication required")
 			return
 		}
 		r = r.WithContext(context.WithValue(r.Context(), jobAuthorityKey{}, authority))
 	} else if principalID != "" {
+		g.audit.authenticationDenied()
 		g.err(w, 401, "UNAUTHENTICATED", "Authentication required")
 		return
 	}
@@ -360,35 +384,45 @@ func (g *Gateway) authenticate(r *http.Request) (string, context.Context, bool) 
 	return t, nil, ok
 }
 func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant) {
+	op, auditErr := g.audit.beginRequest(r.Context(), t.store.Policy().TenantID, audit.QuerySubmit)
+	if auditErr != nil {
+		g.err(w, 503, "UNAVAILABLE", "Audit storage unavailable")
+		return
+	}
+	defer op.abort(r.Context())
+
 	r.Body = http.MaxBytesReader(w, r.Body, gatewayRequestLimit)
 	defer r.Body.Close()
 	var req query.Request
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	if d.Decode(&req) != nil || d.Decode(new(any)) != io.EOF {
-		g.err(w, 400, "INVALID_ARGUMENT", "Invalid query request")
+		g.auditError(w, op, 400, "INVALID_ARGUMENT", "Invalid query request")
 		return
 	}
 	if e := query.ValidateRequest(req); e != nil {
-		g.err(w, 400, "INVALID_ARGUMENT", "Invalid query request")
+		g.auditError(w, op, 400, "INVALID_ARGUMENT", "Invalid query request")
 		return
 	}
 	if _, err := submissionAuthority(r.Context(), t.store.Policy(), req); err != nil {
-		g.err(w, 403, "PERMISSION_DENIED", "Query access denied")
+		g.auditError(w, op, 403, "PERMISSION_DENIED", "Query access denied")
 		return
 	}
 	s, e := t.store.Submit(r.Context(), req)
 	if errors.Is(e, ErrCapacity) {
-		g.err(w, 429, "RESOURCE_EXHAUSTED", "Query capacity unavailable")
+		g.auditError(w, op, 429, "RESOURCE_EXHAUSTED", "Query capacity unavailable")
 		return
 	}
 	if e != nil {
-		g.err(w, 503, "UNAVAILABLE", "Service unavailable")
+		g.auditError(w, op, 503, "UNAVAILABLE", "Service unavailable")
 		return
 	}
 	// Submission is durable before enqueue. Reconciliation republishes queued jobs,
 	// so a transient broker failure must not discard this accepted handle.
 	_ = t.store.Enqueue(r.Context(), s.Job.ID)
+	if !g.auditSuccess(w, r, op) {
+		return
+	}
 	g.json(w, 201, map[string]string{"id": s.Job.ID, "state": s.Job.State})
 }
 func (g *Gateway) status(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string) {
@@ -404,14 +438,21 @@ func (g *Gateway) status(w http.ResponseWriter, r *http.Request, t gatewayTenant
 	g.json(w, 200, map[string]any{"id": s.Job.ID, "state": s.Job.State, "stats": s.Job.Stats, "error": s.Job.Error})
 }
 func (g *Gateway) cancelJob(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string) {
+	op, auditErr := g.audit.beginRequest(r.Context(), t.store.Policy().TenantID, audit.QueryCancel)
+	if auditErr != nil {
+		g.err(w, 503, "UNAVAILABLE", "Audit storage unavailable")
+		return
+	}
+	defer op.abort(r.Context())
+
 	for range 8 {
 		s, e := principalSnapshot(r.Context(), t, id)
 		if errors.Is(e, ErrNotFound) {
-			g.err(w, 404, "NOT_FOUND", "Query not found")
+			g.auditError(w, op, 404, "NOT_FOUND", "Query not found")
 			return
 		}
 		if e != nil {
-			g.err(w, 503, "UNAVAILABLE", "Service unavailable")
+			g.auditError(w, op, 503, "UNAVAILABLE", "Service unavailable")
 			return
 		}
 		if !s.Job.Terminal() {
@@ -423,16 +464,26 @@ func (g *Gateway) cancelJob(w http.ResponseWriter, r *http.Request, t gatewayTen
 				continue
 			}
 			if e != nil {
-				g.err(w, 503, "UNAVAILABLE", "Service unavailable")
+				g.auditError(w, op, 503, "UNAVAILABLE", "Service unavailable")
 				return
 			}
+		}
+		if !g.auditSuccess(w, r, op) {
+			return
 		}
 		g.json(w, 200, map[string]string{"id": id, "state": s.Job.State})
 		return
 	}
-	g.err(w, 409, "CONFLICT", "Query state changed")
+	g.auditError(w, op, 409, "CONFLICT", "Query state changed")
 }
 func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string, admission *requestAdmission) {
+	op, auditErr := g.audit.beginRequest(r.Context(), t.store.Policy().TenantID, audit.QueryResults)
+	if auditErr != nil {
+		g.err(w, 503, "UNAVAILABLE", "Audit storage unavailable")
+		return
+	}
+	defer op.abort(r.Context())
+
 	var s Snapshot
 	var e error
 	poll := time.NewTicker(50 * time.Millisecond)
@@ -441,20 +492,20 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 		s, e = principalSnapshot(r.Context(), t, id)
 		if e != nil {
 			if errors.Is(e, ErrNotFound) {
-				g.err(w, 404, "NOT_FOUND", "Query not found")
+				g.auditError(w, op, 404, "NOT_FOUND", "Query not found")
 			} else {
-				g.err(w, 503, "UNAVAILABLE", "Service unavailable")
+				g.auditError(w, op, 503, "UNAVAILABLE", "Service unavailable")
 			}
 			return
 		}
 		if time.Now().After(s.Job.ExpiresAt) {
-			g.err(w, 404, "NOT_FOUND", "Query not found")
+			g.auditError(w, op, 404, "NOT_FOUND", "Query not found")
 			return
 		}
 		if s.Job.State == Assigned {
 			if !admission.activate() {
 				w.Header().Set("Retry-After", "1")
-				g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Result request capacity unavailable")
+				g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Result request capacity unavailable")
 				return
 			}
 			break
@@ -462,7 +513,7 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 		if s.Job.State == Queued {
 			if !admission.park() {
 				w.Header().Set("Retry-After", "1")
-				g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Queued result wait capacity unavailable")
+				g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Queued result wait capacity unavailable")
 				return
 			}
 			select {
@@ -473,15 +524,15 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 			}
 		}
 		if s.Job.State == Claimed || s.Job.State == Running || s.Job.State == ResultReady || s.Job.State == Succeeded {
-			g.err(w, 409, "ALREADY_CONSUMED", "Query results are single-consumer")
+			g.auditError(w, op, 409, "ALREADY_CONSUMED", "Query results are single-consumer")
 			return
 		}
-		g.err(w, 409, "QUERY_FAILED", "Query is not available")
+		g.auditError(w, op, 409, "QUERY_FAILED", "Query is not available")
 		return
 	}
 	claim := make([]byte, 16)
 	if _, e = rand.Read(claim); e != nil {
-		g.err(w, 500, "INTERNAL", "Unable to claim query")
+		g.auditError(w, op, 500, "INTERNAL", "Unable to claim query")
 		return
 	}
 	n := s.Job
@@ -489,13 +540,13 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 	n.Claim = hex.EncodeToString(claim)
 	s, e = t.store.CompareAndSwap(r.Context(), s, n)
 	if e != nil {
-		g.err(w, 409, "ALREADY_CONSUMED", "Query results are single-consumer")
+		g.auditError(w, op, 409, "ALREADY_CONSUMED", "Query results are single-consumer")
 		return
 	}
 	ep, ok := t.workers[s.Job.WorkerID]
 	if !ok || s.Job.Owner == "" {
 		g.fail(t, s, "Worker unavailable")
-		g.err(w, 503, "UNAVAILABLE", "Worker unavailable")
+		g.auditError(w, op, 503, "UNAVAILABLE", "Worker unavailable")
 		return
 	}
 	ctx, cancel := context.WithDeadline(r.Context(), minTime(s.Job.ExpiresAt, time.Now().Add(t.store.Policy().Limits.Timeout)))
@@ -505,20 +556,20 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 	req, e := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if e != nil {
 		g.fail(t, s, "Worker unavailable")
-		g.err(w, 503, "UNAVAILABLE", "Worker unavailable")
+		g.auditError(w, op, 503, "UNAVAILABLE", "Worker unavailable")
 		return
 	}
 	req.Header.Set("X-Kelvo-Claim", n.Claim)
 	resp, e := ep.client.Do(req)
 	if e != nil {
 		g.fail(t, s, "Worker unavailable")
-		g.err(w, 503, "UNAVAILABLE", "Worker unavailable")
+		g.auditError(w, op, 503, "UNAVAILABLE", "Worker unavailable")
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		g.fail(t, s, "Worker unavailable")
-		g.err(w, 503, "UNAVAILABLE", "Worker unavailable")
+		g.auditError(w, op, 503, "UNAVAILABLE", "Worker unavailable")
 		return
 	}
 	w.Header().Set("Content-Type", "application/vnd.apache.arrow.stream")
@@ -550,7 +601,7 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 		g.fail(t, s, "Arrow stream failed")
 		panic(http.ErrAbortHandler)
 	}
-	if !tail.validEOS() || requestAuthorityErr(ctx) != nil || g.commitResult(ctx, t, s) != nil || requestAuthorityErr(ctx) != nil || tail.FlushEOS() != nil {
+	if !tail.validEOS() || requestAuthorityErr(ctx) != nil || op.complete(nil) != nil || requestAuthorityErr(ctx) != nil || g.commitResult(ctx, t, s) != nil || requestAuthorityErr(ctx) != nil || tail.FlushEOS() != nil {
 		g.fail(t, s, "Arrow stream incomplete")
 		panic(http.ErrAbortHandler)
 	}

@@ -127,6 +127,7 @@ type TenantConfig struct {
 }
 
 type GatewayConfig struct {
+	Audit           *ServiceAuditConfig          `yaml:"audit,omitempty"`
 	Authentication  *GatewayAuthenticationConfig `yaml:"authentication,omitempty"`
 	Listen          string                       `yaml:"listen"`
 	TLS             TLSConfig                    `yaml:"tls"`
@@ -139,6 +140,8 @@ type GatewayConfig struct {
 
 type NodeConfig struct {
 	Metrics             *MetricsConfig                `yaml:"metrics,omitempty"`
+	Audit               *ServiceAuditConfig           `yaml:"audit,omitempty"`
+	RuntimeAudit        *ServiceAudit                 `yaml:"-"`
 	Containment         *ContainmentConfig            `yaml:"containment,omitempty"`
 	ScratchDirectory    string                        `yaml:"scratch_directory,omitempty"`
 	SourceHealth        *telemetry.SourceHealthConfig `yaml:"source_health,omitempty"`
