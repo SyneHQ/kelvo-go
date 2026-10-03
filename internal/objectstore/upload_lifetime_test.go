@@ -145,6 +145,12 @@ func TestProviderPutJoinsTransportBodyOwnership(t *testing.T) {
 					return &http.Response{StatusCode: status, Header: headers, Body: response, ContentLength: 0, Request: r}, nil
 				}))
 				finished := make(chan struct{})
+				t.Cleanup(func() {
+					cancel()
+					releaseRead()
+					releaseClose()
+					uploadCleanupJoins(t, finished, readDone, closeDone)
+				})
 				var putErr error
 				go func() {
 					_, putErr = client.Put(ctx, "kelvo/data", reader, 7, azureTestDigest("payload"), Condition{Absent: true})
@@ -235,6 +241,7 @@ func TestProviderPutRealTransportEarlyResponse(t *testing.T) {
 			t.Cleanup(unblock)
 			client := uploadClient(t, provider, server.URL, server.Client().Transport)
 			finished := make(chan struct{})
+			t.Cleanup(func() { unblock(); uploadCleanupJoins(t, finished) })
 			var putErr error
 			go func() {
 				_, putErr = client.Put(context.Background(), "kelvo/data", reader, 1024, azureTestDigest(strings.Repeat("x", 1024)), Condition{Absent: true})
