@@ -95,10 +95,36 @@
     "binary_and_sandbox_unchanged": true,
     "service": {"result": "success", "exit": 0, "state": "inactive/dead", "cgroup_absent": true}
   },
+  "configured_execution_binding_gate": {
+    "source": "c84781aa1f97300cd2996ab7a7dbb4743740dd56",
+    "archive_sha256": "30c5f9a886903add6bdf830742092b04971b37095bc09b1a42a6796574255525",
+    "scratch": "kelvo-export-bind.yreTEU",
+    "command": "go test -race -count=1 -p 1 -timeout 180s -json ./internal/cluster -run '^(TestExportRuntimeConstructorBindsLimitsAndManagedScratch|TestExportWorkerConstructorBindsKernelContainment)$'",
+    "required_environment": ["KELVO_TEST_CGROUP_ROOT", "KELVO_TEST_CGROUP_STATE"],
+    "race": {"pass_events": 22, "fail_events": 0, "skip_events": 0, "exit": 0},
+    "vet_command": "go vet -p 1 ./internal/cluster ./internal/containment",
+    "vet_exit": 0,
+    "real_cgroup_v2_delegation": true,
+    "non_root": true,
+    "zero_capabilities": true,
+    "remaining_job_groups": 0,
+    "remaining_ownership_records": 0,
+    "coverage": [
+      "Launcher matches the operator configuration; managed scratch, admission and source quota requirements remain enforced",
+      "Containment optionality agrees between configuration and executor; an unopened manager is refused",
+      "A real opened kernel manager accepts equivalent default configuration and survives export runtime closure",
+      "Different root, state directory, group limit, cleanup timeout or process budget is rejected before export storage opens",
+      "Insufficient native/parent overhead and a closed manager are rejected before export storage opens"
+    ],
+    "source_files": 894,
+    "source_unchanged": true,
+    "service": {"result": "success", "exit": 0, "state": "inactive/dead", "cgroup_absent": true}
+  },
   "limits_of_evidence": [
     "Pass-event counts include named subtests; they are not distinct production workloads.",
     "Unit/HTTP gates use actual durable files and production transition validation with an in-process broker/executor fixture.",
     "The actual-child gate uses the real sandboxed query worker. Its process-kill cases use a synced disk-backed broker test double, not real JetStream.",
+    "The configured-execution gate opens real cgroup-v2 containment and probes enforcement during startup; it validates constructor binding and does not run SQL or exercise broker failover.",
     "Committed local files remain unreadable after an interrupted Stored publication; restarted workers neither adopt nor replay the abandoned execution. Unexpired reservations remain charged.",
     "This receipt does not establish public gateway, real broker failover, throughput, capacity, provider compatibility or an exact-final-commit release build; those require their separate acceptance receipts."
   ]
