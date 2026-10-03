@@ -5,6 +5,31 @@ two-tenant cluster for at least two hours. A passing smoke run cannot close the
 [sustained-load gate](https://github.com/SyneHQ/kelvo-go/issues/7). Results apply
 only to the recorded binary, source inventories, topology and resource budget.
 
+## Recorded smoke
+
+The [600-second smoke on `cbc3e25`](evidence/sustained-smoke-cbc3e25.json) passed
+strict reconciliation with identical build/execution source and unchanged
+binaries. Its [isolated build](evidence/sustained-build-cbc3e25.json) passed all
+56 Python controls, including real Linux zombie and exited-descriptor checks,
+with no failures, errors or skips.
+
+| Observation | Recorded result |
+| --- | --- |
+| Lifecycle and fault gates | All ten passed |
+| Mixed workload interval | 600.160 seconds, two paced tenant clients |
+| Completed work | 1,606 queries, 80 refreshes, 20 slow readers, 20 cancellations |
+| Process sampling | 11,770 samples; zero hard read errors or diagnostic overflow |
+| Charged memory peak | 778,711,040 bytes under a 200% CPU / 6 GiB service cap |
+| Client/resource errors and OOMs | Zero |
+| Cleanup | No forced application kills, live descendants, scratch directories or containment records; owned brokers stopped, service and cgroup removed |
+
+This is a lifecycle smoke, not a maximum-throughput or deployment-sizing result.
+The multi-hour gate remains open. Earlier failures, including the
+[two-hour run on `b09f2da`](evidence/lease-recovery-sustained-failed-b09f2da.json)
+and [600-second run on `0da7523`](evidence/sustained-smoke-failed-0da7523.json),
+remain failed and retained. The passing smoke's raw report SHA-256 is
+`e3d3ee6da61fd97b76d780b41f38de0b57916657587af01a8e1fcc05ebcadad7`.
+
 ## Workload and limits
 
 The runner provisions two gateways, two workers and three NATS brokers in one
