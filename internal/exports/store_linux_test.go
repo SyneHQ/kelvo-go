@@ -581,8 +581,13 @@ func TestExpiryBoundsOpenAndAlreadyAdmittedPart(t *testing.T) {
 type processFixture struct {
 	command *exec.Cmd
 	input   io.WriteCloser
-	line    <-chan string
+	line    <-chan processFixtureLine
 	done    <-chan error
+}
+
+type processFixtureLine struct {
+	text string
+	err  error
 }
 
 func startProcessFixture(t *testing.T, root, mode string, extra ...string) *processFixture {
@@ -603,18 +608,45 @@ func startProcessFixture(t *testing.T, root, mode string, extra ...string) *proc
 	if err = cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	lines := make(chan string, 1)
-	go func() { line, _ := bufio.NewReader(output).ReadString('\n'); lines <- strings.TrimSpace(line) }()
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
 	t.Cleanup(func() { input.Close(); cancel() })
+	if mode == "fast-exit" {
+		// Force the regression's child to exit before its stdout reader starts.
+		// WNOWAIT leaves reaping and pipe ownership with exec.Cmd.Wait.
+		var info unix.Siginfo
+		for {
+			err = unix.Waitid(unix.P_PID, cmd.Process.Pid, &info, unix.WEXITED|unix.WNOWAIT, nil)
+			if !errors.Is(err, unix.EINTR) {
+				break
+			}
+		}
+		if err != nil {
+			cancel()
+			_ = output.Close()
+			_ = cmd.Wait()
+			t.Fatal(err)
+		}
+	}
+	lines := make(chan processFixtureLine, 1)
+	done := make(chan error, 1)
+	go func() {
+		reader := bufio.NewReader(output)
+		line, readErr := reader.ReadString('\n')
+		lines <- processFixtureLine{strings.TrimSpace(line), readErr}
+		// Wait closes StdoutPipe. Drain it first, including the test runner's
+		// output after the readiness line, so fast exits cannot lose that line.
+		_, drainErr := io.Copy(io.Discard, reader)
+		done <- errors.Join(drainErr, cmd.Wait())
+	}()
 	return &processFixture{cmd, input, lines, done}
 }
 func fixtureLine(t *testing.T, f *processFixture) string {
 	t.Helper()
 	select {
 	case line := <-f.line:
-		return line
+		if line.err != nil {
+			t.Fatalf("subprocess readiness read: %v (partial line %q)", line.err, line.text)
+		}
+		return line.text
 	case <-time.After(10 * time.Second):
 		t.Fatal("subprocess fixture deadline")
 		return ""
@@ -636,6 +668,10 @@ func fixtureWait(t *testing.T, f *processFixture) {
 func TestExportProcessHelper(t *testing.T) {
 	mode := os.Getenv("KELVO_EXPORT_HELPER_MODE")
 	if mode == "" {
+		return
+	}
+	if mode == "fast-exit" {
+		fmt.Println("ready")
 		return
 	}
 	cfg := testConfig(os.Getenv("KELVO_EXPORT_TEST_ROOT"))
@@ -725,6 +761,14 @@ func TestExportProcessHelper(t *testing.T) {
 		t.Fatal("state crash point not reached")
 	}
 	t.Fatal("unknown subprocess mode")
+}
+
+func TestProcessFixtureReadsFastExit(t *testing.T) {
+	fixture := startProcessFixture(t, t.TempDir(), "fast-exit")
+	if line := fixtureLine(t, fixture); line != "ready" {
+		t.Fatalf("subprocess readiness = %q, want ready", line)
+	}
+	fixtureWait(t, fixture)
 }
 
 func TestActualProcessReservationsAndReaderCleanup(t *testing.T) {
