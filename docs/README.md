@@ -69,8 +69,10 @@ Start with the [source coverage matrix](source-coverage.md) and [acceleration/fe
 | [Readiness](operations.md#dataset-diagnostics-and-required-readiness) · [Drain](operations.md#maintenance) | Required datasets, probes and bounded shutdown |
 | [Gateway API-key rotation](gateway-key-rotation.md) | Overlapping tenant keys, bounded live revocation and two-gateway rollout checks |
 | [Credential-file rotation](operations.md#file-based-source-credential-rotation) | Selected source credentials, private files and cache TTL |
+| [TLS identities](tls-identity-rotation.md) · [Trust and peer revocation](tls-trust-rotation.md) | Atomic private identities, CA overlap, epoch floors and current checks on reused connections |
 | [Execution history](operations.md#optional-execution-history) · [Lifecycle tracing](tracing.md) | Optional bounded history and OTLP/HTTP spans |
 | [Worker failure recovery](worker-failures.md) | Memory failures, quota loss and snapshot preservation |
+| [Durable export storage](export-storage.md) | Contributor API for immutable Arrow parts, ownership, crash recovery and storage bounds |
 | [Native error classification](native-error-classification.md) | Recognized PostgreSQL/MySQL driver failures and public errors |
 | [Federation scan diagnostics](federation.md#actual-scan-diagnostics) | Actual source rows/bytes and bounded redacted scan information |
 

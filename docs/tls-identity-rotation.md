@@ -5,10 +5,11 @@ restarting its process. Rotation is opt-in and publishes one complete identity
 per process. HTTP requests and handshakes fail closed if that identity becomes
 invalid or stale.
 
-This feature rotates **local certificate/key identities**. Trust bundles, NATS
-credentials, peer revocation, and CA changes still require their existing
-operator-controlled rollout. It does not provide certificate issuance, a global
-revocation ledger, or an atomic change across replicas.
+This feature rotates **local certificate/key identities**. Optional
+[trust rotation and peer revocation](tls-trust-rotation.md) separately manage
+private CA bundles and peer policy between gateways and workers. Operators
+coordinate their rollout and NATS credentials. Identity rotation does not provide
+certificate issuance, a global revocation ledger, or an atomic change across replicas.
 
 ## Configure private identity files
 
@@ -110,8 +111,10 @@ atomic replacement restores operation on that replica.
 
 Requests admitted before invalidation may finish under their existing query,
 transport, and drain deadlines. Rotation does not cancel authenticated running
-queries, undo delivered results, reauthenticate established peer connections,
-or revoke a peer certificate. Current TLS trust verification, DNS checks,
+queries or undo delivered results. Identity rotation alone does not reauthenticate
+established peer connections or revoke a peer certificate; opt-in
+[trust rotation](tls-trust-rotation.md) performs current peer checks on new requests.
+Current TLS trust verification, DNS checks,
 SPIFFE checks, and TLS 1.3 minimum remain enabled. Rotating server listeners
 disable TLS session tickets; outbound clients do not configure a session cache.
 This ensures a new connection selects the current local identity.
@@ -139,6 +142,7 @@ GOMAXPROCS=2 go test -p 2 -tags duckdb_arrow ./cmd/kelvo
 ```
 
 These checks validate in-process HTTP servers and gateway runtime wiring. They
-do not certify CA rotation, a live certificate-manager deployment, or a
-multi-replica revocation deadline. See the
-[production checklist](production-status.md) for those remaining gates.
+do not certify a live certificate-manager deployment or globally coordinated
+revocation. The separate [trust suite](tls-trust-rotation.md#validation-scope)
+covers loopback CA rotation and stale-replica behavior. See the
+[production checklist](production-status.md) for remaining deployment gates.
