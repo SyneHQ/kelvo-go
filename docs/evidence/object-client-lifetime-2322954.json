@@ -1,0 +1,252 @@
+{
+  "passed": true,
+  "revision": "232295489391c78c45786f46886ffa04954f97b5",
+  "staging_json_sha256": "703be21395b14b5f18b314a868aab6f520522dfdf3e03757b12b553317e0c2f6",
+  "source_manifest_sha256": "55b0175b70941e7ba4801423ed7cfc230e268e5be6b8b43c77b00043e4b7151f",
+  "source_file_count": 986,
+  "baseline_revision": "0544d5f013eb72598a6da608331ec8b00711866f",
+  "scope": "Offline object-client shutdown, upload custody and range/backend composition controls. No live-provider, custody activation, throughput or production sizing claim.",
+  "compiler_lanes": 1,
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "helpers_verified_before": true,
+  "helpers_verified_after": true,
+  "shared_bridge_unchanged": true,
+  "effective_modules_unchanged": true,
+  "negative_sources_verified_after": true,
+  "capability_sets_zero": true,
+  "no_new_privileges": true,
+  "enforced_isolation": {
+    "non_root": true,
+    "private_network": true,
+    "memory_max_bytes": 3221225472,
+    "swap_max_bytes": 0,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "tasks_max": 256
+  },
+  "enforced_watchdog": {
+    "TimeoutStopUSec": "20s",
+    "RuntimeMaxUSec": "30min",
+    "KillMode": "control-group",
+    "SendSIGKILL": "yes"
+  },
+  "shared_inputs_before": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+  },
+  "effective_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "raw_report_sha256": "91c7dac0d2ca4fb7b12e834ebdec9d4b7b30a122f7b7654feb1ec4eed4145513",
+  "reported_passed": true,
+  "source_current_match": true,
+  "helpers_current_match": true,
+  "shared_inputs_current_match": true,
+  "effective_modules_current_match": true,
+  "isolation_reconciled": true,
+  "stages": {
+    "external-modfile": {
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "timeout": false,
+      "seconds": 0.008,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "clone-negative-provider": {
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "timeout": false,
+      "seconds": 0.512,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "negative-provider": {
+      "exit_code": 1,
+      "expected_exit_code": 1,
+      "timeout": false,
+      "seconds": 2.372,
+      "log_sha256": "c4060c6d67280d9d35b4120f92e3fd68517ea205f0041ca2e3ef741718d3ef7b"
+    },
+    "clone-negative-backend": {
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "timeout": false,
+      "seconds": 0.582,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "negative-backend": {
+      "exit_code": 1,
+      "expected_exit_code": 1,
+      "timeout": false,
+      "seconds": 18.015,
+      "log_sha256": "4ad3c57bf05146135ed060c536a828f0147bed814f7da772c1a1d779f525e3fc"
+    },
+    "objectstore-race": {
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "timeout": false,
+      "seconds": 7.781,
+      "log_sha256": "38aa04cdf701bc349d5ddd4c3ecb6738f2d4bd3ee01de47032f7bd6910694d84"
+    },
+    "acceleration-race": {
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "timeout": false,
+      "seconds": 19.457,
+      "log_sha256": "cfed9703a70c24944ebeac191a0098697eacbad55743d989fc7298055ae840c5"
+    },
+    "focused-vet": {
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "timeout": false,
+      "seconds": 13.75,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "stages_reconciled": true,
+  "positive_controls": {
+    "objectstore": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/objectstore",
+      "required_top_level_tests": [
+        "TestAzureErrorResponsesPreserveServerTime",
+        "TestAzureImmutableUploadAndManifestCompareAndSwap",
+        "TestAzurePinnedRangeReadsAndResponseValidation",
+        "TestAzureRangeRejectsCustomTransportOverrun",
+        "TestAzureRefusesInvalidRequestsBeforeNetwork",
+        "TestAzureResponseMetadataAndVersionValidation",
+        "TestAzureSASFormsAndInvalidConfiguration",
+        "TestAzureStreamingGetAndTruncatedBody",
+        "TestAzureTLSRedirectCancellationAndErrorRedaction",
+        "TestClientBodyJoinsQueuedReadsAndCancellationCallback",
+        "TestClientLifetimeAdoptsLateBodyDuringClose",
+        "TestClientLifetimeDoesNotUseConnectionLimitAsAdmissionCap",
+        "TestClientLifetimeRetainsEOFBodyUntilExplicitClose",
+        "TestExactRangeBody",
+        "TestProviderClientCloseCancelsAllReturnedBodiesBeforeJoining",
+        "TestProviderClientCloseCancelsBodyWhileAnotherMethodIsBlocked",
+        "TestProviderClientCloseJoinsLateRequestsAndErrorBodies",
+        "TestProviderClientCloseJoinsNonemptyUploadOwnership",
+        "TestProviderClientCloseJoinsReturnedBodies",
+        "TestProviderClientCloseJoinsSeekAndRejectsNewInput",
+        "TestProviderClientCloseRealTLSResponse",
+        "TestProviderClientInvalidCallsReleaseMethodOwnership",
+        "TestProviderPutJoinsTransportBodyOwnership",
+        "TestProviderPutRealTransportEarlyResponse",
+        "TestProviderPutZeroBodyAndPreHandoffFailures",
+        "TestS3ClientRefusesRedirectsAndUnsafeConditions",
+        "TestS3CompatibleConditionalPublication",
+        "TestS3CompatibleRanges",
+        "TestS3ResponseIdentityPreservesConditionalErrorClock",
+        "TestS3ResponseIdentityPreservesValidProviderSemantics",
+        "TestS3ResponseIdentityRejectsDuplicateHeaders",
+        "TestS3ResponseIdentityRejectsMismatchedLength",
+        "TestUploadBodyRequiresCloseAfterExactBoundedRead",
+        "TestUploadBodySealsPromptlyAndJoinsSerializedReads"
+      ],
+      "log_sha256": "38aa04cdf701bc349d5ddd4c3ecb6738f2d4bd3ee01de47032f7bd6910694d84",
+      "passed_top_level_count": 34,
+      "passed_events_including_subtests": 514,
+      "failures_or_skips": 0
+    },
+    "acceleration": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+      "required_top_level_tests": [
+        "TestMultipartRangesIsolationAndInputMutation",
+        "TestMultipartRangesRejectMetadataConfusion",
+        "TestMultipartRangesShareConcurrencyAndCancel",
+        "TestMultipartRangesTotalCapabilityLimit",
+        "TestObjectBackendConcurrentCloseJoinsReader",
+        "TestObjectBackendNamespacesAndClosedState",
+        "TestObjectRangesBoundConcurrencyAndStreamBuffers",
+        "TestObjectRangesCancellationAndReleaseWaitForUpstreamCleanup",
+        "TestObjectRangesExposeOnlySelectedCapabilitiesAndExactBytes",
+        "TestObjectRangesRejectChangedMetadataAndIncompleteBodies",
+        "TestObjectRangesRejectSnapshotKeyConfusionBeforeServing",
+        "TestObjectRangesRejectUnselectedPathsMethodsBodiesAndRanges",
+        "TestObjectRangesReleaseJoinsDelayedBodyClose",
+        "TestObjectRangesRequireReadOnlyAzureSASInParent",
+        "TestResolveObjectSnapshotRetainsBridgeAndLeaseUntilRelease"
+      ],
+      "log_sha256": "cfed9703a70c24944ebeac191a0098697eacbad55743d989fc7298055ae840c5",
+      "passed_top_level_count": 15,
+      "passed_events_including_subtests": 68,
+      "failures_or_skips": 0
+    }
+  },
+  "positive_controls_reconciled": true,
+  "negatives": {
+    "provider": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/objectstore",
+      "target": "TestProviderClientCloseJoinsReturnedBodies/s3/get/unread",
+      "expected_assertion": "client_lifetime_test.go:97: object client returned before response ownership ended",
+      "log_sha256": "c4060c6d67280d9d35b4120f92e3fd68517ea205f0041ca2e3ef741718d3ef7b",
+      "failed_test_events": 2,
+      "expected_assertion_count": 1,
+      "setup_build_race_panic_timeout_or_cleanup_failure": false,
+      "source_manifest_sha256": "a52725873c9a34f53145529b40e26a8c5b41c37149534cb6c11fdd28e2adf831",
+      "only_restored_files": [
+        "internal/objectstore/azure.go",
+        "internal/objectstore/s3.go"
+      ],
+      "source_verified_before": true,
+      "source_verified_after": true
+    },
+    "backend": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+      "target": "TestObjectBackendConcurrentCloseJoinsReader",
+      "expected_assertion": "object_close_test.go:58: concurrent backend Close returned before reader completion",
+      "log_sha256": "4ad3c57bf05146135ed060c536a828f0147bed814f7da772c1a1d779f525e3fc",
+      "failed_test_events": 1,
+      "expected_assertion_count": 1,
+      "setup_build_race_panic_timeout_or_cleanup_failure": false,
+      "source_manifest_sha256": "fbaa0046d18401290dae661c6adb11a80b21ba0152c6a2fc836e0c91e09b98d5",
+      "only_restored_files": [
+        "internal/acceleration/object_store.go"
+      ],
+      "source_verified_before": true,
+      "source_verified_after": true
+    }
+  },
+  "negative_controls_reconciled": true,
+  "service_exit": {
+    "revision": "232295489391c78c45786f46886ffa04954f97b5",
+    "unit": "kelvo-client-quiescence-2322954893-c73bbc",
+    "systemd_run_exit_code": 0
+  },
+  "service_exit_receipt_sha256": "065594a14f905299ecacc862315d71b2f064fabe8232d269e9c452731ba518b1",
+  "service_exit_reconciled": true,
+  "cleanup": {
+    "unit": "kelvo-client-quiescence-2322954893-c73bbc",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true
+  },
+  "local_launch": {
+    "ssh_exit_code": 0,
+    "revision": "232295489391c78c45786f46886ffa04954f97b5",
+    "unit": "kelvo-client-quiescence-2322954893-c73bbc"
+  },
+  "collection_ssh_exit_code": 0,
+  "local_launch_reconciled": true,
+  "local_stage_reconciled": true
+}
