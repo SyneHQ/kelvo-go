@@ -61,7 +61,7 @@ exports:
   cleanup_max_removals: 16
 ```
 
-Prepare private persistent directories owned by the worker UID. Keep export, scratch, audit and acceleration roots disjoint. Run `cluster-init` with provisioning credentials before starting runtime processes.
+Prepare private persistent directories owned by the worker UID. Keep export, scratch, audit and acceleration roots disjoint. Apply the [export broker permissions](export-nats.md), then run `cluster-init` with provisioning credentials before starting runtime processes.
 
 Writer overhead and download memory must each cover at least `ceil((4 × (max_part_bytes + max_part_decoded_bytes) + 8 MiB) / MiB)`. These are reservations; enforce host/process limits separately. [Admission](workload-admission.md) · [Containment](process-containment.md)
 
@@ -110,4 +110,4 @@ The worker reserves resources and disk before SQL. `stored` means local commit s
 
 Upgrade all participating binaries before enabling exports. Older configuration and audit readers reject the new feature. Drain fills/downloads and preserve retained data before a coordinated rollback; do not downgrade a live export root.
 
-[Storage and crash contracts](export-storage.md) · [Cluster lifecycle](cluster.md) · [Audit](durable-audit.md)
+[Validated scope](export-validation.md) · [Storage and crash contracts](export-storage.md) · [Cluster lifecycle](cluster.md) · [Audit](durable-audit.md)

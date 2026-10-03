@@ -2,6 +2,8 @@
 
 This is recorded developer-preview evidence, tied to specific binaries and fixtures. Use [production status](production-status.md) for current release gates; these results do not certify arbitrary multi-tenant deployments.
 
+Latest: [durable export validation](export-validation.md) covers the combined worker, broker, transport and crash checks on `d144a43`.
+
 ## Expanded federation and public adapter SDK
 
 The optional Go/C++ bridge supports ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and Databricks. See the [adapter guide](federation-adapters.md) for namespaces, types and the public `github.com/SYNEHQ/kelvo-go/federation` interface.

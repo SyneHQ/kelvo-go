@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "commit": "dbe98757f080f358c8b46eaba52c55d31b747b43",
+  "scope": "Preintegration NATS 2.15.0 exact export roles/account isolation; final combined root gate covers lifecycle and supported broker matrix",
+  "stages": [
+    {
+      "name": "stage01",
+      "interpretation": "Restricted initializer lacked the exact metadata bootstrap direct-read grant; denied before namespace initialization. Broker stopped.",
+      "validation": {
+        "source_sha256": "eb3472bb8a1752e6df91825849f92d2f4383445193c50d38dd8cc9a8f804c184",
+        "base_revision": "6e1a35635e9aa8818595505c9f563a603c1fa875",
+        "server_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+        "stages": {
+          "python-controls": {
+            "exit_code": 0,
+            "seconds": 0.114,
+            "sha256": "5f0635b83af38a6c5d516fcb60dc3fa63c9c6ca4854e51a6a29ca33c92ccef16"
+          },
+          "acl-acceptance": {
+            "exit_code": 1,
+            "seconds": 18.193,
+            "sha256": "2a5fef80cf0c6a70a2a8cab65464733833b4c38819a58302a2cfb4e45fa35a3b"
+          }
+        },
+        "passed": false,
+        "error": "acl-acceptance"
+      },
+      "acl": {
+        "mode": "acl",
+        "server_version": "2.15.0",
+        "server_binary_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+        "scope": "single broker; exact runtime and initializer ACLs in two separate tenant accounts",
+        "tests": [
+          {
+            "name": "TestNATSExportRuntimeACLAndAccountIsolation",
+            "outcome": "fail"
+          }
+        ],
+        "failures": [
+          "TestNATSExportRuntimeACLAndAccountIsolation"
+        ],
+        "skips": [],
+        "passed": false,
+        "exit_code": 1,
+        "seconds": 17.427,
+        "log_sha256": "b3dae9d4bea02673faa196adf5c43478b7ea8ad9deedde8076bdc21b1a505c7c",
+        "broker_stopped": true
+      },
+      "receipt_sha256": {
+        "validation.json": "d1972e9555bde61fac83e08d0ef583c6b0401c354d125e0882258fc232b7a958",
+        "acl.json": "09f17769aec13a1c713aa045806097bf82a2f70f5b609c3e659b319f9c9dcbae",
+        "source.json": "a6e0e4903b0a6b68696c2b21a609273065fec8e8a6b1c0478db9872a53ce3603"
+      }
+    },
+    {
+      "name": "stage02",
+      "interpretation": "Broker correctly returned ErrNoExport for an empty isolated queue; assertion incorrectly required context deadline. Runtime retained-state follow-on assertion failed because the preceding subtest stopped before cancellation. Broker stopped.",
+      "validation": {
+        "source_sha256": "e2f8f38207341b9f10112bd0c45b319d2e8eea6d83e9f83d6c02756d9e73e7a3",
+        "base_revision": "6e1a35635e9aa8818595505c9f563a603c1fa875",
+        "server_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+        "stages": {
+          "python-controls": {
+            "exit_code": 0,
+            "seconds": 0.114,
+            "sha256": "5f0635b83af38a6c5d516fcb60dc3fa63c9c6ca4854e51a6a29ca33c92ccef16"
+          },
+          "acl-acceptance": {
+            "exit_code": 1,
+            "seconds": 12.147,
+            "sha256": "cd670aa544d3eae4b3601920990bcfc2655b6c7e3ad35cd97ca8132b2df9e778"
+          }
+        },
+        "passed": false,
+        "error": "acl-acceptance"
+      },
+      "acl": {
+        "mode": "acl",
+        "server_version": "2.15.0",
+        "server_binary_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+        "build_tags": "duckdb_arrow",
+        "scope": "single broker; exact runtime and initializer ACLs in two separate tenant accounts",
+        "tests": [
+          {
+            "name": "TestNATSExportRuntimeACLAndAccountIsolation/separate_roles_and_bidirectional_account_isolation",
+            "outcome": "fail"
+          },
+          {
+            "name": "TestNATSExportRuntimeACLAndAccountIsolation/runtime_and_initializer_permissions_are_exact",
+            "outcome": "fail"
+          },
+          {
+            "name": "TestNATSExportRuntimeACLAndAccountIsolation/initializer_can_manage_only_declared_namespaces",
+            "outcome": "pass"
+          },
+          {
+            "name": "TestNATSExportRuntimeACLAndAccountIsolation",
+            "outcome": "fail"
+          }
+        ],
+        "failures": [
+          "TestNATSExportRuntimeACLAndAccountIsolation/separate_roles_and_bidirectional_account_isolation",
+          "TestNATSExportRuntimeACLAndAccountIsolation/runtime_and_initializer_permissions_are_exact",
+          "TestNATSExportRuntimeACLAndAccountIsolation"
+        ],
+        "skips": [],
+        "passed": false,
+        "source_sha256": "e2f8f38207341b9f10112bd0c45b319d2e8eea6d83e9f83d6c02756d9e73e7a3",
+        "source_revision": "6e1a35635e9aa8818595505c9f563a603c1fa875",
+        "source_verified_before": true,
+        "exit_code": 1,
+        "seconds": 11.345,
+        "log_sha256": "06366e00c9fc9d55eb637d8d0c81e5bcffe91384bd2ae5bfbde7bf4039ac7ecb",
+        "source_verified_after": true,
+        "broker_stopped": true
+      },
+      "receipt_sha256": {
+        "validation.json": "ec86f68e22b5da0d03b9de1e02d21c7b689895c76df7e4f8a9e754682fb88ff3",
+        "acl.json": "43548ff233983adb3f7a1fd6555207d1f5d6afa2dc6422e6f12440eb4aa9fee2",
+        "source.json": "5cf64dd5e80cd8069803390bde0d9f0da690aa12773dee2c7cc9d0c1fc3c8a3b"
+      }
+    },
+    {
+      "name": "stage03",
+      "interpretation": "Passed role-separated retained-store transitions, same-subject account isolation, exact ACL refusals and declared initializer management.",
+      "validation": {
+        "source_sha256": "d95ac4f3c6407e1dad12f356baacc130ebaa96e4d691b4611e7269681a09d7cd",
+        "base_revision": "6e1a35635e9aa8818595505c9f563a603c1fa875",
+        "server_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+        "stages": {
+          "python-controls": {
+            "exit_code": 0,
+            "seconds": 0.114,
+            "sha256": "5f0635b83af38a6c5d516fcb60dc3fa63c9c6ca4854e51a6a29ca33c92ccef16"
+          },
+          "acl-acceptance": {
+            "exit_code": 0,
+            "seconds": 12.843,
+            "sha256": "55e237b346674516cea96bc23335e4f0fc3e334dff443db1e6e09e0e2f920825"
+          },
+          "cluster-vet": {
+            "exit_code": 0,
+            "seconds": 4.925,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        "passed": true,
+        "source_verified_after": true
+      },
+      "acl": {
+        "mode": "acl",
+        "server_version": "2.15.0",
+        "server_binary_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+        "build_tags": "duckdb_arrow",
+        "scope": "single broker; exact runtime and initializer ACLs in two separate tenant accounts",
+        "tests": [
+          {
+            "name": "TestNATSExportRuntimeACLAndAccountIsolation/separate_roles_and_bidirectional_account_isolation",
+            "outcome": "pass"
+          },
+          {
+            "name": "TestNATSExportRuntimeACLAndAccountIsolation/runtime_and_initializer_permissions_are_exact",
+            "outcome": "pass"
+          },
+          {
+            "name": "TestNATSExportRuntimeACLAndAccountIsolation/initializer_can_manage_only_declared_namespaces",
+            "outcome": "pass"
+          },
+          {
+            "name": "TestNATSExportRuntimeACLAndAccountIsolation",
+            "outcome": "pass"
+          }
+        ],
+        "failures": [],
+        "skips": [],
+        "passed": true,
+        "source_sha256": "d95ac4f3c6407e1dad12f356baacc130ebaa96e4d691b4611e7269681a09d7cd",
+        "source_revision": "6e1a35635e9aa8818595505c9f563a603c1fa875",
+        "source_verified_before": true,
+        "exit_code": 0,
+        "seconds": 12.393,
+        "log_sha256": "4ec96bbcd1504b6e7f51455bc7a04d07970c859be8155868b17b8d5872c8055a",
+        "source_verified_after": true,
+        "broker_stopped": true
+      },
+      "receipt_sha256": {
+        "validation.json": "3cc4b6dacbb5e386ca79a9c502fdd86d00dbdd9ec6d9ff4d842e24b45c15aea1",
+        "acl.json": "64fa50d97c3a8b09807e870b361d44b61ce8aaf21d6823af1278075fa6c6f338",
+        "source.json": "7f929686e18ab31908d6e2bbbba01b89566f2fe4bb684aea220e44cc5cdd36e6"
+      }
+    }
+  ],
+  "limits": {
+    "cpu_quota_percent": 100,
+    "memory_bytes": 2147483648,
+    "swap_bytes": 0,
+    "tasks": 128,
+    "watchdog_seconds": 300
+  },
+  "final_python_controls": {
+    "tests": 11,
+    "passed": true,
+    "duration_seconds": 0.008,
+    "service_runtime_seconds": 0.09,
+    "observation": "Bounded VM unittest stdout; additional early-error receipt umask and prelaunch credential cleanup controls after stage03."
+  },
+  "not_covered": [
+    "NATS 2.14.7 ACL run in this receipt",
+    "NATS 2.12",
+    "actual gateway-worker lifecycle",
+    "multi-host broker availability"
+  ]
+}

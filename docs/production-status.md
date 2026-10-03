@@ -35,7 +35,7 @@ Remote pruning intentionally deletes nothing. Protect current, retained, pinned,
 | Capability | Status |
 | --- | --- |
 | Arrow delivery and optional LZ4 | Available; decoded limits remain unchanged |
-| Durable exports | [Opt-in federated jobs and repeat downloads](exports.md) implemented; integrated fault and capacity acceptance in progress |
+| Durable exports | [Opt-in federated jobs and repeat downloads](exports.md); [combined worker/broker/transport gates passed](export-validation.md). Sustained capacity and deployment acceptance remain separate |
 | Result cache | Pending authorization/generation keys, bounded fills and revocation fencing |
 | Eight federation adapters | Available; live Oracle/warehouse gates remain open |
 | Automatic remote joins/aggregates | Pending bound-plan integration and parity checks |
