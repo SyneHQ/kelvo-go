@@ -649,5 +649,15 @@
     "The one r3 retry shared the verified preserved executable inodes to avoid duplicate executable cache allocation; its 2.986-second gap shows this arrangement did not resolve the refusal.",
     "Worker processes exited0. Temporary fixture controllers exited143 from their explicit SIGTERM cleanup handler and retain failed/failed systemd status; independent checks prove all owned processes and cgroups stopped, source user/key removed, and source tables/limits preserved.",
     "No thresholds were relaxed, no frozen worker/client/runtime source was changed, and no further capacity retry was launched. Observer instrumentation needs review before a new campaign."
-  ]
+  ],
+  "final_unit_cleanup": {
+    "exact_owned_units": [
+      "kelvo-micro-b09r2-fixture.service",
+      "kelvo-micro-b09r3-fixture.service"
+    ],
+    "reset_failed_after_historical_status_capture": true,
+    "unloaded": true,
+    "cgroups_absent": true,
+    "older_failed_units_untouched": true
+  }
 }

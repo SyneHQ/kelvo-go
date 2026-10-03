@@ -21,7 +21,9 @@ the receipts do not establish that hashing explains every part of either gap.
 Worker exits were zero with no OOMs or leaked processes. Independent cleanup
 verified removal of both temporary source accounts, forwarding keys, services and
 cgroups before the unchanged 18:43:57 UTC deadline. Fixture controllers retained
-exit 143 from their explicit SIGTERM cleanup handler; that status is preserved.
+exit 143 from their explicit SIGTERM cleanup handler; that history is preserved.
+After capture, only those two stopped units were reset and verified unloaded,
+with absent cgroups; older failed units were left untouched.
 Each temporary Azure control fixture was capped at 1 CPU / 1 GiB. The existing
 ClickHouse source container remained separate, unchanged and excluded from that
 cap and from the Oracle worker measurements. **Five-pair acceptance remains
