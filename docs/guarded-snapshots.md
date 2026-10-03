@@ -70,3 +70,5 @@ Before rollback, stop new admission, drain or cancel jobs, restore a compatible 
 Native SQL policies, object-backed snapshot guards, public export/download integration, result-cache authorization and coordinated live policy updates remain tracked in [#28](https://github.com/SyneHQ/kelvo-go/issues/28).
 
 [Reader and admission validation](evidence/guarded-snapshot-reader.json) records the focused development checks; production and transport capacity require their separate acceptance evidence.
+
+[Integration evidence](evidence/guarded-snapshot-integration.json) records race/vet checks, real sandbox execution, generation cleanup, key revocation and EOS refusal, plus earlier failed trials and remaining gates.
