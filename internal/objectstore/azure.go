@@ -22,6 +22,7 @@ const azureStorageVersion = "2023-11-03"
 // azureClient uses the explicitly configured endpoint and SAS only. A SAS can
 // authorize operations but cannot change the endpoint, key, or operation here.
 type azureClient struct {
+	lifetime clientLifetime
 	location catalog.ObjectLocation
 	origin   *url.URL
 	sas      url.Values
@@ -72,7 +73,7 @@ func newAzure(location catalog.ObjectLocation, credentials catalog.ObjectCredent
 	}, nil
 }
 
-func (c *azureClient) Close() { c.http.CloseIdleConnections() }
+func (c *azureClient) Close() { c.lifetime.close(c.http.CloseIdleConnections) }
 
 func (c *azureClient) request(ctx context.Context, method, key, version string, body io.Reader) (*http.Request, error) {
 	if err := ctx.Err(); err != nil {
@@ -125,6 +126,12 @@ func (c *azureClient) do(request *http.Request, expected int) (*http.Response, e
 }
 
 func (c *azureClient) Get(ctx context.Context, key, version string) (io.ReadCloser, Info, error) {
+	op, err := c.lifetime.begin(ctx)
+	if err != nil {
+		return nil, Info{}, err
+	}
+	defer op.finish(true)
+	ctx = op.ctx
 	request, err := c.request(ctx, http.MethodGet, key, version, nil)
 	if err != nil {
 		return nil, Info{}, err
@@ -138,10 +145,17 @@ func (c *azureClient) Get(ctx context.Context, key, version string) (io.ReadClos
 		_ = response.Body.Close()
 		return nil, info, err
 	}
-	return &azureReadBody{body: response.Body, ctx: ctx, remaining: info.Size}, info, nil
+	body, err := op.returnBody(&azureReadBody{body: response.Body, ctx: ctx, remaining: info.Size})
+	return body, info, err
 }
 
 func (c *azureClient) Head(ctx context.Context, key, version string) (Info, error) {
+	op, err := c.lifetime.begin(ctx)
+	if err != nil {
+		return Info{}, err
+	}
+	defer op.finish(true)
+	ctx = op.ctx
 	request, err := c.request(ctx, http.MethodHead, key, version, nil)
 	if err != nil {
 		return Info{}, err
@@ -157,6 +171,12 @@ func (c *azureClient) Head(ctx context.Context, key, version string) (Info, erro
 // GetRange pins the immutable object's version before requesting one exact
 // interval. A service that ignores Range is rejected, never downloaded in full.
 func (c *azureClient) GetRange(ctx context.Context, key, version string, offset, length int64) (io.ReadCloser, Info, error) {
+	op, err := c.lifetime.begin(ctx)
+	if err != nil {
+		return nil, Info{}, err
+	}
+	defer op.finish(true)
+	ctx = op.ctx
 	if version == "" || offset < 0 || length <= 0 || offset >= MaxUploadBytes || length > MaxUploadBytes-offset {
 		return nil, Info{}, errors.New("Azure snapshot range requires a version and a bounded interval")
 	}
@@ -184,10 +204,17 @@ func (c *azureClient) GetRange(ctx context.Context, key, version string, offset,
 		return nil, info, err
 	}
 	info.Size = total
-	return ExactRangeBody(&azureSafeBody{body: response.Body, ctx: ctx}, length), info, nil
+	body, err := op.returnBody(ExactRangeBody(&azureSafeBody{body: response.Body, ctx: ctx}, length))
+	return body, info, err
 }
 
 func (c *azureClient) Put(ctx context.Context, key string, body io.ReadSeeker, size int64, sha256 string, condition Condition) (Info, error) {
+	op, err := c.lifetime.begin(ctx)
+	if err != nil {
+		return Info{}, err
+	}
+	defer op.finish(true)
+	ctx = op.ctx
 	if body == nil || size < 0 || size > MaxUploadBytes || !azureValidSHA256(sha256) ||
 		(condition.Absent == (condition.Version != "")) {
 		return Info{}, errors.New("Azure snapshot upload requires a bounded payload and one precondition")
