@@ -9,6 +9,7 @@ import unittest
 from unittest import mock
 
 import sustained_acceptance as fixture
+from test_lease_supervision import recovered_evidence, unfenced_evidence
 
 REVISION = "a" * 40
 
@@ -18,6 +19,8 @@ def valid_report():
     canonical = json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
     checks = [{"test": name, "passed": True} for name in fixture.REQUIRED]
     for check in checks:
+        if check['test'] == 'broker_loss':
+            check['lease_supervision'] = unfenced_evidence()
         if check["test"] in ("gateway_loss", "worker_loss", "broker_loss"):
             check.update(running_before_fault=2, queued_before_fault=2, surviving_tenant_exact_result=True,
                          failed_attempt_result_rejected=True, queued_handles_preserved=True)
@@ -51,6 +54,17 @@ def valid_report():
 
 
 class SustainedControls(unittest.TestCase):
+    def test_broker_gate_requires_completed_lease_supervision(self):
+        for evidence in (None, {}, recovered_evidence()):
+            report = valid_report()
+            next(check for check in report['checks'] if check['test'] == 'broker_loss')['lease_supervision'] = evidence
+            self.assertEqual(fixture.reconcile(report, REVISION), evidence == recovered_evidence())
+        report = valid_report()
+        evidence = recovered_evidence()
+        evidence['nodes'][0]['replacement_ready_seconds'] = None
+        next(check for check in report['checks'] if check['test'] == 'broker_loss')['lease_supervision'] = evidence
+        self.assertFalse(fixture.reconcile(report, REVISION))
+
     def test_control_observations_require_bounded_labels_and_integer_counts(self):
         for controls in (None, {}, {"queued_status_http_200": True}, {"queued_status_http_200": 1.0},
                          {"queued_status_http_200": 1, "private-key": 1},

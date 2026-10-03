@@ -20,6 +20,7 @@ import urllib.error
 import urllib.request
 
 import operational_acceptance as ops
+import lease_supervision
 
 REQUIRED = ("startup", "gateway_loss_under_admitted_load", "worker_loss_under_admitted_load",
             "broker_loss_under_admitted_load", "cleanup")
@@ -45,6 +46,8 @@ def reconcile(report):
                     or check.get("failed_attempt_result_rejected") is not True
                     or check.get("queued_handles_preserved") is not True):
                 return False
+        if check['test'] == REQUIRED[3] and not lease_supervision.valid_evidence(check.get('lease_supervision')):
+            return False
     if report.get("managed_scratch_requested", False) is True:
         worker = next(item for item in checks if item["test"] == "worker_loss_under_admitted_load")
         startup = next(item for item in checks if item["test"] == "startup")
@@ -73,6 +76,7 @@ class LossAcceptance(ops.Acceptance):
         self.cleanup_observations = {}
         self.managed_roots = {}
         self.control_response_counts = {}
+        self.broker_supervision = None
 
     def call(self, path, tenant="a", body=None, node=None, timeout=12, with_headers=False, gateway=None):
         if node:
@@ -351,25 +355,36 @@ class LossAcceptance(ops.Acceptance):
 
     def broker_loss(self):
         handles = self.prepare_load()
+        supervisor = lease_supervision.LeaseSupervisor(self)
         broker = next(item for item in self.brokers if item["name"] == "nats-2")
         ops.require(self.broker_alive(broker), "BROKER_IDENTITY_CHANGED")
         identity = ops.proc_identity(broker["pid"])
         ops.require(identity is not None and self.broker_alive(broker), "BROKER_IDENTITY_CHANGED")
+        faulted_at = time.monotonic()
         ops.signal_owned(identity, signal.SIGKILL)
         self.intentional_kills += 1
-        self.wait(lambda: ops.proc_identity(identity[0]) != identity and self.broker_ports_closed(broker), 3)
         try:
+            supervisor.start(faulted_at)
+            self.wait(lambda: ops.proc_identity(identity[0]) != identity and self.broker_ports_closed(broker), 3)
             self.wait(lambda: self.call("/ready", timeout=1)[0] == 200, 10)
             for tenant, item in handles.items():
                 self.failed_attempt(item, tenant, cancel=True)
                 self.queued_result(item, tenant)
             detail = self.common_detail(handles)
         finally:
-            self.restart_broker(broker)
+            try:
+                supervisor.stop()
+            finally:
+                try:
+                    supervision = supervisor.evidence()
+                    self.broker_supervision = supervision
+                finally:
+                    self.restart_broker(broker)
+        ops.require(lease_supervision.valid_evidence(supervision), 'BROKER_NODE_SUPERVISION_FAILED')
         for tenant in ("a", "b"):
             self.query(tenant)
         return {**detail, "unavailable_brokers_during_delivery": 1, "current_replicas_after_rejoin": 3,
-                "post_rejoin_queries_correct": True}
+                "post_rejoin_queries_correct": True, "lease_supervision": supervision}
 
     def cleanup(self):
         # Future requests have bounded socket and server deadlines. Let base
@@ -458,6 +473,7 @@ def main():
     report["worker_scratch_directories_after_cleanup"] = len(acceptance.scratch_leftovers())
     report["cleanup_observations"] = acceptance.cleanup_observations
     report["control_response_counts"] = acceptance.control_response_counts
+    report["broker_supervision"] = acceptance.broker_supervision
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("x") as target:
         json.dump(report, target, indent=2)
