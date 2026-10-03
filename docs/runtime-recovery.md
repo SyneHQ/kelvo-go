@@ -8,7 +8,7 @@ They preserve fail-closed cleanup and the existing query deadlines.
 | Heartbeat CAS repeatedly collides with result publication | Poll cancellation as before; renew after one-third of the lease. Serialize renewal and result publication per reservation. |
 | Late renewal error overwrites a completed result | Stop the watcher when its reservation has already been released. |
 | WAN startup spends its budget on repeated metadata reads | Reuse each fresh lookup response and run four independent resource checks concurrently. Keep the five-second deadline and every policy check. |
-| Transient inherited scratch lease prevents cleanup | Wait at most one second for lock contention, then revalidate the inode. Delete only after acquiring exclusive ownership. |
+| Busy scratch lease prevents cleanup | Wait at most one second for lock contention, then revalidate the inode. Delete only after acquiring exclusive ownership. |
 
 Cancellation and failure can still fence publication. Persistent scratch holders,
 changed ownership and other cleanup errors still quarantine the worker. Result

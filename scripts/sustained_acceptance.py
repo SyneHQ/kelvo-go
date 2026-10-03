@@ -127,6 +127,11 @@ def reconcile(report, expected_revision):
                 or report["source"]["base_revision"] != expected_revision
                 or report["build_source"] != report["source"]):
             return False
+        controls = report.get("control_response_counts")
+        if (not isinstance(controls, dict) or not integer_count(controls.get("queued_status_http_200"), 1)
+                or not all(isinstance(key, str) and re.fullmatch(r"(?:queued_status|status|cancel)_(?:http_[1-5][0-9]{2}|transport_error)", key)
+                           and integer_count(value) for key, value in controls.items())):
+            return False
         for check in checks:
             if check["test"] in ("gateway_loss", "worker_loss", "broker_loss"):
                 if (not all(type(check.get(key)) is int and check[key] == 2 for key in ("running_before_fault", "queued_before_fault"))
@@ -479,7 +484,27 @@ class Campaign(loss.LossAcceptance):
         # Observe recovery before claiming the existing result exactly once.
         # The query policy is20s, so the inherited12s read deadline is shorter
         # than permitted execution; retain a bounded30s delivery envelope.
-        self.wait(lambda: self.state(item["queued"], tenant) == "assigned", 25)
+        deadline = time.monotonic() + 25
+        def assigned():
+            remaining = deadline - time.monotonic()
+            ops.require(remaining > 0, "CONDITION_DEADLINE")
+            try:
+                code, raw = self.call("/v1/queries/" + item["queued"], tenant, timeout=min(2, remaining))
+            except (OSError, urllib.error.URLError, http.client.HTTPException):
+                self.count_control("queued_status_transport_error")
+                raise
+            self.count_control("queued_status_http_" + str(code))
+            ops.require(time.monotonic() <= deadline, "CONDITION_DEADLINE")
+            # A broker outage can make a read temporarily unavailable even
+            # after /ready succeeds. Count every observation and require the
+            # same admitted handle to recover within the existing deadline.
+            if code in (429, 503):
+                return False
+            ops.require(code == 200, "ADMITTED_QUEUED_STATUS_LOST")
+            state = json.loads(raw)["state"]
+            ops.require(state in ("queued", "assigned"), "ADMITTED_QUEUED_STATE_LOST")
+            return state == "assigned"
+        self.wait(assigned, 25)
         code, raw, headers = self.call("/v1/queries/" + item["queued"] + "/results", tenant, timeout=30, with_headers=True)
         ops.require(code == 200, "ADMITTED_QUEUED_QUERY_LOST")
         ops.verify_completed_arrow(raw, headers, self.expected[tenant])
@@ -623,6 +648,7 @@ class Campaign(loss.LossAcceptance):
     def evidence(self):
         with self.data_lock:
             return {"workload": json.loads(json.dumps(self.workload)), "resources": json.loads(json.dumps(self.resource_samples)),
+                    "control_response_counts": dict(self.control_response_counts),
                     "latencies": {kind: {tenant: histogram_evidence(value) for tenant, value in values.items()} for kind, values in self.latencies.items()},
                     "latency_scope": "Client elapsed times and dispatch observation upper bounds (50ms polling), not exact distributed queue attribution; node admission histograms exclude dispatch.",
                     "client_failures": list(self.client_failures), "progress_windows": json.loads(json.dumps(self.window_counts)), "process_sampling": self.samples.evidence(),

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 import sustained_acceptance as fixture
 
@@ -36,6 +37,7 @@ def valid_report():
                           "cgroup_memory_events_delta": {"oom": 0, "oom_kill": 0}, "query_refresh_overlap_samples": 1, "final_cgroup_sample_after_shutdown": True},
             "progress_windows": [{"start_seconds": 0., "end_seconds": 7200., "deltas": {kind: {tenant: 5 for tenant in fixture.TENANTS} for kind in ("queries", "refreshes")}}]}
     report["build_source"] = copy.deepcopy(report["source"])
+    report["control_response_counts"] = {"queued_status_http_200": 6}
     report["process_sampling"] = {"process_tree_rss_available": True, "samples": 100, "sampled_process_tree_rss_peak_bytes": 1024, "read_errors": []}
     report["latencies"] = {}
     for kind in ("query", "dispatch_observation", "first_byte", "slow_delivery", "cancel"):
@@ -49,6 +51,75 @@ def valid_report():
 
 
 class SustainedControls(unittest.TestCase):
+    def test_control_observations_require_bounded_labels_and_integer_counts(self):
+        for controls in (None, {}, {"queued_status_http_200": True}, {"queued_status_http_200": 1.0},
+                         {"queued_status_http_200": 1, "private-key": 1},
+                         {"queued_status_http_200": 1, "queued_status_http_503": -1}):
+            report = valid_report()
+            report["control_response_counts"] = controls
+            self.assertFalse(fixture.reconcile(report, REVISION))
+
+    def queued_campaign(self, responses):
+        campaign = fixture.Campaign.__new__(fixture.Campaign)
+        campaign.call = mock.Mock(side_effect=responses)
+        campaign.count_control = mock.Mock()
+        campaign.resources = mock.Mock(return_value={"Active": 0, "BackgroundActive": 0})
+        campaign.expected = {"a": [{"marker": 1}]}
+        return campaign
+
+    def test_fault_status_retry_keeps_original_handle_and_single_result_claim(self):
+        campaign = self.queued_campaign([(503, b"unavailable"), (429, b"busy"),
+                                        (200, b'{"state":"queued"}'), (200, b'{"state":"assigned"}'),
+                                        (200, b"exact-arrow", {"completion": "complete"})])
+        with mock.patch.object(fixture.ops, "verify_completed_arrow") as verify, \
+                mock.patch.object(fixture.time, "sleep"):
+            campaign.queued_result({"queued": "original-handle"}, "a")
+        self.assertEqual(campaign.call.call_args_list, [
+            *[mock.call("/v1/queries/original-handle", "a", timeout=2)] * 4,
+            mock.call("/v1/queries/original-handle/results", "a", timeout=30, with_headers=True)])
+        self.assertEqual(campaign.count_control.call_args_list, [
+            mock.call("queued_status_http_503"), mock.call("queued_status_http_429"),
+            mock.call("queued_status_http_200"), mock.call("queued_status_http_200")])
+        verify.assert_called_once_with(b"exact-arrow", {"completion": "complete"}, [{"marker": 1}])
+
+    def test_fault_status_does_not_retry_denial_missing_or_terminal_handles(self):
+        for response in ((401, b"denied"), (403, b"denied"), (404, b"missing"), (500, b"error"),
+                         (200, b'{"state":"failed"}'), (200, b'{"state":"succeeded"}'),
+                         (200, b'{"state":"cancelled"}'), (200, b'{"state":"unknown"}')):
+            with self.subTest(response=response):
+                campaign = self.queued_campaign([response])
+                with self.assertRaises(fixture.ops.AcceptanceError):
+                    campaign.queued_result({"queued": "original-handle"}, "a")
+                self.assertEqual(campaign.call.call_count, 1)
+        campaign = self.queued_campaign([(200, b"not-json")])
+        with self.assertRaises(json.JSONDecodeError):
+            campaign.queued_result({"queued": "original-handle"}, "a")
+        self.assertEqual(campaign.call.call_count, 1)
+
+    def test_fault_status_unavailability_still_expires_without_result_claim(self):
+        campaign = self.queued_campaign([(503, b"unavailable")])
+        with mock.patch.object(fixture.time, "monotonic", side_effect=[0., 0., 0., 0., 0., 26.]), \
+                mock.patch.object(fixture.time, "sleep"), \
+                self.assertRaisesRegex(fixture.ops.AcceptanceError, "CONDITION_DEADLINE"):
+            campaign.queued_result({"queued": "original-handle"}, "a")
+        self.assertEqual(campaign.call.call_args_list, [mock.call("/v1/queries/original-handle", "a", timeout=2)])
+
+    def test_fault_status_late_positive_cannot_extend_deadline(self):
+        campaign = self.queued_campaign([(200, b'{"state":"assigned"}')])
+        with mock.patch.object(fixture.time, "monotonic", side_effect=[0., 0., 0., 24., 26.]), \
+                self.assertRaisesRegex(fixture.ops.AcceptanceError, "CONDITION_DEADLINE"):
+            campaign.queued_result({"queued": "original-handle"}, "a")
+        campaign.call.assert_called_once_with("/v1/queries/original-handle", "a", timeout=1.)
+
+    def test_fault_status_transport_failures_are_counted(self):
+        campaign = self.queued_campaign([OSError("closed"), (200, b'{"state":"assigned"}'),
+                                        (200, b"exact-arrow", {})])
+        with mock.patch.object(fixture.ops, "verify_completed_arrow"), \
+                mock.patch.object(fixture.time, "sleep"):
+            campaign.queued_result({"queued": "original-handle"}, "a")
+        self.assertEqual(campaign.count_control.call_args_list, [
+            mock.call("queued_status_transport_error"), mock.call("queued_status_http_200")])
+
     def test_rss_identity_distinguishes_exit_and_missing_from_malformed_data(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

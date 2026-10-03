@@ -83,6 +83,10 @@ source while a run is active.
 All ten gates must pass: startup, tenant isolation, saturation, gateway loss,
 worker loss, broker loss, mixed load, slow readers, cancellations and cleanup.
 Each complete minute must show query and refresh progress for both tenants.
+Fault recovery counts status/transport observations. Only status GETs on the
+original queued handle tolerate 429/503, within 25 seconds; SQL is not resubmitted
+and results are claimed once. Missing, denied, terminal or late-positive status
+responses cannot satisfy recovery.
 Queue/dispatch, first-byte, query, slow-delivery and cancellation histograms must
 contain samples. Overflow bins remain explicit; a missing tail is not zero.
 
