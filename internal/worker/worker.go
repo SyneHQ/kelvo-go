@@ -47,6 +47,7 @@ type Executor struct {
 	// ResourceOverheadBytes reserves memory beyond DuckDB's managed memory limit.
 	ResourceOverheadBytes int64
 	Metrics               *telemetry.Registry
+	SourceHealth          *telemetry.SourceHealth
 	SourceAdmission       SourceAdmitter
 	Secrets               SecretResolver
 }
@@ -81,7 +82,8 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	parent := ctx
 	start := time.Now()
 	var admissionWait time.Duration
-	defer recordExecution(e.Metrics, ctx, start, &admissionWait, &resultErr, e.Tracing)
+	phases := newExecutionPhases(start, e.Metrics != nil || e.Tracing != nil)
+	defer recordExecutionPhases(e.Metrics, ctx, start, &admissionWait, &resultErr, &phases, e.Tracing)
 	if err := e.Limits.Validate(); err != nil {
 		return stats, err
 	}
@@ -101,6 +103,7 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		if e.ResourceOverheadBytes < 0 || e.ResourceOverheadBytes > math.MaxInt64-memoryBytes {
 			return stats, admission.ErrInvalid
 		}
+		phases.enter(telemetry.PhaseNodeAdmission)
 		waitStart := time.Now()
 		reservation, err := e.ResourcePool.Acquire(ctx, admission.Request{
 			MemoryBytes:  memoryBytes + e.ResourceOverheadBytes,
@@ -115,6 +118,9 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		defer reservation.Release()
 	}
 	executionCtx := ctx // retain the deadline even if a quota child cancels first
+	if e.SourceAdmission != nil {
+		phases.enter(telemetry.PhaseSourceAdmission)
+	}
 	quotaStarted := time.Now()
 	quotaCtx, releaseQuota, quotaErr := e.acquireSourceQuota(ctx, r)
 	admissionWait += time.Since(quotaStarted)
@@ -123,6 +129,7 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	}
 	defer releaseQuota()
 	ctx = quotaCtx
+	phases.enter(telemetry.PhasePrepare)
 	sources, versions, release, err := acceleration.Resolve(ctx, e.Config, r)
 	if err != nil {
 		return stats, err
@@ -182,12 +189,14 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	if err != nil {
 		return stats, err
 	}
+	phases.enter(telemetry.PhaseExecutionDelivery)
 	if err = cmd.Start(); err != nil {
 		return stats, err
 	}
 	stopClose := context.AfterFunc(ctx, func() { _ = stdout.Close() })
 	defer stopClose()
-	observed, readErr := readWorkerIPC(ctx, stdout, e.Limits, sink)
+	observed, readErr := readWorkerIPC(ctx, stdout, e.Limits, phases.sink(sink))
+	phases.enter(telemetry.PhaseCleanup)
 	if readErr != nil {
 		cancel()
 	}
@@ -202,7 +211,9 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	stats.Accelerations = versions
 	stats.Rows, stats.Bytes, stats.Batches, stats.WireBytes = observed.Rows, observed.Bytes, observed.Batches, observed.WireBytes
 	stats.DurationNS = time.Since(start).Nanoseconds()
-	return stats, workerResultError(parent, executionCtx, ctx, readErr, waitErr, decodeErr, cleanupErr, outcome.Error)
+	resultErr = workerResultError(parent, executionCtx, ctx, readErr, waitErr, decodeErr, cleanupErr, outcome.Error)
+	recordSourceHealth(e.SourceHealth, r, outcome.Error, resultErr, decodeErr == nil)
+	return stats, resultErr
 }
 
 // Decide success only after the subprocess and its descendants are cleaned up.

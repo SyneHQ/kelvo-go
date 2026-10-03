@@ -55,7 +55,9 @@ func (p sanitizingProcessor) OnStart(context.Context, sdktrace.ReadWriteSpan) {}
 func (p sanitizingProcessor) OnEnd(span sdktrace.ReadOnlySpan) {
 	clean := cleanSpan{name: span.Name(), sc: span.SpanContext(), parent: span.Parent(), start: span.StartTime(), end: span.EndTime(), children: span.ChildSpanCount()}
 	switch clean.name {
-	case "kelvo.query", "kelvo.refresh", "kelvo.admission":
+	case "kelvo.query", "kelvo.refresh", "kelvo.admission",
+		"kelvo.phase.validation", "kelvo.phase.node_admission", "kelvo.phase.source_admission",
+		"kelvo.phase.prepare", "kelvo.phase.execution_delivery", "kelvo.phase.cleanup":
 	default:
 		return
 	}

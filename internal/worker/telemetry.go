@@ -24,6 +24,10 @@ func WithRefreshTelemetry(ctx context.Context) context.Context {
 // measured admission wait. Execution includes setup, computation and transfer;
 // it is not database execution time alone or full distributed queue latency.
 func recordExecution(metrics *telemetry.Registry, ctx context.Context, start time.Time, admissionWait *time.Duration, resultErr *error, recorders ...*tracing.Recorder) {
+	recordExecutionPhases(metrics, ctx, start, admissionWait, resultErr, nil, recorders...)
+}
+
+func recordExecutionPhases(metrics *telemetry.Registry, ctx context.Context, start time.Time, admissionWait *time.Duration, resultErr *error, phases *executionPhases, recorders ...*tracing.Recorder) {
 	if metrics == nil && (len(recorders) == 0 || recorders[0] == nil) {
 		return
 	}
@@ -31,6 +35,10 @@ func recordExecution(metrics *telemetry.Registry, ctx context.Context, start tim
 	if refresh, _ := ctx.Value(refreshTelemetryKey{}).(bool); refresh {
 		kind = telemetry.KindRefresh
 	}
+	finished := time.Now()
+	total := finished.Sub(start)
+	timings := phases.finish(finished)
+	metrics.ObservePhases(kind, timings, total)
 	err := *resultErr
 	if errors.Is(err, admission.ErrDraining) {
 		metrics.Reject(kind, telemetry.RejectionDraining)
@@ -50,9 +58,9 @@ func recordExecution(metrics *telemetry.Registry, ctx context.Context, start tim
 			outcome = telemetry.OutcomeCanceled
 		}
 	}
-	duration := time.Since(start) - *admissionWait
+	duration := total - *admissionWait
 	metrics.Observe(kind, outcome, *admissionWait, duration)
 	if len(recorders) > 0 {
-		recorders[0].Record(tracing.Event{Kind: kind, Outcome: outcome, StartedAt: start, AdmissionWait: *admissionWait, Duration: duration})
+		recorders[0].Record(tracing.Event{Kind: kind, Outcome: outcome, StartedAt: start, AdmissionWait: *admissionWait, Duration: duration, Phases: timings})
 	}
 }

@@ -42,18 +42,41 @@ This is best-effort observability, not a durable audit or billing ledger.
   confirmation; success is not proof that a client received the entire result.
 - `kelvo.refresh`: one refresh attempt through snapshot publication and resource
   cleanup. Nested extraction workers do not create duplicate refresh traces.
-- `kelvo.admission`: for queries, the combined measured time acquiring node
-  resources and source quotas. For refreshes, only the outer node resource
-  acquisition is measured here; source quota acquisition remains inside the
-  refresh execution duration. Neither includes distributed dispatch queue time.
+- `kelvo.phase.validation`, `kelvo.phase.node_admission`,
+  `kelvo.phase.source_admission`, `kelvo.phase.prepare`,
+  `kelvo.phase.execution_delivery` and `kelvo.phase.cleanup`: reached query worker
+  phases, using ordered offsets from the same monotonic clock. Missing phases
+  produce no span. Node and source admission are separate; preparation covers
+  snapshot resolution, credentials and subprocess configuration. Execution and
+  delivery covers process launch, source/local computation, Arrow decoding and
+  synchronous sink calls. Cleanup starts after the IPC read returns and includes
+  child reaping, lease release and temporary-file removal. An early failure
+  before IPC teardown remains in the phase where it occurred, including its
+  deferred cleanup.
+- `kelvo.admission`: refreshes retain this aggregate outer node-resource
+  acquisition interval. Source quota acquisition remains inside refresh duration.
+  It is positioned at the start of the refresh call and is not an exact refresh
+  stage timeline. Nested extraction workers do not emit separate stage spans.
 
-The parent span covers the complete local call, including its admission time.
-The admission child represents the accumulated acquisition duration positioned
-at the start of that call; its boundaries do not identify the exact start and end
-of separate resource and source quota acquisitions. It must not be interpreted
-as a detailed execution-stage timeline. The duration passed to the tracing
-recorder excludes the corresponding measured admission time, which the recorder
-adds back when setting the parent span's end timestamp.
+The parent span covers the complete local call, including admission time. Query
+phase children partition that local call without overlapping one another; they
+replace the former aggregate query admission child. The duration passed to the
+recorder excludes measured admission time, which is added back to obtain the
+parent end timestamp. Execution/delivery is deliberately one combined phase:
+source fetching, local computation and IPC output can overlap and are not
+independently measurable through the worker interface. The pinned DuckDB path
+still materializes execution before Arrow delivery. None of these spans measures
+JetStream dispatch wait, time spent waiting for a client to claim results,
+gateway delivery, or distributed trace continuity.
+
+[Worker diagnostics](operations.md#diagnostics) also expose fixed phase
+histograms, time from executor entry to the first decoded record, and cumulative
+schema/record sink-callback time. First-record availability precedes sink delivery;
+it is not proof of client receipt. Results that produce no record have no
+first-record observation. Sink time is a subset of execution/delivery and can
+include encoding, downstream backpressure or a snapshot writer; never add it to
+phase totals or label it pure network time. Sink timing excludes the outer HTTP Arrow end-of-stream write. Metrics record reached phases on failures
+and admission rejections; rejection events still do not create execution spans.
 
 Spans contain only fixed `kelvo.kind` and `kelvo.outcome` attributes and a fixed
 `service.name=kelvo` resource. Outcomes are `success`, `error` and `canceled`.

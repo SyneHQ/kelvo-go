@@ -75,6 +75,9 @@ type Event struct {
 	StartedAt     time.Time
 	AdmissionWait time.Duration
 	Duration      time.Duration
+	// Phases are optional, exact local offsets. Their presence replaces the
+	// legacy aggregate admission child; refresh events can omit them.
+	Phases telemetry.PhaseTimings
 }
 
 type Recorder struct {
@@ -220,7 +223,15 @@ func (r *Recorder) Record(event Event) {
 	if event.Outcome != telemetry.OutcomeSuccess {
 		span.SetStatus(codes.Error, outcome)
 	}
-	if event.AdmissionWait > 0 {
+	if event.Phases.Valid(event.AdmissionWait+event.Duration) && event.Phases.Intervals[telemetry.PhaseValidation].Observed {
+		for phase, interval := range event.Phases.Intervals {
+			if !interval.Observed {
+				continue
+			}
+			_, child := r.tracer.Start(ctx, "kelvo.phase."+telemetry.Phase(phase).Name(), trace.WithTimestamp(event.StartedAt.Add(interval.Start)))
+			child.End(trace.WithTimestamp(event.StartedAt.Add(interval.End)))
+		}
+	} else if event.AdmissionWait > 0 {
 		_, admission := r.tracer.Start(ctx, "kelvo.admission", trace.WithTimestamp(event.StartedAt))
 		admission.End(trace.WithTimestamp(event.StartedAt.Add(event.AdmissionWait)))
 	}
