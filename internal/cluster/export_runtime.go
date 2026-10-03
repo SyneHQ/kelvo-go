@@ -56,7 +56,7 @@ func NewExportRuntime(cfg NodeConfig, store ExportStore, executor *worker.Execut
 	if cfg.Exports == nil || cfg.Policy.Exports == nil {
 		return nil, ErrExportDisabled
 	}
-	if executor == nil || executor.SandboxPath == "" || executor.ResourcePool == nil || cfg.Resources == nil || store == nil || !reflect.DeepEqual(cfg.Policy, store.Policy()) || !validOwner(owner) || cfg.Policy.Workers[cfg.WorkerID] < 1 {
+	if executor == nil || cfg.SandboxPath == "" || executor.SandboxPath != cfg.SandboxPath || executor.ResourcePool == nil || cfg.Resources == nil || store == nil || !reflect.DeepEqual(cfg.Policy, store.Policy()) || !validOwner(owner) || cfg.Policy.Workers[cfg.WorkerID] < 1 {
 		return nil, exports.ErrInvalid
 	}
 	if err := validateNodeExports(cfg); err != nil {
@@ -65,7 +65,14 @@ func NewExportRuntime(cfg NodeConfig, store ExportStore, executor *worker.Execut
 	if err := ValidateExportCatalog(cfg, executor.Config); err != nil {
 		return nil, err
 	}
-	if !executor.ScratchRoot.MatchesDirectory(cfg.ScratchDirectory) || (len(cfg.Policy.SourceQuotas) != 0 && executor.SourceAdmission == nil) || (executor.Containment != nil && !executor.ContainmentBudget.FitsOverhead(int64(cfg.Policy.Limits.MemoryMB), cfg.Resources.OverheadMB)) {
+	if !executor.ScratchRoot.MatchesDirectory(cfg.ScratchDirectory) || (len(cfg.Policy.SourceQuotas) != 0 && executor.SourceAdmission == nil) {
+		return nil, exports.ErrInvalid
+	}
+	if (cfg.Containment == nil) != (executor.Containment == nil) {
+		return nil, exports.ErrInvalid
+	}
+	if cfg.Containment != nil && (cfg.Containment.Validate(cfg.Resources, cfg.Policy.Limits) != nil ||
+		executor.ContainmentBudget != cfg.Containment.Budget || !executor.Containment.MatchesConfig(cfg.Containment.Config)) {
 		return nil, exports.ErrInvalid
 	}
 	expectedPool, err := cfg.Resources.NewPool()

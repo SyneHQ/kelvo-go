@@ -13,13 +13,14 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 )
 
 func TestExportRuntimeConstructorBindsLimitsAndManagedScratch(t *testing.T) {
-	for _, kind := range []string{"normalize", "missing", "other", "closed", "quota", "pool"} {
+	for _, kind := range []string{"normalize", "missing", "other", "closed", "quota", "pool", "launcher", "missing_launcher", "missing_containment", "unexpected_containment", "unopened_containment"} {
 		t.Run(kind, func(t *testing.T) {
 			cfg := runtimeExportConfigFixture(t)
 			cfg.WorkerID = "a1"
@@ -49,6 +50,24 @@ func TestExportRuntimeConstructorBindsLimitsAndManagedScratch(t *testing.T) {
 				cfg.Policy.SourceQuotas = map[string]int{"sales": 1}
 			case "pool":
 				executor.ResourcePool, _ = admission.New(admission.Limits{MaxConcurrent: 1, MemoryBytes: 1024})
+			case "launcher":
+				executor.SandboxPath = "/private/other-launcher"
+			case "missing_launcher":
+				cfg.SandboxPath = ""
+			case "missing_containment":
+				cfg.Containment = &ContainmentConfig{}
+			case "unexpected_containment":
+				executor.Containment = &containment.Manager{}
+			case "unopened_containment":
+				cfg.Containment = &ContainmentConfig{Config: containment.Config{Root: "/sys/fs/cgroup/owned/jobs", StateDirectory: filepath.Join(t.TempDir(), "state")},
+					Budget: containment.Budget{NativeOverheadMB: 16, ParentOverheadMB: 16, MaxProcesses: 32}}
+				cfg.Resources.OverheadMB = int64(cfg.Policy.Limits.MemoryMB) + 32
+				executor.Containment = &containment.Manager{}
+				executor.ContainmentBudget = cfg.Containment.Budget
+				executor.ResourcePool, err = cfg.Resources.NewPool()
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			s := &exportRuntimeStore{p: cfg.Policy, jobs: make(map[string]ExportSnapshot), queue: make(chan Delivery, 16)}
 			r, err := NewExportRuntime(cfg, s, executor, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
