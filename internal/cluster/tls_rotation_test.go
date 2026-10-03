@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -83,6 +84,26 @@ func waitTLS(t *testing.T, check func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("TLS condition deadline exceeded")
+}
+
+func waitTLSReadDeadline(t *testing.T, contexts <-chan context.Context) {
+	t.Helper()
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	var ctx context.Context
+	select {
+	case ctx = <-contexts:
+	case <-timer.C:
+		t.Fatal("TLS reader context was not captured")
+	}
+	select {
+	case <-ctx.Done():
+		if ctx.Err() != context.DeadlineExceeded {
+			t.Fatal("TLS reader stopped before its own deadline")
+		}
+	case <-timer.C:
+		t.Fatal("TLS reader deadline was not observed")
+	}
 }
 
 func TestTLSIdentityRotationLiveMTLS(t *testing.T) {
@@ -374,10 +395,13 @@ func TestTLSIdentityOneReaderRejectsLateResultAndCloses(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	first, second := make(chan struct{}), make(chan struct{})
-	defer close(second)
+	firstContext := make(chan context.Context, 1)
+	var releaseOnce sync.Once
+	releaseFirst := func() { releaseOnce.Do(func() { close(first) }) }
 	var reads atomic.Int64
-	identity := &tlsIdentity{config: TLSConfig{IdentityFile: "/unused", ReloadInterval: 20 * time.Millisecond}, ownURI: GatewayIdentity, usage: x509.ExtKeyUsageClientAuth, ctx: ctx, cancel: cancel, done: make(chan struct{}), read: func(context.Context, string, int) ([]byte, error) {
+	identity := &tlsIdentity{config: TLSConfig{IdentityFile: "/unused", ReloadInterval: 20 * time.Millisecond}, ownURI: GatewayIdentity, usage: x509.ExtKeyUsageClientAuth, ctx: ctx, cancel: cancel, done: make(chan struct{}), read: func(readContext context.Context, _ string, _ int) ([]byte, error) {
 		if reads.Add(1) == 1 {
+			firstContext <- readContext
 			<-first
 		} else {
 			<-second
@@ -388,12 +412,25 @@ func TestTLSIdentityOneReaderRejectsLateResultAndCloses(t *testing.T) {
 		t.Fatal("initial identity failed")
 	}
 	go identity.run()
+	t.Cleanup(func() {
+		cancel()
+		releaseFirst()
+		close(second)
+		select {
+		case <-identity.done:
+		case <-time.After(time.Second):
+			t.Error("identity reloader did not stop during cleanup")
+		}
+	})
 	waitTLS(t, func() bool { return reads.Load() == 1 })
 	waitTLS(t, func() bool { return !identity.ready() })
+	// The old snapshot can expire before this later-started read times out.
+	// Observe the read's own deadline before releasing its successful result.
+	waitTLSReadDeadline(t, firstContext)
 	if reads.Load() != 1 {
 		t.Fatal("blocked read spawned another reader")
 	}
-	close(first)
+	releaseFirst()
 	waitTLS(t, func() bool { return reads.Load() == 2 })
 	if identity.ready() {
 		t.Fatal("late reader renewed expired authority")
@@ -407,6 +444,33 @@ func TestTLSIdentityOneReaderRejectsLateResultAndCloses(t *testing.T) {
 	}
 	if identity.ready() {
 		t.Fatal("closed identity remained available")
+	}
+}
+
+func TestTLSIdentityReadAgeIsIndependentOfSnapshotExpiry(t *testing.T) {
+	_, ca, key := tlsFiles(t, GatewayIdentity, nil, nil)
+	raw := validIdentityPEM(t, GatewayIdentity, ca, key)
+	cert, expires, err := parseTLSIdentity(raw, GatewayIdentity, x509.ExtKeyUsageClientAuth, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stale := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stale=%t", stale), func(t *testing.T) {
+			identity := &tlsIdentity{config: TLSConfig{ReloadInterval: time.Minute}, certificate: cert, validUntil: time.Now().Add(-time.Second)}
+			if identity.ready() {
+				t.Fatal("expired prior snapshot remained ready")
+			}
+			started := time.Now()
+			if stale {
+				started = started.Add(-tlsIdentityReadTimeout - time.Second)
+			}
+			// Both certificate expiry and the replacement lease are in the future;
+			// only the new read's age distinguishes these results.
+			accepted := identity.apply(tlsIdentityRead{certificate: cert, expires: expires, started: started})
+			if accepted == stale || identity.ready() == stale {
+				t.Fatal("read age was confused with the previous snapshot's expiry")
+			}
+		})
 	}
 }
 
