@@ -1,0 +1,835 @@
+{
+  "schema": 1,
+  "runtime_commit": "0da7523527477df905b9e68dd329b719c161a753",
+  "raw_report_sha256": "e1a0b43f46e96fb1adbd6869bb5d203986dad63bc8f5336379643842181247c8",
+  "strict_reconciliation_passed": false,
+  "exact_source_and_binary_match": true,
+  "coordinator_reported_passed": false,
+  "coordinator_identity_matches": true,
+  "coordinator_passed": false,
+  "scope": "Synthetic Parquet lifecycle and correctness under a paced two-tenant workload in one isolated capped Linux service. This is separate from provider, WAN, multi-host, sizing and maximum-throughput claims.",
+  "source": {
+    "base_revision": "0da7523527477df905b9e68dd329b719c161a753",
+    "sha256": "2c0dbded80deddb5dc6ffdf7c424756575988a130070693f02d205688d323ef7",
+    "file_count": 928,
+    "verified": true
+  },
+  "build_source_matches": true,
+  "binary_files_unchanged": true,
+  "acceptance_source_sha256": {
+    "sustained_acceptance.py": "30a476450e4815ee9eb93ecd4c4bf885cf46131f7bd6fd21e46e3ace4108b42e",
+    "test_sustained_acceptance.py": "ba8c7f6ba1191e98ff86f68f2e3b2d87b39c5ef2054564e6e4841c7752c564f4",
+    "process_loss_acceptance.py": "8ce67ca9f2f5972de28be2b655b4764f96bb0a65c8f68e4ef29860af5c9c8df8",
+    "lease_supervision.py": "e3fe1e889b2d4e8e694f33efee890dc5d223ca4542ccccd9eecc0080e230d4b3"
+  },
+  "passed": false,
+  "mode": "smoke",
+  "requested_seconds": 600.0,
+  "elapsed_seconds": 614.443,
+  "multi_hour_gate_passed": false,
+  "checked_at": "2026-10-03T18:37:15.017745+00:00",
+  "interrupted": false,
+  "source_unchanged": true,
+  "service_exit_code": 0,
+  "owned_service_removed": true,
+  "owned_cgroup_removed": true,
+  "reported_passed": false,
+  "binary_sha256": {
+    "kelvo": "3f68b741eb819cc78fe26629b02cdc9b8279defc0d2e3452416b55fbe67b61ff",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "resource_budget": {
+    "cpu_percent": 200,
+    "memory_bytes": 6442450944,
+    "swap_bytes": 0,
+    "tasks": 512
+  },
+  "workload": {
+    "queries": {
+      "a": 801,
+      "b": 800
+    },
+    "refreshes": {
+      "a": 40,
+      "b": 40
+    },
+    "slow_readers": {
+      "a": 10,
+      "b": 10
+    },
+    "cancellations": {
+      "a": 10,
+      "b": 10
+    }
+  },
+  "control_response_counts": {
+    "cancel_http_200": 32,
+    "status_http_200": 27,
+    "queued_status_http_200": 9
+  },
+  "checks": [
+    {
+      "test": "startup",
+      "passed": true,
+      "seconds": 7.709,
+      "source_rows_per_tenant": 1000000,
+      "tenants": 2,
+      "workers": 2,
+      "gateways": 2,
+      "broker_replicas": 3
+    },
+    {
+      "test": "tenant_isolation",
+      "passed": true,
+      "seconds": 0.206,
+      "foreign_status_results_cancel_rejected": true,
+      "owner_exact_result": true
+    },
+    {
+      "test": "saturation",
+      "passed": true,
+      "seconds": 1.42,
+      "cancel_recovered": true,
+      "admitted_handles": 8,
+      "rejected_http": 429,
+      "surviving_tenant_exact_result": true
+    },
+    {
+      "test": "gateway_loss",
+      "passed": true,
+      "seconds": 1.486,
+      "surviving_tenant_exact_result": true,
+      "failed_attempt_result_rejected": true,
+      "queued_before_fault": 2,
+      "queued_handles_preserved": true,
+      "running_before_fault": 2,
+      "replacement_gateway_ready": true
+    },
+    {
+      "test": "worker_loss",
+      "passed": true,
+      "seconds": 5.084,
+      "surviving_tenant_exact_result": true,
+      "failed_attempt_result_rejected": true,
+      "queued_before_fault": 2,
+      "queued_handles_preserved": true,
+      "running_before_fault": 2,
+      "same_worker_identity_recovered": true
+    },
+    {
+      "test": "broker_loss",
+      "passed": true,
+      "seconds": 5.092,
+      "surviving_tenant_exact_result": true,
+      "failed_attempt_result_rejected": true,
+      "queued_before_fault": 2,
+      "queued_handles_preserved": true,
+      "running_before_fault": 2,
+      "post_rejoin_queries_correct": true,
+      "unavailable_brokers_during_delivery": 1,
+      "lease_supervision": {
+        "schema": 1,
+        "deadline_seconds": 25.0,
+        "expiry_basis": "observed_exact_parent_exit_plus_configured_lease_upper_bound",
+        "original_query_deadlines_unchanged": true,
+        "query_resubmissions": 0,
+        "error_count": 0,
+        "nodes": [
+          {
+            "node": "a1",
+            "fenced_exit_observed": false,
+            "restart_attempts": 0,
+            "lease_seconds": 5.0,
+            "final_running_verified": true,
+            "attempts": []
+          },
+          {
+            "node": "b1",
+            "fenced_exit_observed": false,
+            "restart_attempts": 0,
+            "lease_seconds": 5.0,
+            "final_running_verified": true,
+            "attempts": []
+          }
+        ]
+      }
+    },
+    {
+      "test": "mixed_load",
+      "passed": true,
+      "seconds": 600.153,
+      "client_threads": 2,
+      "observed_seconds": 600.124,
+      "pace_seconds_after_query": 0.5,
+      "query_refresh_overlap_samples": 22,
+      "scheduled_fault_gates": 4
+    },
+    {
+      "test": "slow_readers",
+      "passed": true,
+      "seconds": 0.0
+    },
+    {
+      "test": "cancellations",
+      "passed": true,
+      "seconds": 0.0
+    },
+    {
+      "test": "cleanup",
+      "passed": true,
+      "seconds": 2.619,
+      "all_owned_brokers_healthy": true,
+      "all_owned_brokers_stopped": true,
+      "forced_application_kills": 0,
+      "intentional_fault_kills": 3,
+      "observed_live_descendants": 0,
+      "original_configurations_untouched": true,
+      "original_configurations_verified": true,
+      "remaining_containment_records": 0,
+      "worker_scratch_directories": 0
+    }
+  ],
+  "process_sampling": {
+    "interval_ms": 50,
+    "samples": 11692,
+    "process_tree_rss_available": true,
+    "sampled_process_tree_rss_peak_bytes": 743665664,
+    "disappeared_or_exited_process_or_thread_samples": 110,
+    "read_diagnostic_limit": 32,
+    "read_diagnostic_overflow_events": 0,
+    "read_errors": [
+      "PROCESS_READ_FAILED"
+    ],
+    "total_read_error_categories": 1,
+    "read_diagnostics": [
+      {
+        "operation": "stat",
+        "outcome": "exited",
+        "errno": null,
+        "count": 87,
+        "first_elapsed_seconds": 11.049214,
+        "last_elapsed_seconds": 602.814737
+      },
+      {
+        "operation": "children",
+        "outcome": "disappeared",
+        "errno": 2,
+        "count": 21,
+        "first_elapsed_seconds": 60.265634,
+        "last_elapsed_seconds": 550.655687
+      },
+      {
+        "operation": "status",
+        "outcome": "malformed",
+        "errno": null,
+        "count": 2,
+        "first_elapsed_seconds": 89.556535,
+        "last_elapsed_seconds": 592.915011
+      },
+      {
+        "operation": "status",
+        "outcome": "exited",
+        "errno": null,
+        "count": 1,
+        "first_elapsed_seconds": 456.562975,
+        "last_elapsed_seconds": 456.562985
+      },
+      {
+        "operation": "stat",
+        "outcome": "disappeared",
+        "errno": 2,
+        "count": 1,
+        "first_elapsed_seconds": 513.544789,
+        "last_elapsed_seconds": 513.544801
+      }
+    ]
+  },
+  "resources": {
+    "samples": 591,
+    "peak_cgroup_bytes": 754204672,
+    "peak_cgroup_current_bytes": 737832960,
+    "peak_scratch_bytes": 228,
+    "peak_artifact_bytes": 83783438,
+    "query_refresh_overlap_samples": 22,
+    "final_cgroup_sample_after_shutdown": true,
+    "cgroup_memory_events_delta": {
+      "low": 0,
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0
+    },
+    "final_cpu_stat": {
+      "usage_usec": 413500512,
+      "user_usec": 326081889,
+      "system_usec": 87418623,
+      "nr_periods": 6140,
+      "nr_throttled": 383,
+      "throttled_usec": 23594351,
+      "nr_bursts": 0,
+      "burst_usec": 0
+    }
+  },
+  "resource_counter_error_count": 0,
+  "resource_violation_count": 0,
+  "workload_client_failure_count": 0,
+  "latencies": {
+    "query": {
+      "a": {
+        "count": 801,
+        "sum_seconds": 173.5936977401143,
+        "maximum_seconds": 0.5647538019984495,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          751,
+          793,
+          801,
+          801,
+          801,
+          801,
+          801,
+          801,
+          801,
+          801
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      },
+      "b": {
+        "count": 800,
+        "sum_seconds": 173.441286165762,
+        "maximum_seconds": 0.5533526719955262,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          747,
+          795,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      }
+    },
+    "dispatch_observation": {
+      "a": {
+        "count": 801,
+        "sum_seconds": 5.132527200767072,
+        "maximum_seconds": 0.16983695700764656,
+        "buckets": [
+          691,
+          772,
+          772,
+          776,
+          799,
+          801,
+          801,
+          801,
+          801,
+          801,
+          801,
+          801,
+          801,
+          801,
+          801
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      },
+      "b": {
+        "count": 800,
+        "sum_seconds": 5.588120822852943,
+        "maximum_seconds": 0.15059088499401696,
+        "buckets": [
+          668,
+          757,
+          761,
+          766,
+          799,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800,
+          800
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      }
+    },
+    "first_byte": {
+      "a": {
+        "count": 10,
+        "sum_seconds": 1.1683598160452675,
+        "maximum_seconds": 0.19920911101507954,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          3,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      },
+      "b": {
+        "count": 10,
+        "sum_seconds": 1.5996918419841677,
+        "maximum_seconds": 0.3028147339937277,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          4,
+          7,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      }
+    },
+    "slow_delivery": {
+      "a": {
+        "count": 10,
+        "sum_seconds": 61.4922775280138,
+        "maximum_seconds": 6.268052333995001,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      },
+      "b": {
+        "count": 10,
+        "sum_seconds": 62.180833454069216,
+        "maximum_seconds": 6.436619447020348,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      }
+    },
+    "cancel": {
+      "a": {
+        "count": 10,
+        "sum_seconds": 10.150150367000606,
+        "maximum_seconds": 1.0200870080152526,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      },
+      "b": {
+        "count": 10,
+        "sum_seconds": 10.155682576034451,
+        "maximum_seconds": 1.0260785710124765,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      }
+    }
+  },
+  "progress_windows": [
+    {
+      "start_seconds": 0.0,
+      "end_seconds": 6.225,
+      "deltas": {
+        "queries": {
+          "a": 9,
+          "b": 9
+        },
+        "refreshes": {
+          "a": 0,
+          "b": 0
+        }
+      }
+    },
+    {
+      "start_seconds": 6.225,
+      "end_seconds": 68.061,
+      "deltas": {
+        "queries": {
+          "a": 84,
+          "b": 83
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      }
+    },
+    {
+      "start_seconds": 68.061,
+      "end_seconds": 128.303,
+      "deltas": {
+        "queries": {
+          "a": 83,
+          "b": 83
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      }
+    },
+    {
+      "start_seconds": 128.303,
+      "end_seconds": 188.594,
+      "deltas": {
+        "queries": {
+          "a": 80,
+          "b": 80
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      }
+    },
+    {
+      "start_seconds": 188.594,
+      "end_seconds": 248.806,
+      "deltas": {
+        "queries": {
+          "a": 82,
+          "b": 83
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      }
+    },
+    {
+      "start_seconds": 248.806,
+      "end_seconds": 312.824,
+      "deltas": {
+        "queries": {
+          "a": 79,
+          "b": 78
+        },
+        "refreshes": {
+          "a": 5,
+          "b": 5
+        }
+      }
+    },
+    {
+      "start_seconds": 312.824,
+      "end_seconds": 373.36,
+      "deltas": {
+        "queries": {
+          "a": 81,
+          "b": 81
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      }
+    },
+    {
+      "start_seconds": 373.36,
+      "end_seconds": 433.648,
+      "deltas": {
+        "queries": {
+          "a": 82,
+          "b": 82
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      }
+    },
+    {
+      "start_seconds": 433.648,
+      "end_seconds": 493.948,
+      "deltas": {
+        "queries": {
+          "a": 75,
+          "b": 75
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      }
+    },
+    {
+      "start_seconds": 493.948,
+      "end_seconds": 554.224,
+      "deltas": {
+        "queries": {
+          "a": 82,
+          "b": 82
+        },
+        "refreshes": {
+          "a": 4,
+          "b": 4
+        }
+      }
+    },
+    {
+      "start_seconds": 554.224,
+      "end_seconds": 600.124,
+      "deltas": {
+        "queries": {
+          "a": 64,
+          "b": 64
+        },
+        "refreshes": {
+          "a": 3,
+          "b": 3
+        }
+      }
+    }
+  ]
+}

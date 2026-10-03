@@ -172,6 +172,7 @@ def reconcile(report, expected_revision):
         process = report["process_sampling"]
         if (process["process_tree_rss_available"] is not True or type(process["samples"]) is not int or process["samples"] < 1
                 or type(process["sampled_process_tree_rss_peak_bytes"]) is not int or process["sampled_process_tree_rss_peak_bytes"] <= 0
+                or process.get("rss_source") != PROCESS_RSS_SOURCE or not valid_page_size(process.get("page_size_bytes"))
                 or process["read_errors"]):
             return False
         samples = report["resources"]
@@ -200,10 +201,33 @@ class SlowHandler(urllib.request.HTTPSHandler):
 
 PROC_DISAPPEARED_ERRNOS = frozenset((errno.ENOENT, errno.ESRCH))
 PROCESS_DIAGNOSTIC_LIMIT = 32
+PROCESS_RSS_SOURCE = "proc_pid_stat_field_24_pages"
+PROCESS_RSS_MAX_BYTES = (1 << 63) - 1
 
 
-def sampled_identity(pid, proc_root=Path("/proc"), diagnostic=None):
-    """Classify known exit errno directly; never hide errors with an exists check."""
+def valid_page_size(value):
+    return (type(value) is int and 0 < value <= PROCESS_RSS_MAX_BYTES
+            and (value & (value - 1)) == 0)
+
+
+def proc_unsigned(value, maximum):
+    if not value.isascii() or not value.isdigit() or len(value) > 20:
+        raise ValueError("invalid process stat integer")
+    number = int(value)
+    if number > maximum:
+        raise ValueError("process stat integer outside bound")
+    return number
+
+
+def sampled_process(pid, page_size, proc_root=Path("/proc"), diagnostic=None):
+    """Read identity, state and approximate RSS from one proc stat record.
+
+    Linux always emits RSS pages, using zero when the task has no mm. The
+    independent status read can omit VmRSS during exit. Only ENOENT/ESRCH and
+    explicit exited states are benign; a missing or malformed stat field is not.
+    """
+    if not valid_page_size(page_size):
+        raise ValueError("invalid process page size")
     def record(outcome, error_number=None):
         if diagnostic is not None:
             diagnostic("stat", outcome, error_number)
@@ -212,24 +236,28 @@ def sampled_identity(pid, proc_root=Path("/proc"), diagnostic=None):
     except OSError as error:
         if error.errno in PROC_DISAPPEARED_ERRNOS:
             record("disappeared", error.errno)
-            return None, "disappeared"
+            return None, None, "disappeared"
         record("oserror", error.errno)
-        return None, "read_error"
+        return None, None, "read_error"
     except UnicodeError:
         record("malformed")
-        return None, "read_error"
+        return None, None, "read_error"
     try:
         prefix, suffix = raw.rsplit(") ", 1)
+        observed_pid, _comm = prefix.split(" (", 1)
         fields = suffix.split()
-        if int(prefix.split(" (", 1)[0]) != pid or len(fields[0]) != 1 or not fields[19].isascii() or not fields[19].isdigit() or len(fields[19]) > 20 or int(fields[19]) > (1 << 64) - 1:
+        if (observed_pid != str(pid) or len(fields) < 22 or len(fields[0]) != 1
+                or fields[0] not in "RSDZTtXxKWPI"):
             raise ValueError("invalid process stat")
+        proc_unsigned(fields[19], (1 << 64) - 1)  # field 22: starttime
+        rss_pages = proc_unsigned(fields[21], PROCESS_RSS_MAX_BYTES // page_size)  # field 24
         if fields[0] in ("Z", "X", "x"):
             record("exited")
-            return None, "exited"
-        return (pid, fields[19]), "live"
+            return None, None, "exited"
+        return (pid, fields[19]), rss_pages * page_size, "live"
     except (IndexError, ValueError):
         record("malformed")
-        return None, "read_error"
+        return None, None, "read_error"
 
 
 class LockedSamples(ops.Samples):
@@ -240,6 +268,9 @@ class LockedSamples(ops.Samples):
         self.diagnostics = {}
         self.diagnostic_overflow = 0
         self.sampling_started = time.monotonic()
+        self.page_size = os.sysconf("SC_PAGE_SIZE")
+        if not valid_page_size(self.page_size):
+            raise ValueError("invalid process page size")
 
     def diagnostic(self, operation, outcome, error_number=None):
         # Fixed labels and numeric errno only. No PID, path, command line,
@@ -279,26 +310,13 @@ class LockedSamples(ops.Samples):
                     continue
                 seen.add(pid)
                 base = self.proc_root / str(pid)
-                owned, _ = sampled_identity(pid, self.proc_root, self.diagnostic)
+                owned, rss, _ = sampled_process(pid, self.page_size, self.proc_root, self.diagnostic)
                 if owned is None:
                     continue
                 self.owned[pid] = owned
                 if len(self.owned) > 200000:
                     self.errors.add("PROCESS_IDENTITY_BOUND_EXCEEDED")
                     break
-                status = self.read_process_text(base / "status", "status")
-                if status is None:
-                    continue
-                if re.search(r"^State:\s+[ZXx](?:\s|$)", status, re.MULTILINE):
-                    self.diagnostic("status", "exited")
-                    continue
-                try:
-                    rss = ops.rss_bytes(status)
-                    if rss is None:
-                        raise ValueError("missing process RSS")
-                except (ValueError, ops.AcceptanceError):
-                    self.diagnostic("status", "malformed")
-                    continue
                 self.rss_available = True
                 total += rss
                 try:
@@ -331,11 +349,12 @@ class LockedSamples(ops.Samples):
     def evidence(self):
         with self.lock:
             return {"interval_ms": 50, "samples": self.samples, "process_tree_rss_available": self.rss_available,
+                    "rss_source": PROCESS_RSS_SOURCE, "page_size_bytes": self.page_size,
                     "sampled_process_tree_rss_peak_bytes": self.peak_rss if self.rss_available else None,
                     "disappeared_or_exited_process_or_thread_samples": self.disappeared, "read_errors": sorted(self.errors),
                     "read_diagnostics": [dict(value) for value in self.diagnostics.values()],
                     "read_diagnostic_limit": PROCESS_DIAGNOSTIC_LIMIT, "read_diagnostic_overflow_events": self.diagnostic_overflow,
-                    "scope": "Owned application parents and observed descendants; excludes brokers/Python. RSS sampling can miss short peaks and double-count shared mappings. Dedicated service cgroup counters include all fixture processes."}
+                    "scope": "Owned application parents and observed descendants; excludes brokers/Python. Stat RSS uses approximate per-CPU resident counters, can miss short peaks and double-count shared mappings, and is not directly comparable to status VmRSS. Dedicated service cgroup memory.peak is the whole-fixture charged-memory peak."}
 
 
 class Campaign(loss.LossAcceptance):
