@@ -4,6 +4,7 @@
 package exports
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -45,6 +46,123 @@ func (w *Writer) release() {
 	}
 }
 
+func prepareSchema(ctx context.Context, schema *arrow.Schema, limits Limits) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	raw, err := canonicalSchema(schema)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = validatePart(ctx, bytes.NewReader(raw), int64(len(raw)), limits, checksum(raw)); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+// BindSchema binds a reserved writer exactly once. current must be obtained
+// from trusted authorization at binding time, not copied from an old request.
+// Invalid schemas/identities leave the reservation unbound; storage failures
+// poison it. ErrPublicationUncertain releases the writer without cancellation:
+// preserve the unavailable entry for investigation, never adopt or retry it.
+func (w *Writer) BindSchema(ctx context.Context, current Identity, schema *arrow.Schema) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := w.canBind(ctx, current); err != nil {
+		return err
+	}
+	raw, err := prepareSchema(ctx, schema, w.state.Limits)
+	if err != nil {
+		return err
+	}
+	return w.bindSchema(ctx, current, schema, raw, "bind:after_schema")
+}
+
+func (w *Writer) canBind(ctx context.Context, current Identity) error {
+	if w.closed {
+		return ErrClosed
+	}
+	if w.failure != nil {
+		return w.failure
+	}
+	if !current.valid() || !current.equal(w.state.Identity) {
+		return ErrFenced
+	}
+	if w.schema != nil || w.state.Status != "reserved" {
+		return ErrInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !time.Now().Before(w.state.ExpiresAt) {
+		return ErrUnavailable
+	}
+	return nil
+}
+
+// bindSchema holds w.mu; raw has already passed the canonical schema bounds.
+func (w *Writer) bindSchema(ctx context.Context, current Identity, schema *arrow.Schema, raw []byte, stage string) error {
+	if err := w.canBind(ctx, current); err != nil {
+		return err
+	}
+	unlock, err := w.store.guard()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	lock, err := lockRoot(ctx, w.store.root)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err = w.store.unavailableIntent(w.state.ID); err != nil {
+		return errors.Join(ErrFenced, err)
+	}
+	now, err := w.store.loadState(w.dir, w.state.ID)
+	if err != nil {
+		w.failure = err
+		return err
+	}
+	if now != w.state || now.Status != "reserved" || !now.Identity.equal(current) || !time.Now().Before(now.ExpiresAt) {
+		return ErrFenced
+	}
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	published, err := w.store.atomicWrite(w.dir, "schema.arrow", raw, true, true)
+	if err != nil {
+		w.failure = err
+		if published {
+			w.release()
+			return errors.Join(ErrPublicationUncertain, err)
+		}
+		return err
+	}
+	if err = w.store.point(stage); err == nil {
+		err = ctx.Err()
+	}
+	if err == nil && !time.Now().Before(now.ExpiresAt) {
+		err = ErrUnavailable
+	}
+	if err != nil {
+		w.failure = err
+		return err
+	}
+	now.Status, now.SchemaSHA256 = "active", checksum(raw)
+	published, err = w.store.writeState(w.dir, now)
+	if err != nil {
+		w.failure = err
+		if published {
+			w.release()
+			return errors.Join(ErrPublicationUncertain, err)
+		}
+		return err
+	}
+	// ID/Fence are immutable and are read without w.mu by their accessors.
+	w.state.Status, w.state.SchemaSHA256, w.schema = now.Status, now.SchemaSHA256, schema
+	return nil
+}
+
 // Write consumes the borrowed batch synchronously. Each batch is one complete
 // independently decodable part; oversized batches are rejected, never split or
 // silently coerced. A failed write poisons the transaction until Close.
@@ -62,6 +180,9 @@ func (w *Writer) Write(ctx context.Context, batch arrow.RecordBatch) (resultErr 
 	}
 	if w.failure != nil {
 		return w.failure
+	}
+	if w.schema == nil {
+		return ErrSchemaUnbound
 	}
 	if err := ctx.Err(); err != nil {
 		w.failure = err
@@ -227,6 +348,9 @@ func (w *Writer) Commit(ctx context.Context, current Identity) (manifest Manifes
 	}
 	if w.failure != nil {
 		return manifest, w.failure
+	}
+	if w.schema == nil {
+		return manifest, ErrSchemaUnbound
 	}
 	if !current.valid() || !current.equal(w.state.Identity) {
 		return manifest, ErrFenced

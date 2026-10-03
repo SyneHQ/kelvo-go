@@ -687,6 +687,9 @@ func TestExportProcessHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
+	if reservationProcess(t, s, mode) {
+		return
+	}
 	record := testRecord(t)
 	defer record.Release()
 	if mode == "read" {
@@ -833,6 +836,17 @@ func TestBeginCrashCutpointsRemainRecoverableAndCharged(t *testing.T) {
 			ids, used, err := s.scan()
 			if err != nil || len(ids) != 1 || used <= stateLimit {
 				t.Fatal(ids, used, err)
+			}
+			if point == "begin:after_schema" {
+				// Begin now reserves durably before binding. A death during
+				// binding retains that reservation until cancel or expiry.
+				clean, err := s.Cleanup(context.Background(), 16)
+				if err != nil || clean.Removed != 0 {
+					t.Fatal("durable reservation reclaimed early", clean, err)
+				}
+				if err = s.Cancel(context.Background(), ids[0], testIdentity); err != nil {
+					t.Fatal(err)
+				}
 			}
 			clean, err := s.Cleanup(context.Background(), 16)
 			if err != nil || clean.Removed != 1 {

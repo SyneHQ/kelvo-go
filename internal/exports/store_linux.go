@@ -4,6 +4,7 @@
 package exports
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -137,10 +138,28 @@ func (s *Store) loadState(dir *os.File, id string) (state, error) {
 			return st, ErrCorrupt
 		}
 		same := next
-		same.Status, same.ManifestSHA256 = st.Status, st.ManifestSHA256
-		transition := (st.Status == "active" && (next.Status == "ready" || next.Status == "cancelled")) || (st.Status == "ready" && next.Status == "cancelled")
+		same.Status = st.Status
+		binding := st.Status == "reserved" && next.Status == "active"
+		transition := binding || (st.Status == "active" && next.Status == "ready") ||
+			((st.Status == "reserved" || st.Status == "active" || st.Status == "ready") && next.Status == "cancelled")
+		if binding {
+			same.SchemaSHA256 = st.SchemaSHA256
+		} else if st.Status == "active" && next.Status == "ready" {
+			same.ManifestSHA256 = st.ManifestSHA256
+		}
 		if same != st || !transition {
 			return st, ErrCorrupt
+		}
+		if binding {
+			// A bind slot is ours only with the exact immutable bounded schema
+			// that was synced before it. Never adopt an interrupted binding.
+			schema, e := readFile(dir, "schema.arrow", schemaLimit, true)
+			if e != nil || checksum(schema) != next.SchemaSHA256 {
+				return st, ErrCorrupt
+			}
+			if _, e = validatePart(context.Background(), bytes.NewReader(schema), int64(len(schema)), st.Limits, next.SchemaSHA256); e != nil {
+				return st, ErrCorrupt
+			}
 		}
 		if err = unix.Unlinkat(int(dir.Fd()), ".state.next.yml", 0); err == nil {
 			err = dir.Sync()
@@ -166,11 +185,11 @@ func (s *Store) intent(id, suffix string) (state, error) {
 	if err != nil {
 		return st, err
 	}
-	status := "cancelled"
-	if suffix == ".initializing.yml" {
-		status = "active"
+	if strictYAML(raw, &st) != nil || !st.valid(s.config, id) {
+		return st, ErrCorrupt
 	}
-	if strictYAML(raw, &st) != nil || !st.valid(s.config, id) || st.Status != status {
+	initial := suffix == ".initializing.yml"
+	if (initial && !((st.Version == 1 && st.Status == "active") || (st.Version == 2 && st.Status == "reserved"))) || (!initial && st.Status != "cancelled") {
 		return st, ErrCorrupt
 	}
 	return st, nil
@@ -224,7 +243,7 @@ func entryFiles(dir *os.File, st state) ([]string, int64, error) {
 	var total int64
 	for _, name := range names {
 		limit, immutable, ok := allowedEntry(name, st.Limits)
-		if !ok {
+		if !ok || (st.SchemaSHA256 == "" && (name == "manifest.yml" || strings.HasPrefix(name, "part-") || strings.HasPrefix(name, ".pending-"))) {
 			return nil, 0, ErrCorrupt
 		}
 		f, e := openFile(dir, name, os.O_RDONLY, immutable)
@@ -345,22 +364,56 @@ func (s *Store) scan() ([]string, int64, error) {
 	return ordered, reserved, nil
 }
 
+// Begin validates a known schema before reserving capacity, then binds it using
+// the supplied trusted identity. Call Reserve before executing a source query
+// when its schema is not known yet.
 func (s *Store) Begin(ctx context.Context, request Request, schema *arrow.Schema) (*Writer, error) {
+	unlock, err := s.guard()
+	if err != nil {
+		return nil, err
+	}
+	valid := s.validRequest(request, time.Now().UTC())
+	unlock()
+	if !valid {
+		return nil, ErrInvalid
+	}
+	raw, err := prepareSchema(ctx, schema, request.Limits)
+	if err != nil {
+		return nil, err
+	}
+	w, err := s.reserve(ctx, request, "begin")
+	if err != nil {
+		return nil, err
+	}
+	w.mu.Lock()
+	err = w.bindSchema(ctx, request.Identity, schema, raw, "begin:after_schema")
+	w.mu.Unlock()
+	if err != nil {
+		return nil, errors.Join(err, w.Close())
+	}
+	return w, nil
+}
+
+func (s *Store) validRequest(request Request, now time.Time) bool {
+	return request.Identity.valid() && request.Limits.valid() && request.ExpiresAt.After(now) && request.ExpiresAt.Sub(now) <= s.config.MaxTTL
+}
+
+// Reserve durably charges the full budget without needing a schema. The caller
+// must reserve before starting source work, then BindSchema with current trusted
+// authorization. Until binding, Write and Commit return ErrSchemaUnbound.
+func (s *Store) Reserve(ctx context.Context, request Request) (*Writer, error) {
+	return s.reserve(ctx, request, "reserve")
+}
+
+func (s *Store) reserve(ctx context.Context, request Request, stage string) (*Writer, error) {
 	unlock, err := s.guard()
 	if err != nil {
 		return nil, err
 	}
 	defer unlock()
 	now := time.Now().UTC()
-	if !request.Identity.valid() || !request.Limits.valid() || !request.ExpiresAt.After(now) || request.ExpiresAt.Sub(now) > s.config.MaxTTL {
+	if !s.validRequest(request, now) {
 		return nil, ErrInvalid
-	}
-	raw, err := canonicalSchema(schema)
-	if err != nil {
-		return nil, err
-	}
-	if _, err = validatePart(ctx, strings.NewReader(string(raw)), int64(len(raw)), request.Limits, checksum(raw)); err != nil {
-		return nil, err
 	}
 	lock, err := lockRoot(ctx, s.root)
 	if err != nil {
@@ -375,6 +428,12 @@ func (s *Store) Begin(ctx context.Context, request Request, schema *arrow.Schema
 	if len(ids) >= s.config.MaxEntries || reserve > s.config.MaxStoredBytes-used {
 		return nil, ErrLimit
 	}
+	if err = ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !time.Now().Before(request.ExpiresAt) {
+		return nil, ErrUnavailable
+	}
 	id, err := randomID()
 	if err != nil {
 		return nil, err
@@ -383,7 +442,7 @@ func (s *Store) Begin(ctx context.Context, request Request, schema *arrow.Schema
 	if err != nil {
 		return nil, err
 	}
-	st := state{Version: 1, ID: id, Fence: fence, Tenant: s.config.Tenant, Identity: request.Identity, CreatedAt: now, ExpiresAt: request.ExpiresAt.UTC(), Limits: request.Limits, ReservedBytes: reserve, SchemaSHA256: checksum(raw), Status: "active"}
+	st := state{Version: 2, ID: id, Fence: fence, Tenant: s.config.Tenant, Identity: request.Identity, CreatedAt: now, ExpiresAt: request.ExpiresAt.UTC(), Limits: request.Limits, ReservedBytes: reserve, Status: "reserved"}
 	stateRaw, err := yaml.Marshal(st)
 	if err != nil || len(stateRaw) > stateLimit {
 		return nil, ErrCorrupt
@@ -391,7 +450,7 @@ func (s *Store) Begin(ctx context.Context, request Request, schema *arrow.Schema
 	if _, err = s.atomicWrite(s.root, id+".initializing.yml", stateRaw, true, true); err != nil {
 		return nil, err
 	}
-	if err = s.point("begin:after_intent"); err != nil {
+	if err = s.point(stage + ":after_intent"); err != nil {
 		return nil, err
 	}
 	dir, err := childDir(s.root, id, true)
@@ -404,7 +463,7 @@ func (s *Store) Begin(ctx context.Context, request Request, schema *arrow.Schema
 			dir.Close()
 		}
 	}()
-	if err = s.point("begin:after_mkdir"); err != nil {
+	if err = s.point(stage + ":after_mkdir"); err != nil {
 		return nil, err
 	}
 	lease, err := tryLease(dir, true)
@@ -416,23 +475,17 @@ func (s *Store) Begin(ctx context.Context, request Request, schema *arrow.Schema
 			lease.Close()
 		}
 	}()
-	if err = s.point("begin:after_lease"); err != nil {
+	if err = s.point(stage + ":after_lease"); err != nil {
 		return nil, err
 	}
 	if _, err = s.atomicWrite(dir, "state.yml", stateRaw, false, true); err != nil {
 		return nil, err
 	}
-	if err = s.point("begin:after_state"); err != nil {
-		return nil, err
-	}
-	if _, err = s.atomicWrite(dir, "schema.arrow", raw, true, true); err != nil {
-		return nil, err
-	}
-	if err = s.point("begin:after_schema"); err != nil {
+	if err = s.point(stage + ":after_state"); err != nil {
 		return nil, err
 	}
 	if err = unix.Unlinkat(int(s.root.Fd()), id+".initializing.yml", 0); err == nil {
-		err = s.point("begin:root_sync")
+		err = s.point(stage + ":root_sync")
 		if err == nil {
 			err = s.root.Sync()
 		}
@@ -442,7 +495,7 @@ func (s *Store) Begin(ctx context.Context, request Request, schema *arrow.Schema
 	}
 	keep = true
 	s.references.Add(1)
-	return &Writer{store: s, dir: dir, lease: lease, state: st, schema: schema}, nil
+	return &Writer{store: s, dir: dir, lease: lease, state: st}, nil
 }
 
 func (s *Store) Cancel(ctx context.Context, id string, identity Identity) error {

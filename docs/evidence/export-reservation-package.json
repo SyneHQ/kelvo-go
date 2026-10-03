@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "scope": "Issue #42: internal durable reservation before schema binding; prerequisite of #20. No HTTP or async job integration.",
+  "validated_at_utc": "2026-10-03T09:21:25Z",
+  "source": {
+    "base_commit": "da286de55f109675f2ede51f5d2998e5075d6d8b",
+    "source_manifest_sha256": "164b2ee8d777bb6dc5602945dd63c3fa1fe544ff65116fcdc718328b25b1c974",
+    "files": {
+      "docs/export-storage.md": "2f38988775c34df3ac1bc49d08049399c3b0a05048ad81c5aaecc8b547f8b8c0",
+      "go.mod": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+      "go.sum": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb",
+      "internal/arrowipc/metadata.go": "81f05e33bd68b9014c3c0e0a762a54e364b32e93bab86fc9831d98882862b242",
+      "internal/arrowipc/metadata_test.go": "0412bb03b286b6590e523bd3ab577296e1ae695e22b8948b8d5009bd064c10a8",
+      "internal/arrowipc/worker_metadata_test.go": "23824b0aaf2eb9441b6d2255984261ea967b371335152ef67a9e97b0a9e297c3",
+      "internal/exports/files_linux.go": "58a1d9d0049dfa93e2aeee4882f918d342a6cd7e6dc9aa9ab2e7d8894ad8963a",
+      "internal/exports/ipc.go": "edbbe3cdd97e3952f0c09e33d2757939d7162b9d5da87e78d78adb62a0d4aff0",
+      "internal/exports/ipc_test.go": "d49709fa53d0ed93a224c38482aec41a1f1ce71332a7d069e708e580893418c8",
+      "internal/exports/reader_linux.go": "3d33f527cb973b2f48445ab9faa6d35a413607b4076201d7cc3bd5bf53f66766",
+      "internal/exports/reservation_linux_test.go": "38c33e5e457ff1f1744f8f638e4276b23a02bf77753a9de41f7dd22a5b9b734a",
+      "internal/exports/store_linux.go": "f6a21ecb92f7e395eb59ea77fb5f4f459b648b2ff0c76a80b53444a1f27f6dad",
+      "internal/exports/store_linux_test.go": "0c8170caaf83d959a690b1bfab13c1f27909cf262d6c00df0b930790334e122e",
+      "internal/exports/store_other.go": "a5ed58588d8fcfee79e6ea32181ffbe5e21bd0497636e4b38e5a55c239a60efb",
+      "internal/exports/types.go": "0b041f5f3edbcc3f41659c9693116136e7395529eb42c2088ed4444721c1c6c6",
+      "internal/exports/writer_linux.go": "d30137ebc1a7e68289df295cad2440b117dcccdc6c8be0a8733867fad40e925e"
+    }
+  },
+  "source_matches_vm": true,
+  "environment": {
+    "os": "Linux amd64",
+    "kernel": "6.12.95+deb12-cloud-amd64",
+    "go": "go1.26.8 linux/amd64",
+    "GOMAXPROCS": 2,
+    "GOPROXY": "off",
+    "GOTOOLCHAIN": "local"
+  },
+  "checks": [
+    {
+      "command": "go test -race -count=1 -p 2 ./internal/exports",
+      "exit_code": 0,
+      "package_seconds": 40.634,
+      "log": "reservation-race-final.log"
+    },
+    {
+      "command": "go vet -p 2 ./internal/exports",
+      "exit_code": 0,
+      "log": "reservation-vet.log"
+    },
+    {
+      "command": "go test -race -p 2 -count=10 -run ^TestBindingCancelAndConcurrentBindSerialize$ ./internal/exports",
+      "exit_code": 0,
+      "package_seconds": 21.54,
+      "scenarios": 200,
+      "scenario": "Two concurrent binds and one cancellation",
+      "log": "reservation-concurrency.log"
+    },
+    {
+      "command": "go test -p 2 -count=5 -run ^(TestActualProcessUnboundAdmissionAndDeath|TestReservationAndBindingCrashCutpoints|TestUnboundExpiryAfterProcessDeathReclaimsOnlyAtCleanup)$ ./internal/exports",
+      "exit_code": 0,
+      "package_seconds": 8.219,
+      "crash_cutpoints_per_repeat": 11,
+      "repetitions": 5,
+      "log": "reservation-process-repeat.log"
+    },
+    {
+      "command": "GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go test -p 2 -c -o exports-darwin-arm64.test ./internal/exports",
+      "exit_code": 0,
+      "executed": false,
+      "log": "reservation-darwin-compile.log"
+    }
+  ],
+  "binary_compatibility": {
+    "baseline_commit": "da286de55f109675f2ede51f5d2998e5075d6d8b",
+    "harness_sha256": "18e0a9fd82aeaf57ffe49882ad5f69fa28d5ac3612dbfb387abfcc9ef216e158",
+    "baseline_v1_writer_to_current_reader": "PASS: exact Arrow values, types, NULLs and metadata",
+    "current_v2_writer_to_baseline_reader": "PASS: old Open rejects v2 with ErrCorrupt",
+    "manifest_version": 1,
+    "new_entry_state_version": 2,
+    "root_config_version": 1
+  },
+  "initial_failure": {
+    "log": "reservation-race.log",
+    "description": "New assertions expected ErrUnavailable while a live writer held its exclusive lease. Existing Acquire contract returns ErrBusy in that state. Assertions corrected to accept only these two rejection paths; implementation unchanged."
+  },
+  "log_sha256": {
+    "compatibility/v1-create.log": "8304b5641877b656c7d6c136a0debf86482fc68184aa628e0da171cce84743d6",
+    "compatibility/v1-reject-v2.log": "031b028d788dd426b5a69f8a3e4a3fed416ac4c712ded66c0216ec129e7114d2",
+    "compatibility/v2-create.log": "eb54a6a5c3ca6e6d5892dee034d5976d406008f23526263891efe4c57bf26554",
+    "compatibility/v2-read-v1.log": "031b028d788dd426b5a69f8a3e4a3fed416ac4c712ded66c0216ec129e7114d2",
+    "reservation-concurrency.log": "fd22a76fa0ed24d8484c6f45ab0d98e71e3224e7527e902ccc83c861d2c5346c",
+    "reservation-darwin-compile.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "reservation-process-repeat.log": "c7d2273529668cd16e81832887aa58c7a46f44b9588dbf3ac1971b14453ec53a",
+    "reservation-race-final.log": "9c5f31a90c3ca16706a24183c581ee2a81a81a2f14816c21da23998b29f5e59e",
+    "reservation-race.log": "14c56f157861fc84af9cf7c35b2fa7fa4a8679cf0d53a662e5d7cf09a3d6e95d",
+    "reservation-vet.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "limitations": [
+    "Package-level storage tests, not end-to-end async exports.",
+    "All processes sharing a storage root must upgrade before version 2 writes; mixed-version operation is unsupported.",
+    "Current authorization must be supplied by trusted caller; this package cannot detect policy revocation.",
+    "Crash tests cover process death and injected I/O failures, not power-cut validation of physical storage.",
+    "Darwin fallback was cross-compiled on Linux, not executed on Darwin."
+  ],
+  "publication_only_changes": [
+    "Added this evidence file and a link from docs/export-storage.md after validation; package and dependency files unchanged."
+  ]
+}
