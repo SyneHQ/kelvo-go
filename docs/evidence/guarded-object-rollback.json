@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "scope": "Same valid guarded envelope succeeds in current child and is refused by previous b09f2da child before Arrow output or any upstream range request; synthetic immutable provider, not mixed-version query compatibility",
+  "test_revision": "36414c36450a527dc0cf717594df9ddf37052314",
+  "current_runtime_source_revision": "13976e903ef8c26500c3797c49c115cdffdecc2d",
+  "previous_runtime_source_revision": "b09f2daad7caccf5caa7e35df5805696c9bc13ba",
+  "raw_receipt_sha256": "a830c78e5439a3511aeb05385a85564e5f92d7141377a0002dfbbb8b94d296b1",
+  "passed": true,
+  "source": {
+    "sha256": "c22efef47a5696a959b6aa968747c4f9c0658bbbcbd32a152092adce399b4d80",
+    "file_count": 861
+  },
+  "source_unchanged": true,
+  "binary_sha256": {
+    "current": "5c362f3f9613cb58f233d911da986b448f547a2348689e1a35e4e2c65f0c4e16",
+    "previous": "26ea84328e850116f4d5f31ab758bea1f5c57b7161eca0d61ddd63f9d714af26",
+    "launcher": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "binaries_unchanged": true,
+  "stages": [
+    {
+      "name": "rollback-refusal-race",
+      "exit_code": 0,
+      "seconds": 7.791,
+      "log_sha256": "66a9fe1f31c0185643a88925cb6abacccdc0b7e2c38c83093fe1fb28c08f8043",
+      "events": {
+        "pass": 1,
+        "fail": 0,
+        "skip": 0
+      },
+      "non_pass": []
+    }
+  ],
+  "checks": {
+    "current_child_delivered_exact_typed_guarded_control": true,
+    "previous_child_error": "INVALID_ARGUMENT",
+    "previous_child_arrow_schema": false,
+    "previous_child_arrow_rows": 0,
+    "additional_upstream_range_requests": 0,
+    "scratch_and_observed_child_cleanup": true
+  },
+  "cleanup": {
+    "service_exit_code": 0,
+    "service_inactive": true,
+    "service_dead": true,
+    "owned_cgroup_absent": true
+  },
+  "resource_budget": {
+    "cpu_percent": 100,
+    "memory_bytes": 3221225472,
+    "swap_bytes": 0,
+    "tasks": 256,
+    "private_network": true,
+    "capabilities": [],
+    "no_new_privileges": true
+  },
+  "limits": [
+    "The previous worker refuses an unsupported envelope. It does not run guarded object queries or provide mixed-version compatibility.",
+    "The provider is an injected synthetic immutable range client. No cloud account or source database participated."
+  ]
+}
