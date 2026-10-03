@@ -1,34 +1,16 @@
 # Object-backed dataset snapshots
 
-Set `acceleration.object_storage` to publish full-refresh Parquet snapshots in
-S3, Cloudflare R2, Google Cloud Storage, or Azure Blob. This is an opt-in developer
-preview. Without that block, the existing local POSIX store remains the default.
+Publish full-refresh Parquet snapshots to S3, R2, GCS or Azure Blob with `acceleration.object_storage`. This opt-in developer preview shares committed snapshots across workers without a shared filesystem; local POSIX storage remains the default.
 
-Object storage lets independently restarted workers share committed snapshots
-without a shared filesystem. Each refresher still needs a private local staging
-directory and enough disk for its in-progress Parquet file. Queries use remote
-byte ranges through a parent-owned Go reader; they do not require a local copy of
-the whole snapshot.
-
-The source query, Arrow/Parquet type restrictions, freshness policy, and full
-refresh cost described in [dataset acceleration](acceleration.md) still apply.
-Changing the backend does not add CDC, incremental ingestion, or a lakehouse
-table format.
+Refreshers need private staging disk for one in-progress file/part. Queries read remote ranges without a full local copy. [Source/type/freshness rules](acceleration.md) still apply; object storage adds neither CDC nor a lakehouse table format.
 
 ## Configure one provider
 
-[The complete example](../examples/object-storage.yml) refreshes the existing
-sales CSV into an object snapshot. Its active configuration uses S3; commented
-alternatives cover the other three providers. Replace the complete
-`object_storage` block to change providers. Keep one YAML document and one active
-provider per catalog.
+1. Start with the [complete example](../examples/object-storage.yml). Keep one YAML document and one active provider block.
+2. Choose a verified HTTPS origin, bucket/container and required private prefix. Tenant/dataset names are appended by configuration, not query callers.
+3. Provision separate reader and writer identities and store only their environment references in YAML.
 
-All endpoints must be HTTPS origins without paths, credentials, or query strings.
-`bucket` means an S3/R2/GCS bucket or an Azure container. `prefix` is required and
-names an operator-controlled namespace. The configured tenant and dataset are
-appended to that prefix; query callers cannot choose them.
-
-S3 uses access-key credentials and a required signing region:
+S3 requires a signing region:
 
 ```yaml
 object_storage:
@@ -45,11 +27,9 @@ object_storage:
     secret_access_key_env: KELVO_SOURCE_OBJECT_WRITER_SECRET
 ```
 
-For temporary S3 credentials, add a separate `session_token_env` reference to
-each identity that needs one. Omit it for static keys. Session tokens are
-supported only with `provider: s3`.
+For temporary S3 credentials, add `session_token_env` separately to each identity. Session tokens are supported only for S3.
 
-R2 uses its account-specific S3 API origin. Replace the example account ID:
+R2 uses the account-specific S3 origin:
 
 ```yaml
 object_storage:
@@ -66,8 +46,7 @@ object_storage:
     secret_access_key_env: KELVO_SOURCE_OBJECT_WRITER_SECRET
 ```
 
-GCS uses HMAC interoperability access keys and its XML API endpoint. It has its
-own object-generation preconditions; it is not treated as generic S3 CAS:
+GCS uses HMAC interoperability keys, its XML API and object-generation preconditions:
 
 ```yaml
 object_storage:
@@ -84,10 +63,7 @@ object_storage:
     secret_access_key_env: KELVO_SOURCE_OBJECT_WRITER_SECRET
 ```
 
-Azure uses separate SAS token references. The reader token must have exactly
-`sp=r`; the parent validates this before opening query ranges. Supply the token
-itself through the named environment variable, without an endpoint or connection
-string. Replace the example account and container:
+Azure uses token-only SAS references. The reader must have exactly `sp=r`; replace the account/container below:
 
 ```yaml
 object_storage:
@@ -102,20 +78,13 @@ object_storage:
     sas_token_env: KELVO_SOURCE_OBJECT_WRITER_SAS
 ```
 
-Credential values belong in the parent service's environment or secret manager,
-never in YAML, command arguments, source control, or diagnostic output. All
-references must use dedicated `KELVO_SOURCE_*` names. Reader and writer reference
-names must be disjoint. Provision the reader for exact-object reads and metadata;
-provision the publisher for reads and conditional creates/replacements in the
-chosen prefix. Kelvo needs no object-list or object-delete permission. Azure
-publishers need read/create/write capability for the same namespace. The parent
-loads writer credentials only when it starts a refresh.
+Origins cannot contain paths, credentials or queries. All references require dedicated `KELVO_SOURCE_*` names, with disjoint reader/writer names. Keep values in the parent environment or secret manager, never arguments, logs or source control.
+
+Readers need exact-object reads/metadata. Publishers need reads and conditional create/replace within the prefix; Azure needs read/create/write. No list/delete permissions are required. Writer credentials load only during refresh.
 
 ## Run a refresh and query
 
-Object queries require the approved signed `httpfs` extension for the pinned
-DuckDB version. Provision it before starting workers; queries do not download or
-install extensions. The Azure DuckDB extension is not used by this path.
+Provision matching signed `httpfs` on the designated host; queries never install extensions. This path does not use DuckDB's Azure extension.
 
 ```sh
 python3 scripts/provision_extensions.py artifacts/extensions --extensions httpfs
@@ -127,125 +96,64 @@ bin/kelvo query --config examples/object-storage.yml --sources sales_fast \
   --out revenue.arrow
 ```
 
-Supervise `bin/kelvo accelerate watch --config examples/object-storage.yml` to
-schedule refreshes. Query-only processes require the reader identity, while
-refreshers require both identities and the original source credentials. Workers
-for one tenant need matching catalogs and access to the same remote namespace;
-their local staging directories can be independent.
+Supervise `bin/kelvo accelerate watch --config examples/object-storage.yml` for scheduling. Query-only processes need readers; refreshers need both identities and source credentials. Tenant catalogs/remote namespaces must match; staging directories may differ.
 
 ## Publication and freshness
 
-Objects use the following exact namespace:
+Single-file keys use:
 
 ```text
 <prefix>/<tenant>/<dataset>/<32-hex-generation>.parquet
 <prefix>/<tenant>/<dataset>/current.yaml
 ```
 
-The bounded version-2 manifest contains the committed generation, its digest,
-size, fingerprint, refresh time and provider revision, plus an optional writer
-lease. It contains no arbitrary endpoint or object path. The writer lease and
-committed pointer share this one conditional object, so a replacement writer
-fences the old writer's publication.
+[Multipart generations](multipart-acceleration.md) add immutable parts/descriptors. **Readers accept manifest v2/v3/v4; every writer action emits v4, including a lease claim before any successful refresh.** Coordinate upgrades first; disabling multipart does not make old-binary rollback safe.
 
-| Provider | Conditional revision | Create-only condition |
+The bounded root manifest binds committed identity, digest, size, fingerprint, age, revision, history and writer lease. Pointer and lease share one conditional object, fencing replaced writers.
+
+| Provider | Revision check | Create-only check |
 | --- | --- | --- |
-| S3 / R2 | ETag with `If-Match` | `If-None-Match: *` |
+| S3 / R2 / Azure | ETag with `If-Match` | `If-None-Match: *` |
 | GCS | Object generation | Generation match `0` |
-| Azure Blob | ETag with `If-Match` | `If-None-Match: *` |
 
-ETags are opaque revision tokens, not SHA-256 digests. Refreshes upload a new
-immutable key, verify its metadata, then conditionally replace the committed
-pointer. The previous committed snapshot remains available throughout refresh.
-The lease lasts 60 seconds and renews every 15 seconds. Losing renewal cancels
-source extraction and prevents successful stale-writer publication.
+ETags are opaque revisions, not digests. Refresh uploads immutable data, verifies metadata, then conditionally replaces current. The 60-second lease renews every 15 seconds; renewal loss cancels extraction and prevents stale publication.
 
-The service's response clock establishes lease times and snapshot age. The
-parent advances observed age using local monotonic elapsed time, including when
-deciding whether a scheduled refresh is due. Clock observations are process-local
-and never enter manifests or query results. A failed refresh retains the last
-committed generation; an expired `max_age` still makes that generation unavailable
-for new queries.
+Service response time establishes lease/age; process-local monotonic elapsed time advances observed age and refresh scheduling. Failed refresh retains current, but expired `max_age` still rejects new queries.
 
-If a publication response is lost, the writer attempts bounded read-back
-reconciliation. A confirmed matching generation is successful. Otherwise it
-reports an uncertain publication outcome, preserves both generations, and does
-not clear a possibly published writer state. Inspect `status` and `verify` before
-deciding whether another refresh is needed.
+Lost publication replies trigger bounded readback. Exact matches succeed; unresolved outcomes preserve both generations and possibly published writer state. Inspect `status`/`verify` before another refresh.
 
 ## Query credential and integrity boundaries
 
-The parent acquires each selected generation and verifies its manifest and
-object metadata. It then starts one HTTP listener on `127.0.0.1` for that query,
-with an unpredictable 256-bit capability in each selected dataset URL. The child
-receives only those URLs and object sizes. It receives no cloud endpoint, bucket,
-key, reader credential reference, writer identity, or DuckDB cloud secret.
+The parent verifies selected manifests/metadata and starts one query listener on `127.0.0.1`. Children receive sizes and URLs with unpredictable 256-bit capabilities, never cloud endpoints, keys, credential references or DuckDB cloud secrets. Do not persist capability URLs in logs.
 
-The bridge serves `HEAD` from the acquired metadata. It accepts only explicit
-single closed byte ranges for `GET`; unknown paths, host changes, other methods,
-request bodies, multiple ranges and unbounded GETs fail. It never passes child
-headers to cloud storage or redirects the child. The Go provider client rejects
-upstream redirects and requests the exact acquired revision. Every range must
-match the committed object size, revision and SHA-256 metadata. A short or
-oversized body ends as an incomplete response, including when a prefix has
-already been sent.
+The bridge serves HEAD from acquired metadata and GET only for explicit single closed ranges. Unknown paths, host changes, bodies, other methods, multiple ranges and full GETs fail. Child headers are not forwarded. Provider requests reject redirects and bind exact revision, size and SHA-256 metadata; short/oversized bodies remain incomplete even after partial delivery.
 
-Query cancellation or release stops the listener, cancels upstream requests,
-closes bodies, and waits for cleanup. Treat capability URLs as temporary query
-access: do not publish them or persist them in application logs. DuckDB's exact
-source allowlist separately restricts queries to the selected capabilities.
+Cancellation stops the listener/upstream requests and waits for cleanup. DuckDB's allowlist independently restricts selected capabilities.
 
-These range checks do not recompute the full payload SHA-256 on every query.
-`accelerate verify` streams and hashes every pinned payload, then validates
-bounded Parquet footer row counts and original Arrow schema metadata. This applies
-to single-file and multipart generations. Custom object backends must implement
-`objectstore.RangeClient`; verification explicitly returns `ErrRecoveryUnsupported`
-without that capability, even for a single file. Built-in providers supply range
-reads. Legacy snapshots without a stored schema hash remain readable, but their
-actual Parquet metadata and row counts must still validate. Preserve generation
-immutability and namespace access controls. A query must fail if a selected
-revision changes.
+Range reads do not recompute every payload hash. `accelerate verify` streams all pinned payloads and validates bounded footer rows plus original Arrow schema for both layouts. Custom backends require `objectstore.RangeClient` or return `ErrRecoveryUnsupported`; built-ins implement it. Legacy snapshots without schema hashes remain readable but still require valid footer metadata/rows. Preserve immutability; changed revisions fail.
 
 ## Limits and retention
 
-- A snapshot upload is one request, limited to **4 GiB**. Configure `max_bytes` at
-  or below that limit. Multipart uploads and partitioned generations are absent.
-- A query bridge allows **4 concurrent ranges**, each at most **32 MiB**, using a
-  **32 KiB copy buffer per active request**. This bounds bridge copy buffers,
-  not total process RSS, TLS buffers, DuckDB memory, or aggregate concurrency
-  across queries. Larger or additional simultaneous ranges fail explicitly.
-- HTTP request headers, header-read time and idle time are bounded. Range
-  requests have a 60-second timeout as well as the query's cancellation context.
-- HTTPFS full-download fallback is disabled. A broad scan can still request all
-  relevant data through ranges; object storage does not make full scans free.
-- Object snapshots can join other object/local snapshots. Combining them with
-  live PostgreSQL/MySQL DuckDB extensions is currently rejected because those
-  extensions require a broader external-access setting. Use the selected-table
-  [custom Go adapters](federation.md), which retain exact external-access
-  restrictions, or materialize those sources first.
-- There is **no automatic remote garbage collection** and no distributed reader
-  lease. Prune never lists or deletes remote objects. Retired generations and
-  orphaned uploads remain until an operator removes them after all possible
-  readers have stopped. Do not apply an age-only lifecycle deletion rule that can
-  remove a committed or still-readable generation.
-- Switching provider, bucket, prefix or dataset definition does not migrate
-  existing objects. Refresh the new configuration before querying it.
+| Resource | Bound |
+| --- | --- |
+| Single file / multipart part | One upload request, at most 4 GiB |
+| Optional multipart generation | At most 256 parts and 1 TiB; [other limits apply](multipart-acceleration.md#limits-and-rotation) |
+| Per-query range bridge | Four concurrent requests, 32 MiB each, 32 KiB copy buffer per active request |
+| Range deadline | 60 seconds plus query cancellation |
+
+Request headers/read/idle times are bounded. Excess concurrency/ranges fail. These bounds exclude TLS/native memory and aggregate concurrency across queries. HTTPFS full-download fallback is disabled, but a full scan can still fetch all data through ranges.
+
+Object/local snapshots can join each other. Legacy PostgreSQL/MySQL extensions require broader external access and cannot share object queries; use [custom Go adapters](federation.md) or snapshots instead.
+
+There is no remote garbage collector or distributed reader lease. Prune never lists/deletes payloads; retired/orphaned objects remain until operators establish that all possible readers have stopped. Age-only lifecycle deletion can remove committed/readable data and is unsafe.
+
+Changing provider, bucket, prefix or dataset definition does not migrate data. Refresh the new configuration or use an explicit [remote-to-local migration](snapshot-backup.md#migrate-a-current-object-snapshot-to-local-storage).
 
 ## Validation scope
 
-The lifecycle tests cover independent workers, conditional writer exclusion,
-renewal loss, prior-generation preservation, ambiguous publication, strict
-manifests, storage-clock skew, and retained remote generations. Bridge tests cover
-capability boundaries, changed revisions, malformed/short/oversized responses,
-bounded concurrency, streaming buffers and cancellation. Provider HTTP protocol
-tests and disposable service fixtures are development evidence; they do not
-establish production availability, cloud IAM correctness, or provider throughput.
+[Remote multipart evidence](evidence/object-multipart-acceptance.json) and [legacy regression](evidence/object-multipart-legacy-acceptance.json) cover conditional publication, independent workers, failure recovery and guarded ranges against provider-shaped fixtures. They do not establish live cloud IAM, availability or throughput.
 
-On the development VM, a synthetic 32 MiB loopback range benchmark with a generated
-upstream body measured 50.54 ms/op, 663.95 MB/s and 52,938 allocated B/op across
-three iterations. This measures that fixture's generator, Go bridge and loopback
-client together; it is not a cloud-storage or DuckDB throughput result. Reproduce
-the focused checks on the designated build/test host:
+Run focused checks on the designated host:
 
 ```sh
 GOMAXPROCS=2 go test -p 2 -race -count=1 ./internal/acceleration \
@@ -253,3 +161,5 @@ GOMAXPROCS=2 go test -p 2 -race -count=1 ./internal/acceleration \
 GOMAXPROCS=2 go test -p 2 ./internal/acceleration -run '^$' \
   -bench '^BenchmarkObjectRangesLoopbackStream$' -benchtime=3x -count=1
 ```
+
+The loopback benchmark includes its generator, Go bridge and local client. Treat its output as a component measurement, not cloud-storage or DuckDB capacity.
