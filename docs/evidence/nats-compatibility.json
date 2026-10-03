@@ -1,0 +1,1835 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "runtime_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+  "scope": "Exact application and broker/client pairs in fresh single-host isolated services; not a deployment or throughput certification",
+  "final_verification": {
+    "final_regression_tests": 73,
+    "final_reconciliation_passed": true,
+    "original_runtime_harness_hashes_unchanged": true,
+    "all_campaign_cgroups_gone_or_empty": true,
+    "campaign_cgroups_checked": 9,
+    "final_reconciliation_script_sha256": "35045460e5c7adf51a28dc3500095d6f2c08999a4d04dc1e27fe18a231effd38",
+    "build_runner_sha256": "3ba909a8af331beb9c740fd032fe1bdd86cd33f0bfe6197bf5065f6a53ad34ca",
+    "source_archive_sha256": "b9c13b6cf0e9dfc12e0a723b545489e891cac10fa969f6e0b4b3beb584ea8dcd",
+    "default_modfile_hashes_preserved": true
+  },
+  "configuration_controls": {
+    "initial_pass_without_in_process_resource_measurement": {
+      "schema_version": 1,
+      "stage": "old",
+      "checked_at": "2026-10-03T13:43:28.199914+00:00",
+      "passed": true,
+      "cases": [
+        {
+          "build": "old_c7ecbf1",
+          "revision": "c7ecbf1a8f8391b13cd1bc96a4ae847d5c8b052c",
+          "feature": "baseline",
+          "passed": true,
+          "failure": null,
+          "cleanup_errors": [],
+          "checks": [
+            {
+              "test": "initialized_exact_baseline_policy",
+              "passed": true
+            },
+            {
+              "test": "supported_configuration_executes_exact_query",
+              "passed": true,
+              "rows": 2,
+              "source_scans": 1,
+              "durable_success": true,
+              "consumed_result_refused": true,
+              "row_policy_applied": false,
+              "audit_receipts": false
+            },
+            {
+              "test": "reject_row_column_policy_gateway",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_row_column_policy_node",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_row_column_policy_cluster-init",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_gateway",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_node",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_cluster-init",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "owned_service_and_broker_processes_stopped",
+              "passed": true
+            }
+          ],
+          "input_sha256_before_and_after": {
+            "binary": "4e818e2d9e274c4fe25f8d877a1d618da5ee59f89e53dc40bfab5e63dc09a08f",
+            "sandbox": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+            "harness": "96250e7998722872d9005421626184bc0b853a7f062893e2fb12e585fe2119c0",
+            "fixture_harness": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+            "nats": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+            "audit_helper": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+            "protocol_helper": "e6fb9917e65688f849c49b683b610a14eadc8129fede537dbf833ed0ae68e202"
+          },
+          "elapsed_seconds": 6.57
+        },
+        {
+          "build": "old_0d6b489",
+          "revision": "0d6b489fb072c823a8cd6d20e6beba98a3aa3158",
+          "feature": "baseline",
+          "passed": true,
+          "failure": null,
+          "cleanup_errors": [],
+          "checks": [
+            {
+              "test": "initialized_exact_baseline_policy",
+              "passed": true
+            },
+            {
+              "test": "supported_configuration_executes_exact_query",
+              "passed": true,
+              "rows": 2,
+              "source_scans": 1,
+              "durable_success": true,
+              "consumed_result_refused": true,
+              "row_policy_applied": false,
+              "audit_receipts": false
+            },
+            {
+              "test": "reject_row_column_policy_gateway",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_row_column_policy_node",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_row_column_policy_cluster-init",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_gateway",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_node",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_cluster-init",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "owned_service_and_broker_processes_stopped",
+              "passed": true
+            }
+          ],
+          "input_sha256_before_and_after": {
+            "binary": "d5460cae30c210a6536299cfbcaae4d6adb57ed166487ac091d442304865a4fe",
+            "sandbox": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+            "harness": "96250e7998722872d9005421626184bc0b853a7f062893e2fb12e585fe2119c0",
+            "fixture_harness": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+            "nats": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+            "audit_helper": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+            "protocol_helper": "e6fb9917e65688f849c49b683b610a14eadc8129fede537dbf833ed0ae68e202"
+          },
+          "elapsed_seconds": 6.521
+        }
+      ],
+      "unrun_stages": [
+        "candidate"
+      ],
+      "scope": "Fresh single-host old-binary positive controls and one-feature strict YAML refusal; protocol fixture, not a live database or throughput test"
+    },
+    "retained_preflight_failure": {
+      "passed": false,
+      "stage": "old-stage2",
+      "category": "PermissionError",
+      "boundary": "non-root reading /proc/1/ns/net denied before fixture provisioning",
+      "fixture_provisioned": false,
+      "remedy": "compare the private namespace with the nonsecret host namespace identity supplied by the launcher; require loopback-only interfaces",
+      "all_security_cells_unrun": true
+    },
+    "old_binaries": {
+      "schema_version": 1,
+      "stage": "old",
+      "checked_at": "2026-10-03T13:53:25.392755+00:00",
+      "passed": true,
+      "cases": [
+        {
+          "build": "old_c7ecbf1",
+          "revision": "c7ecbf1a8f8391b13cd1bc96a4ae847d5c8b052c",
+          "feature": "baseline",
+          "passed": true,
+          "failure": null,
+          "cleanup_errors": [],
+          "checks": [
+            {
+              "test": "initialized_exact_baseline_policy",
+              "passed": true
+            },
+            {
+              "test": "supported_configuration_executes_exact_query",
+              "passed": true,
+              "rows": 2,
+              "source_scans": 1,
+              "durable_success": true,
+              "consumed_result_refused": true,
+              "row_policy_applied": false,
+              "audit_receipts": false
+            },
+            {
+              "test": "reject_row_column_policy_gateway",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_row_column_policy_node",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_row_column_policy_cluster-init",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_gateway",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_node",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_cluster-init",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "owned_service_and_broker_processes_stopped",
+              "passed": true
+            }
+          ],
+          "input_sha256_before_and_after": {
+            "binary": "4e818e2d9e274c4fe25f8d877a1d618da5ee59f89e53dc40bfab5e63dc09a08f",
+            "sandbox": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+            "harness": "48441190798b56aad1e544b4b9016c855332fa3f65e766ad062f143a51ee0a84",
+            "fixture_harness": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+            "nats": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+            "audit_helper": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+            "protocol_helper": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639"
+          },
+          "elapsed_seconds": 6.745
+        },
+        {
+          "build": "old_0d6b489",
+          "revision": "0d6b489fb072c823a8cd6d20e6beba98a3aa3158",
+          "feature": "baseline",
+          "passed": true,
+          "failure": null,
+          "cleanup_errors": [],
+          "checks": [
+            {
+              "test": "initialized_exact_baseline_policy",
+              "passed": true
+            },
+            {
+              "test": "supported_configuration_executes_exact_query",
+              "passed": true,
+              "rows": 2,
+              "source_scans": 1,
+              "durable_success": true,
+              "consumed_result_refused": true,
+              "row_policy_applied": false,
+              "audit_receipts": false
+            },
+            {
+              "test": "reject_row_column_policy_gateway",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_row_column_policy_node",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_row_column_policy_cluster-init",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_gateway",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_node",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "reject_audit_cluster-init",
+              "passed": true,
+              "nonzero_exit": true,
+              "strict_yaml_refusal": true,
+              "observed_service_listener": false,
+              "broker_connections_added": 0,
+              "source_requests_added": 0,
+              "audit_journal_created": false,
+              "original_configuration_unchanged": true,
+              "original_durable_metadata_revalidated": true
+            },
+            {
+              "test": "owned_service_and_broker_processes_stopped",
+              "passed": true
+            }
+          ],
+          "input_sha256_before_and_after": {
+            "binary": "d5460cae30c210a6536299cfbcaae4d6adb57ed166487ac091d442304865a4fe",
+            "sandbox": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+            "harness": "48441190798b56aad1e544b4b9016c855332fa3f65e766ad062f143a51ee0a84",
+            "fixture_harness": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+            "nats": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+            "audit_helper": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+            "protocol_helper": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639"
+          },
+          "elapsed_seconds": 7.184
+        }
+      ],
+      "enforced_isolation": {
+        "non_root": true,
+        "private_network": true,
+        "memory_max_bytes": 3221225472,
+        "swap_max_bytes": 0,
+        "cpu_quota": 100000,
+        "cpu_period": 100000,
+        "tasks_max": 256
+      },
+      "unrun_stages": [
+        "candidate"
+      ],
+      "scope": "Fresh single-host old-binary positive controls and one-feature strict YAML refusal; protocol fixture, not a live database or throughput test"
+    },
+    "current_candidate": {
+      "schema_version": 1,
+      "stage": "candidate",
+      "checked_at": "2026-10-03T13:53:39.084595+00:00",
+      "passed": true,
+      "cases": [
+        {
+          "build": "candidate",
+          "revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+          "feature": "baseline",
+          "passed": true,
+          "failure": null,
+          "cleanup_errors": [],
+          "checks": [
+            {
+              "test": "initialized_exact_baseline_policy",
+              "passed": true
+            },
+            {
+              "test": "supported_configuration_executes_exact_query",
+              "passed": true,
+              "rows": 2,
+              "source_scans": 1,
+              "durable_success": true,
+              "consumed_result_refused": true,
+              "row_policy_applied": false,
+              "audit_receipts": false
+            },
+            {
+              "test": "owned_service_and_broker_processes_stopped",
+              "passed": true
+            }
+          ],
+          "input_sha256_before_and_after": {
+            "binary": "cef8220459d316abecf7b842ceb57cf835a2cb07d46bb77a76534e67f524b853",
+            "sandbox": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+            "harness": "48441190798b56aad1e544b4b9016c855332fa3f65e766ad062f143a51ee0a84",
+            "fixture_harness": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+            "nats": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+            "audit_helper": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+            "protocol_helper": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639"
+          },
+          "elapsed_seconds": 7.219
+        },
+        {
+          "build": "candidate",
+          "revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+          "feature": "row_column_policy",
+          "passed": true,
+          "failure": null,
+          "cleanup_errors": [],
+          "checks": [
+            {
+              "test": "initialized_exact_baseline_policy",
+              "passed": true
+            },
+            {
+              "test": "supported_configuration_executes_exact_query",
+              "passed": true,
+              "rows": 1,
+              "source_scans": 1,
+              "durable_success": true,
+              "consumed_result_refused": true,
+              "row_policy_applied": true,
+              "audit_receipts": false
+            },
+            {
+              "test": "owned_service_and_broker_processes_stopped",
+              "passed": true
+            }
+          ],
+          "input_sha256_before_and_after": {
+            "binary": "cef8220459d316abecf7b842ceb57cf835a2cb07d46bb77a76534e67f524b853",
+            "sandbox": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+            "harness": "48441190798b56aad1e544b4b9016c855332fa3f65e766ad062f143a51ee0a84",
+            "fixture_harness": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+            "nats": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+            "audit_helper": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+            "protocol_helper": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639"
+          },
+          "elapsed_seconds": 6.685
+        },
+        {
+          "build": "candidate",
+          "revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+          "feature": "audit",
+          "passed": true,
+          "failure": null,
+          "cleanup_errors": [],
+          "checks": [
+            {
+              "test": "initialized_exact_baseline_policy",
+              "passed": true
+            },
+            {
+              "test": "supported_configuration_executes_exact_query",
+              "passed": true,
+              "rows": 2,
+              "source_scans": 1,
+              "durable_success": true,
+              "consumed_result_refused": true,
+              "row_policy_applied": false,
+              "audit_receipts": true
+            },
+            {
+              "test": "owned_service_and_broker_processes_stopped",
+              "passed": true
+            }
+          ],
+          "input_sha256_before_and_after": {
+            "binary": "cef8220459d316abecf7b842ceb57cf835a2cb07d46bb77a76534e67f524b853",
+            "sandbox": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+            "harness": "48441190798b56aad1e544b4b9016c855332fa3f65e766ad062f143a51ee0a84",
+            "fixture_harness": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+            "nats": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+            "audit_helper": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+            "protocol_helper": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639"
+          },
+          "elapsed_seconds": 5.892
+        }
+      ],
+      "enforced_isolation": {
+        "non_root": true,
+        "private_network": true,
+        "memory_max_bytes": 3221225472,
+        "swap_max_bytes": 0,
+        "cpu_quota": 100000,
+        "cpu_period": 100000,
+        "tasks_max": 256
+      },
+      "unrun_stages": [
+        "old"
+      ],
+      "scope": "Fresh single-host old-binary positive controls and one-feature strict YAML refusal; protocol fixture, not a live database or throughput test"
+    }
+  },
+  "broker_upgrade_and_rollback": {
+    "schema_version": 1,
+    "mode": "broker",
+    "start_server_version": "2.14.7",
+    "passed": true,
+    "checked_at": "2026-10-03T13:58:56.397966+00:00",
+    "checks": [
+      {
+        "test": "startup",
+        "passed": true,
+        "seconds": 18.872,
+        "workers": 2,
+        "tenants": 2,
+        "broker_replicas": 3,
+        "source_rows_per_tenant": 100000,
+        "dataset": "Deterministic synthetic Parquet with nullable integers and tenant markers",
+        "gateways": 2,
+        "max_http_requests_per_gateway": 8,
+        "fault_signals": "SIGKILL of exact owned identities",
+        "original_configuration_count": 12,
+        "managed_scratch": true,
+        "explicit_principals": 4,
+        "policy_revision": 2,
+        "declared_old_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+        "declared_new_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+        "source_fixture": "Gated ClickHouse HTTP protocol returning exact Arrow; not a ClickHouse server benchmark"
+      },
+      {
+        "test": "key_rotation_and_floor",
+        "passed": true,
+        "seconds": 2.023,
+        "overlap_and_revocation_on_both_replicas": true,
+        "both_replica_floors": 3,
+        "rollback_requires_current_keys_and_policy": true
+      },
+      {
+        "test": "initial_pair",
+        "passed": true,
+        "seconds": 0.62,
+        "running_before_transition": 2,
+        "queued_before_transition": 2,
+        "exact_running_results": 2,
+        "exact_queued_results": 2,
+        "original_handles_preserved": true,
+        "consumed_results_rejected": true,
+        "one_observed_source_request_per_marker": true,
+        "foreign_handles_hidden": true,
+        "expected_peer_versions": {
+          "kelvo-test-0": "2.14.7",
+          "kelvo-test-1": "2.14.7",
+          "kelvo-test-2": "2.14.7"
+        },
+        "roles": {
+          "gateway": "old",
+          "a1": "old",
+          "gateway2": "old",
+          "b1": "old"
+        },
+        "client_versions": {
+          "gateway": "v1.54.0",
+          "a1": "v1.54.0",
+          "gateway2": "v1.54.0",
+          "b1": "v1.54.0"
+        },
+        "revoked_keys_denied": true
+      },
+      {
+        "test": "broker_upgrade_0",
+        "passed": true,
+        "seconds": 2.136,
+        "running_before_transition": 2,
+        "queued_before_transition": 2,
+        "exact_running_results": 2,
+        "exact_queued_results": 2,
+        "original_handles_preserved": true,
+        "consumed_results_rejected": true,
+        "one_observed_source_request_per_marker": true,
+        "foreign_handles_hidden": true,
+        "broker_version_before": "2.14.7",
+        "broker_version_after": "2.15.0",
+        "expected_peer_versions": {
+          "kelvo-test-0": "2.15.0",
+          "kelvo-test-1": "2.14.7",
+          "kelvo-test-2": "2.14.7"
+        },
+        "one_broker_at_a_time": true,
+        "surviving_broker_identities_preserved": true,
+        "post_rejoin_new_queries": 2,
+        "revoked_keys_denied": true
+      },
+      {
+        "test": "broker_upgrade_1",
+        "passed": true,
+        "seconds": 3.004,
+        "running_before_transition": 2,
+        "queued_before_transition": 2,
+        "exact_running_results": 2,
+        "exact_queued_results": 2,
+        "original_handles_preserved": true,
+        "consumed_results_rejected": true,
+        "one_observed_source_request_per_marker": true,
+        "foreign_handles_hidden": true,
+        "broker_version_before": "2.14.7",
+        "broker_version_after": "2.15.0",
+        "expected_peer_versions": {
+          "kelvo-test-0": "2.15.0",
+          "kelvo-test-1": "2.15.0",
+          "kelvo-test-2": "2.14.7"
+        },
+        "one_broker_at_a_time": true,
+        "surviving_broker_identities_preserved": true,
+        "post_rejoin_new_queries": 2,
+        "revoked_keys_denied": true
+      },
+      {
+        "test": "broker_upgrade_2",
+        "passed": true,
+        "seconds": 2.028,
+        "running_before_transition": 2,
+        "queued_before_transition": 2,
+        "exact_running_results": 2,
+        "exact_queued_results": 2,
+        "original_handles_preserved": true,
+        "consumed_results_rejected": true,
+        "one_observed_source_request_per_marker": true,
+        "foreign_handles_hidden": true,
+        "broker_version_before": "2.14.7",
+        "broker_version_after": "2.15.0",
+        "expected_peer_versions": {
+          "kelvo-test-0": "2.15.0",
+          "kelvo-test-1": "2.15.0",
+          "kelvo-test-2": "2.15.0"
+        },
+        "one_broker_at_a_time": true,
+        "surviving_broker_identities_preserved": true,
+        "post_rejoin_new_queries": 2,
+        "revoked_keys_denied": true
+      },
+      {
+        "test": "broker_rollback_0",
+        "passed": true,
+        "seconds": 1.989,
+        "running_before_transition": 2,
+        "queued_before_transition": 2,
+        "exact_running_results": 2,
+        "exact_queued_results": 2,
+        "original_handles_preserved": true,
+        "consumed_results_rejected": true,
+        "one_observed_source_request_per_marker": true,
+        "foreign_handles_hidden": true,
+        "broker_version_before": "2.15.0",
+        "broker_version_after": "2.14.7",
+        "expected_peer_versions": {
+          "kelvo-test-0": "2.14.7",
+          "kelvo-test-1": "2.15.0",
+          "kelvo-test-2": "2.15.0"
+        },
+        "one_broker_at_a_time": true,
+        "surviving_broker_identities_preserved": true,
+        "post_rejoin_new_queries": 2,
+        "revoked_keys_denied": true
+      },
+      {
+        "test": "broker_rollback_1",
+        "passed": true,
+        "seconds": 2.023,
+        "running_before_transition": 2,
+        "queued_before_transition": 2,
+        "exact_running_results": 2,
+        "exact_queued_results": 2,
+        "original_handles_preserved": true,
+        "consumed_results_rejected": true,
+        "one_observed_source_request_per_marker": true,
+        "foreign_handles_hidden": true,
+        "broker_version_before": "2.15.0",
+        "broker_version_after": "2.14.7",
+        "expected_peer_versions": {
+          "kelvo-test-0": "2.14.7",
+          "kelvo-test-1": "2.14.7",
+          "kelvo-test-2": "2.15.0"
+        },
+        "one_broker_at_a_time": true,
+        "surviving_broker_identities_preserved": true,
+        "post_rejoin_new_queries": 2,
+        "revoked_keys_denied": true
+      },
+      {
+        "test": "broker_rollback_2",
+        "passed": true,
+        "seconds": 2.023,
+        "running_before_transition": 2,
+        "queued_before_transition": 2,
+        "exact_running_results": 2,
+        "exact_queued_results": 2,
+        "original_handles_preserved": true,
+        "consumed_results_rejected": true,
+        "one_observed_source_request_per_marker": true,
+        "foreign_handles_hidden": true,
+        "broker_version_before": "2.15.0",
+        "broker_version_after": "2.14.7",
+        "expected_peer_versions": {
+          "kelvo-test-0": "2.14.7",
+          "kelvo-test-1": "2.14.7",
+          "kelvo-test-2": "2.14.7"
+        },
+        "one_broker_at_a_time": true,
+        "surviving_broker_identities_preserved": true,
+        "post_rejoin_new_queries": 2,
+        "revoked_keys_denied": true
+      },
+      {
+        "test": "cleanup",
+        "passed": true,
+        "seconds": 8.459,
+        "forced_application_kills": 0,
+        "observed_live_descendants": 0,
+        "worker_scratch_directories": 0,
+        "original_configurations_untouched": true,
+        "original_configurations_verified": true,
+        "all_owned_brokers_healthy": true,
+        "intentional_fault_kills": 0,
+        "all_owned_brokers_stopped": true,
+        "fixture_gate_errors": 0,
+        "input_artifact_hashes_preserved": true
+      }
+    ],
+    "matrix": {
+      "mode": "broker",
+      "old_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+      "new_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+      "default_dependencies_unchanged": true,
+      "old": {
+        "nats_client": "v1.54.0",
+        "source_archive_sha256": "b9c13b6cf0e9dfc12e0a723b545489e891cac10fa969f6e0b4b3beb584ea8dcd",
+        "binary_sha256": "cef8220459d316abecf7b842ceb57cf835a2cb07d46bb77a76534e67f524b853",
+        "launcher_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+        "module_manifest_sha256": "c59b21ae53c0ee5656bd6bf2075fad31f361c72379310eb31275c5d307c0e8c3",
+        "effective_modfile_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+        "effective_sumfile_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+      },
+      "new": {
+        "nats_client": "v1.54.0",
+        "source_archive_sha256": "b9c13b6cf0e9dfc12e0a723b545489e891cac10fa969f6e0b4b3beb584ea8dcd",
+        "binary_sha256": "cef8220459d316abecf7b842ceb57cf835a2cb07d46bb77a76534e67f524b853",
+        "launcher_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+        "module_manifest_sha256": "c59b21ae53c0ee5656bd6bf2075fad31f361c72379310eb31275c5d307c0e8c3",
+        "effective_modfile_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+        "effective_sumfile_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+      }
+    },
+    "enforced_isolation": {
+      "non_root": true,
+      "private_network": true,
+      "memory_max_bytes": 3221225472,
+      "swap_max_bytes": 0,
+      "cpu_quota": 100000,
+      "cpu_period": 100000,
+      "tasks_max": 256
+    },
+    "script_sha256": "be2b08d0c0866ab6ea6f670f2307f8b6c4c9b9fcfec70fb2d022eb9386888174",
+    "fixture_script_sha256": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+    "rolling_script_sha256": "196d804d7a3393ec8d7b31cf9d6ab3f1242ff7f38536ead776a588305810f21e",
+    "operational_script_sha256": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639",
+    "process_loss_script_sha256": "bc0206bdf0598257f38f77672f2e4ac25588a05ede6cfc836ada5a68c96e0f89",
+    "scope": "Exact same-source full engine binaries and pinned NATS releases, single-host private network, gated Arrow protocol fixture and synthetic CTEs; not a WAN, capacity, arbitrary-version or exactly-once execution guarantee",
+    "interrupted": false,
+    "elapsed_seconds": 43.181,
+    "resource_observations": {
+      "interval_ms": 50,
+      "samples": 501,
+      "process_tree_rss_available": true,
+      "sampled_process_tree_rss_peak_bytes": 458915840,
+      "rss_scope": "Owned application parents, separate fault-test process and observed descendants after startup; excludes brokers and Python client. Sampling can miss brief peaks.",
+      "cgroup_v2_memory_available": true,
+      "cgroups": [
+        {
+          "samples": 501,
+          "peak_current_bytes": 372461568,
+          "memory_event_deltas": {
+            "low": 0,
+            "high": 0,
+            "max": 0,
+            "oom": 0,
+            "oom_kill": 0,
+            "oom_group_kill": 0
+          }
+        }
+      ],
+      "cgroup_scope": "Observed cgroups may be shared with unowned workloads; counters are not Kelvo-only usage or enforced reservations.",
+      "missed_counter_categories": []
+    }
+  },
+  "client_builds": {
+    "retained_offline_graph_enumeration_failure": {
+      "schema_version": 1,
+      "passed": false,
+      "revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+      "checked_at": "2026-10-03T13:55:57.462058+00:00",
+      "enforced_isolation": {
+        "non_root": true,
+        "private_network": true,
+        "memory_max_bytes": 3221225472,
+        "swap_max_bytes": 0,
+        "cpu_quota": 100000,
+        "cpu_period": 100000,
+        "tasks_max": 256
+      },
+      "source_archive_sha256": "b9c13b6cf0e9dfc12e0a723b545489e891cac10fa969f6e0b4b3beb584ea8dcd",
+      "source_tree_sha256": "ab08093b123f09d8f33c89229921cfd83d23d504667d924f16468d8d02ef4720",
+      "default_modfile_sha256": {
+        "go.mod": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+        "go.sum": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+      },
+      "bridge_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+      "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+      "builds": {},
+      "build_tags": [
+        "duckdb_arrow",
+        "duckbridge"
+      ],
+      "trimpath": true,
+      "source_dependencies_unchanged": false,
+      "failure_type": "CalledProcessError"
+    },
+    "same_source_full_engine_variants": {
+      "schema_version": 1,
+      "passed": true,
+      "revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+      "checked_at": "2026-10-03T13:58:20.728473+00:00",
+      "enforced_isolation": {
+        "non_root": true,
+        "private_network": true,
+        "memory_max_bytes": 3221225472,
+        "swap_max_bytes": 0,
+        "cpu_quota": 100000,
+        "cpu_period": 100000,
+        "tasks_max": 256
+      },
+      "source_archive_sha256": "b9c13b6cf0e9dfc12e0a723b545489e891cac10fa969f6e0b4b3beb584ea8dcd",
+      "source_tree_sha256": "ab08093b123f09d8f33c89229921cfd83d23d504667d924f16468d8d02ef4720",
+      "default_modfile_sha256": {
+        "go.mod": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+        "go.sum": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+      },
+      "bridge_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+      "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+      "builds": {
+        "new": {
+          "nats_client": "v1.54.0",
+          "binary_sha256": "67ef24a80310de33b596235dbb3c114fb39cb1afd58f7946360cf7d5a3fef6bc",
+          "source_archive_sha256": "b9c13b6cf0e9dfc12e0a723b545489e891cac10fa969f6e0b4b3beb584ea8dcd",
+          "launcher_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+          "module_manifest_sha256": "c1729bf5608b4496aa668cc876d4316cb40d40b0116dac7820f5e6f2f8bfcada",
+          "effective_modfile_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+          "effective_sumfile_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb",
+          "effective_require_replace_sha256": "a5ae620709c8418dfaa5f1a944d988065404538549c97228ed9e04e874cf0d88",
+          "elapsed_seconds": 14.644
+        },
+        "old": {
+          "nats_client": "v1.53.1",
+          "binary_sha256": "8db014e3d491e61b9012535be248fd99b43506ebc1ea52cb255a06c8bc388e05",
+          "source_archive_sha256": "b9c13b6cf0e9dfc12e0a723b545489e891cac10fa969f6e0b4b3beb584ea8dcd",
+          "launcher_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+          "module_manifest_sha256": "c96b89596a66ce97ec823fbe11250056f4cd7f8c75ce3b15a8fe798c51632a97",
+          "effective_modfile_sha256": "01394db71ddba07fcb28b6d7072cbdcdf0b05cdb9518899b27403c64acfd018f",
+          "effective_sumfile_sha256": "c6906eb45fd49db3b8c195218f73b926d152e7573b7cb755ba0a3806d15ba938",
+          "effective_require_replace_sha256": "e734cd356b985822de04d8748c5ca5fb1fa8f5be7c681e9c30f5aff6a6965d1e",
+          "elapsed_seconds": 12.096
+        }
+      },
+      "build_tags": [
+        "duckdb_arrow",
+        "duckbridge"
+      ],
+      "trimpath": true,
+      "source_dependencies_unchanged": true,
+      "changed_modules": [
+        "github.com/nats-io/nats.go"
+      ]
+    }
+  },
+  "client_upgrade_and_rollback": {
+    "nats_2_14_7": {
+      "schema_version": 1,
+      "mode": "client",
+      "start_server_version": "2.14.7",
+      "passed": true,
+      "checked_at": "2026-10-03T13:59:57.229065+00:00",
+      "checks": [
+        {
+          "test": "startup",
+          "passed": true,
+          "seconds": 18.934,
+          "workers": 2,
+          "tenants": 2,
+          "broker_replicas": 3,
+          "source_rows_per_tenant": 100000,
+          "dataset": "Deterministic synthetic Parquet with nullable integers and tenant markers",
+          "gateways": 2,
+          "max_http_requests_per_gateway": 8,
+          "fault_signals": "SIGKILL of exact owned identities",
+          "original_configuration_count": 12,
+          "managed_scratch": true,
+          "explicit_principals": 4,
+          "policy_revision": 2,
+          "declared_old_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+          "declared_new_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+          "source_fixture": "Gated ClickHouse HTTP protocol returning exact Arrow; not a ClickHouse server benchmark"
+        },
+        {
+          "test": "key_rotation_and_floor",
+          "passed": true,
+          "seconds": 2.022,
+          "overlap_and_revocation_on_both_replicas": true,
+          "both_replica_floors": 3,
+          "rollback_requires_current_keys_and_policy": true
+        },
+        {
+          "test": "initial_pair",
+          "passed": true,
+          "seconds": 0.608,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "expected_peer_versions": {
+            "kelvo-test-0": "2.14.7",
+            "kelvo-test-1": "2.14.7",
+            "kelvo-test-2": "2.14.7"
+          },
+          "roles": {
+            "gateway": "old",
+            "a1": "old",
+            "gateway2": "old",
+            "b1": "old"
+          },
+          "client_versions": {
+            "gateway": "v1.53.1",
+            "a1": "v1.53.1",
+            "gateway2": "v1.53.1",
+            "b1": "v1.53.1"
+          },
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_upgrade_gateway",
+          "passed": true,
+          "seconds": 8.299,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "gateway",
+          "destination": "new",
+          "roles_after_transition": {
+            "gateway": "new",
+            "a1": "old",
+            "gateway2": "old",
+            "b1": "old"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_upgrade_a1",
+          "passed": true,
+          "seconds": 5.199,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "a1",
+          "destination": "new",
+          "roles_after_transition": {
+            "gateway": "new",
+            "a1": "new",
+            "gateway2": "old",
+            "b1": "old"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_upgrade_gateway2",
+          "passed": true,
+          "seconds": 8.322,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "gateway2",
+          "destination": "new",
+          "roles_after_transition": {
+            "gateway": "new",
+            "a1": "new",
+            "gateway2": "new",
+            "b1": "old"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_upgrade_b1",
+          "passed": true,
+          "seconds": 5.138,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "b1",
+          "destination": "new",
+          "roles_after_transition": {
+            "gateway": "new",
+            "a1": "new",
+            "gateway2": "new",
+            "b1": "new"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "upgraded_pair",
+          "passed": true,
+          "seconds": 0.643,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "expected_peer_versions": {
+            "kelvo-test-0": "2.14.7",
+            "kelvo-test-1": "2.14.7",
+            "kelvo-test-2": "2.14.7"
+          },
+          "roles": {
+            "gateway": "new",
+            "a1": "new",
+            "gateway2": "new",
+            "b1": "new"
+          },
+          "client_versions": {
+            "gateway": "v1.54.0",
+            "a1": "v1.54.0",
+            "gateway2": "v1.54.0",
+            "b1": "v1.54.0"
+          },
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_rollback_gateway",
+          "passed": true,
+          "seconds": 8.353,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "gateway",
+          "destination": "old",
+          "roles_after_transition": {
+            "gateway": "old",
+            "a1": "new",
+            "gateway2": "new",
+            "b1": "new"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_rollback_a1",
+          "passed": true,
+          "seconds": 4.299,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "a1",
+          "destination": "old",
+          "roles_after_transition": {
+            "gateway": "old",
+            "a1": "old",
+            "gateway2": "new",
+            "b1": "new"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_rollback_gateway2",
+          "passed": true,
+          "seconds": 8.338,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "gateway2",
+          "destination": "old",
+          "roles_after_transition": {
+            "gateway": "old",
+            "a1": "old",
+            "gateway2": "old",
+            "b1": "new"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_rollback_b1",
+          "passed": true,
+          "seconds": 5.118,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "b1",
+          "destination": "old",
+          "roles_after_transition": {
+            "gateway": "old",
+            "a1": "old",
+            "gateway2": "old",
+            "b1": "old"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "rolled_back_pair",
+          "passed": true,
+          "seconds": 0.591,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "expected_peer_versions": {
+            "kelvo-test-0": "2.14.7",
+            "kelvo-test-1": "2.14.7",
+            "kelvo-test-2": "2.14.7"
+          },
+          "roles": {
+            "gateway": "old",
+            "a1": "old",
+            "gateway2": "old",
+            "b1": "old"
+          },
+          "client_versions": {
+            "gateway": "v1.53.1",
+            "a1": "v1.53.1",
+            "gateway2": "v1.53.1",
+            "b1": "v1.53.1"
+          },
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "cleanup",
+          "passed": true,
+          "seconds": 9.051,
+          "forced_application_kills": 0,
+          "observed_live_descendants": 0,
+          "worker_scratch_directories": 0,
+          "original_configurations_untouched": true,
+          "original_configurations_verified": true,
+          "all_owned_brokers_healthy": true,
+          "intentional_fault_kills": 0,
+          "all_owned_brokers_stopped": true,
+          "fixture_gate_errors": 0,
+          "input_artifact_hashes_preserved": true
+        }
+      ],
+      "matrix": {
+        "mode": "client",
+        "old_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+        "new_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+        "default_dependencies_unchanged": true,
+        "old": {
+          "nats_client": "v1.53.1",
+          "binary_sha256": "8db014e3d491e61b9012535be248fd99b43506ebc1ea52cb255a06c8bc388e05",
+          "source_archive_sha256": "b9c13b6cf0e9dfc12e0a723b545489e891cac10fa969f6e0b4b3beb584ea8dcd",
+          "launcher_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+          "module_manifest_sha256": "c96b89596a66ce97ec823fbe11250056f4cd7f8c75ce3b15a8fe798c51632a97",
+          "effective_modfile_sha256": "01394db71ddba07fcb28b6d7072cbdcdf0b05cdb9518899b27403c64acfd018f",
+          "effective_sumfile_sha256": "c6906eb45fd49db3b8c195218f73b926d152e7573b7cb755ba0a3806d15ba938",
+          "effective_require_replace_sha256": "e734cd356b985822de04d8748c5ca5fb1fa8f5be7c681e9c30f5aff6a6965d1e",
+          "elapsed_seconds": 12.096
+        },
+        "new": {
+          "nats_client": "v1.54.0",
+          "binary_sha256": "67ef24a80310de33b596235dbb3c114fb39cb1afd58f7946360cf7d5a3fef6bc",
+          "source_archive_sha256": "b9c13b6cf0e9dfc12e0a723b545489e891cac10fa969f6e0b4b3beb584ea8dcd",
+          "launcher_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+          "module_manifest_sha256": "c1729bf5608b4496aa668cc876d4316cb40d40b0116dac7820f5e6f2f8bfcada",
+          "effective_modfile_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+          "effective_sumfile_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb",
+          "effective_require_replace_sha256": "a5ae620709c8418dfaa5f1a944d988065404538549c97228ed9e04e874cf0d88",
+          "elapsed_seconds": 14.644
+        },
+        "bridge_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+        "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333"
+      },
+      "enforced_isolation": {
+        "non_root": true,
+        "private_network": true,
+        "memory_max_bytes": 3221225472,
+        "swap_max_bytes": 0,
+        "cpu_quota": 100000,
+        "cpu_period": 100000,
+        "tasks_max": 256
+      },
+      "script_sha256": "be2b08d0c0866ab6ea6f670f2307f8b6c4c9b9fcfec70fb2d022eb9386888174",
+      "fixture_script_sha256": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+      "rolling_script_sha256": "196d804d7a3393ec8d7b31cf9d6ab3f1242ff7f38536ead776a588305810f21e",
+      "operational_script_sha256": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639",
+      "process_loss_script_sha256": "bc0206bdf0598257f38f77672f2e4ac25588a05ede6cfc836ada5a68c96e0f89",
+      "scope": "Exact same-source full engine binaries and pinned NATS releases, single-host private network, gated Arrow protocol fixture and synthetic CTEs; not a WAN, capacity, arbitrary-version or exactly-once execution guarantee",
+      "interrupted": false,
+      "elapsed_seconds": 84.92,
+      "resource_observations": {
+        "interval_ms": 50,
+        "samples": 1307,
+        "process_tree_rss_available": true,
+        "sampled_process_tree_rss_peak_bytes": 448667648,
+        "rss_scope": "Owned application parents, separate fault-test process and observed descendants after startup; excludes brokers and Python client. Sampling can miss brief peaks.",
+        "cgroup_v2_memory_available": true,
+        "cgroups": [
+          {
+            "samples": 1307,
+            "peak_current_bytes": 332959744,
+            "memory_event_deltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            }
+          }
+        ],
+        "cgroup_scope": "Observed cgroups may be shared with unowned workloads; counters are not Kelvo-only usage or enforced reservations.",
+        "missed_counter_categories": []
+      }
+    },
+    "nats_2_15_0": {
+      "schema_version": 1,
+      "mode": "client",
+      "start_server_version": "2.15.0",
+      "passed": true,
+      "checked_at": "2026-10-03T13:59:57.177395+00:00",
+      "checks": [
+        {
+          "test": "startup",
+          "passed": true,
+          "seconds": 18.474,
+          "workers": 2,
+          "tenants": 2,
+          "broker_replicas": 3,
+          "source_rows_per_tenant": 100000,
+          "dataset": "Deterministic synthetic Parquet with nullable integers and tenant markers",
+          "gateways": 2,
+          "max_http_requests_per_gateway": 8,
+          "fault_signals": "SIGKILL of exact owned identities",
+          "original_configuration_count": 12,
+          "managed_scratch": true,
+          "explicit_principals": 4,
+          "policy_revision": 2,
+          "declared_old_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+          "declared_new_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+          "source_fixture": "Gated ClickHouse HTTP protocol returning exact Arrow; not a ClickHouse server benchmark"
+        },
+        {
+          "test": "key_rotation_and_floor",
+          "passed": true,
+          "seconds": 2.058,
+          "overlap_and_revocation_on_both_replicas": true,
+          "both_replica_floors": 3,
+          "rollback_requires_current_keys_and_policy": true
+        },
+        {
+          "test": "initial_pair",
+          "passed": true,
+          "seconds": 0.594,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "expected_peer_versions": {
+            "kelvo-test-0": "2.15.0",
+            "kelvo-test-1": "2.15.0",
+            "kelvo-test-2": "2.15.0"
+          },
+          "roles": {
+            "gateway": "old",
+            "a1": "old",
+            "gateway2": "old",
+            "b1": "old"
+          },
+          "client_versions": {
+            "gateway": "v1.53.1",
+            "a1": "v1.53.1",
+            "gateway2": "v1.53.1",
+            "b1": "v1.53.1"
+          },
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_upgrade_gateway",
+          "passed": true,
+          "seconds": 8.307,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "gateway",
+          "destination": "new",
+          "roles_after_transition": {
+            "gateway": "new",
+            "a1": "old",
+            "gateway2": "old",
+            "b1": "old"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_upgrade_a1",
+          "passed": true,
+          "seconds": 5.158,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "a1",
+          "destination": "new",
+          "roles_after_transition": {
+            "gateway": "new",
+            "a1": "new",
+            "gateway2": "old",
+            "b1": "old"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_upgrade_gateway2",
+          "passed": true,
+          "seconds": 8.374,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "gateway2",
+          "destination": "new",
+          "roles_after_transition": {
+            "gateway": "new",
+            "a1": "new",
+            "gateway2": "new",
+            "b1": "old"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_upgrade_b1",
+          "passed": true,
+          "seconds": 5.174,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "b1",
+          "destination": "new",
+          "roles_after_transition": {
+            "gateway": "new",
+            "a1": "new",
+            "gateway2": "new",
+            "b1": "new"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "upgraded_pair",
+          "passed": true,
+          "seconds": 0.588,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "expected_peer_versions": {
+            "kelvo-test-0": "2.15.0",
+            "kelvo-test-1": "2.15.0",
+            "kelvo-test-2": "2.15.0"
+          },
+          "roles": {
+            "gateway": "new",
+            "a1": "new",
+            "gateway2": "new",
+            "b1": "new"
+          },
+          "client_versions": {
+            "gateway": "v1.54.0",
+            "a1": "v1.54.0",
+            "gateway2": "v1.54.0",
+            "b1": "v1.54.0"
+          },
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_rollback_gateway",
+          "passed": true,
+          "seconds": 8.364,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "gateway",
+          "destination": "old",
+          "roles_after_transition": {
+            "gateway": "old",
+            "a1": "new",
+            "gateway2": "new",
+            "b1": "new"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_rollback_a1",
+          "passed": true,
+          "seconds": 4.229,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "a1",
+          "destination": "old",
+          "roles_after_transition": {
+            "gateway": "old",
+            "a1": "old",
+            "gateway2": "new",
+            "b1": "new"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_rollback_gateway2",
+          "passed": true,
+          "seconds": 8.349,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "gateway2",
+          "destination": "old",
+          "roles_after_transition": {
+            "gateway": "old",
+            "a1": "old",
+            "gateway2": "old",
+            "b1": "new"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "client_rollback_b1",
+          "passed": true,
+          "seconds": 5.208,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "role": "b1",
+          "destination": "old",
+          "roles_after_transition": {
+            "gateway": "old",
+            "a1": "old",
+            "gateway2": "old",
+            "b1": "old"
+          },
+          "readiness_rejected_during_drain": true,
+          "graceful_exit": true,
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "rolled_back_pair",
+          "passed": true,
+          "seconds": 0.584,
+          "running_before_transition": 2,
+          "queued_before_transition": 2,
+          "exact_running_results": 2,
+          "exact_queued_results": 2,
+          "original_handles_preserved": true,
+          "consumed_results_rejected": true,
+          "one_observed_source_request_per_marker": true,
+          "foreign_handles_hidden": true,
+          "expected_peer_versions": {
+            "kelvo-test-0": "2.15.0",
+            "kelvo-test-1": "2.15.0",
+            "kelvo-test-2": "2.15.0"
+          },
+          "roles": {
+            "gateway": "old",
+            "a1": "old",
+            "gateway2": "old",
+            "b1": "old"
+          },
+          "client_versions": {
+            "gateway": "v1.53.1",
+            "a1": "v1.53.1",
+            "gateway2": "v1.53.1",
+            "b1": "v1.53.1"
+          },
+          "revoked_keys_denied": true
+        },
+        {
+          "test": "cleanup",
+          "passed": true,
+          "seconds": 9.004,
+          "forced_application_kills": 0,
+          "observed_live_descendants": 0,
+          "worker_scratch_directories": 0,
+          "original_configurations_untouched": true,
+          "original_configurations_verified": true,
+          "all_owned_brokers_healthy": true,
+          "intentional_fault_kills": 0,
+          "all_owned_brokers_stopped": true,
+          "fixture_gate_errors": 0,
+          "input_artifact_hashes_preserved": true
+        }
+      ],
+      "matrix": {
+        "mode": "client",
+        "old_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+        "new_revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+        "default_dependencies_unchanged": true,
+        "old": {
+          "nats_client": "v1.53.1",
+          "binary_sha256": "8db014e3d491e61b9012535be248fd99b43506ebc1ea52cb255a06c8bc388e05",
+          "source_archive_sha256": "b9c13b6cf0e9dfc12e0a723b545489e891cac10fa969f6e0b4b3beb584ea8dcd",
+          "launcher_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+          "module_manifest_sha256": "c96b89596a66ce97ec823fbe11250056f4cd7f8c75ce3b15a8fe798c51632a97",
+          "effective_modfile_sha256": "01394db71ddba07fcb28b6d7072cbdcdf0b05cdb9518899b27403c64acfd018f",
+          "effective_sumfile_sha256": "c6906eb45fd49db3b8c195218f73b926d152e7573b7cb755ba0a3806d15ba938",
+          "effective_require_replace_sha256": "e734cd356b985822de04d8748c5ca5fb1fa8f5be7c681e9c30f5aff6a6965d1e",
+          "elapsed_seconds": 12.096
+        },
+        "new": {
+          "nats_client": "v1.54.0",
+          "binary_sha256": "67ef24a80310de33b596235dbb3c114fb39cb1afd58f7946360cf7d5a3fef6bc",
+          "source_archive_sha256": "b9c13b6cf0e9dfc12e0a723b545489e891cac10fa969f6e0b4b3beb584ea8dcd",
+          "launcher_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+          "module_manifest_sha256": "c1729bf5608b4496aa668cc876d4316cb40d40b0116dac7820f5e6f2f8bfcada",
+          "effective_modfile_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+          "effective_sumfile_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb",
+          "effective_require_replace_sha256": "a5ae620709c8418dfaa5f1a944d988065404538549c97228ed9e04e874cf0d88",
+          "elapsed_seconds": 14.644
+        },
+        "bridge_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+        "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333"
+      },
+      "enforced_isolation": {
+        "non_root": true,
+        "private_network": true,
+        "memory_max_bytes": 3221225472,
+        "swap_max_bytes": 0,
+        "cpu_quota": 100000,
+        "cpu_period": 100000,
+        "tasks_max": 256
+      },
+      "script_sha256": "be2b08d0c0866ab6ea6f670f2307f8b6c4c9b9fcfec70fb2d022eb9386888174",
+      "fixture_script_sha256": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+      "rolling_script_sha256": "196d804d7a3393ec8d7b31cf9d6ab3f1242ff7f38536ead776a588305810f21e",
+      "operational_script_sha256": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639",
+      "process_loss_script_sha256": "bc0206bdf0598257f38f77672f2e4ac25588a05ede6cfc836ada5a68c96e0f89",
+      "scope": "Exact same-source full engine binaries and pinned NATS releases, single-host private network, gated Arrow protocol fixture and synthetic CTEs; not a WAN, capacity, arbitrary-version or exactly-once execution guarantee",
+      "interrupted": false,
+      "elapsed_seconds": 84.467,
+      "resource_observations": {
+        "interval_ms": 50,
+        "samples": 1309,
+        "process_tree_rss_available": true,
+        "sampled_process_tree_rss_peak_bytes": 440090624,
+        "rss_scope": "Owned application parents, separate fault-test process and observed descendants after startup; excludes brokers and Python client. Sampling can miss brief peaks.",
+        "cgroup_v2_memory_available": true,
+        "cgroups": [
+          {
+            "samples": 1309,
+            "peak_current_bytes": 319471616,
+            "memory_event_deltas": {
+              "low": 0,
+              "high": 0,
+              "max": 0,
+              "oom": 0,
+              "oom_kill": 0,
+              "oom_group_kill": 0
+            }
+          }
+        ],
+        "cgroup_scope": "Observed cgroups may be shared with unowned workloads; counters are not Kelvo-only usage or enforced reservations.",
+        "missed_counter_categories": []
+      }
+    }
+  }
+}

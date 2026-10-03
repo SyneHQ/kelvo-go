@@ -30,6 +30,12 @@ each broker serially, then rolls application roles back with current keys and
 policies. It also kills a result-owning gateway and checks terminal failure,
 surviving-tenant progress and no replay of that observed attempt.
 
+The separate [NATS compatibility and configuration-refusal matrix](nats-compatibility.md)
+now records actual 2.14.7/2.15.0 broker upgrades and rollback, same-source full-engine
+v1.53.1/v1.54.0 client rolls, and explicit old-binary refusal of row-policy/audit
+configuration. Those newer results retain their own exact artifacts and evidence;
+they do not change the historical matrix above.
+
 Run only on an idle Linux test VM with prebuilt binaries and installed PyArrow
 and PyYAML. Give the run a fresh private fixture directory in an isolated network
 namespace; enforce CPU, memory and runtime limits through its service manager.
