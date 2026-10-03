@@ -21,7 +21,7 @@ type Engine = sqlnative.Engine
 func New(c catalog.Config, l query.Limits) (*Engine, error)        { return family(c, l, "mysql") }
 func NewMariaDB(c catalog.Config, l query.Limits) (*Engine, error) { return family(c, l, "mariadb") }
 func family(c catalog.Config, l query.Limits, kind string) (*Engine, error) {
-	return sqlnative.New(c, l, sqlnative.Dialect{SourceType: kind, DriverName: "mysql", ReadOnlyOption: true, ValidateDSN: validateDSN, OpenDB: func(dsn string) (*sql.DB, error) {
+	return sqlnative.New(c, l, sqlnative.Dialect{SourceType: kind, DriverName: "mysql", ErrorCode: func(err error) string { return sourceErrorCode(kind, err) }, ReadOnlyOption: true, ValidateDSN: validateDSN, OpenDB: func(dsn string) (*sql.DB, error) {
 		config, err := executionConfig(dsn, l, kind)
 		if err != nil {
 			return nil, err

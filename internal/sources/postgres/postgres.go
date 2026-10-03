@@ -32,7 +32,7 @@ func NewCockroachDB(c catalog.Config, l query.Limits) (*Engine, error) {
 func NewAlloyDB(c catalog.Config, l query.Limits) (*Engine, error)  { return family(c, l, "alloydb") }
 func NewRedshift(c catalog.Config, l query.Limits) (*Engine, error) { return family(c, l, "redshift") }
 func family(c catalog.Config, l query.Limits, kind string) (*Engine, error) {
-	return sqlnative.New(c, l, sqlnative.Dialect{SourceType: kind, DriverName: "pgx", ReadOnlyOption: true, AllowDollarParams: true, ValidateDSN: validateDSN, OpenDB: openDB})
+	return sqlnative.New(c, l, sqlnative.Dialect{SourceType: kind, DriverName: "pgx", ErrorCode: sourceErrorCode, ReadOnlyOption: true, AllowDollarParams: true, ValidateDSN: validateDSN, OpenDB: openDB})
 }
 func configError() error {
 	return query.NewError("CONFIGURATION_ERROR", "PostgreSQL requires an explicit TCP URL, user/password/database and sslmode=verify-full without ambient or unsafe options")

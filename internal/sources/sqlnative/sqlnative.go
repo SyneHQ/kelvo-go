@@ -1,6 +1,6 @@
 // Copyright 2026 SYNEHQ. SPDX-License-Identifier: Apache-2.0
 // Package sqlnative provides the bounded database/sql execution path shared by
-// native SQL Server and Oracle sources.
+// native relational sources.
 package sqlnative
 
 import (
@@ -34,6 +34,8 @@ type Dialect struct {
 	ValidateDSN       func(string) error
 	OpenDB            func(string) (*sql.DB, error)
 	AllowDollarParams bool
+	// ErrorCode maps driver errors to a bounded public classification, never text.
+	ErrorCode func(error) string
 }
 
 type Engine struct {
@@ -93,7 +95,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	}
 	if e.dialect.ValidateDSN != nil {
 		if err := e.dialect.ValidateDSN(dsn); err != nil {
-			return stats, err
+			return stats, e.callbackError(parent, err, "Source connection configuration is invalid")
 		}
 	}
 	values, err := req.Values()
@@ -109,7 +111,10 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		db, err = sql.Open(e.dialect.DriverName, dsn)
 	}
 	if err != nil {
-		return stats, query.NewError("QUERY_FAILED", "Could not initialize source connection")
+		if e.dialect.OpenDB != nil {
+			return stats, e.callbackError(ctx, err, "Could not initialize source connection")
+		}
+		return stats, e.sourceError(ctx, err, "Could not initialize source connection")
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
@@ -117,29 +122,29 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	db.SetConnMaxLifetime(e.limits.Timeout)
 	conn, err := db.Conn(ctx)
 	if err != nil {
-		return stats, public(ctx, "Could not connect to source")
+		return stats, e.sourceError(ctx, err, "Could not connect to source")
 	}
 	defer conn.Close()
 	tx, err := conn.BeginTx(ctx, &sql.TxOptions{ReadOnly: e.dialect.ReadOnlyOption})
 	if err != nil {
-		return stats, public(ctx, "Could not begin read-only source transaction")
+		return stats, e.sourceError(ctx, err, "Could not begin read-only source transaction")
 	}
 	// This is deliberately a rollback-only transaction. A native connector must
 	// never make a successful query commit session or transactional changes.
 	defer tx.Rollback()
 	if e.dialect.ReadOnlySession != "" {
 		if _, err = tx.ExecContext(ctx, e.dialect.ReadOnlySession); err != nil {
-			return stats, public(ctx, "Could not enforce read-only source transaction")
+			return stats, e.sourceError(ctx, err, "Could not enforce read-only source transaction")
 		}
 	}
 	rows, err := tx.QueryContext(ctx, normalizedSQL, values...)
 	if err != nil {
-		return stats, public(ctx, "Source rejected query")
+		return stats, e.sourceError(ctx, err, "Source rejected query")
 	}
 	defer rows.Close()
 	columns, err := rows.ColumnTypes()
 	if err != nil {
-		return stats, public(ctx, "Source returned an invalid result")
+		return stats, e.sourceError(ctx, err, "Source returned an invalid result")
 	}
 	schema, err := schemaFor(columns, e.dialect)
 	if err != nil {
@@ -147,7 +152,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	}
 	writer, err := rowarrow.NewWriter(schema, e.limits, sink)
 	if err != nil {
-		return stats, public(ctx, "Could not prepare result stream")
+		return stats, localResultError(ctx, err, "Could not prepare result stream")
 	}
 	defer writer.Close()
 	stats.PrepareNS = time.Since(started).Nanoseconds()
@@ -160,34 +165,28 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 			return stats, query.PublicError(err)
 		}
 		if err := rows.Scan(scan...); err != nil {
-			return stats, public(ctx, "Source returned an invalid row")
+			return stats, e.sourceError(ctx, err, "Source returned an invalid row")
 		}
 		row, err := normalizeRow(schema, valuesOut)
 		if err != nil {
 			return stats, query.NewError("UNSUPPORTED", "Source result value is unsupported")
 		}
 		if err = writer.Write(row); err != nil {
-			return stats, query.PublicError(err)
+			return stats, localResultError(ctx, err, "Could not write result stream")
 		}
 	}
 	if rows.NextResultSet() {
 		return stats, query.NewError("UNSUPPORTED", "Source returned multiple result sets")
 	}
 	if err = rows.Err(); err != nil {
-		return stats, public(ctx, "Source query did not complete")
+		return stats, e.sourceError(ctx, err, "Source query did not complete")
 	}
 	written, err := writer.Finish()
 	stats.Rows, stats.Bytes, stats.Batches = written.Rows, written.Bytes, written.Batches
 	if err != nil {
-		return stats, query.PublicError(err)
+		return stats, localResultError(ctx, err, "Could not finish result stream")
 	}
 	return stats, nil
-}
-func public(ctx context.Context, message string) error {
-	if err := ctx.Err(); err != nil {
-		return query.PublicError(err)
-	}
-	return query.NewError("QUERY_FAILED", message)
 }
 
 func schemaFor(columns []*sql.ColumnType, dialect Dialect) (*arrow.Schema, error) {
