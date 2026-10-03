@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "passed": true,
+  "scope": "Concrete S3/R2/GCS/Azure Put input ownership and all objectstore package regression tests. Offline control and local TLS servers; no live-provider, reader-owner, garbage-collection or performance certification.",
+  "source_revision": "5f06d0ac9f965b71e840dae79d4104936ac3bce4",
+  "source_manifest_sha256": "630ecf47da42e9359ba3bb20f7293dab6a250c0c1bb36dce7d99e88c5c594715",
+  "source_file_count": 976,
+  "selected_component_and_module_files": {
+    "go.mod": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+    "go.sum": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb",
+    "internal/objectstore/client.go": "d622f4becb8f914bc95e2d7b8baf4713d9c752a63e2f49fd193644391487fd2d",
+    "internal/objectstore/s3.go": "86010ffe19ee69d9a32b574f0fecaf589fff86753d31d17a9ed24e2d05ea600d",
+    "internal/objectstore/azure.go": "b43fd9efa95d1541d2c99b10589d461cb32ca986481e11b6ddb4b8c112031496",
+    "internal/objectstore/upload_body.go": "41d8a19fe8edaaf41111a494bc4837767261b6b83939d937568a86ca796a0e61",
+    "internal/objectstore/upload_body_test.go": "42972368d7bd0b8fc59f209e563afbb23c442a9555ebb1735c7ff001531bb176",
+    "internal/objectstore/upload_lifetime_test.go": "5440f417481a7f6ce4cb77a628cd64ffbe4b9e90206ce33fc296f62649d1c021",
+    "scripts/duckbridge-driver.patch": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485"
+  },
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "offline": true,
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "compiler_lanes": 1,
+  "checks": {
+    "external-modfile": {
+      "exit_code": 0,
+      "seconds": 0.003,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "negative-control": {
+      "exit_code": 1,
+      "seconds": 1.867,
+      "log_sha256": "f916f8090bde57e73cd5161f97ab8915c0a37ca008369f4d7c0d8ddc24005260"
+    },
+    "race-tests": {
+      "exit_code": 0,
+      "seconds": 4.522,
+      "log_sha256": "1e793dcd402abcb809158804b2e7576e80dcd8dd0457f9b39c7b6e6cfd5ea8ab"
+    },
+    "vet": {
+      "exit_code": 0,
+      "seconds": 0.765,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "negative_control": {
+    "base_revision": "b47ce87517a5db5ea33facb4c190196fe1a3f0c3",
+    "restored_files": [
+      "internal/objectstore/azure.go",
+      "internal/objectstore/s3.go"
+    ],
+    "source_manifest_sha256": "a852275cfad25162c291502e5cb9301482ed8577b0f0feb3f1397a7a1fb9d7ef",
+    "source_verified_before": true,
+    "source_verified_after": true,
+    "compiled_target_executed": true,
+    "expected_assertion_observed": true,
+    "target": "TestProviderPutJoinsTransportBodyOwnership/s3/delayed-close",
+    "expected_assertion": "upload ownership returned before its required completion proof",
+    "no_build_setup_race_panic_timeout_or_cleanup_failure": true
+  },
+  "test_gate": {
+    "package": "github.com/SYNEHQ/kelvo-go/internal/objectstore",
+    "required_top_level_tests": [
+      "TestAzureErrorResponsesPreserveServerTime",
+      "TestAzureImmutableUploadAndManifestCompareAndSwap",
+      "TestAzurePinnedRangeReadsAndResponseValidation",
+      "TestAzureRangeRejectsCustomTransportOverrun",
+      "TestAzureRefusesInvalidRequestsBeforeNetwork",
+      "TestAzureResponseMetadataAndVersionValidation",
+      "TestAzureSASFormsAndInvalidConfiguration",
+      "TestAzureStreamingGetAndTruncatedBody",
+      "TestAzureTLSRedirectCancellationAndErrorRedaction",
+      "TestExactRangeBody",
+      "TestProviderPutJoinsTransportBodyOwnership",
+      "TestProviderPutRealTransportEarlyResponse",
+      "TestProviderPutZeroBodyAndPreHandoffFailures",
+      "TestS3ClientRefusesRedirectsAndUnsafeConditions",
+      "TestS3CompatibleConditionalPublication",
+      "TestS3CompatibleRanges",
+      "TestS3ResponseIdentityPreservesConditionalErrorClock",
+      "TestS3ResponseIdentityPreservesValidProviderSemantics",
+      "TestS3ResponseIdentityRejectsDuplicateHeaders",
+      "TestS3ResponseIdentityRejectsMismatchedLength",
+      "TestUploadBodyRequiresCloseAfterExactBoundedRead",
+      "TestUploadBodySealsPromptlyAndJoinsSerializedReads"
+    ],
+    "required_top_level_count": 22,
+    "passed_top_level_count": 22,
+    "passed_events_including_subtests": 426,
+    "failures_or_skips": 0,
+    "package_passed": true
+  },
+  "native_bridge": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b",
+    "unchanged_after": true
+  },
+  "external_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb",
+    "unchanged_after": true,
+    "source_module_files_unchanged": true,
+    "replacement": "Only the pre-existing patched DuckDB driver was selected through an external module file. No dependency downloads or source-module edits."
+  },
+  "enforced_isolation": {
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "memory_max": 3221225472,
+    "swap_max": 0,
+    "tasks_max": 256,
+    "private_network": true,
+    "network_interfaces": [
+      "lo"
+    ],
+    "non_root": true,
+    "zero_capabilities": true,
+    "no_new_privileges": true
+  },
+  "launcher": {
+    "exit_code": 0,
+    "status_scope": "SSH/systemd-run --wait command status; ExecMainStatus was not separately observed after collection"
+  },
+  "cleanup": {
+    "owned_service_unloaded": true,
+    "owned_service_inactive": true,
+    "owned_main_pid_zero": true,
+    "owned_cgroup_absent": true
+  },
+  "helper_sha256": {
+    "stage.py": "bf6c4332d035f4616312d1ce5bcd90b35c85506fbf9e914fd89f89bf4a7b00c8",
+    "launch.py": "d27603510d6c6a43f44d7f152d3e80a7b327d579cbcd501ecd10977ba49f9c3c",
+    "validate.py": "5e3673968c4a270c5c685ecd9a4a597b084d41c1c6e15c778d04d5cff10cdc19",
+    "collect.py": "07f2f55b3cc31026b9d247f8b7220de0725408a6c1cfcd7e341a822a52288719"
+  },
+  "validation_report_sha256": "cd673bf7d6144a72d8ae8f0479379e002573ad9899dfedc2fde0443c5f3659ad",
+  "launch_report_sha256": "caacf94ec297897d12a1efb34352e0f3a828c2a9acce38f4b9252c972f14fbdb",
+  "private_receipt_sha256": "529e648d20634253da2e0fe8bab8ff860312eea3fe3bfb8bb7f21d2455b51c5a",
+  "source_bundle_sha256": "22c4987e2e7db8f1de5c505c77c90c35988f5fed4a22d6af7a5857c25f6fdb3a"
+}
