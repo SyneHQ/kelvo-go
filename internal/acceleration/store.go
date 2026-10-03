@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -49,20 +48,30 @@ type Store struct {
 	tenant    string
 }
 
-// Snapshot describes an immutable generation. Query code must hold an acquired
-// Lease for as long as an engine may open or read Path.
+// SnapshotPart is one immutable Parquet payload in an ordered generation.
+// Path is an exact local filename, never a wildcard or an object prefix.
+type SnapshotPart struct {
+	Path   string `yaml:"path"`
+	Rows   int64  `yaml:"rows"`
+	Bytes  int64  `yaml:"bytes"`
+	SHA256 string `yaml:"sha256"`
+}
+
+// Snapshot describes an immutable generation. Query code must hold its Lease
+// while an engine may open Path or any Parts entry. Multipart Path is empty.
 type Snapshot struct {
-	SchemaHash    string    `yaml:"schema_hash,omitempty"`
-	Dataset       string    `yaml:"dataset"`
-	Generation    string    `yaml:"generation"`
-	Path          string    `yaml:"path"`
-	Fingerprint   string    `yaml:"fingerprint"`
-	SHA256        string    `yaml:"sha256"`
-	Rows          int64     `yaml:"rows"`
-	Bytes         int64     `yaml:"bytes"`
-	RefreshedAt   time.Time `yaml:"refreshed_at"`
-	ObjectKey     string    `yaml:"object_key,omitempty"`
-	ObjectVersion string    `yaml:"object_version,omitempty"`
+	SchemaHash    string         `yaml:"schema_hash,omitempty"`
+	Dataset       string         `yaml:"dataset"`
+	Generation    string         `yaml:"generation"`
+	Path          string         `yaml:"path"`
+	Fingerprint   string         `yaml:"fingerprint"`
+	SHA256        string         `yaml:"sha256"`
+	Rows          int64          `yaml:"rows"`
+	Bytes         int64          `yaml:"bytes"`
+	RefreshedAt   time.Time      `yaml:"refreshed_at"`
+	Parts         []SnapshotPart `yaml:"parts,omitempty"`
+	ObjectKey     string         `yaml:"object_key,omitempty"`
+	ObjectVersion string         `yaml:"object_version,omitempty"`
 	// These process-local observations never enter manifests or JSON responses.
 	ageObservedAt time.Time
 	ageObserved   time.Duration
@@ -89,15 +98,16 @@ func (snapshot Snapshot) observeClock(reference time.Time) Snapshot {
 }
 
 type storeManifest struct {
-	SchemaHash  string    `yaml:"schema_hash,omitempty"`
-	Version     int       `yaml:"version"`
-	Dataset     string    `yaml:"dataset"`
-	Generation  string    `yaml:"generation"`
-	Fingerprint string    `yaml:"fingerprint"`
-	SHA256      string    `yaml:"sha256"`
-	Rows        int64     `yaml:"rows"`
-	Bytes       int64     `yaml:"bytes"`
-	RefreshedAt time.Time `yaml:"refreshed_at"`
+	Parts       []SnapshotPart `yaml:"parts,omitempty"`
+	SchemaHash  string         `yaml:"schema_hash,omitempty"`
+	Version     int            `yaml:"version"`
+	Dataset     string         `yaml:"dataset"`
+	Generation  string         `yaml:"generation"`
+	Fingerprint string         `yaml:"fingerprint"`
+	SHA256      string         `yaml:"sha256"`
+	Rows        int64          `yaml:"rows"`
+	Bytes       int64          `yaml:"bytes"`
+	RefreshedAt time.Time      `yaml:"refreshed_at"`
 }
 
 // OpenStore creates or validates private namespaces. It never changes the
@@ -359,6 +369,7 @@ func (tx *Transaction) cleanup() error {
 // Lease pins a generation across workers until Close. Do not copy a Lease.
 type Lease struct {
 	Snapshot Snapshot
+	files    []*os.File
 	file     *os.File
 	release  func() error
 	once     sync.Once
@@ -412,6 +423,9 @@ func (s *Store) acquire(ctx context.Context, dataset, fingerprint string, maxAge
 			return nil, ErrStale
 		}
 	}
+	if manifest.Version == 2 {
+		return acquireMultipart(ctx, dir, manifest)
+	}
 	payload, err := storeValidatePayload(dir, manifest)
 	if err != nil {
 		return nil, err
@@ -445,6 +459,14 @@ func (s *Store) Verify(ctx context.Context, dataset string) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	defer lease.Close()
+	if len(lease.Snapshot.Parts) > 0 {
+		for i, file := range lease.files {
+			if _, err := verifyMultipartPart(ctx, file, lease.Snapshot.Parts[i], lease.Snapshot.SchemaHash); err != nil {
+				return Snapshot{}, err
+			}
+		}
+		return lease.Snapshot, nil
+	}
 	digest, err := storeHash(ctx, lease.file)
 	if err != nil {
 		return Snapshot{}, err
@@ -481,92 +503,24 @@ func (s *Store) Prune(ctx context.Context, dataset string, keep int) error {
 	}
 	defer metadata.Close()
 	manifest, err := storeReadManifest(dir, dataset)
+	if errors.Is(err, ErrNotFound) {
+		// An initial publication may crash before any current pointer exists. Only
+		// genuine absence authorizes orphan inspection; malformed current metadata
+		// must never be treated as an empty dataset. Complete generations with valid
+		// sidecars remain retained until normal pruning after a successful publish.
+		entries, readErr := dir.ReadDir(-1)
+		if readErr != nil {
+			return readErr
+		}
+		if recoverErr := recoverOrphanParts(ctx, dir, storeManifest{Dataset: dataset}, entries); recoverErr != nil {
+			return recoverErr
+		}
+		return ErrNotFound
+	}
 	if err != nil {
 		return err
 	}
-	active, err := storeValidatePayload(dir, manifest)
-	if err != nil {
-		return err
-	}
-	_ = active.Close()
-	entries, err := dir.ReadDir(-1)
-	if err != nil {
-		return err
-	}
-	type candidate struct {
-		name     string
-		modified time.Time
-	}
-	var candidates []candidate
-	for _, entry := range entries {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		name := entry.Name()
-		generation := strings.TrimSuffix(name, ".parquet")
-		if name == generation || !storeGenerationID.MatchString(generation) {
-			continue
-		}
-		file, err := storeOpenFile(dir, name, os.O_RDONLY, 0)
-		if err != nil {
-			return fmt.Errorf("%w: cannot inspect retained generation: %w", ErrCorrupt, err)
-		}
-		err = storeCheckPrivate(file, false, true)
-		info, statErr := file.Stat()
-		_ = file.Close()
-		if err != nil {
-			return err
-		}
-		if statErr != nil {
-			return statErr
-		}
-		if generation != manifest.Generation {
-			candidates = append(candidates, candidate{name, info.ModTime()})
-		}
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].modified.Equal(candidates[j].modified) {
-			return candidates[i].name > candidates[j].name
-		}
-		return candidates[i].modified.After(candidates[j].modified)
-	})
-	changed := false
-	defer func() {
-		if changed {
-			_ = dir.Sync()
-		}
-	}()
-	for index, candidate := range candidates {
-		if index < keep-1 {
-			continue
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		file, err := storeOpenFile(dir, candidate.name, os.O_RDONLY, 0)
-		if err != nil {
-			return err
-		}
-		locked, err := storeTryLock(file, true)
-		if err == nil && locked {
-			err = storeRemove(dir, candidate.name)
-			changed = err == nil || changed
-			if err == nil {
-				sidecar := generationManifestName(strings.TrimSuffix(candidate.name, ".parquet"))
-				if removeErr := storeRemove(dir, sidecar); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
-					err = removeErr
-				}
-			}
-		}
-		_ = file.Close()
-		if err != nil {
-			return err
-		}
-	}
-	if changed {
-		return dir.Sync()
-	}
-	return nil
+	return pruneGenerations(ctx, dir, manifest, keep)
 }
 
 func storeReadManifest(dir *os.File, dataset string) (storeManifest, error) {
@@ -602,18 +556,29 @@ func storeReadManifestNamed(dir *os.File, dataset, name string) (storeManifest, 
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return manifest, fmt.Errorf("%w: snapshot manifest must contain one YAML document", ErrCorrupt)
 	}
-	if (manifest.SchemaHash != "" && !storeDigest.MatchString(manifest.SchemaHash)) || manifest.Version != 1 || manifest.Dataset != dataset || !storeGenerationID.MatchString(manifest.Generation) ||
+	if (manifest.SchemaHash != "" && !storeDigest.MatchString(manifest.SchemaHash)) || (manifest.Version != 1 && manifest.Version != 2) || manifest.Dataset != dataset || !storeGenerationID.MatchString(manifest.Generation) ||
 		!storeDigest.MatchString(manifest.SHA256) || manifest.Fingerprint == "" || len(manifest.Fingerprint) > storeFingerprintLimit ||
 		manifest.Rows < 0 || manifest.Bytes < 0 || manifest.RefreshedAt.IsZero() {
 		return manifest, fmt.Errorf("%w: invalid snapshot manifest fields", ErrCorrupt)
+	}
+	if err := validateManifestParts(manifest); err != nil {
+		return manifest, err
 	}
 	return manifest, nil
 }
 
 func (manifest storeManifest) snapshot(directory string) Snapshot {
-	return Snapshot{SchemaHash: manifest.SchemaHash, Dataset: manifest.Dataset, Generation: manifest.Generation,
+	snapshot := Snapshot{SchemaHash: manifest.SchemaHash, Dataset: manifest.Dataset, Generation: manifest.Generation,
 		Path: filepath.Join(directory, manifest.Generation+".parquet"), Fingerprint: manifest.Fingerprint,
 		SHA256: manifest.SHA256, Rows: manifest.Rows, Bytes: manifest.Bytes, RefreshedAt: manifest.RefreshedAt}
+	if manifest.Version == 2 {
+		snapshot.Path = ""
+		snapshot.Parts = append([]SnapshotPart(nil), manifest.Parts...)
+		for i := range snapshot.Parts {
+			snapshot.Parts[i].Path = filepath.Join(directory, snapshot.Parts[i].Path)
+		}
+	}
+	return snapshot
 }
 
 func storeValidatePayload(dir *os.File, manifest storeManifest) (*os.File, error) {
@@ -698,7 +663,7 @@ func storeCleanStages(ctx context.Context, dir *os.File) error {
 		stage := name == ".stage-"+id+".parquet" && storeGenerationID.MatchString(id)
 		id = strings.TrimSuffix(strings.TrimPrefix(name, ".manifest-"), ".yaml")
 		manifest := name == ".manifest-"+id+".yaml" && storeGenerationID.MatchString(id)
-		if !stage && !manifest {
+		if !stage && !manifest && !multipartStageName.MatchString(name) {
 			continue
 		}
 		file, err := storeOpenFile(dir, name, os.O_RDONLY, 0)

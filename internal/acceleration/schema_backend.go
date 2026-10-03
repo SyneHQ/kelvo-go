@@ -40,19 +40,7 @@ func (tx *Transaction) PreviousSchema() (*arrow.Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	payload, err := storeValidatePayload(tx.dir, manifest)
-	if err != nil {
-		return nil, err
-	}
-	defer payload.Close()
-	schema, err := ReadParquetSchema(payload, manifest.Bytes)
-	if err != nil {
-		return nil, err
-	}
-	if err = verifySchemaHash(schema, manifest.SchemaHash); err != nil {
-		return nil, err
-	}
-	return schema, nil
+	return storeVerifyGeneration(tx.ctx, tx.dir, manifest)
 }
 
 func (tx *Transaction) SetSchema(schema *arrow.Schema) error {

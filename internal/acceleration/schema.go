@@ -70,7 +70,10 @@ func SchemaFingerprint(schema *arrow.Schema) (string, error) {
 // ReadParquetSchema reads original Arrow metadata, not Parquet's normalized
 // schema (which can lose widths/time units). Only bounded footer metadata is
 // decoded, and a section reader preserves the caller's file offset/lifetime.
-func ReadParquetSchema(input io.ReaderAt, size int64) (schema *arrow.Schema, err error) {
+func ReadParquetSchema(input io.ReaderAt, size int64) (*arrow.Schema, error) {
+	return readParquetSchema(input, size, nil)
+}
+func readParquetSchema(input io.ReaderAt, size int64, rows *int64) (schema *arrow.Schema, err error) {
 	if input == nil || size < 12 {
 		return nil, fmt.Errorf("%w: invalid Parquet size", ErrCorrupt)
 	}
@@ -94,6 +97,9 @@ func ReadParquetSchema(input io.ReaderAt, size int64) (schema *arrow.Schema, err
 		return nil, fmt.Errorf("%w: unreadable Parquet metadata", ErrCorrupt)
 	}
 	defer reader.Close()
+	if rows != nil {
+		*rows = reader.NumRows()
+	}
 	encoded := reader.MetaData().KeyValueMetadata().FindValue("ARROW:schema")
 	if encoded == nil || len(*encoded) > base64.StdEncoding.EncodedLen(maxSchemaBytes) {
 		return nil, fmt.Errorf("%w: missing or oversized original Arrow schema", ErrCorrupt)

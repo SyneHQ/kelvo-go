@@ -73,6 +73,9 @@ func storeSaveGeneration(dir *os.File, manifest storeManifest) error {
 // Verify checksum before parsing any Parquet footer. Metadata hashes are checked
 // against the actual Arrow schema, not accepted merely because a sidecar says so.
 func storeVerifyGeneration(ctx context.Context, dir *os.File, manifest storeManifest) (*arrow.Schema, error) {
+	if manifest.Version == 2 {
+		return verifyMultipartGeneration(ctx, dir, manifest)
+	}
 	payload, err := storeValidatePayload(dir, manifest)
 	if err != nil {
 		return nil, err

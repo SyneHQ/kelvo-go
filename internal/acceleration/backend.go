@@ -85,3 +85,29 @@ func (*localBackend) Close() error { return nil }
 
 var _ Backend = (*localBackend)(nil)
 var _ RefreshWriter = (*Transaction)(nil)
+
+// MultipartOptions bounds the number and encoded sizes of local immutable parts.
+type MultipartOptions struct {
+	MaxParts                    int
+	MaxPartBytes, MaxTotalBytes int64
+}
+
+// MultipartRefreshWriter owns each NewPart file until SealPart or Abort.
+// Finish the Parquet encoder before sealing; zero-row refreshes still seal one
+// schema-only part. Commit publishes the complete generation atomically.
+type MultipartRefreshWriter interface {
+	Context() context.Context
+	NewPart() (*os.File, error)
+	SealPart(rows int64) error
+	Commit(fingerprint string) (Snapshot, error)
+	Abort() error
+	SchemaWriter
+}
+
+// MultipartBackend is optional; remote object backends deliberately do not
+// implement it until atomic remote multipart generation recovery is supported.
+type MultipartBackend interface {
+	BeginMultipart(context.Context, string, MultipartOptions) (MultipartRefreshWriter, error)
+}
+
+var _ MultipartBackend = (*localBackend)(nil)
