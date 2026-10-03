@@ -62,9 +62,29 @@ execution and DuckDB computation timings. The startup SELECT
 probe counts as a query execution. Metrics are process-local and reset on restart;
 optional [lifecycle tracing](tracing.md) exports bounded, sampled local query/refresh
 spans through OTLP/HTTP. It is disabled by default and excludes SQL, parameters,
-source/tenant identities and raw errors. These spans do not establish distributed
-trace continuity or full queue/stage timings. There is no durable query history. Snapshotting
+source/tenant identities and raw errors. Query workers expose six reached, disjoint local phase histograms and matching
+sampled spans: validation, node admission, source admission, preparation,
+combined execution/delivery and cleanup. A separate first-batch histogram measures
+executor entry to the first decoded Arrow record before sink delivery; empty
+streams have no record observation. Cumulative schema/record sink callback time
+is a subset of execution/delivery, never an additional phase or pure network
+measurement. Early failure teardown remains in its active phase. Full phase
+semantics and refresh differences are documented in
+[lifecycle tracing](tracing.md#what-is-recorded). Neither metrics nor spans measures
+JetStream dispatch wait, client claim delay, gateway receipt, or separate
+overlapping database execution and transfer. There is no durable query history. Snapshotting
 metrics takes a short lock; rendering occurs after releasing it.
+
+## Passive source observations
+
+Optional `source_health: {observation_ttl: 5m}` in node YAML enables protected
+worker `GET /sources` diagnostics for at most 256 configured live sources. The
+registry records eligible native-query completions and selected typed failures,
+including native refresh extraction. It issues no probe SQL and expires old
+observations to `unknown`; it does not affect liveness or readiness. Source IDs
+stay within the tenant-bound worker's internal gateway-mTLS endpoint and never
+become metric labels. See [source diagnostics](source-health.md) for attribution,
+exclusions, fixed categories and the validation contract.
 
 ## Maintenance
 

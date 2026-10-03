@@ -132,21 +132,23 @@ type GatewayConfig struct {
 }
 
 type NodeConfig struct {
-	Tracing          *tracing.Config          `yaml:"tracing,omitempty"`
-	RuntimeTracing   *tracing.Recorder        `yaml:"-"`
-	RequiredDatasets []string                 `yaml:"required_datasets,omitempty"`
-	RuntimeDatasets  *DatasetReporter         `yaml:"-"`
-	History          *telemetry.HistoryConfig `yaml:"history,omitempty"`
-	RuntimeHistory   *telemetry.History       `yaml:"-"`
-	Secrets          *secrets.Config          `yaml:"secrets,omitempty"`
-	RuntimeResources *admission.Pool          `yaml:"-"`
-	Resources        *ResourceConfig          `yaml:"resources,omitempty"`
-	RuntimeMetrics   *telemetry.Registry      `yaml:"-"`
-	Listen           string                   `yaml:"listen"`
-	TLS              TLSConfig                `yaml:"tls"`
-	NATS             NATSConfig               `yaml:"nats"`
-	Policy           Policy                   `yaml:"policy"`
-	WorkerID         string                   `yaml:"worker_id"`
-	CatalogFile      string                   `yaml:"catalog_file"`
-	SandboxPath      string                   `yaml:"sandbox_path"`
+	SourceHealth        *telemetry.SourceHealthConfig `yaml:"source_health,omitempty"`
+	RuntimeSourceHealth *telemetry.SourceHealth       `yaml:"-"`
+	Tracing             *tracing.Config               `yaml:"tracing,omitempty"`
+	RuntimeTracing      *tracing.Recorder             `yaml:"-"`
+	RequiredDatasets    []string                      `yaml:"required_datasets,omitempty"`
+	RuntimeDatasets     *DatasetReporter              `yaml:"-"`
+	History             *telemetry.HistoryConfig      `yaml:"history,omitempty"`
+	RuntimeHistory      *telemetry.History            `yaml:"-"`
+	Secrets             *secrets.Config               `yaml:"secrets,omitempty"`
+	RuntimeResources    *admission.Pool               `yaml:"-"`
+	Resources           *ResourceConfig               `yaml:"resources,omitempty"`
+	RuntimeMetrics      *telemetry.Registry           `yaml:"-"`
+	Listen              string                        `yaml:"listen"`
+	TLS                 TLSConfig                     `yaml:"tls"`
+	NATS                NATSConfig                    `yaml:"nats"`
+	Policy              Policy                        `yaml:"policy"`
+	WorkerID            string                        `yaml:"worker_id"`
+	CatalogFile         string                        `yaml:"catalog_file"`
+	SandboxPath         string                        `yaml:"sandbox_path"`
 }

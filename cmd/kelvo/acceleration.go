@@ -24,8 +24,9 @@ import (
 )
 
 type refreshOptions struct {
-	Admission worker.SourceAdmitter
-	Secrets   worker.SecretResolver
+	SourceHealth *telemetry.SourceHealth
+	Admission    worker.SourceAdmitter
+	Secrets      worker.SecretResolver
 }
 
 func refreshFactory(sandbox string, options ...refreshOptions) acceleration.ExecutorFactory {
@@ -36,6 +37,7 @@ func refreshFactory(sandbox string, options ...refreshOptions) acceleration.Exec
 			if len(options) > 0 {
 				e.SourceAdmission = options[0].Admission
 				e.Secrets = options[0].Secrets
+				e.SourceHealth = options[0].SourceHealth
 			}
 		}
 		return e, err
@@ -178,8 +180,8 @@ func backupCLIError(snapshot acceleration.Snapshot, err error) error {
 // Cluster dispatch uses a tenant's existing authenticated JetStream account.
 // Messages contain dataset identity and definition fingerprint only. Every node
 // must mount the same tenant snapshot store with working POSIX flock semantics.
-func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate, sourceQuotas worker.SourceAdmitter, secrets worker.SecretResolver, recorders ...*tracing.Recorder) error {
-	m, err := acceleration.NewManager(c, refreshFactory(sandbox, refreshOptions{Admission: sourceQuotas, Secrets: secrets}))
+func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate, sourceQuotas worker.SourceAdmitter, secrets worker.SecretResolver, sourceHealth *telemetry.SourceHealth, recorders ...*tracing.Recorder) error {
+	m, err := acceleration.NewManager(c, refreshFactory(sandbox, refreshOptions{Admission: sourceQuotas, Secrets: secrets, SourceHealth: sourceHealth}))
 	if err != nil {
 		return err
 	}

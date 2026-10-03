@@ -96,6 +96,11 @@ func LoadNode(path string) (NodeConfig, error) {
 			return c, err
 		}
 	}
+	if c.SourceHealth != nil {
+		if err := c.SourceHealth.Validate(); err != nil {
+			return c, err
+		}
+	}
 	if c.History != nil {
 		if err := c.History.Validate(); err != nil {
 			return c, err

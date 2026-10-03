@@ -340,6 +340,10 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "mutual TLS gateway identity required", http.StatusUnauthorized)
 		return
 	}
+	if r.URL.Path == "/sources" && n.cfg.RuntimeSourceHealth != nil {
+		n.serveSourceHealth(w, r)
+		return
+	}
 	if r.URL.Path == "/datasets" && n.cfg.RuntimeDatasets != nil {
 		n.cfg.RuntimeDatasets.ServeHTTP(w, r)
 		return

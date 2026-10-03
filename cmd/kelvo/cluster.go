@@ -140,6 +140,13 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 			return err
 		}
 	}
+	if cfg.SourceHealth != nil {
+		cfg.RuntimeSourceHealth, err = cluster.NewSourceHealth(catalogue, *cfg.SourceHealth)
+		if err != nil {
+			return query.NewError("CONFIGURATION_ERROR", "Invalid source health configuration")
+		}
+		executor.SourceHealth = cfg.RuntimeSourceHealth
+	}
 	cfg.RuntimeMetrics = telemetry.New()
 	executor.Metrics = cfg.RuntimeMetrics
 	var pool *admission.Pool
@@ -224,7 +231,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 	if refreshQueue != nil {
 		refreshDone = make(chan error, 1)
 		go func() {
-			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeTracing)
+			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeSourceHealth, cfg.RuntimeTracing)
 			stop()
 		}()
 	}
