@@ -271,6 +271,10 @@ func TestExportClusterActualWorkerLifecycle(t *testing.T) {
 				t.Fatal("foreign principal handle disclosed", code, err)
 			}
 		}
+		code, _, err := call(t, "POST", "/v1/exports/"+retained.ID+"/cancel", rotationOther, nil)
+		if err != nil || code != http.StatusNotFound {
+			t.Fatal("foreign principal could cancel export", code, err)
+		}
 	})
 	if t.Failed() {
 		return
@@ -349,6 +353,11 @@ func TestExportClusterActualWorkerLifecycle(t *testing.T) {
 			t.Fatal("withdrawn export readable", code, err)
 		}
 	})
+	// HTTP completion can precede the worker handler's deferred lease release.
+	deadline := time.Now().Add(time.Second)
+	for engine.ResourcePool.Snapshot().Active != 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if state := engine.ResourcePool.Snapshot(); state.Active != 0 {
 		t.Fatal("export reservations leaked", state.Active)
 	}
