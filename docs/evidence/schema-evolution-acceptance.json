@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "checked_at": "2026-10-03T03:07:09.631893+00:00",
+  "checks": [
+    {
+      "test": "default_strict_rejects_addition",
+      "passed": true,
+      "expected": "rejected",
+      "layout": "single",
+      "checked_rows": 8
+    },
+    {
+      "test": "default_strict_rejects_widening",
+      "passed": true,
+      "expected": "rejected",
+      "layout": "single",
+      "checked_rows": 8
+    },
+    {
+      "test": "nullable_addition",
+      "passed": true,
+      "expected": "published_then_regression_and_restore_rejected",
+      "layout": "single",
+      "checked_rows": 8,
+      "parts": 1,
+      "encoded_bytes": 2470
+    },
+    {
+      "test": "integer_widening",
+      "passed": true,
+      "expected": "published_then_regression_and_restore_rejected",
+      "layout": "single",
+      "checked_rows": 8,
+      "parts": 1,
+      "encoded_bytes": 2297
+    },
+    {
+      "test": "addition_flag_does_not_enable_widening",
+      "passed": true,
+      "expected": "rejected",
+      "layout": "single",
+      "checked_rows": 8
+    },
+    {
+      "test": "widening_flag_does_not_enable_addition",
+      "passed": true,
+      "expected": "rejected",
+      "layout": "single",
+      "checked_rows": 8
+    },
+    {
+      "test": "combined_multipart_evolution",
+      "passed": true,
+      "expected": "published_then_regression_and_restore_rejected",
+      "layout": "multipart",
+      "checked_rows": 100000,
+      "parts": 28,
+      "encoded_bytes": 12186576
+    },
+    {
+      "test": "explicit_strict_fallback_and_omitted_policy_equivalence",
+      "passed": true,
+      "checked_rows": 8
+    }
+  ],
+  "runtime": {
+    "os": "Linux",
+    "architecture": "x86_64",
+    "binary_sha256": "3c1c712be04ab69cd75296e316c107293e540546c39863ab31d11f1f26959d12",
+    "sandbox_sha256": "cb09cd6b1bcf29a50b7436e02f3aebc9c2f47b1cca74a27c4fe5a7b9ec2bfb6f"
+  },
+  "scope": "Local real-process DuckDB/Arrow schema evolution correctness with sandboxed refresh/query and multipart files; no remote-provider, concurrency, throughput or production-readiness claim",
+  "elapsed_seconds": 5.465,
+  "runtime_milestone": "6f748c5"
+}

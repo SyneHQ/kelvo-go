@@ -104,8 +104,8 @@ type MultipartRefreshWriter interface {
 	SchemaWriter
 }
 
-// MultipartBackend is optional; remote object backends deliberately do not
-// implement it until atomic remote multipart generation recovery is supported.
+// MultipartBackend extends the single-file contract with complete-generation
+// publication. Both local and object backends implement its bounded parts.
 type MultipartBackend interface {
 	BeginMultipart(context.Context, string, MultipartOptions) (MultipartRefreshWriter, error)
 }

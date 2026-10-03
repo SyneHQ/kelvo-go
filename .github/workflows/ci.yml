@@ -24,10 +24,16 @@ jobs:
         run: python3 scripts/test_analytics_evidence.py --campaign docs/evidence/analytics-azure-snapshot.json --validation docs/evidence/analytics-validation-measured.json
       - run: go test -tags duckdb_arrow ./...
       - run: go test -race ./internal/admission ./internal/telemetry ./internal/secrets ./federation ./internal/federation ./cmd/kelvo ./internal/transport/httpapi ./internal/sources/... ./internal/cluster ./internal/worker ./internal/acceleration ./internal/catalog ./internal/objectstore
+      - name: Race-check schema and multipart object consumers
+        run: go test -p 2 -race -tags duckdb_arrow ./internal/acceleration ./internal/engine/duckdb -run 'Test(SchemaEvolution|ObjectDescriptor|ObjectRange|ObjectMultipart(Commit|Empty|Seal|Descriptor|Lease|Ambiguous|Options|Root|Canceled)|MultipartRanges|MultipartObject|ExecuteMultipart)' -count=1 -timeout=10m
       - run: go vet -tags duckdb_arrow ./...
       - run: go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
       - run: cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o bin/kelvo-landlock
       - run: python3 -m pip install pyarrow==25.0.1
+      - name: Verify local multipart CLI conformance
+        run: python3 scripts/multipart_acceptance.py
+      - name: Verify schema evolution CLI conformance
+        run: python3 scripts/schema_evolution_acceptance.py
       - run: python3 scripts/acceptance.py
       - run: python3 scripts/test_cluster_fixture.py
       - run: python3 scripts/cluster_fixture.py provision

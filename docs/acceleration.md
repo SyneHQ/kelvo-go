@@ -182,16 +182,24 @@ The current direction is Go orchestration, DuckDB execution, Arrow delivery and 
 
 ## Schema contracts and generation recovery
 
-Refresh now compares the complete original Arrow schema with the prior committed
-generation under the writer lock/lease. Field order, exact types, nullability and
-schema/field metadata must match. No automatic widening, dropping or coercion is
-performed. A mismatch returns `SCHEMA_MISMATCH` and leaves the previous generation
-intact. Original Arrow schema metadata is read from legacy Parquet snapshots;
-new manifests also persist its fingerprint. Object schema reads require bounded,
-version-pinned range support. An intentional incompatible redesign requires a
-separately managed dataset/migration, not an automatic schema policy switch.
+Refresh compares the original Arrow schema with the prior committed generation
+under the writer lock/lease. Matching is strict by default: field order, exact
+types, nullability and schema/field metadata must match. Optional dataset
+[`schema_evolution`](schema-evolution.md) flags permit append-only nullable fields
+and conservative widening independently. Existing nullability, metadata, renames,
+removals and timestamp changes remain protected; no implicit casts are performed.
+The new policy's integrated validation is pending.
 
-Local POSIX stores support operator-only inventory and restore:
+A mismatch returns `SCHEMA_MISMATCH` and preserves the previous generation.
+Within a generation, all batches and parts still require one exact schema.
+Original Arrow schema metadata is read from legacy snapshots; new manifests also
+persist its fingerprint. Object schema reads use bounded, version-pinned ranges.
+Changing an effective evolution policy changes the catalog fingerprint: old data
+is unavailable under the new policy until a complete refresh succeeds. Coordinate
+cluster worker/scheduler configuration changes, and retain `authorization_version`
+changes for permission updates. See the policy guide for rollout and restore limits.
+
+Local and remote stores support operator-only inventory and restore:
 
 ```sh
 kelvo accelerate inventory --config kelvo.yml --dataset sales_snapshot
@@ -203,12 +211,15 @@ Restore verifies the target and current payload checksums, exact schemas and the
 current catalog's authorization fingerprint, then switches the manifest under the
 writer lock. It retains the original data timestamp; an old restore may correctly
 remain stale. The expected generation prevents overwriting a concurrent refresh.
-Reader leases continue protecting pinned payloads. Inventory is capped at 256
-retained generations and fails explicitly above that bound. New generation
-sidecars preserve recovery metadata; previously retired files without sidecars
-cannot safely be inventoried. Remote inventory/restore and repair of a corrupt
-current payload are not implemented. Keep verified backups of manifests, sidecars
-and referenced data together; this feature does not establish measured RTO/RPO.
+Local reader leases protect pinned payloads; local inventory is capped at 256
+retained generations. Remote inventory uses a bounded manifest catalog of current
+plus at most 16 historical entries, rather than listing storage. See
+[remote recovery and protocol upgrades](operations.md#remote-generation-inventory-and-restore).
+Schema evolution never relaxes restore: old-policy fingerprints and backward
+schema changes remain rejected. Recovery requires a verifiable current generation;
+repair of a corrupt current payload is a separate procedure. Keep verified backups
+of manifests, descriptors and referenced data together; this feature does not
+establish measured RTO/RPO.
 
 ## Durable refresh failures
 

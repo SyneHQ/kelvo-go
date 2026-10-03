@@ -49,8 +49,15 @@ a bounded descriptor/root reference; it adds no incremental refresh or remote GC
 These checks do not establish actual cloud-provider acceptance or general
 production capacity.
 
-Schema evolution policies, provider-wide conformance/rotation coverage, full
-queue/stage timing, export-specific admission, safe remote GC,
+Opt-in [schema evolution](schema-evolution.md) now permits append-only nullable
+fields and a conservative numeric widening allowlist through independent flags.
+Strict remains default; within-generation integrity and restore remain exact.
+Versioned policy fingerprints fence configuration changes, and actual drift errors
+now stop durable retries as permanent schema failures. The eight-case sandboxed
+CLI acceptance and four storage/layout publication paths passed development checks.
+
+Provider-wide conformance/rotation coverage, full queue/stage timing,
+export-specific admission, safe remote GC,
 backup recovery and sustained fault/capacity gates remain pending. The validation
 records in [operations](operations.md) identify their tested runtime commits;
 implementation status does not extend those results to later unvalidated changes.
