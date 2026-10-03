@@ -1,6 +1,6 @@
 // Copyright 2026 SYNEHQ. SPDX-License-Identifier: Apache-2.0
 // Package tracing provides opt-in, bounded, sanitized lifecycle tracing. It does
-// not install a global provider or propagate request baggage and trace headers.
+// not install a global provider or import request baggage and trace headers.
 package tracing
 
 import (
@@ -70,6 +70,7 @@ func (c Config) Validate() error {
 // Duration excludes admission wait and includes setup, execution and transfer.
 // These intervals are local worker observations, not full cluster queue time.
 type Event struct {
+	Parent        Carrier
 	Kind          telemetry.Kind
 	Outcome       telemetry.Outcome
 	StartedAt     time.Time
@@ -190,12 +191,12 @@ func newRecorder(cfg Config, exporter sdktrace.SpanExporter) *Recorder {
 	// The SDK merges environment attributes into its resource. Our processor
 	// detaches and filters spans before queueing; this local provider does not
 	// affect other application tracing.
-	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sanitizingProcessor{processor}), sdktrace.WithSampler(sdktrace.TraceIDRatioBased(cfg.SampleRatio)), sdktrace.WithResource(resource.NewSchemaless(attribute.String("service.name", "kelvo"))))
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sanitizingProcessor{processor}), sdktrace.WithSampler(ceilingSampler{sdktrace.TraceIDRatioBased(cfg.SampleRatio)}), sdktrace.WithResource(resource.NewSchemaless(attribute.String("service.name", "kelvo"))))
 	return &Recorder{provider: provider, tracer: provider.Tracer("github.com/SYNEHQ/kelvo-go/lifecycle")}
 }
 
 // Record never waits for exporter queue space (SDK drop-on-full is retained).
-// It starts a new sanitized trace rather than importing client propagation data.
+// It imports only the validated internal carrier; client propagation is ignored.
 func (r *Recorder) Record(event Event) {
 	if r == nil || r.stopped.Load() || event.StartedAt.IsZero() || event.AdmissionWait < 0 || event.Duration < 0 || event.AdmissionWait > 24*time.Hour || event.Duration > 24*time.Hour {
 		return
@@ -219,7 +220,7 @@ func (r *Recorder) Record(event Event) {
 	default:
 		return
 	}
-	ctx, span := r.tracer.Start(context.Background(), name, trace.WithTimestamp(event.StartedAt), trace.WithAttributes(attribute.String("kelvo.kind", kind), attribute.String("kelvo.outcome", outcome)))
+	ctx, span := r.tracer.Start(carrierContext(event.Parent), name, trace.WithTimestamp(event.StartedAt), trace.WithAttributes(attribute.String("kelvo.kind", kind), attribute.String("kelvo.outcome", outcome)))
 	if event.Outcome != telemetry.OutcomeSuccess {
 		span.SetStatus(codes.Error, outcome)
 	}
