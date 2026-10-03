@@ -93,9 +93,18 @@ Queue/dispatch, first-byte, query, slow-delivery and cancellation histograms mus
 contain samples. Overflow bins remain explicit; a missing tail is not zero.
 
 Process-tree RSS sampling covers owned application parents and observed
-descendants. Dedicated service cgroup accounting also includes the brokers and
-Python controller. RSS may double-count shared pages and miss short peaks;
-charged cgroup memory has a different scope. The report retains CPU counters,
+descendants. The observer reads PID, start time, process state and RSS pages from
+one `/proc/PID/stat` record, converts pages with the recorded system page size,
+and rejects malformed or missing fields. It does not read `/proc/PID/status`
+for a second RSS observation. Only explicit exited states and `ENOENT`/`ESRCH`
+are treated as process disappearance; permission and other I/O errors still fail.
+
+Stat RSS is an approximate diagnostic: Linux uses inexpensive per-CPU resident
+counters. On the tested kernel, status `VmRSS` sums those counters more precisely,
+so the two series should not be compared directly. RSS may double-count shared
+pages and miss short peaks. Dedicated service `memory.peak` is the charged-memory
+peak for the whole fixture, including brokers and the Python controller; it has
+a different scope. The report retains CPU counters,
 OOM events, scratch peaks, query/refresh overlap and node-local queue histograms
 across worker restarts. Dispatch observation uses polling and is an upper bound,
 not precise distributed queue attribution.
@@ -111,6 +120,25 @@ Retain failed reports alongside successful ones. Initial smoke failures exposed
 a restricted fixture serializer, an over-budget wide projection, handle eviction
 during a cancellation assertion and an incorrect harness liveness path. These
 are separate observations; a later passing run does not erase them.
+
+The [600-second smoke on `0da7523`](evidence/sustained-smoke-failed-0da7523.json)
+also remains failed. All ten workload and cleanup gates passed, but strict
+reconciliation rejected two `status/malformed` observations. Their cause was
+not captured precisely enough to infer retrospectively. The source and binaries
+were unchanged and the owned service and cgroup were removed. Its raw report
+SHA-256 is `e1a0b43f46e96fb1adbd6869bb5d203986dad63bc8f5336379643842181247c8`.
+
+The current observer removes a documented exit-time hazard: Linux may omit
+memory fields from status after a task loses its memory descriptor, whereas stat
+always emits its RSS field, using numeric zero when that descriptor is absent.
+This explains the design change, not the cause of the historical observations.
+The field definitions and precision caveats are documented in the
+[Linux stat manual](https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html),
+[proc filesystem guide](https://docs.kernel.org/filesystems/proc.html), and the
+tested kernel's upstream
+[stat/status implementation](https://github.com/gregkh/linux/blob/v6.12.95/fs/proc/array.c),
+[status memory counters](https://github.com/gregkh/linux/blob/v6.12.95/fs/proc/task_mmu.c)
+and [RSS counter helpers](https://github.com/gregkh/linux/blob/v6.12.95/include/linux/mm.h).
 
 This is synthetic single-host lifecycle and resource acceptance. It does not
 certify WAN capacity, source-provider behavior, multihost availability, mixed

@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -44,7 +45,9 @@ def valid_report():
             "progress_windows": [{"start_seconds": 0., "end_seconds": 7200., "deltas": {kind: {tenant: 5 for tenant in fixture.TENANTS} for kind in ("queries", "refreshes")}}]}
     report["build_source"] = copy.deepcopy(report["source"])
     report["control_response_counts"] = {"queued_status_http_200": 6}
-    report["process_sampling"] = {"process_tree_rss_available": True, "samples": 100, "sampled_process_tree_rss_peak_bytes": 1024, "read_errors": []}
+    report["process_sampling"] = {"process_tree_rss_available": True, "samples": 100,
+        "sampled_process_tree_rss_peak_bytes": 1024, "read_errors": [],
+        "rss_source": fixture.PROCESS_RSS_SOURCE, "page_size_bytes": 4096}
     report["latencies"] = {}
     for kind in ("query", "dispatch_observation", "first_byte", "slow_delivery", "cancel"):
         report["latencies"][kind] = {}
@@ -160,42 +163,89 @@ class SustainedControls(unittest.TestCase):
         self.assertEqual(campaign.count_control.call_args_list, [
             mock.call("queued_status_transport_error"), mock.call("queued_status_http_200")])
 
+    def process_stat(self, pid=123, state='S', start='456', rss='1', comm='fixture worker'):
+        return f'{pid} ({comm}) ' + ' '.join([state, *(['0'] * 18), start, '4096', rss])
+
     def test_rss_identity_distinguishes_exit_and_missing_from_malformed_data(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             process = root / "123"
-            self.assertEqual(fixture.sampled_identity(123, root), (None, "disappeared"))
+            self.assertEqual(fixture.sampled_process(123, 4096, root), (None, None, "disappeared"))
             process.mkdir()
-            fields = ["S", *(["0"] * 18), "456"]
-            for state, expected in (("S", ((123, "456"), "live")), ("Z", (None, "exited")), ("X", (None, "exited"))):
-                fields[0] = state
-                (process / "stat").write_text("123 (name with ) brackets) " + " ".join(fields))
-                self.assertEqual(fixture.sampled_identity(123, root), expected)
-            for invalid in ("malformed", "124 (wrong) " + " ".join(fields), "123 (short) S 0"):
+            for state, expected in (("S", ((123, "456"), 4096, "live")),
+                                    ("Z", (None, None, "exited")), ("X", (None, None, "exited")),
+                                    ("x", (None, None, "exited"))):
+                (process / "stat").write_text(self.process_stat(state=state, comm='name with ( ) brackets'))
+                self.assertEqual(fixture.sampled_process(123, 4096, root), expected)
+            for invalid in ("malformed", self.process_stat(pid=124), "123 (short) S 0"):
                 (process / "stat").write_text(invalid)
-                self.assertEqual(fixture.sampled_identity(123, root), (None, "read_error"))
+                self.assertEqual(fixture.sampled_process(123, 4096, root), (None, None, "read_error"))
             (process / "stat").unlink()
             (process / "stat").mkdir()
-            self.assertEqual(fixture.sampled_identity(123, root), (None, "read_error"))
+            self.assertEqual(fixture.sampled_process(123, 4096, root), (None, None, "read_error"))
 
-    def sampler_fixture(self, root):
+    def sampler_fixture(self, root, page_size=4096):
         process = root / '123'
         (process / 'task/123').mkdir(parents=True)
-        fields = ['S', *(['0'] * 18), '456']
-        (process / 'stat').write_text('123 (fixture worker) ' + ' '.join(fields))
-        (process / 'status').write_text('State: S (sleeping)\nVmRSS: 4 kB\n')
+        (process / 'stat').write_text(self.process_stat())
         (process / 'task/123/children').write_text('')
-        sampler = fixture.LockedSamples({'a1': mock.Mock(pid=123, poll=lambda: None)})
+        with mock.patch.object(fixture.os, 'sysconf', return_value=page_size):
+            sampler = fixture.LockedSamples({'a1': mock.Mock(pid=123, poll=lambda: None)})
         sampler.proc_root = root
         return sampler
 
+    def test_stat_rss_pages_convert_using_cached_validated_page_size(self):
+        for page_size in (4096, 65536):
+            for pages in (0, 3, fixture.PROCESS_RSS_MAX_BYTES // page_size):
+                with self.subTest(page_size=page_size, pages=pages), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    sampler = self.sampler_fixture(root, page_size)
+                    (root / '123/stat').write_text(self.process_stat(rss=str(pages)))
+                    with mock.patch.object(fixture.os, 'sysconf', side_effect=AssertionError('page size must be cached')):
+                        sampler.sample()
+                    self.assertEqual(sampler.peak_rss, pages * page_size)
+                    self.assertTrue(sampler.rss_available)
+                    self.assertEqual(sampler.evidence()['rss_source'], fixture.PROCESS_RSS_SOURCE)
+                    self.assertEqual(sampler.evidence()['page_size_bytes'], page_size)
+                    self.assertEqual(sampler.evidence()['read_errors'], [])
+        for invalid in (True, 0, -1, 3, 4096., '4096', 1 << 64):
+            with self.subTest(page_size=invalid), mock.patch.object(fixture.os, 'sysconf', return_value=invalid):
+                with self.assertRaises(ValueError):
+                    fixture.LockedSamples({})
+
+    def test_one_stat_read_binds_rss_to_identity_even_when_pid_is_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sampler = self.sampler_fixture(root)
+            stat = root / '123/stat'
+            reads = []
+            original = Path.read_text
+            def observed(path, *args, **kwargs):
+                if path.name == 'status':
+                    raise AssertionError('independent status read is forbidden')
+                raw = original(path, *args, **kwargs)
+                if path == stat:
+                    reads.append(path)
+                    stat.write_text(self.process_stat(start='457', rss='9'))
+                return raw
+            with mock.patch.object(Path, 'read_text', observed):
+                sampler.sample()
+                self.assertEqual(sampler.owned, {123: (123, '456')})
+                self.assertEqual(sampler.peak_rss, 4096)
+                self.assertEqual(len(reads), 1)
+                sampler.sample()
+            self.assertEqual(sampler.owned, {123: (123, '457')})
+            self.assertEqual(sampler.peak_rss, 9 * 4096)
+            self.assertEqual(len(reads), 2)
+            self.assertEqual(sampler.evidence()['read_errors'], [])
+
     def test_proc_exit_errno_and_permission_errors_at_each_operation(self):
-        for operation in ('stat', 'status', 'tasks', 'children'):
+        for operation in ('stat', 'tasks', 'children'):
             for error_number in (errno.ENOENT, errno.ESRCH, errno.EACCES, errno.EPERM, errno.EIO):
                 with self.subTest(operation=operation, errno=error_number), tempfile.TemporaryDirectory() as directory:
                     root = Path(directory)
                     sampler = self.sampler_fixture(root)
-                    target = root / '123' / {'stat': 'stat', 'status': 'status', 'tasks': 'task', 'children': 'task/123/children'}[operation]
+                    target = root / '123' / {'stat': 'stat', 'tasks': 'task', 'children': 'task/123/children'}[operation]
                     original = Path.iterdir if operation == 'tasks' else Path.read_text
                     def observed(path, *args, **kwargs):
                         if path == target:
@@ -217,9 +267,15 @@ class SustainedControls(unittest.TestCase):
                     self.assertNotIn(str(root), json.dumps(evidence))
 
     def test_malformed_proc_data_remains_a_hard_failure(self):
-        cases = [('stat', 'malformed'), ('stat', '124 (wrong pid) S ' + '0 ' * 18 + '456'),
-                 ('status', 'State: S\nVmRSS: -1 kB\n'), ('status', 'State: S\nVmRSS: nonsense kB\n'),
-                 ('status', 'State: S\n'), ('task/123/children', '-123'), ('task/123/children', 'not-a-pid'),
+        bad_stat = ['malformed', self.process_stat(pid=124), self.process_stat(state='?'),
+                    self.process_stat().rsplit(' ', 1)[0]]
+        for field in ('rss', 'start'):
+            bad_stat.extend(self.process_stat(**{field: value}) for value in
+                ('-1', '+1', 'nonsense', '\u00b2', '9' * 5000, str(1 << 64)))
+        bad_stat.extend((self.process_stat(rss=str(fixture.PROCESS_RSS_MAX_BYTES // 4096 + 1)),
+                         self.process_stat(state='Z', rss='nonsense')))
+        cases = [('stat', value) for value in bad_stat] + [
+                 ('task/123/children', '-123'), ('task/123/children', 'not-a-pid'),
                  ('task/123/children', '\u00b2'), ('task/123/children', '9' * 5000), ('task/123/children', str(1 << 31))]
         for name, payload in cases:
             with self.subTest(name=name, payload=payload), tempfile.TemporaryDirectory() as directory:
@@ -232,17 +288,42 @@ class SustainedControls(unittest.TestCase):
                 self.assertEqual(evidence['read_diagnostics'][0]['outcome'], 'malformed')
                 self.assertEqual(evidence['disappeared_or_exited_process_or_thread_samples'], 0)
 
-    def test_explicit_zombie_status_does_not_require_rss(self):
+    def test_non_utf8_stat_is_a_hard_failure_without_status_fallback(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             sampler = self.sampler_fixture(root)
-            (root / '123/status').write_text('State: Z (zombie)\n')
+            (root / '123/stat').write_bytes(b'123 (invalid\xff) S 0')
+            sampler.sample()
+            evidence = sampler.evidence()
+            self.assertEqual(evidence['read_errors'], ['PROCESS_IDENTITY_READ_FAILED'])
+            self.assertEqual(evidence['read_diagnostics'][0]['outcome'], 'malformed')
+
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux procfs zombie semantics')
+    def test_real_linux_zombie_retains_numeric_zero_rss_before_reaping(self):
+        process = subprocess.Popen(['/bin/true'])
+        try:
+            stat = Path('/proc') / str(process.pid) / 'stat'
+            deadline = time.monotonic() + 3
+            while True:
+                fields = stat.read_text().rsplit(') ', 1)[1].split()
+                if fields[0] == 'Z':
+                    break
+                if time.monotonic() >= deadline:
+                    self.fail('child did not become a zombie within deadline')
+                time.sleep(.01)
+            self.assertEqual(fields[21], '0')
+            sampler = fixture.LockedSamples({'child': mock.Mock(pid=process.pid, poll=lambda: None)})
             sampler.sample()
             evidence = sampler.evidence()
             self.assertEqual(evidence['read_errors'], [])
             self.assertEqual(evidence['disappeared_or_exited_process_or_thread_samples'], 1)
-            self.assertEqual(evidence['read_diagnostics'][0]['operation'], 'status')
             self.assertEqual(evidence['read_diagnostics'][0]['outcome'], 'exited')
+            process.wait(timeout=3)
+            self.assertEqual(fixture.sampled_process(process.pid, sampler.page_size), (None, None, 'disappeared'))
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=3)
 
     @unittest.skipUnless(sys.platform == 'linux', 'Linux procfs exit semantics')
     def test_open_proc_descriptors_after_child_exit_report_esrch(self):
@@ -250,7 +331,7 @@ class SustainedControls(unittest.TestCase):
         handles = {}
         try:
             root = Path('/proc') / str(process.pid)
-            for name in ('stat', 'status'):
+            for name in ('stat',):
                 handles[name] = (root / name).open()
             process.terminate()
             process.wait(timeout=3)
@@ -261,12 +342,12 @@ class SustainedControls(unittest.TestCase):
                     return handles[path.name].read()
                 return original(path, *args, **kwargs)
             with mock.patch.object(Path, 'read_text', opened_before_exit):
-                self.assertEqual(fixture.sampled_identity(process.pid, diagnostic=sampler.diagnostic), (None, 'disappeared'))
-                self.assertIsNone(sampler.read_process_text(root / 'status', 'status'))
+                self.assertEqual(fixture.sampled_process(process.pid, sampler.page_size, diagnostic=sampler.diagnostic),
+                                 (None, None, 'disappeared'))
             evidence = sampler.evidence()
             self.assertEqual(evidence['read_errors'], [])
-            self.assertEqual(evidence['disappeared_or_exited_process_or_thread_samples'], 2)
-            self.assertEqual({(item['operation'], item['errno']) for item in evidence['read_diagnostics']}, {('stat', errno.ESRCH), ('status', errno.ESRCH)})
+            self.assertEqual(evidence['disappeared_or_exited_process_or_thread_samples'], 1)
+            self.assertEqual({(item['operation'], item['errno']) for item in evidence['read_diagnostics']}, {('stat', errno.ESRCH)})
         finally:
             for handle in handles.values():
                 handle.close()
@@ -277,13 +358,13 @@ class SustainedControls(unittest.TestCase):
     def test_diagnostics_are_bounded_without_hiding_failures_or_aliasing(self):
         sampler = fixture.LockedSamples({})
         for error_number in range(100, 100 + fixture.PROCESS_DIAGNOSTIC_LIMIT + 5):
-            sampler.diagnostic('status', 'oserror', error_number)
+            sampler.diagnostic('children', 'oserror', error_number)
         evidence = sampler.evidence()
         self.assertEqual(len(evidence['read_diagnostics']), fixture.PROCESS_DIAGNOSTIC_LIMIT)
         self.assertEqual(evidence['read_diagnostic_overflow_events'], 5)
         self.assertEqual(evidence['read_errors'], ['PROCESS_READ_FAILED'])
         evidence['read_diagnostics'][0]['operation'] = 'changed'
-        self.assertEqual(sampler.evidence()['read_diagnostics'][0]['operation'], 'status')
+        self.assertEqual(sampler.evidence()['read_diagnostics'][0]['operation'], 'children')
 
     def test_baseline_and_every_named_gate(self):
         self.assertTrue(fixture.reconcile(valid_report(), REVISION))
@@ -367,7 +448,11 @@ class SustainedControls(unittest.TestCase):
             self.assertFalse(fixture.reconcile(report, REVISION))
 
     def test_rss_tails_and_final_cgroup_sample_are_mandatory(self):
-        for field, value in (("process_tree_rss_available", False), ("samples", 0), ("sampled_process_tree_rss_peak_bytes", None), ("read_errors", ["READ_FAILED"])):
+        for field, value in (("process_tree_rss_available", False), ("samples", 0),
+                             ("sampled_process_tree_rss_peak_bytes", None), ("read_errors", ["READ_FAILED"]),
+                             ("rss_source", None), ("rss_source", "proc_pid_status"),
+                             ("page_size_bytes", None), ("page_size_bytes", True),
+                             ("page_size_bytes", 0), ("page_size_bytes", 3), ("page_size_bytes", 4096.)):
             report = valid_report()
             report["process_sampling"][field] = value
             self.assertFalse(fixture.reconcile(report, REVISION))
