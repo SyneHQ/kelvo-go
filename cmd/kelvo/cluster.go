@@ -304,7 +304,12 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 			stop()
 		}()
 	}
-	lifecycle := &nodeLifecycle{Node: node, pool: pool, refresh: refreshGate, stopRefresh: stopRefresh}
+	lifecycle := &nodeLifecycle{Node: node, pool: pool, refresh: refreshGate, stopRefresh: stopRefresh, leaseFailure: node.LeaseFailure()}
+	stopLeaseWatch := watchLeaseFailure(runCtx, node.LeaseFailure(), func() {
+		lifecycle.fence()
+		stop()
+	})
+	defer stopLeaseWatch()
 	cleanupDone := make(chan struct{})
 	var refreshErr, auditCloseErr error // read only after cleanupDone closes
 	datasetsTransferred = true
@@ -338,7 +343,36 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 			result = errors.New("cluster shutdown deadline exceeded")
 		}
 	}
+	select {
+	case <-node.LeaseFailure():
+		// Do not expose the broker error, identity or lease payload. A nonzero
+		// exit lets restart-on-failure supervision create a fresh fenced owner.
+		return workerLeaseFailure()
+	default:
+	}
 	return result
+}
+
+func workerLeaseFailure() error {
+	return query.NewError("UNAVAILABLE", "Worker coordination lease lost")
+}
+
+// The returned stop joins the watcher. Cancellation alone never calls failed;
+// callers independently inspect the durable failure channel for final status.
+func watchLeaseFailure(parent context.Context, failure <-chan struct{}, failed func()) func() {
+	ctx, cancel := context.WithCancel(parent)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		select {
+		case <-failure:
+			if ctx.Err() == nil {
+				failed()
+			}
+		case <-ctx.Done():
+		}
+	}()
+	return func() { cancel(); <-done }
 }
 
 func serveCluster(ctx context.Context, ln net.Listener, tc *tls.Config, handler http.Handler, closeHandler func(), drainTimeout time.Duration) error {
@@ -391,14 +425,22 @@ type drainingNode interface {
 	Drain(context.Context) error
 }
 type nodeLifecycle struct {
-	Node        drainingNode
-	pool        *admission.Pool
-	refresh     *refreshGate
-	stopRefresh context.CancelFunc
+	Node         drainingNode
+	pool         *admission.Pool
+	refresh      *refreshGate
+	stopRefresh  context.CancelFunc
+	leaseFailure <-chan struct{}
 }
 
 func (n *nodeLifecycle) ServeHTTP(w http.ResponseWriter, r *http.Request) { n.Node.ServeHTTP(w, r) }
 func (n *nodeLifecycle) Drain(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stopWatch := watchLeaseFailure(ctx, n.leaseFailure, func() {
+		n.fence()
+		cancel() // Permanent fencing skips grace; bounded close still joins work.
+	})
+	defer stopWatch()
 	n.Node.BeginDrain()
 	n.refresh.Drain()
 	err := n.Node.Drain(ctx)
@@ -413,4 +455,13 @@ func (n *nodeLifecycle) Drain(ctx context.Context) error {
 	}
 	n.stopRefresh()
 	return err
+}
+
+func (n *nodeLifecycle) fence() {
+	n.Node.BeginDrain()
+	n.refresh.Drain()
+	if n.pool != nil {
+		n.pool.Drain()
+	}
+	n.stopRefresh()
 }

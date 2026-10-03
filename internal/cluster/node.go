@@ -43,6 +43,7 @@ type Node struct {
 	dispatchCtx    context.Context
 	dispatchCancel context.CancelFunc
 	dispatchDone   chan struct{}
+	leaseFailure   chan struct{}
 	draining       bool // guarded by mu
 	permits        chan struct{}
 	mu             sync.Mutex
@@ -87,7 +88,7 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	n := &Node{cfg: cfg, store: store, executor: executor, owner: owner, ctx: ctx, cancel: cancel, permits: make(chan struct{}, cfg.Policy.Workers[cfg.WorkerID]), jobs: map[string]*reservation{}}
+	n := &Node{cfg: cfg, store: store, executor: executor, owner: owner, ctx: ctx, cancel: cancel, permits: make(chan struct{}, cfg.Policy.Workers[cfg.WorkerID]), jobs: map[string]*reservation{}, leaseFailure: make(chan struct{})}
 
 	if cfg.RuntimeAudit != nil {
 		if !cfg.RuntimeAudit.matches(cfg.Audit, "worker", []string{cfg.Policy.TenantID}) {
@@ -381,12 +382,25 @@ func (n *Node) heartbeat() {
 			err := n.store.HeartbeatWorker(ctx, n.cfg.WorkerID, n.owner)
 			stop()
 			if err != nil {
-				n.cancel()
+				n.mu.Lock()
+				// Close cancels the same context under mu. A renewal interrupted
+				// by ordinary shutdown must not become a permanent lease fault.
+				if n.ctx.Err() == nil {
+					n.cancel()
+					close(n.leaseFailure)
+				}
+				n.mu.Unlock()
 				return
 			}
 		}
 	}
 }
+
+// LeaseFailure closes after the first failed worker-identity renewal permanently
+// fences this owner. A closed channel preserves a failure that occurs before a
+// supervisor subscribes. Normal drain/Close never signals it. The node cannot
+// reactivate itself; its supervisor must start a new owner after safe shutdown.
+func (n *Node) LeaseFailure() <-chan struct{} { return n.leaseFailure }
 
 func (n *Node) mutate(ctx context.Context, id string, fn func(*Job) error) error {
 	for range 8 {
