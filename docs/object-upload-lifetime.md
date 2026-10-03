@@ -1,31 +1,42 @@
-# Object upload input lifetime
+# Object client lifetime
 
-Kelvo's S3, R2, GCS-compatible and Azure upload clients retain a borrowed input
-until the HTTP transport has closed its request body and every admitted read has
-finished. Go permits transport body closure after `Client.Do` returns, including
-on errors. Waiting for that completion prevents a staging file or registry
-payload from being reused while HTTP can still read it.
+Kelvo's built-in S3, R2, GCS-compatible and Azure clients give `Close` this
+[contract](../internal/objectstore/client.go):
 
-`Put` never closes the caller's reader. Its bounded body serializes reads; body
-`Close` promptly seals new reads without waiting on an active read. A separate
-join waits for actual completion. The response body closes before that join,
-including when the server responds before consuming the upload. Cancellation
-does not fabricate completion: a stalled read or missing transport close retains
-the invocation. Callers must wait for `Put` before reusing or closing the input.
+1. Stop admitting calls, before upload `Seek` or network access.
+2. Cancel every admitted request, including requests with returned bodies.
+3. Wait for method cleanup, body reads, body closure and cancellation callbacks;
+   then close idle connections. Concurrent `Close` callers wait together.
 
-Size validation, conditional writes, signing order, redirect policy and existing
-retry behavior remain unchanged. No replay body or retry loop is added. Empty
-uploads retain `http.NoBody`. A signing failure closes the unsubmitted body
-locally because HTTP never acquired it.
+Close `Get` and `GetRange` bodies, even after EOF. Late responses remain owned
+until cleanup finishes. Reads serialize around the complete response wrapper.
 
-The [validation receipt](evidence/object-upload-lifetime.json) records frozen
-commit `5f06d0ac9f965b71e840dae79d4104936ac3bce4`: all **22 top-level objectstore tests**
-passed under race detection, with **426 pass events including subtests**, and
-`go vet` passed. A separate control restored only the old S3/Azure implementations
-and failed the exact early-ownership assertion; build errors, races and timeouts
-were rejected as evidence. Tests include delayed closure, concurrent reads,
-cancellation and real TLS servers returning early responses.
+The [lifetime implementation](../internal/objectstore/lifetime.go) tracks
+outstanding calls and bodies without an independent admission bound.
+`MaxConnsPerHost` limits transport connections, not this bookkeeping. An
+uncooperative `Seek`, read or transport close keeps shutdown waiting; cancellation
+cannot substitute for completion.
 
-This offline gate does not certify live providers or client-wide quiescence.
-[Reader-owner integration and provider acceptance](reader-objectstore.md#validation-and-remaining-gates)
-remain open; remote deletion remains disabled.
+[Backend Close](../internal/acceleration/object_store.go) joins its read client.
+Separate writer clients, staging and node reader-owner cleanup remain outside
+that guarantee. Completion covers Kelvo-owned I/O and body callbacks; it does
+not promise every internal HTTP transport goroutine has exited. Remote deletion
+remains disabled.
+
+## Upload input
+
+`Put` borrows the caller's reader until transport body closure and every admitted
+read finish. It never closes that reader. Response cleanup runs before the join;
+empty uploads keep `http.NoBody`. Wait for `Put` before reusing its input.
+
+## Validation
+
+The [shutdown receipt](evidence/object-client-lifetime-2322954.json) covers
+`2322954`: 49 top-level tests and 582 pass events passed under race detection,
+plus vet. Separate controls restoring the earlier provider or backend failed
+their exact premature-return assertions. Source and helper hashes stayed
+unchanged; the owned service and cgroup were removed.
+
+The earlier [upload gate on `5f06d0a`](evidence/object-upload-lifetime.json) is
+retained. Neither gate certifies production reader ownership, live providers
+or capacity.

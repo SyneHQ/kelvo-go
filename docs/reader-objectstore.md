@@ -38,10 +38,10 @@ conditions and cancellation. A timestamp field alone does not prove that trust.
 Production wiring must use dedicated parent-only registry rights and reuse a
 bounded Registry/provider owner across queries.
 
-The concrete provider clients also enforce [upload input ownership through HTTP
-completion](object-upload-lifetime.md), including cancellation and early server
-responses. That guarantee covers each `Put`; client-wide shutdown and production
-reader ownership remain separate integration gates.
+See [object client and upload lifetime](object-upload-lifetime.md) for input
+ownership and shutdown behavior. The built-in shutdown extension passed its
+offline validation gate; production reader ownership and live-provider
+acceptance remain open.
 
 ## Immutable snapshot binding
 
