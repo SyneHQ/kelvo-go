@@ -98,6 +98,9 @@ jobs:
         run: python3 scripts/test_rolling_upgrade_acceptance.py
       - name: Verify sustained acceptance evidence controls
         run: python3 -m unittest discover -s scripts -p test_sustained_acceptance.py
+      - name: Verify broker and client compatibility evidence controls
+        working-directory: scripts
+        run: python3 -m unittest test_build_nats_compatibility test_config_refusal_acceptance test_nats_compatibility_acceptance
       - name: Verify release compatibility controls
         run: python3 -m unittest discover -s scripts -p test_release_upgrade_acceptance.py
       - name: Install checksum-pinned previous release fixture

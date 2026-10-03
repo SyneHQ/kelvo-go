@@ -521,12 +521,7 @@ class Acceptance:
         require(private_env.is_file() and not private_env.is_symlink() and private_env.stat().st_mode & 0o077 == 0,
                 "PRIVATE_FIXTURE_ENVIRONMENT_REQUIRED")
         self.env.update(json.loads(private_env.read_text()))
-        previous = cf.DIR
-        cf.DIR = self.fixture
-        try:
-            cf.wait_for_brokers(json.loads((self.fixture/"pids.json").read_text()))
-        finally:
-            cf.DIR = previous
+        self.wait_brokers()
         self.client = ssl.create_default_context(cafile=str(self.fixture/"ca.pem"))
         self.client.minimum_version = ssl.TLSVersion.TLSv1_3
         self.worker = ssl.create_default_context(cafile=str(self.fixture/"ca.pem"))
@@ -585,6 +580,14 @@ class Acceptance:
         self.samples.start()
         return {"workers": 2, "tenants": 2, "broker_replicas": 3, "source_rows_per_tenant": ROWS,
                 "dataset": "Deterministic synthetic Parquet with nullable integers and tenant markers"}
+
+    def wait_brokers(self):
+        previous = cf.DIR
+        cf.DIR = self.fixture
+        try:
+            cf.wait_for_brokers(json.loads((self.fixture/"pids.json").read_text()))
+        finally:
+            cf.DIR = previous
 
     def dataset_ready(self, node):
         code, raw = self.call("/datasets", node=node)

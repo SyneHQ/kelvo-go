@@ -14,7 +14,7 @@ def healthy_reports():
     names = list(fixture.BROKER_NAMES.values())
     return {
         name: {
-            "server": {"server_name": name, "server_id": "id-" + name},
+            "server": {"server_name": name, "server_id": "id-" + name, "version": fixture.VERSION},
             "health": {"status": "ok"},
             "jetstream": {
                 "server_id": "id-" + name,
@@ -30,6 +30,53 @@ def healthy_reports():
 
 
 class MetadataReadinessTests(unittest.TestCase):
+    def test_versions_must_be_explicit_known_and_match_each_peer(self):
+        for value in (None, "", "2.14.7", "2.16.0", ["2.15.0"]):
+            with self.subTest(version=value):
+                reports = healthy_reports()
+                reports["kelvo-test-1"]["server"]["version"] = value
+                self.assertEqual(fixture.metadata_readiness(reports), "monitor_version")
+        reports = healthy_reports()
+        del reports["kelvo-test-1"]["server"]["version"]
+        self.assertEqual(fixture.metadata_readiness(reports), "monitor_version")
+        for expected in ({}, {"kelvo-test-0": "2.15.0"},
+                         dict.fromkeys(fixture.BROKER_NAMES.values(), "2.16.0")):
+            self.assertEqual(fixture.metadata_readiness(healthy_reports(), expected), "unsupported_expected_versions")
+
+    def test_predecessor_is_allowed_only_when_declared_per_peer(self):
+        reports = healthy_reports()
+        expected = dict.fromkeys(fixture.BROKER_NAMES.values(), fixture.VERSION)
+        for name in expected:
+            expected[name] = "2.14.7"
+            reports[name]["server"]["version"] = "2.14.7"
+            del reports[name]["jetstream"]["meta_cluster"]["quorum_needed"]
+            self.assertEqual(fixture.metadata_readiness(reports, expected), "ready")
+            self.assertEqual(fixture.metadata_readiness(reports), "monitor_version")
+
+    def test_predecessor_still_requires_complete_current_consensus(self):
+        expected = dict.fromkeys(fixture.BROKER_NAMES.values(), "2.14.7")
+        for key in ("name", "cluster_size", "leader", "replicas"):
+            with self.subTest(missing=key):
+                reports = healthy_reports()
+                for report in reports.values():
+                    report["server"]["version"] = "2.14.7"
+                    del report["jetstream"]["meta_cluster"]["quorum_needed"]
+                del reports["kelvo-test-0"]["jetstream"]["meta_cluster"][key]
+                self.assertNotEqual(fixture.metadata_readiness(reports, expected), "ready")
+
+    def test_current_version_never_inherits_predecessor_missing_quorum_exception(self):
+        reports = healthy_reports()
+        del reports["kelvo-test-0"]["jetstream"]["meta_cluster"]["quorum_needed"]
+        self.assertEqual(fixture.metadata_readiness(reports), "metadata_membership")
+
+    def test_membership_numbers_require_integers(self):
+        for key, value in (("cluster_size", 3.0), ("quorum_needed", 2.0),
+                           ("cluster_size", True), ("quorum_needed", True)):
+            with self.subTest(key=key, value=value):
+                reports = healthy_reports()
+                reports["kelvo-test-0"]["jetstream"]["meta_cluster"][key] = value
+                self.assertEqual(fixture.metadata_readiness(reports), "metadata_membership")
+
     def test_only_the_leader_current_view_is_authoritative(self):
         reports = healthy_reports()
         # A follower's view can mark another healthy follower stale/offline.

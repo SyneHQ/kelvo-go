@@ -23,6 +23,10 @@ ROOT = Path(__file__).resolve().parents[1]
 DIR = ROOT / "artifacts/cluster-private"
 VERSION = "2.15.0"
 DIGEST = "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92"
+RELEASES = {
+    "2.14.7": "e5c20b1cb2c0566b54c544312e91e011f9e130c5c80f16a14f4cf28ef30b8be2",
+    VERSION: DIGEST,
+}
 BROKER_NAMES = {f"nats-{i}": f"kelvo-test-{i}" for i in range(3)}
 READINESS_TIMEOUT = 30.0
 MONITOR_TIMEOUT = 1.0
@@ -82,14 +86,28 @@ def broker_monitor(port, path, timeout):
         connection.close()
 
 
-def metadata_readiness(reports):
-    """Return a fixed, safe status for one complete metadata observation."""
+def metadata_readiness(reports, expected_versions=None):
+    """Read-only monitor gate; callers must separately prove broker writes.
+
+    Compatibility fixtures must declare an exact supported version per peer.
+    2.14.7 lacks quorum_needed; its explicit policy still requires a healthy
+    three-member consensus with both current replicas, followed by real writes
+    in the acceptance harness. Missing fields never imply a current version.
+    """
     names = set(BROKER_NAMES.values())
+    if expected_versions is None:
+        expected_versions = dict.fromkeys(names, VERSION)
+    if (not isinstance(expected_versions, dict) or set(expected_versions) != names
+            or not all(isinstance(v, str) and v in RELEASES for v in expected_versions.values())):
+        return "unsupported_expected_versions"
     if set(reports) != names:
         return "incomplete_observation"
     leaders, server_ids = set(), set()
     for name, report in reports.items():
         server, health, jetstream = (report[key] for key in ("server", "health", "jetstream"))
+        version = server.get("version")
+        if version != expected_versions[name]:
+            return "monitor_version"
         server_id = server.get("server_id")
         if (server.get("server_name") != name or not isinstance(server_id, str)
                 or not server_id or jetstream.get("server_id") != server_id):
@@ -99,8 +117,10 @@ def metadata_readiness(reports):
             return "metadata_health"
         meta = jetstream.get("meta_cluster")
         if (not isinstance(meta, dict) or meta.get("name") != "kelvo-test"
-                or meta.get("cluster_size") != 3 or meta.get("quorum_needed") != 2
+                or type(meta.get("cluster_size")) is not int or meta["cluster_size"] != 3
                 or meta.get("rescue", False) is not False):
+            return "metadata_membership"
+        if version == VERSION and (type(meta.get("quorum_needed")) is not int or meta["quorum_needed"] != 2):
             return "metadata_membership"
         leader = meta.get("leader")
         if not isinstance(leader, str) or leader not in names:
@@ -122,7 +142,7 @@ def metadata_readiness(reports):
     return "ready"
 
 
-def wait_for_brokers(items, timeout=READINESS_TIMEOUT):
+def wait_for_brokers(items, timeout=READINESS_TIMEOUT, expected_versions=None):
     """Wait for the fixture's three owned brokers without retrying store work."""
     deadline = time.monotonic() + min(READINESS_TIMEOUT, max(0.0, timeout))
     if (not isinstance(items, list) or len(items) != 3
@@ -173,7 +193,7 @@ def wait_for_brokers(items, timeout=READINESS_TIMEOUT):
                 leader = meta.get("leader") if isinstance(meta, dict) else None
                 # Never emit response bodies, config, logs, IDs, or unexpected names.
                 states[item["name"]] = "observed_leader=" + (leader if leader in BROKER_NAMES.values() else "missing_or_unexpected")
-        reason = metadata_readiness(reports)
+        reason = metadata_readiness(reports, expected_versions)
         # A broker can exit while another member's monitor calls are in flight.
         for item in items:
             if not broker_alive(item):
@@ -234,7 +254,9 @@ def stop():
     time.sleep(1)
 
 
-def provision(nats_archive=None):
+def provision(nats_archive=None, server_version=VERSION):
+    if server_version not in RELEASES:
+        raise SystemExit("Unsupported NATS fixture version")
     DIR.mkdir(parents=True, exist_ok=True)
     DIR.chmod(0o700)
     if (DIR / "manifest.json").exists():
@@ -242,16 +264,16 @@ def provision(nats_archive=None):
     os.umask(0o077)
     archive = DIR / "nats.tar.gz"
     if nats_archive is None:
-        archive.write_bytes(urllib.request.urlopen(f"https://github.com/nats-io/nats-server/releases/download/v{VERSION}/nats-server-v{VERSION}-linux-amd64.tar.gz", timeout=60).read())
+        archive.write_bytes(urllib.request.urlopen(f"https://github.com/nats-io/nats-server/releases/download/v{server_version}/nats-server-v{server_version}-linux-amd64.tar.gz", timeout=60).read())
     else:
         source = Path(nats_archive)
         if source.is_symlink() or not source.is_file() or not 0 < source.stat().st_size <= 64 << 20:
             raise SystemExit("Cached NATS archive must be a bounded regular file")
         shutil.copyfile(source, archive)
-    if hashlib.sha256(archive.read_bytes()).hexdigest() != DIGEST:
+    if hashlib.sha256(archive.read_bytes()).hexdigest() != RELEASES[server_version]:
         raise SystemExit("NATS release checksum mismatch")
     with tarfile.open(archive) as tar:
-        member = tar.getmember(f"nats-server-v{VERSION}-linux-amd64/nats-server")
+        member = tar.getmember(f"nats-server-v{server_version}-linux-amd64/nats-server")
         binary = DIR / "nats-server"
         binary.write_bytes(tar.extractfile(member).read())
         binary.chmod(0o700)
@@ -339,11 +361,11 @@ def provision(nats_archive=None):
         pids.append({"name": f"nats-{i}", "pid": process.pid})
     write(DIR / "pids.json", json.dumps(pids))
     write(DIR / "environment.json", json.dumps(env))
-    write(DIR / "manifest.json", json.dumps({"nats_version": VERSION, "sha256": DIGEST, "nodes": nodes}))
+    write(DIR / "manifest.json", json.dumps({"nats_version": server_version, "sha256": RELEASES[server_version], "nodes": nodes}))
     # Keep the process records and private state if readiness fails: the CI
     # always-stop step must still be able to clean up these exact processes.
     try:
-        wait_for_brokers(pids)
+        wait_for_brokers(pids, expected_versions=dict.fromkeys(BROKER_NAMES.values(), server_version))
     except FixtureReadinessError as error:
         raise SystemExit(str(error)) from None
     print("Loopback fixture provisioned; private state is under artifacts/cluster-private")
@@ -362,9 +384,10 @@ if __name__ == "__main__":
     parser.add_argument("action", choices=["provision", "stop", "test-store"])
     parser.add_argument("--go", default="go", dest="go_binary", help="Go binary for test-store (use the VM toolchain path)")
     parser.add_argument("--nats-archive", type=Path, help="Use a cached checksum-pinned NATS archive without downloads")
+    parser.add_argument("--server-version", choices=RELEASES, default=VERSION)
     args = parser.parse_args()
     if args.action == "provision":
-        provision(args.nats_archive)
+        provision(args.nats_archive, args.server_version)
     elif args.action == "stop":
         stop()
     else:
