@@ -17,7 +17,11 @@ func supported() error { return nil }
 
 // Walk from an opened root directory using openat and NOFOLLOW on every
 // component. Renaming an ancestor cannot redirect a subsequent path lookup.
-func readPrivateFile(ctx context.Context, path string) (value []byte, err error) {
+func readPrivateFile(ctx context.Context, path string) ([]byte, error) {
+	return readPrivateDocument(ctx, path, MaxValueBytes)
+}
+
+func readPrivateDocument(ctx context.Context, path string, limit int) (value []byte, err error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -61,11 +65,11 @@ func readPrivateFile(ctx context.Context, path string) (value []byte, err error)
 	}
 	defer file.Close()
 	var before unix.Stat_t
-	if unix.Fstat(fd, &before) != nil || before.Mode&unix.S_IFMT != unix.S_IFREG || before.Mode&0077 != 0 || before.Uid != uint32(os.Geteuid()) || before.Nlink > 1 || before.Size < 0 || before.Size > MaxValueBytes {
+	if unix.Fstat(fd, &before) != nil || before.Mode&unix.S_IFMT != unix.S_IFREG || before.Mode&0077 != 0 || before.Uid != uint32(os.Geteuid()) || before.Nlink > 1 || before.Size < 0 || before.Size > int64(limit) {
 		return nil, ErrUnavailable
 	}
-	value, err = io.ReadAll(io.LimitReader(file, MaxValueBytes+1))
-	if err != nil || len(value) > MaxValueBytes || int64(len(value)) != before.Size || bytes.IndexByte(value, 0) >= 0 {
+	value, err = io.ReadAll(io.LimitReader(file, int64(limit)+1))
+	if err != nil || len(value) > limit || int64(len(value)) != before.Size || bytes.IndexByte(value, 0) >= 0 {
 		wipe(value)
 		return nil, ErrUnavailable
 	}

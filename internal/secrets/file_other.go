@@ -7,3 +7,5 @@ import "context"
 
 func supported() error                                        { return ErrUnsupported }
 func readPrivateFile(context.Context, string) ([]byte, error) { return nil, ErrUnsupported }
+
+func readPrivateDocument(context.Context, string, int) ([]byte, error) { return nil, ErrUnsupported }
