@@ -37,6 +37,7 @@ type Gateway struct {
 	tokens         map[[32]byte]string
 	auth           *gatewayAuthenticator
 	workerIdentity *tlsIdentity
+	workerTrust    *tlsTrust
 	permits        chan struct{}
 	resultWaiters  chan struct{}
 	ctx            context.Context
@@ -70,10 +71,23 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 	}
 	started := false
 	defer func() {
-		if !started && g.workerIdentity != nil {
-			g.workerIdentity.close()
+		if !started {
+			if g.workerIdentity != nil {
+				g.workerIdentity.close()
+			}
+			if g.workerTrust != nil {
+				g.workerTrust.close()
+			}
 		}
 	}()
+	if cfg.WorkerTLS.Trust != nil {
+		var err error
+		g.workerTrust, err = newTLSTrust(*cfg.WorkerTLS.Trust, nil)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+	}
 	for _, tc := range cfg.Tenants {
 		tenant := tc.Policy.TenantID
 		st := stores[tenant]
@@ -106,7 +120,7 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 				cancel()
 				return nil, errors.New("cluster gateway: duplicate worker endpoint")
 			}
-			tlsCfg, err := buildClientTLS(cfg.WorkerTLS, "spiffe://kelvo/tenant/"+tenant+"/worker/"+ep.ID, g.workerIdentity)
+			tlsCfg, err := buildClientTLSWithTrust(cfg.WorkerTLS, "spiffe://kelvo/tenant/"+tenant+"/worker/"+ep.ID, g.workerIdentity, g.workerTrust)
 			if err != nil {
 				cancel()
 				return nil, err
@@ -118,7 +132,13 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 			transport.ResponseHeaderTimeout = tc.Policy.Limits.Timeout
 			transport.DisableCompression = true
 			var roundTripper http.RoundTripper = transport
-			if g.workerIdentity != nil {
+			if g.workerTrust != nil {
+				roundTripper, err = newTLSTrustTransport(transport, g.workerTrust, g.workerIdentity, WorkerIdentity(tenant, ep.ID))
+				if err != nil {
+					cancel()
+					return nil, err
+				}
+			} else if g.workerIdentity != nil {
 				roundTripper = &tlsIdentityTransport{Transport: transport, identity: g.workerIdentity}
 			}
 			gt.workers[ep.ID] = workerEndpoint{url: u, client: &http.Client{Transport: roundTripper, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
@@ -177,6 +197,9 @@ func (g *Gateway) Close() error {
 		if g.workerIdentity != nil {
 			g.workerIdentity.close()
 		}
+		if g.workerTrust != nil {
+			g.workerTrust.close()
+		}
 		g.handlers.Wait()
 		g.wg.Wait()
 		for _, t := range g.tenants {
@@ -230,7 +253,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.json(w, 200, map[string]string{"status": "ok"})
 		return
 	}
-	if g.workerIdentity != nil && !g.workerIdentity.ready() {
+	if (g.workerIdentity != nil && !g.workerIdentity.ready()) || (g.workerTrust != nil && !g.workerTrust.ready()) {
 		g.err(w, http.StatusServiceUnavailable, "UNAVAILABLE", "Service unavailable")
 		return
 	}

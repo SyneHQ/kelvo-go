@@ -29,6 +29,9 @@ func LoadGateway(path string) (GatewayConfig, error) {
 	}
 	resolveTLS(base, &c.TLS)
 	resolveTLS(base, &c.WorkerTLS)
+	if c.TLS.Trust != nil {
+		return c, errors.New("TLS trust rotation requires an mTLS listener")
+	}
 	if err := validateTLSRotation(c.TLS); err != nil {
 		return c, err
 	}
@@ -209,6 +212,9 @@ func relativePath(base, path string) string {
 	return filepath.Join(base, path)
 }
 func resolveTLS(base string, c *TLSConfig) {
+	if c.Trust != nil {
+		c.Trust.File = relativePath(base, c.Trust.File)
+	}
 	c.IdentityFile = relativePath(base, c.IdentityFile)
 	c.CertFile = relativePath(base, c.CertFile)
 	c.KeyFile = relativePath(base, c.KeyFile)
@@ -280,6 +286,10 @@ func BuildClientTLS(c TLSConfig, peerURI string) (*tls.Config, error) {
 }
 
 func buildClientTLS(c TLSConfig, peerURI string, identity *tlsIdentity) (*tls.Config, error) {
+	return buildClientTLSWithTrust(c, peerURI, identity, nil)
+}
+
+func buildClientTLSWithTrust(c TLSConfig, peerURI string, identity *tlsIdentity, trust *tlsTrust) (*tls.Config, error) {
 	var cert tls.Certificate
 	var err error
 	if identity == nil {
@@ -297,7 +307,7 @@ func buildClientTLS(c TLSConfig, peerURI string, identity *tlsIdentity) (*tls.Co
 	if !hasURI(cert.Leaf, GatewayIdentity) {
 		return nil, errors.New("worker client certificate must identify the gateway")
 	}
-	roots, err := loadRoots(c.CAFile)
+	roots, err := loadTLSRoots(c, trust)
 	if err != nil {
 		return nil, err
 	}
@@ -331,6 +341,13 @@ func buildClientTLS(c TLSConfig, peerURI string, identity *tlsIdentity) (*tls.Co
 }
 
 func BuildServerTLS(c TLSConfig, ownURI, clientURI string) (*tls.Config, error) {
+	if c.Trust != nil {
+		return nil, errors.New("rotating TLS trust requires a managed TLS lifecycle")
+	}
+	return buildServerTLS(c, ownURI, clientURI, nil)
+}
+
+func buildServerTLS(c TLSConfig, ownURI, clientURI string, trust *tlsTrust) (*tls.Config, error) {
 	cert, err := loadIdentity(c)
 	if err != nil {
 		return nil, err
@@ -340,7 +357,7 @@ func BuildServerTLS(c TLSConfig, ownURI, clientURI string) (*tls.Config, error) 
 	}
 	result := &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{cert}}
 	if clientURI != "" {
-		result.ClientCAs, err = loadRoots(c.CAFile)
+		result.ClientCAs, err = loadTLSRoots(c, trust)
 		if err != nil {
 			return nil, err
 		}
@@ -353,4 +370,18 @@ func BuildServerTLS(c TLSConfig, ownURI, clientURI string) (*tls.Config, error) 
 		}
 	}
 	return result, nil
+}
+
+func loadTLSRoots(c TLSConfig, trust *tlsTrust) (*x509.CertPool, error) {
+	if trust != nil {
+		snapshot, err := trust.current()
+		if err != nil {
+			return nil, err
+		}
+		return snapshot.roots, nil
+	}
+	if c.Trust != nil {
+		return nil, errors.New("rotating TLS trust requires a managed TLS lifecycle")
+	}
+	return loadRoots(c.CAFile)
 }
