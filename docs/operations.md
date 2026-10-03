@@ -27,6 +27,8 @@ Omitting `resources` retains slot-only admission. Reservations alone do not enfo
 
 For kernel-enforced native process-tree limits, enable [Linux containment](process-containment.md). It requires explicit cgroup delegation, managed scratch and extra parent/native headroom. Uncertain cleanup retains reservations and drains the node.
 
+A failed worker identity heartbeat permanently fences that process. Kelvo stops admission, cancels work, runs its bounded cleanup and exits nonzero with `Worker coordination lease lost`. Configure supervision to restart failed nodes with backoff; a replacement uses a fresh owner and must wait for the old lease to expire. Never clear leases or replay SQL to force recovery. Readiness alone does not prove old children have exited.
+
 ## Diagnostics
 
 Worker `GET /metrics` and `GET /resources` require gateway mTLS. Metrics have fixed cardinality; resource responses expose aggregate capacity, usage, waits and drain state. Neither includes SQL, credentials, sources, query IDs or tenant IDs. Keep collection internal.

@@ -87,6 +87,8 @@ Fault recovery counts status/transport observations. Only status GETs on the
 original queued handle tolerate 429/503, within 25 seconds; SQL is not resubmitted
 and results are claimed once. Missing, denied, terminal or late-positive status
 responses cannot satisfy recovery.
+Fenced workers may restart through the same [bounded supervisor](process-loss-acceptance.md).
+It preserves the original handles, deadlines and configuration; supervision observations remain in the report.
 Queue/dispatch, first-byte, query, slow-delivery and cancellation histograms must
 contain samples. Overflow bins remain explicit; a missing tail is not zero.
 
