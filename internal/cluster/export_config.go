@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 )
 
 type GatewayExportConfig struct {
@@ -100,5 +102,16 @@ func validateNodeExports(c NodeConfig) error {
 
 func overlappingExportPaths(a, b string) bool {
 	a, b = filepath.Clean(a), filepath.Clean(b)
-	return a == b || strings.HasPrefix(a, b+string(filepath.Separator)) || strings.HasPrefix(b, a+string(filepath.Separator))
+	separator := string(filepath.Separator)
+	return a == b || strings.HasPrefix(a, strings.TrimSuffix(b, separator)+separator) || strings.HasPrefix(b, strings.TrimSuffix(a, separator)+separator)
+}
+
+// ValidateExportCatalog runs before opening either persistent store. Keeping
+// their roots disjoint prevents export cleanup and snapshot maintenance from
+// sharing custody of the same files, including object-store metadata caches.
+func ValidateExportCatalog(c NodeConfig, catalogue catalog.Config) error {
+	if c.Exports != nil && catalogue.Acceleration != nil && overlappingExportPaths(c.Exports.Directory, catalogue.Acceleration.Directory) {
+		return errors.New("export and acceleration directories must be disjoint")
+	}
+	return nil
 }

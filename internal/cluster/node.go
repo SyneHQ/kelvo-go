@@ -71,6 +71,9 @@ func NewNode(cfg NodeConfig, store Store, executor *worker.Executor) (*Node, err
 	if executor.Config.Acceleration != nil && executor.Config.Acceleration.TenantID != cfg.Policy.TenantID {
 		return nil, errors.New("acceleration tenant must match worker tenant")
 	}
+	if err := ValidateExportCatalog(cfg, executor.Config); err != nil {
+		return nil, err
+	}
 	return newNode(cfg, store, executor)
 }
 

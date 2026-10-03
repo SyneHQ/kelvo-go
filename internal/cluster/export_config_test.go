@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
+	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/exports"
 )
 
@@ -27,6 +28,29 @@ func runtimeExportConfigFixture(t *testing.T) NodeConfig {
 			Export: &ResourceClassConfig{MaxConcurrent: 2, MemoryMB: 768, ScratchMB: 2048}},
 		Exports: &ExportNodeConfig{Directory: filepath.Join(root, "exports"), MaxEntries: 32, MaxStoredBytes: 64 << 20,
 			MaxConcurrent: 1, MaxDownloads: 2, DownloadMemoryMB: 32, CleanupInterval: time.Minute, CleanupMaxRemovals: 16}}
+}
+
+func TestExportCatalogRejectsSharedPersistentCustody(t *testing.T) {
+	config := runtimeExportConfigFixture(t)
+	for _, root := range []string{config.Exports.Directory, filepath.Dir(config.Exports.Directory), filepath.Join(config.Exports.Directory, "snapshots"), string(filepath.Separator)} {
+		for _, objectBacked := range []bool{false, true} {
+			acceleration := &catalog.AccelerationConfig{Directory: root}
+			if objectBacked {
+				acceleration.ObjectStorage = &catalog.ObjectStorage{}
+			}
+			if err := ValidateExportCatalog(config, catalog.Config{Acceleration: acceleration}); err == nil {
+				t.Fatalf("accepted shared custody: %s (object-backed=%v)", root, objectBacked)
+			}
+		}
+	}
+	for _, root := range []string{config.Exports.Directory + "-snapshots", filepath.Join(filepath.Dir(config.Exports.Directory), "snapshots")} {
+		if err := ValidateExportCatalog(config, catalog.Config{Acceleration: &catalog.AccelerationConfig{Directory: root}}); err != nil {
+			t.Fatalf("disjoint roots rejected: %s: %v", root, err)
+		}
+	}
+	if err := ValidateExportCatalog(config, catalog.Config{}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestExportConfigurationRequiresAuthorityAndBoundedResources(t *testing.T) {

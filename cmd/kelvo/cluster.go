@@ -139,6 +139,9 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	if catalogue.Acceleration != nil && catalogue.Acceleration.TenantID != cfg.Policy.TenantID {
 		return query.NewError("CONFIGURATION_ERROR", "Acceleration tenant must match worker tenant")
 	}
+	if err := cluster.ValidateExportCatalog(cfg, catalogue); err != nil {
+		return query.NewError("CONFIGURATION_ERROR", err.Error())
+	}
 	executor, err := worker.New(catalogue, cfg.Policy.Limits)
 	if err != nil {
 		return err
