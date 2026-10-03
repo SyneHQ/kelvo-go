@@ -22,11 +22,12 @@ import (
 )
 
 type reservation struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	done    chan struct{}
-	once    sync.Once
-	started bool // guarded by Node.mu; a permit remains held until Execute exits
+	ctx           context.Context
+	cancel        context.CancelFunc
+	done          chan struct{}
+	once          sync.Once
+	started       bool          // guarded by Node.mu; a permit remains held until Execute exits
+	leaseMutation chan struct{} // initialized under Node.mu; renewal and ResultReady only
 }
 
 type Node struct {
@@ -275,13 +276,7 @@ func (n *Node) watch(id string, r *reservation) {
 			return
 		case <-tick.C:
 			ctx, stop := context.WithTimeout(n.ctx, n.cfg.Policy.LeaseDuration/3)
-			err := n.mutate(ctx, id, func(j *Job) error {
-				if j.Terminal() {
-					return ErrConflict
-				}
-				j.HeartbeatAt = time.Now().UTC()
-				return nil
-			})
+			err := n.renewLease(ctx, id)
 			stop()
 			if err != nil {
 				n.finish(id, Failed, query.Stats{}, query.NewError("WORKER_LOST", "Worker lease could not be renewed"))
@@ -289,6 +284,79 @@ func (n *Node) watch(id string, r *reservation) {
 				return
 			}
 		}
+	}
+}
+
+var errLeaseCurrent = errors.New("worker lease does not need renewal")
+
+// Poll durable cancellation at the existing cadence, but do not rewrite a fresh
+// lease. Claim and completion transitions also renew HeartbeatAt atomically.
+func (n *Node) renewLease(ctx context.Context, id string) error {
+	unlock, err := n.lockLeaseMutation(ctx, id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	err = n.mutate(ctx, id, func(j *Job) error {
+		if j.Terminal() {
+			return ErrConflict
+		}
+		now := time.Now().UTC()
+		age := now.Sub(j.HeartbeatAt)
+		if age >= 0 && age < n.cfg.Policy.LeaseDuration/3 {
+			return errLeaseCurrent
+		}
+		j.HeartbeatAt = now
+		return nil
+	})
+	if errors.Is(err, errLeaseCurrent) {
+		return nil
+	}
+	return err
+}
+
+// The local renewal loop must not race its own final result publication. This
+// gate intentionally excludes cancellation and failure, which retain authority
+// to fence either operation through the durable CAS and terminal-state checks.
+func (n *Node) lockLeaseMutation(ctx context.Context, id string) (func(), error) {
+	n.mu.Lock()
+	r := n.jobs[id]
+	if r == nil {
+		n.mu.Unlock()
+		return nil, ErrConflict
+	}
+	if r.leaseMutation == nil {
+		r.leaseMutation = make(chan struct{}, 1)
+	}
+	gate := r.leaseMutation
+	n.mu.Unlock()
+	select {
+	case gate <- struct{}{}:
+		unlock := func() { <-gate }
+		if err := ctx.Err(); err != nil {
+			unlock()
+			return nil, err
+		}
+		n.mu.Lock()
+		current := n.jobs[id] == r
+		n.mu.Unlock()
+		if !current {
+			unlock()
+			return nil, ErrConflict
+		}
+		select {
+		case <-r.done:
+			unlock()
+			return nil, ErrConflict
+		default:
+		}
+		if r.ctx != nil && r.ctx.Err() != nil {
+			unlock()
+			return nil, r.ctx.Err()
+		}
+		return unlock, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }
 
@@ -336,6 +404,13 @@ func (n *Node) mutate(ctx context.Context, id string, fn func(*Job) error) error
 func (n *Node) finish(id, state string, stats query.Stats, result error) error {
 	ctx, stop := context.WithTimeout(context.Background(), 3*time.Second)
 	defer stop()
+	if state == ResultReady {
+		unlock, err := n.lockLeaseMutation(ctx, id)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+	}
 	return n.mutate(ctx, id, func(j *Job) error {
 		if j.Terminal() {
 			return ErrConflict
