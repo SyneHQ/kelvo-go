@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql/driver"
 
+	"github.com/SYNEHQ/kelvo-go/internal/access"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/duckbridge"
 	"github.com/SYNEHQ/kelvo-go/internal/federation"
@@ -44,7 +45,11 @@ func (b *federationBindings) attach(ctx context.Context, raw any, sources []cata
 	tables := 0
 	for _, source := range sources {
 		if source.Federation != nil {
-			tables += len(source.Federation.Tables)
+			for _, table := range source.Federation.Tables {
+				if _, _, allowed := access.Lookup(ctx, source.ID, table.Name); allowed {
+					tables++
+				}
+			}
 		}
 	}
 	if tables > 32 {
@@ -73,6 +78,9 @@ func (b *federationBindings) attach(ctx context.Context, raw any, sources []cata
 			return err
 		}
 		for _, selected := range source.Federation.Tables {
+			if _, _, allowed := access.Lookup(ctx, source.ID, selected.Name); !allowed {
+				continue
+			}
 			table, err := federation.New(ctx, source, selected, limits)
 			if err != nil {
 				return err

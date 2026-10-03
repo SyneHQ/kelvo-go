@@ -20,6 +20,7 @@ import (
 
 	duck "github.com/duckdb/duckdb-go/v2"
 
+	"github.com/SYNEHQ/kelvo-go/internal/access"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/federation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
@@ -81,6 +82,9 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	if req.Mode != "federated" {
 		return stats, query.NewError("INVALID_ARGUMENT", "DuckDB requires federated execution mode")
 	}
+	if err := access.ValidateRequest(parent, e.config, req); err != nil {
+		return stats, err
+	}
 	sources, selectErr := e.config.Select(req.Sources)
 	if selectErr != nil {
 		return stats, query.NewError("PERMISSION_DENIED", "Requested source is unavailable")
@@ -128,9 +132,11 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		// connection/database have both released their plans.
 		closeErr := errors.Join(conn.Close(), db.Close())
 		bindings.Close()
-		stats.Federation = bindings.stats()
-		for _, scan := range stats.Federation {
-			stats.SourceWireBytes += scan.SourceWireBytes
+		if !access.Restricted(parent) {
+			stats.Federation = bindings.stats()
+			for _, scan := range stats.Federation {
+				stats.SourceWireBytes += scan.SourceWireBytes
+			}
 		}
 		// Stream-release callbacks run during query/connection teardown. A
 		// contained callback failure must prevent a successful Arrow export.
