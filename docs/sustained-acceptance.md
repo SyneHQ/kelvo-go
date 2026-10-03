@@ -7,49 +7,47 @@ only to the recorded binary, source inventories, topology and resource budget.
 
 ## Recorded smoke
 
-The [600-second smoke on `b47ce87`](evidence/sustained-smoke-b47ce87.json) passed
+The [600-second smoke on `0544d5f`](evidence/sustained-smoke-0544d5f.json) passed
 all ten gates with unchanged source and binaries. Its
-[isolated build](evidence/sustained-build-b47ce87.json) passed 59 Python controls,
+[isolated build](evidence/sustained-build-0544d5f.json) passed 59 Python controls,
 nine focused Go race tests (39 pass events), vet and both binary builds.
 
 | Observation | Recorded result |
 | --- | --- |
-| Mixed workload interval | 600.169 seconds, two paced tenant clients |
-| Completed work | 1,571 queries, 79 refreshes, 20 slow readers, 20 cancellations |
+| Mixed workload interval | 600.113 seconds, two paced tenant clients |
+| Completed work | 1,594 queries, 80 refreshes, 20 slow readers, 20 cancellations |
 | Fault gates | Saturation, gateway loss, worker loss and broker loss passed |
-| Process sampling | 11,761 samples; zero hard read errors or diagnostic overflow |
-| Charged memory peak | 759,009,280 bytes under a 200% CPU / 6 GiB service cap |
+| Process sampling | 11,754 samples; zero hard read errors or diagnostic overflow |
+| Charged memory peak | 759,791,616 bytes under a 200% CPU / 6 GiB service cap |
 | Client/resource errors and OOMs | Zero |
-| Cleanup | No forced application kills, live descendants, scratch directories or containment records; owned brokers stopped, service and cgroup removed |
+| Cleanup | No forced application kills, live descendants, scratch directories or containment records; owned brokers stopped, service and cgroup independently confirmed removed |
 
 This is lifecycle evidence, not maximum throughput or deployment sizing. The
-multi-hour gate remains open. The same candidate's
-[hosted CI failure](evidence/tls-ci-37150306039-failure.json) is retained:
-`TestTLSIdentityOneReaderRejectsLateResultAndCloses` failed at its late-result
-assertion. That test waits for the old snapshot to expire, which does not prove
-the pending read exceeded its own deadline. The exact historical read timings
-were not recorded; a test synchronization correction is being validated.
-A passing smoke does not clear that separate CI failure.
+multi-hour gate remains open until a matching two-hour run completes and its
+results reconcile. Passing smoke does not satisfy that gate.
 
-The earlier [smoke on `cbc3e25`](evidence/sustained-smoke-cbc3e25.json) also passed
-all ten gates: 1,606 queries and 11,770 process samples, with verified cleanup.
-The failed [two-hour run on `b09f2da`](evidence/lease-recovery-sustained-failed-b09f2da.json)
-and [smoke on `0da7523`](evidence/sustained-smoke-failed-0da7523.json) remain retained.
+## Earlier evidence
 
-## Combined candidate: startup failed
+| Candidate | Result retained |
+| --- | --- |
+| [`b47ce87` smoke](evidence/sustained-smoke-b47ce87.json) | All ten gates passed; 1,571 queries and 11,761 process samples. Its [build receipt](evidence/sustained-build-b47ce87.json) remains available. |
+| [`cbc3e25` smoke](evidence/sustained-smoke-cbc3e25.json) | All ten gates passed; 1,606 queries and 11,770 process samples. |
+| [`40965ef` smoke](evidence/sustained-smoke-failed-40965ef.json) | Startup failed before workload; underlying metadata cause remains unknown. |
+| [`0da7523` smoke](evidence/sustained-smoke-failed-0da7523.json) | Workload gates passed; strict acceptance rejected process sampling errors. |
+| [`b09f2da` two-hour run](evidence/lease-recovery-sustained-failed-b09f2da.json) | Workload gates passed; strict acceptance rejected process sampling errors. |
 
-The next candidate, `40965ef`, [built successfully](evidence/sustained-build-40965ef.json)
-and passed all 56 controls. Its [smoke failed before workload](evidence/sustained-smoke-failed-40965ef.json):
-`cluster-init` exited 1 with `cluster metadata unavailable`. No queries or
-refreshes ran. The [diagnosis](evidence/sustained-startup-diagnostics-40965ef.json)
-could not identify the failing metadata operation; broker logs did not establish
-a cause.
+`40965ef` [built and passed 56 controls](evidence/sustained-build-40965ef.json),
+but `cluster-init` returned `cluster metadata unavailable`. No queries or
+refreshes ran. [Diagnostics](evidence/sustained-startup-diagnostics-40965ef.json)
+did not establish the failing operation. Internal cleanup then hit a worker
+directory that startup never created; independent outer service/cgroup cleanup
+passed. Later successes do not explain or erase this failure.
 
-Cleanup then tried to list a worker directory that startup had never created.
-The outer controller independently removed the owned service and cgroup. These
-are separate outcomes: startup and internal cleanup failed; outer cleanup passed.
-The earlier passing smoke does not validate this combined candidate. No new
-two-hour campaign has started.
+The [original TLS CI failure](evidence/tls-ci-37150306039-failure.json) is also
+retained. [Corrected tests](evidence/tls-reader-deadlines-2bc7dd7.json) wait for
+the pending read's own deadline; expiry of the old snapshot is insufficient.
+All 41 selected tests / 97 pass events and vet passed. Runtime deadlines stayed
+unchanged; the historical scheduler timing was not captured.
 
 ## Workload and limits
 
