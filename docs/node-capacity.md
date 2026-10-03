@@ -5,6 +5,51 @@ and source database run on Azure; all SSH tunnel processes are also excluded fro
 the worker's accounting. It does not establish that the whole cluster or a
 standalone deployment fits in the micro VM's memory.
 
+## Pinned baseline: 2026-10-03
+
+[Ten profiles](evidence/node-capacity-6749369.json) completed **130/130 queries**:
+five matched metrics-disabled/enabled pairs, including ten bursts of ten
+simultaneously submitted million-row operations. Each profile used **one execution slot**, three serial
+queries, then a burst of ten queued submissions. Exact types, values, NULLs,
+Arrow EOS and durable successful state passed for every response. These are
+120,000,080 repeated result rows from a million-row taxi selection and 265 zones,
+not 120 million distinct source records.
+
+The tested runtime is `67493699eb0ec97857a685923df225ad19b0cf62`, binary SHA-256
+`e6ace8d4c560198c801ba531952bc9e10b3d83ac36e1f6bc5950a329e765c71c`.
+The [805-file source manifest](evidence/node-capacity-6749369-source.json) identifies
+the exact build. Later runtime changes require new validation; this baseline does
+not certify the current release. The host exposed two logical CPUs, fractional
+E2.1.Micro CPU allocation and 951.3 MiB RAM. Source and result LZ4 were enabled.
+
+| Full-delivery workload | Metrics disabled median / p95 | Metrics enabled median / p95 |
+| --- | ---: | ---: |
+| Native million-row projection | 6.583 / 11.266 s | 5.925 / 6.042 s |
+| Federated million-row projection | 9.348 / 9.923 s | 8.793 / 9.102 s |
+| Federated CTE/zone join, eight result rows | 7.337 / 7.513 s | 7.097 / 7.534 s |
+| Queued million-row operation, including assignment wait | 39.006 / 73.383 s | 38.473 / 72.492 s |
+
+The first three rows contain five samples per mode; queued rows contain 50 per
+mode. p95 uses the empirical nearest rank, not a confidence bound. Arrow decoding
+is outside delivery timing; SQL, dispatch, verified worker/gateway TLS and SSH
+transport are included. Native SQL executes on Azure; federation executes on
+Oracle. This does not compare Kelvo against a direct analytical-library baseline.
+
+Median per-profile combined node/worker RSS peaks were **230.9 / 229.8 MiB**;
+cgroup peaks were **183.4 / 181.1 MiB** for disabled/enabled metrics. The 640 MiB
+worker service cap included its Python observer, with zero swap. Every profile
+had one observed worker, zero OOMs and complete process, scratch and containment
+cleanup. The temporary source user, forwarding key, brokers and tunnel cgroups
+were removed; source tables were preserved. Cleanup finished at 14:49:02 UTC,
+before the original 15:38:09 UTC fixture deadline.
+
+Caches were warm and uncontrolled; other bounded Azure acceptance tests ran
+concurrently, while Oracle CPU burst availability and host steal varied. These
+five pairs show trial variability, not causal savings from enabling metrics.
+They do not establish minimum production RAM, whole-cluster fit or an SLA.
+
+## Reproduce the profile
+
 Use the [worker observer](../scripts/node_capacity_worker.py) together with the
 [exact-result client](../scripts/node_capacity_client.py). A resource report
 alone does not prove that a query returned successfully. Retain every failed
