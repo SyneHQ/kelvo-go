@@ -29,6 +29,12 @@ func LoadGateway(path string) (GatewayConfig, error) {
 	}
 	resolveTLS(base, &c.TLS)
 	resolveTLS(base, &c.WorkerTLS)
+	if err := validateTLSRotation(c.TLS); err != nil {
+		return c, err
+	}
+	if err := validateTLSRotation(c.WorkerTLS); err != nil {
+		return c, err
+	}
 	if c.Authentication != nil {
 		c.Authentication.KeysFile = relativePath(base, c.Authentication.KeysFile)
 	}
@@ -86,6 +92,9 @@ func LoadNode(path string) (NodeConfig, error) {
 		}
 	}
 	resolveTLS(base, &c.TLS)
+	if err := validateTLSRotation(c.TLS); err != nil {
+		return c, err
+	}
 	resolveNATS(base, &c.NATS)
 	if len(c.RequiredDatasets) > 64 {
 		return c, errors.New("too many required datasets")
@@ -197,6 +206,7 @@ func relativePath(base, path string) string {
 	return filepath.Join(base, path)
 }
 func resolveTLS(base string, c *TLSConfig) {
+	c.IdentityFile = relativePath(base, c.IdentityFile)
 	c.CertFile = relativePath(base, c.CertFile)
 	c.KeyFile = relativePath(base, c.KeyFile)
 	c.CAFile = relativePath(base, c.CAFile)
@@ -210,6 +220,12 @@ func resolveNATS(base string, c *NATSConfig) {
 
 func loadIdentity(c TLSConfig) (tls.Certificate, error) {
 	var empty tls.Certificate
+	if err := validateTLSRotation(c); err != nil {
+		return empty, err
+	}
+	if c.IdentityFile != "" {
+		return empty, errors.New("rotating TLS identity requires a managed TLS lifecycle")
+	}
 	st, err := os.Stat(c.KeyFile)
 	if err != nil || !st.Mode().IsRegular() || st.Mode()&0027 != 0 {
 		return empty, errors.New("TLS private key must not be writable by group or accessible by others")
@@ -257,7 +273,21 @@ func WorkerIdentity(tenant, worker string) string {
 
 // VerifyConnection also runs for resumed sessions; TLS verification is never disabled.
 func BuildClientTLS(c TLSConfig, peerURI string) (*tls.Config, error) {
-	cert, err := loadIdentity(c)
+	return buildClientTLS(c, peerURI, nil)
+}
+
+func buildClientTLS(c TLSConfig, peerURI string, identity *tlsIdentity) (*tls.Config, error) {
+	var cert tls.Certificate
+	var err error
+	if identity == nil {
+		cert, err = loadIdentity(c)
+	} else {
+		var current *tls.Certificate
+		current, err = identity.current()
+		if err == nil {
+			cert = *current
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -268,12 +298,33 @@ func BuildClientTLS(c TLSConfig, peerURI string) (*tls.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: []tls.Certificate{cert}, VerifyConnection: func(s tls.ConnectionState) error {
+	result := &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: []tls.Certificate{cert}, VerifyConnection: func(s tls.ConnectionState) error {
 		if len(s.VerifiedChains) == 0 || !hasURI(s.PeerCertificates[0], peerURI) {
 			return errors.New("unexpected worker identity")
 		}
 		return nil
-	}}, nil
+	}}
+	if identity != nil {
+		result.Certificates = nil
+		result.GetClientCertificate = func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			current, err := identity.current()
+			if err != nil {
+				return nil, err
+			}
+			if err := info.SupportsCertificate(current); err != nil {
+				return nil, errTLSIdentityUnavailable
+			}
+			return current, nil
+		}
+		verify := result.VerifyConnection
+		result.VerifyConnection = func(state tls.ConnectionState) error {
+			if !identity.ready() {
+				return errTLSIdentityUnavailable
+			}
+			return verify(state)
+		}
+	}
+	return result, nil
 }
 
 func BuildServerTLS(c TLSConfig, ownURI, clientURI string) (*tls.Config, error) {

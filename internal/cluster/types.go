@@ -104,9 +104,11 @@ type NATSConfig struct {
 }
 
 type TLSConfig struct {
-	CertFile string `yaml:"cert_file"`
-	KeyFile  string `yaml:"key_file"`
-	CAFile   string `yaml:"ca_file"`
+	CertFile       string        `yaml:"cert_file"`
+	KeyFile        string        `yaml:"key_file"`
+	CAFile         string        `yaml:"ca_file"`
+	IdentityFile   string        `yaml:"identity_file,omitempty"`
+	ReloadInterval time.Duration `yaml:"reload_interval,omitempty"`
 }
 
 type Endpoint struct {

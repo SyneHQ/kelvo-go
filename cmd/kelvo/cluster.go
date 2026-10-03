@@ -75,10 +75,11 @@ func runCluster(args []string) error {
 		fmt.Fprintln(os.Stderr, "Kelvo cluster tenant state initialized")
 		return nil
 	}
-	tc, err := cluster.BuildServerTLS(cfg.TLS, "", "")
+	serverTLS, err := cluster.OpenServerTLS(cfg.TLS, "", "")
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
+	defer serverTLS.Close()
 	ln, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
 		return err
@@ -88,7 +89,7 @@ func runCluster(args []string) error {
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
-	return serveCluster(ctx, ln, tc, gateway, func() { _ = gateway.Close() }, *drainTimeout)
+	return serveCluster(ctx, ln, serverTLS.Config, serverTLS.Handler(gateway), func() { _ = gateway.Close() }, *drainTimeout)
 }
 
 func runNode(ctx context.Context, file string, drainTimeout time.Duration) error {
@@ -96,10 +97,11 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
-	tc, err := cluster.BuildServerTLS(cfg.TLS, cluster.WorkerIdentity(cfg.Policy.TenantID, cfg.WorkerID), cluster.GatewayIdentity)
+	serverTLS, err := cluster.OpenServerTLS(cfg.TLS, cluster.WorkerIdentity(cfg.Policy.TenantID, cfg.WorkerID), cluster.GatewayIdentity)
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
+	defer serverTLS.Close()
 	catalogue, err := catalog.Load(cfg.CatalogFile)
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Worker catalog cannot be loaded")
@@ -239,7 +241,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) error
 	cleanupDone := make(chan struct{})
 	var refreshErr error // read only after cleanupDone closes
 	datasetsTransferred = true
-	result := serveCluster(runCtx, ln, tc, lifecycle, func() {
+	result := serveCluster(runCtx, ln, serverTLS.Config, serverTLS.Handler(lifecycle), func() {
 		defer close(cleanupDone)
 		stopRefresh()
 		nodeDone := make(chan struct{})
