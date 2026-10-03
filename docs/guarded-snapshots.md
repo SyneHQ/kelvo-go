@@ -72,3 +72,5 @@ Native SQL policies, object-backed snapshot guards, public export/download integ
 [Reader and admission validation](evidence/guarded-snapshot-reader.json) records the focused development checks; production and transport capacity require their separate acceptance evidence.
 
 [Integration evidence](evidence/guarded-snapshot-integration.json) records race/vet checks, real sandbox execution, generation cleanup, key revocation and EOS refusal, plus earlier failed trials and remaining gates.
+
+[Fixture permission regression](evidence/guarded-snapshot-fixture-umask.json) retains the initial CI failure and verifies explicit private test directories under both `0022` and `0077` umasks. The production file-permission checks remain unchanged.
