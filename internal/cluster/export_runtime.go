@@ -62,10 +62,22 @@ func NewExportRuntime(cfg NodeConfig, store ExportStore, executor *worker.Execut
 	if err := validateNodeExports(cfg); err != nil {
 		return nil, err
 	}
+	if err := ValidateExportCatalog(cfg, executor.Config); err != nil {
+		return nil, err
+	}
+	if !executor.ScratchRoot.MatchesDirectory(cfg.ScratchDirectory) || (len(cfg.Policy.SourceQuotas) != 0 && executor.SourceAdmission == nil) || (executor.Containment != nil && !executor.ContainmentBudget.FitsOverhead(int64(cfg.Policy.Limits.MemoryMB), cfg.Resources.OverheadMB)) {
+		return nil, exports.ErrInvalid
+	}
+	expectedPool, err := cfg.Resources.NewPool()
+	if err != nil || !reflect.DeepEqual(expectedPool.Snapshot().Limits, executor.ResourcePool.Snapshot().Limits) || executor.ResourcePool.Snapshot().Draining {
+		return nil, exports.ErrInvalid
+	}
 	copyExecutor := *executor
 	// This operation's export-class custody includes publication and cleanup.
 	// The child executor must not acquire an interactive reservation as well.
 	copyExecutor.ResourcePool = nil
+	copyExecutor.Limits = cfg.Policy.Limits
+	copyExecutor.ResourceOverheadBytes = cfg.Resources.OverheadMB << 20
 	return newExportRuntime(cfg, store, &copyExecutor, executor.ResourcePool, owner)
 }
 
@@ -300,7 +312,7 @@ func exportLive(j ExportJob) error {
 	if !now.Before(j.ExpiresAt) || !now.Before(j.AuthorityUntil) {
 		return context.DeadlineExceeded
 	}
-	if !j.ExecutionDeadline.IsZero() && !now.Before(j.ExecutionDeadline) {
+	if j.State != ExportStored && !j.ExecutionDeadline.IsZero() && !now.Before(j.ExecutionDeadline) {
 		return context.DeadlineExceeded
 	}
 	return nil
