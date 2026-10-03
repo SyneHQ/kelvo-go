@@ -40,6 +40,9 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		return nil, query.NewError("INVALID_ARGUMENT", "Extension directory must be absolute")
 	}
 	for _, source := range config.Sources {
+		if err := source.ValidateParquetPaths(); err != nil {
+			return nil, query.NewError("CONFIGURATION_ERROR", "Invalid multipart parquet source")
+		}
 		if !catalog.ValidID(source.ID) {
 			return nil, query.NewError("INVALID_ARGUMENT", "Source ID is invalid")
 		}
@@ -198,6 +201,9 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 		return errors.New("DuckDB driver does not support trusted source setup")
 	}
 	for _, source := range sources {
+		if err := source.ValidateParquetPaths(); err != nil {
+			return err
+		}
 		if source.Adapter != "" {
 			return errors.New("source adapters are unavailable to DuckDB federation")
 		}
@@ -215,7 +221,15 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 					return err
 				}
 			}
-			statement = "CREATE VIEW " + id + " AS SELECT * FROM read_parquet('" + quoteLiteral(source.Path) + "')"
+			if len(source.ParquetPaths) > 0 {
+				paths := make([]string, len(source.ParquetPaths))
+				for i, path := range source.ParquetPaths {
+					paths[i] = "'" + quoteLiteral(path) + "'"
+				}
+				statement = "CREATE VIEW " + id + " AS SELECT * FROM read_parquet([" + strings.Join(paths, ",") + "])"
+			} else {
+				statement = "CREATE VIEW " + id + " AS SELECT * FROM read_parquet('" + quoteLiteral(source.Path) + "')"
+			}
 		case "sqlite":
 			if err := loadApprovedExtension(ctx, exec, source.Type, extensionDir, tempDir); err != nil {
 				return err
@@ -267,12 +281,19 @@ func lockSourceAccess(ctx context.Context, raw any, sources []catalog.Source, te
 	paths := []string{tempDir}
 	networkSource := false
 	for _, source := range sources {
+		if err := source.ValidateParquetPaths(); err != nil {
+			return err
+		}
 		if source.Adapter != "" {
 			return errors.New("source adapters are unavailable to DuckDB federation")
 		}
 		switch source.Type {
 		case "csv", "parquet", "duckdb", "sqlite":
-			paths = append(paths, source.Path)
+			if len(source.ParquetPaths) > 0 {
+				paths = append(paths, source.ParquetPaths...)
+			} else {
+				paths = append(paths, source.Path)
+			}
 		case "postgres", "mysql":
 			// Custom adapters perform source I/O in Go; only the legacy DuckDB
 			// extensions require broader native external access.

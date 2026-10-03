@@ -20,19 +20,21 @@ func ValidID(s string) bool { return identifier.MatchString(s) }
 
 // Source holds public metadata and references to secret environment variables.
 type Source struct {
-	Federation  *FederationConfig `json:"federation,omitempty" yaml:"federation,omitempty"`
-	ID          string            `json:"id" yaml:"id"`
-	Type        string            `json:"type" yaml:"type"`
-	Adapter     string            `json:"adapter,omitempty" yaml:"adapter,omitempty"`
-	Path        string            `json:"path,omitempty" yaml:"path,omitempty"`
-	DSNEnv      string            `json:"dsn_env,omitempty" yaml:"dsn_env,omitempty"`
-	URLEnv      string            `json:"url_env,omitempty" yaml:"url_env,omitempty"`
-	UsernameEnv string            `json:"username_env,omitempty" yaml:"username_env,omitempty"`
-	PasswordEnv string            `json:"password_env,omitempty" yaml:"password_env,omitempty"`
-	TokenEnv    string            `json:"token_env,omitempty" yaml:"token_env,omitempty"`
-	Options     map[string]string `json:"options,omitempty" yaml:"options,omitempty"`
-	Object      *ObjectRead       `json:"object,omitempty" yaml:"-"`
-	Range       *ObjectRange      `json:"object_range,omitempty" yaml:"-"`
+	// ParquetPaths is set only by trusted snapshot resolution, never YAML input.
+	ParquetPaths []string          `json:"parquet_paths,omitempty" yaml:"-"`
+	Federation   *FederationConfig `json:"federation,omitempty" yaml:"federation,omitempty"`
+	ID           string            `json:"id" yaml:"id"`
+	Type         string            `json:"type" yaml:"type"`
+	Adapter      string            `json:"adapter,omitempty" yaml:"adapter,omitempty"`
+	Path         string            `json:"path,omitempty" yaml:"path,omitempty"`
+	DSNEnv       string            `json:"dsn_env,omitempty" yaml:"dsn_env,omitempty"`
+	URLEnv       string            `json:"url_env,omitempty" yaml:"url_env,omitempty"`
+	UsernameEnv  string            `json:"username_env,omitempty" yaml:"username_env,omitempty"`
+	PasswordEnv  string            `json:"password_env,omitempty" yaml:"password_env,omitempty"`
+	TokenEnv     string            `json:"token_env,omitempty" yaml:"token_env,omitempty"`
+	Options      map[string]string `json:"options,omitempty" yaml:"options,omitempty"`
+	Object       *ObjectRead       `json:"object,omitempty" yaml:"-"`
+	Range        *ObjectRange      `json:"object_range,omitempty" yaml:"-"`
 }
 type Config struct {
 	Sources            []Source            `json:"sources" yaml:"sources"`
@@ -174,6 +176,9 @@ func (c Config) Select(ids []string) ([]Source, error) {
 		found := false
 		for _, s := range c.Sources {
 			if s.ID == id {
+				if err := s.ValidateParquetPaths(); err != nil {
+					return nil, err
+				}
 				out = append(out, s)
 				found = true
 				break

@@ -335,7 +335,7 @@ static char *canonical_path(const char *path) {
 }
 
 int main(int argc, char **argv) {
-	const char *reads[256];
+	const char *reads[1024];
 	size_t read_count = 0;
 	const char *read_execs[64];
 	size_t read_exec_count = 0;

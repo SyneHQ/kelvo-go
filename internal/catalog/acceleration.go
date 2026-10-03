@@ -22,13 +22,21 @@ type AccelerationConfig struct {
 	ObjectStorage *ObjectStorage `json:"object_storage,omitempty" yaml:"object_storage,omitempty"`
 }
 
+// MultipartConfig bounds local immutable snapshot parts and their encoded size.
+// Limits.MaxBytes continues to bound the complete snapshot.
+type MultipartConfig struct {
+	MaxPartBytes int64 `json:"max_part_bytes" yaml:"max_part_bytes"`
+	MaxParts     int   `json:"max_parts" yaml:"max_parts"`
+}
+
 type Dataset struct {
-	ID                   string        `json:"id" yaml:"id"`
-	Query                query.Request `json:"query" yaml:"query"`
-	RefreshInterval      time.Duration `json:"refresh_interval" yaml:"refresh_interval"`
-	MaxAge               time.Duration `json:"max_age" yaml:"max_age"`
-	AuthorizationVersion string        `json:"authorization_version" yaml:"authorization_version"`
-	Limits               query.Limits  `json:"limits" yaml:"limits"`
+	Multipart            *MultipartConfig `json:"multipart,omitempty" yaml:"multipart,omitempty"`
+	ID                   string           `json:"id" yaml:"id"`
+	Query                query.Request    `json:"query" yaml:"query"`
+	RefreshInterval      time.Duration    `json:"refresh_interval" yaml:"refresh_interval"`
+	MaxAge               time.Duration    `json:"max_age" yaml:"max_age"`
+	AuthorizationVersion string           `json:"authorization_version" yaml:"authorization_version"`
+	Limits               query.Limits     `json:"limits" yaml:"limits"`
 }
 
 var tenantName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
@@ -124,6 +132,14 @@ func (c *Config) validateAcceleration(base string) error {
 		}
 		if err := d.Limits.Validate(); err != nil {
 			return errors.New("invalid dataset refresh resource limits")
+		}
+		if d.Multipart != nil {
+			if a.ObjectStorage != nil {
+				return errors.New("multipart snapshots currently require local storage")
+			}
+			if d.Multipart.MaxParts < 2 || d.Multipart.MaxParts > 256 || d.Multipart.MaxPartBytes < 1<<20 || d.Multipart.MaxPartBytes > 4<<30 || d.Multipart.MaxPartBytes > d.Limits.MaxBytes {
+				return errors.New("invalid multipart snapshot limits")
+			}
 		}
 		if a.ObjectStorage != nil && d.Limits.MaxBytes > 4<<30 {
 			return errors.New("object snapshots currently require max_bytes at most 4 GiB")

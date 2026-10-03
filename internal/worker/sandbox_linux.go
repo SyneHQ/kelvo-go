@@ -33,6 +33,7 @@ func SandboxCommand(binary, jobdir string, cfg catalog.Config, limits query.Limi
 
 	args := make([]string, 0, 2+len(cfg.Sources)*2+4)
 	seenRead := make(map[string]struct{})
+	readPathBytes := 0
 	addRead := func(path string) error {
 		if path == "" {
 			return nil
@@ -44,11 +45,32 @@ func SandboxCommand(binary, jobdir string, cfg catalog.Config, limits query.Limi
 		if _, ok := seenRead[resolved]; ok {
 			return nil
 		}
+		// Match the launcher's bounded exact-file grant array. Never broaden
+		// a multipart source to its parent directory to fit more parts.
+		if len(seenRead) >= 1024 {
+			return fmt.Errorf("sandbox source file grant limit exceeded")
+		}
+		// Bound argv independently of file count and the worker JSON cap.
+		if readPathBytes+len(resolved)+1 > 512<<10 {
+			return fmt.Errorf("sandbox source path byte limit exceeded")
+		}
+		readPathBytes += len(resolved) + 1
 		seenRead[resolved] = struct{}{}
 		args = append(args, "--read", resolved)
 		return nil
 	}
 	for _, source := range cfg.Sources {
+		if err := source.ValidateParquetPaths(); err != nil {
+			return nil, err
+		}
+		if len(source.ParquetPaths) > 0 {
+			for _, path := range source.ParquetPaths {
+				if err := addRead(path); err != nil {
+					return nil, fmt.Errorf("sandbox multipart source %q: %w", source.ID, err)
+				}
+			}
+			continue
+		}
 		if source.Object != nil || source.Range != nil {
 			if _, err := sourceEnvironmentNames(source); err != nil {
 				return nil, err
