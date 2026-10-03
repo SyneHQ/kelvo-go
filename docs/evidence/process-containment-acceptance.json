@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "scope": "Delegated single-node kernel enforcement; no production throughput certification",
+  "final_acceptance": {
+    "schema": 1,
+    "scope": "single Linux node process-tree containment and query/refresh custody",
+    "passed": true,
+    "gates": {
+      "TestKernelPrestartMembershipAndControls": "pass",
+      "TestKernelNativeMemoryOOM": "pass",
+      "TestKernelCPUQuota": "pass",
+      "TestKernelPIDsLimit": "pass",
+      "TestKernelDetachedDescendantCleanup": "pass",
+      "TestKernelFailedCleanupQuarantinesCustody": "pass",
+      "TestKernelRestartRecoversOwnedProcess": "pass",
+      "TestKernelRestartRecoversIncompleteIntent": "pass",
+      "TestKernelHierarchyOwnershipLock": "pass",
+      "TestKernelStaleRootIdentityRejected": "pass",
+      "TestKernelSandboxRuntime": "pass",
+      "TestKernelMissingControllersFailsClosed": "pass",
+      "TestContainedWorkerSuccessAndCancellation": "pass",
+      "TestContainedWorkerRefreshCustody": "pass",
+      "TestContainedWorkerStartFailureCleansOwnership": "pass",
+      "TestContainedWorkerRealDuckDBCTE": "pass"
+    },
+    "limitations": [
+      "No hostile native escape reproduction was executed.",
+      "Native charged memory is not parent RSS or whole-node memory.",
+      "Stale root identity rejection is tested; arbitrary host reboot recovery is not promised.",
+      "No throughput or multi-host production capacity claim is made."
+    ],
+    "owned_service_removed": true,
+    "binary_sha256": {
+      "containment.test": "c3f435c3b22b6100edd4e8c093873011586f0870eb4ec7d3a07b05738669bbf3",
+      "worker.test": "bc45506658de3eef00ea71232752863ad96204b6acce3325bd386918ff71aafa",
+      "kelvo": "7a7d29ac29d94af38c254191350f58dfaa73865866fe6cfbd7b909a5c1b68bfe",
+      "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+      "sandbox-runtime": "d356e26f1a4be434cb0e1ca125eba8c02437bafdb5d6600f6ffb94ad256f457e"
+    },
+    "non_root": true,
+    "capability_sets_zero": true,
+    "observations": {
+      "charged_native_peak_bytes": 67112960,
+      "oom_kills": 2,
+      "cpu_usage_usec": 425454,
+      "throttled_periods": 17
+    },
+    "remaining_job_groups": 0,
+    "remaining_ownership_records": 0,
+    "service_exit_code": 0,
+    "duration_seconds": 11.808
+  },
+  "prior_failure": {
+    "report": {
+      "schema": 1,
+      "scope": "single Linux node process-tree containment and query/refresh custody",
+      "passed": false,
+      "gates": {
+        "TestKernelPrestartMembershipAndControls": "pass",
+        "TestKernelNativeMemoryOOM": "pass",
+        "TestKernelCPUQuota": "pass",
+        "TestKernelPIDsLimit": "pass",
+        "TestKernelDetachedDescendantCleanup": "pass",
+        "TestKernelFailedCleanupQuarantinesCustody": "pass",
+        "TestKernelRestartRecoversOwnedProcess": "pass",
+        "TestKernelRestartRecoversIncompleteIntent": "pass",
+        "TestKernelHierarchyOwnershipLock": "pass",
+        "TestKernelStaleRootIdentityRejected": "pass",
+        "TestKernelSandboxRuntime": "pass",
+        "TestKernelMissingControllersFailsClosed": "pass",
+        "TestContainedWorkerSuccessAndCancellation": "pass",
+        "TestContainedWorkerRefreshCustody": "pass",
+        "TestContainedWorkerStartFailureCleansOwnership": "pass",
+        "TestContainedWorkerRealDuckDBCTE": "fail"
+      },
+      "limitations": [
+        "No hostile native escape reproduction was executed.",
+        "Native charged memory is not parent RSS or whole-node memory.",
+        "Stale root identity rejection is tested; arbitrary host reboot recovery is not promised.",
+        "No throughput or multi-host production capacity claim is made."
+      ],
+      "owned_service_removed": true,
+      "binary_sha256": {
+        "containment.test": "c3f435c3b22b6100edd4e8c093873011586f0870eb4ec7d3a07b05738669bbf3",
+        "worker.test": "bc45506658de3eef00ea71232752863ad96204b6acce3325bd386918ff71aafa",
+        "kelvo": "d531b0b3dfd58956f8def761cfee9269d278b1a24b221afa0aa9f3f4b209abb6",
+        "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+        "sandbox-runtime": "d356e26f1a4be434cb0e1ca125eba8c02437bafdb5d6600f6ffb94ad256f457e"
+      },
+      "non_root": true,
+      "capability_sets_zero": true,
+      "observations": {
+        "charged_native_peak_bytes": 67112960,
+        "oom_kills": 2,
+        "cpu_usage_usec": 426203,
+        "throttled_periods": 17
+      },
+      "execution_failed": true,
+      "remaining_job_groups": 0,
+      "remaining_ownership_records": 0,
+      "service_exit_code": 1,
+      "duration_seconds": 12.096
+    },
+    "cause": "Acceptance candidate omitted required duckdb_arrow build tag; corrected runner and reran all gates."
+  },
+  "final_race_command": "GOMAXPROCS=1 go test -p 1 -race -tags duckdb_arrow ./internal/containment ./internal/worker ./internal/cluster ./cmd/kelvo -count=1 -timeout=4m",
+  "final_race_results": [
+    "ok  \tgithub.com/SYNEHQ/kelvo-go/internal/containment\t1.193s",
+    "ok  \tgithub.com/SYNEHQ/kelvo-go/internal/worker\t34.552s",
+    "ok  \tgithub.com/SYNEHQ/kelvo-go/internal/cluster\t41.643s",
+    "ok  \tgithub.com/SYNEHQ/kelvo-go/cmd/kelvo\t1.337s"
+  ],
+  "startup_placement": {
+    "inside_delegation": "accepted before admission",
+    "outside_delegation": "rejected before admission"
+  },
+  "original_owned_fixture_service_removed": true,
+  "review": "Independent read-only reservation/lifecycle review found no remaining blocker; no native escape reproduction executed.",
+  "owned_source_sha256": {
+    "internal/containment/._group_linux.go": "82cf202b09c82ff3bb6de78a9df62ea8eebf4f9324156fef5d24f4aa5b847831",
+    "internal/containment/._manager_linux.go": "82cf202b09c82ff3bb6de78a9df62ea8eebf4f9324156fef5d24f4aa5b847831",
+    "internal/containment/._custody_test.go": "82cf202b09c82ff3bb6de78a9df62ea8eebf4f9324156fef5d24f4aa5b847831",
+    "internal/containment/config.go": "e0d26ad95a4373bdec7b3491a9b44ead35677ffc7ff20ac50179b40803cafdd6",
+    "internal/containment/._files_linux.go": "82cf202b09c82ff3bb6de78a9df62ea8eebf4f9324156fef5d24f4aa5b847831",
+    "internal/containment/._config.go": "82cf202b09c82ff3bb6de78a9df62ea8eebf4f9324156fef5d24f4aa5b847831",
+    "internal/containment/group_linux.go": "62ca89de5b80cf6b35f865a35d3143510e56b32477a2d74453453b90c80afde1",
+    "internal/containment/manager_other.go": "7946042aeae91d62dba71b3edc613358b6381f8dfdf7fc086193fd88b4fe7942",
+    "internal/containment/files_linux.go": "cb302d9327596b2b18e97b09fee32005608a23680d33a4dab400de36153e03c0",
+    "internal/containment/manager_linux_test.go": "a8a7b479ee6ae1af2e43d0c26424a458b6b37b520bef3e3c57877acd2b30d50c",
+    "internal/containment/custody_test.go": "26d9aad76143b75789c05ba6f5eabae90eb2fa7f069528f2d5fc71168e2799e1",
+    "internal/containment/._manager_other.go": "82cf202b09c82ff3bb6de78a9df62ea8eebf4f9324156fef5d24f4aa5b847831",
+    "internal/containment/custody.go": "778d0af67b838492ef99be2b6f77a9eb6dd6a049bacb4552b90a2f349ad6a819",
+    "internal/containment/manager_linux.go": "a625cf7e673715a41f70c47858d036abf0ce0b50b8bd72f6ccdb0a46c3038311",
+    "internal/containment/._manager_linux_test.go": "82cf202b09c82ff3bb6de78a9df62ea8eebf4f9324156fef5d24f4aa5b847831",
+    "internal/containment/._custody.go": "82cf202b09c82ff3bb6de78a9df62ea8eebf4f9324156fef5d24f4aa5b847831",
+    "internal/containment/kernel_linux_test.go": "11e96574586f07e965db8f261146fd3a0f118c741dde9d9920fd7f97660fd7f5",
+    "internal/containment/testdata/sandbox_runtime.cc": "a43e9e3adaebf0caa56ce5eb8192bfefb524ac6336cf9d50f8ae50175c2269dd",
+    "internal/worker/worker.go": "8d8ece73cbe5adf7edb286f68f82a528f3a89407bf75c1d3d2796fffb147d854",
+    "internal/worker/containment_linux_test.go": "d6bdc15fa3cf8f46642999186f7658cd1e76f05fa54bfe28472077207ca19fce",
+    "internal/cluster/config.go": "feed3bfe5ef18059cbdb7433dce62784395f0696fd59a3524ef9523af9308ad3",
+    "internal/cluster/types.go": "4785002e5899d99c6c905c35b6388378ac97a54460a84a83125db3ba0fb04d8e",
+    "internal/cluster/resources.go": "61437aa2094a0aa1c371307b1aa309032951e9b72644adc9d492bb516f6131b9",
+    "cmd/kelvo/cluster.go": "f55b15be2ea149e6154c35ddd9db78df2e3767d751eda5bfb70044dec3097a3b",
+    "cmd/kelvo/containment.go": "9eefd2ad75f5ff50df720384c97872ff8e852267cbae77cb92dd77bfb98db1e4",
+    "cmd/kelvo/containment_linux_test.go": "8e1adf5dd4824fdef6eddedf0f05c1433f8dabef5737c7f5b6beadc03dbf0434",
+    "cmd/kelvo/acceleration.go": "32720db8f4a5599d820a2ea01e71b5c2594b338960b844e12d5cb280ef714371",
+    "cmd/kelvo/refresh_lifecycle.go": "ab9ad6d069feb3a5449777a659de3e3fbd05ac6b1d1beb80279c9723b8dda360",
+    "sandbox/launcher.c": "be59121e2a7fae34283f332590385173655b956588ce3a70ce0142d680945961",
+    "scripts/containment_acceptance.py": "559c0d098ad9a6ac3501a386c515524dcfd9c5309df273b0e04f796bc4a99147"
+  }
+}

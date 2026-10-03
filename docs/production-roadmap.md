@@ -11,6 +11,7 @@ Kelvo remains a developer preview. The board tracks owners, dependencies and acc
 | Query/refresh admission, source quotas, diagnostics, readiness and drain | [Operations](operations.md) |
 | Key, TLS identity and TLS trust rotation | [API keys](gateway-key-rotation.md) · [TLS identity](tls-identity-rotation.md) · [Trust/revocation](tls-trust-rotation.md) |
 | Managed Linux worker scratch | [Ownership and recovery](worker-scratch.md) |
+| Opt-in Linux process-tree memory, CPU and PID limits | [Containment](process-containment.md) · [18-gate evidence](evidence/process-containment-publication.json) |
 | Strict schemas, optional widening, multipart snapshots and verified restore | [Acceleration](acceleration.md) · [Schema policy](schema-evolution.md) · [Multipart](multipart-acceleration.md) |
 | Local backup and remote-to-local migration | [Recovery](snapshot-backup.md) |
 | Passive source observations and local lifecycle telemetry | [Source health](source-health.md) · [Tracing](tracing.md) |
@@ -33,7 +34,7 @@ One SQL plan runs on one worker. DuckDB completes execution before Arrow deliver
 
 | Priority | Remaining work | Completion needs |
 | --- | --- | --- |
-| P0 | Process containment, provider/rotation coverage, rolling upgrades and sustained load | Correct cleanup, exact results and failure-inclusive runtime evidence |
+| P0 | Deployment containment acceptance, provider/rotation coverage, rolling upgrades and sustained load | Correct cleanup, exact results and failure-inclusive runtime evidence |
 | P1 | Remote reader protection, GC, compaction and selective refresh | Crash-safe retention, bounded storage and unchanged results |
 | P1 | Asynchronous exports and result cache | Authorization, storage/admission bounds and publication fencing |
 | P1/P2 | Explain, richer pushdown and columnar warehouse reads | Real bound plans, dialect parity and measured savings |
@@ -43,9 +44,9 @@ Priorities express order, not delivery dates.
 
 ## First delivery: visibility, bounded execution and maintenance
 
-Admission, probes, drain and local telemetry are implemented. Finish per-query containment and deployment acceptance before claiming safe production capacity.
+Admission, optional Linux containment, probes, drain and local telemetry are implemented. Validate delegation, parent headroom and recovery on each deployment before claiming safe production capacity.
 
-- Account for native memory, Arrow buffers, scratch and refresh publication. Export work needs its own admission class.
+- Account for native memory, Arrow buffers, scratch and refresh publication. Export dispatch must reserve its own workload capacity.
 - Keep metrics and trace queues bounded; exclude SQL, parameters, secrets and unbounded labels.
 - Report queue, source, compute and delivery time only where measured. Unknown or overlapping intervals must stay explicit.
 
