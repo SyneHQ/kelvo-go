@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -22,6 +23,7 @@ type MultipartParquetSink struct {
 	options            MultipartOptions
 	limits             query.Limits
 	expectedSchema     *arrow.Schema
+	schemaEvolution    *catalog.SchemaEvolution
 	schema             *arrow.Schema
 	active             *ParquetSink
 	total              *parquetCountingWriter
@@ -55,6 +57,13 @@ func (s *MultipartParquetSink) Schema(schema *arrow.Schema) error {
 		}
 		return s.fail(ErrSchemaMismatch)
 	}
+	// Check the cross-generation contract once, before creating any part. Each
+	// leaf receives this same schema; record and sealed-part checks remain exact.
+	if s.expectedSchema != nil {
+		if err := CheckSchemaEvolution(s.expectedSchema, schema, s.schemaEvolution); err != nil {
+			return s.fail(err)
+		}
+	}
 	s.schema = schema
 	if err := s.openPart(); err != nil {
 		return s.fail(err)
@@ -82,7 +91,6 @@ func (s *MultipartParquetSink) openPart() error {
 	limits := s.limits
 	limits.MaxBytes = min(s.options.MaxPartBytes, remaining)
 	s.active = NewParquetSink(s.total, limits)
-	s.active.expectedSchema = s.expectedSchema
 	if err := s.active.Schema(s.schema); err != nil {
 		return err
 	}

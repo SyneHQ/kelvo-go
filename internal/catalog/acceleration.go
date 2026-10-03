@@ -29,7 +29,18 @@ type MultipartConfig struct {
 	MaxParts     int   `json:"max_parts" yaml:"max_parts"`
 }
 
+// Bump when the meaning of either nondefault evolution flag changes.
+const schemaEvolutionRulesVersion = 1
+
+// SchemaEvolution permits only explicit forward changes between generations.
+// An absent or all-false policy preserves the strict schema contract.
+type SchemaEvolution struct {
+	AddNullableColumns bool `json:"add_nullable_columns" yaml:"add_nullable_columns"`
+	SafeWidening       bool `json:"safe_widening" yaml:"safe_widening"`
+}
+
 type Dataset struct {
+	SchemaEvolution      *SchemaEvolution `json:"schema_evolution,omitempty" yaml:"schema_evolution,omitempty"`
 	Multipart            *MultipartConfig `json:"multipart,omitempty" yaml:"multipart,omitempty"`
 	ID                   string           `json:"id" yaml:"id"`
 	Query                query.Request    `json:"query" yaml:"query"`
@@ -160,7 +171,7 @@ func (c *Config) validateAcceleration(base string) error {
 }
 
 // Fingerprints invalidate old snapshots when the registered query, source
-// configuration, tenant, or operator-controlled authorization version changes.
+// configuration, effective schema policy, tenant, or authorization version changes.
 // Secrets never enter the manifest. Secret/grant changes require a version bump.
 func (c Config) DatasetFingerprint(id string) (string, error) {
 	d, ok := c.Dataset(id)
@@ -175,13 +186,24 @@ func (c Config) DatasetFingerprint(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Keep historical strict fingerprints byte-for-byte stable. Explicit strict
+	// flags and an absent policy have identical effective behavior.
+	var evolution *SchemaEvolution
+	var evolutionVersion int
+	if d.SchemaEvolution != nil && (d.SchemaEvolution.AddNullableColumns || d.SchemaEvolution.SafeWidening) {
+		normalized := *d.SchemaEvolution
+		evolution = &normalized
+		evolutionVersion = schemaEvolutionRulesVersion
+	}
 	b, err := json.Marshal(struct {
 		Format                    int
 		Tenant, ID, Authorization string
 		Query                     query.Request
 		Sources                   []Source
-		ObjectStorage             *ObjectStorage `json:"object_storage,omitempty"`
-	}{1, c.Acceleration.TenantID, d.ID, d.AuthorizationVersion, d.Query, sources, c.Acceleration.ObjectStorage})
+		ObjectStorage             *ObjectStorage   `json:"object_storage,omitempty"`
+		SchemaEvolution           *SchemaEvolution `json:"schema_evolution,omitempty"`
+		SchemaEvolutionVersion    int              `json:"schema_evolution_version,omitempty"`
+	}{1, c.Acceleration.TenantID, d.ID, d.AuthorizationVersion, d.Query, sources, c.Acceleration.ObjectStorage, evolution, evolutionVersion})
 	if err != nil {
 		return "", err
 	}

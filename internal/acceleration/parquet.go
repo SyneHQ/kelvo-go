@@ -8,6 +8,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -26,17 +27,18 @@ const parquetRowGroupBytes int64 = 8 << 20
 // This does not bound the upstream engine's query memory. Each input batch and
 // the Parquet file's cumulative row-group metadata also consume memory.
 type ParquetSink struct {
-	expectedSchema *arrow.Schema
-	out            *parquetCountingWriter
-	limits         query.Limits
-	schema         *arrow.Schema
-	writer         *pqarrow.FileWriter
-	rows           int64
-	groupBytes     int64
-	groups         int64
-	maxGroups      int64
-	finished       bool
-	err            error
+	expectedSchema  *arrow.Schema
+	schemaEvolution *catalog.SchemaEvolution
+	out             *parquetCountingWriter
+	limits          query.Limits
+	schema          *arrow.Schema
+	writer          *pqarrow.FileWriter
+	rows            int64
+	groupBytes      int64
+	groups          int64
+	maxGroups       int64
+	finished        bool
+	err             error
 }
 
 var _ query.Sink = (*ParquetSink)(nil)
@@ -69,8 +71,10 @@ func (s *ParquetSink) Schema(schema *arrow.Schema) (err error) {
 		}
 		return s.fail(errors.New("Parquet schema changed"))
 	}
-	if s.expectedSchema != nil && !SchemaEqual(s.expectedSchema, schema) {
-		return s.fail(ErrSchemaMismatch)
+	if s.expectedSchema != nil {
+		if err := CheckSchemaEvolution(s.expectedSchema, schema, s.schemaEvolution); err != nil {
+			return s.fail(err)
+		}
 	}
 	names := make(map[string]bool, schema.NumFields())
 	groupMetadata := int64(schema.NumFields()+1) * 1024

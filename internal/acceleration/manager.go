@@ -87,6 +87,7 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snaps
 	}
 	sink := NewParquetSink(tx.File(), d.Limits)
 	sink.expectedSchema = previous
+	sink.schemaEvolution = d.SchemaEvolution
 	defer sink.Abort()
 	if _, err = executor.Execute(ctx, d.Query, sink); err != nil {
 		return Snapshot{}, err
@@ -146,6 +147,7 @@ func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, finge
 	}
 	sink := NewMultipartParquetSink(tx, d.Limits, options)
 	sink.expectedSchema = previous
+	sink.schemaEvolution = d.SchemaEvolution
 	defer sink.Abort()
 	if _, err = executor.Execute(ctx, d.Query, sink); err != nil {
 		return Snapshot{}, err

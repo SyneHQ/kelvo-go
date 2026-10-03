@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/flight"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
@@ -21,7 +22,7 @@ import (
 const maxSchemaBytes = 1 << 20
 const maxSchemaFooterBytes = 64 << 20
 
-var ErrSchemaMismatch = errors.New("accelerated dataset schema changed")
+var ErrSchemaMismatch = query.NewError("SCHEMA_MISMATCH", "Accelerated dataset schema changed")
 
 // SchemaWriter is implemented by stores that preserve cross-generation schema
 // contracts while holding their existing exclusive writer lock or lease.

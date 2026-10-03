@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/nats-io/nats.go/jetstream"
 )
@@ -132,12 +133,22 @@ func TestRefreshPermanentStatusSuppressesAndResetFencesOldJobs(t *testing.T) {
 	q := &RefreshQueue{status: store, js: publisher}
 	job := refreshTestJob()
 	msg := &refreshTestMessage{}
-	err := q.processRefresh(ctx, msg, job, func(context.Context, RefreshJob) error { return query.NewError("SCHEMA_MISMATCH", "secret SQL") }, time.Second)
+	// Use the actual sentinel emitted by the snapshot encoder, not a synthetic
+	// query error: a plain errors.New sentinel previously retried real drift.
+	drift := fmt.Errorf("secret source SQL: %w", acceleration.ErrSchemaMismatch)
+	if !errors.Is(drift, acceleration.ErrSchemaMismatch) {
+		t.Fatal("wrapped drift lost its sentinel")
+	}
+	failure := classifyRefreshFailure(drift)
+	if failure.Category != "schema" || !failure.Permanent || strings.Contains(failure.Error(), "secret") {
+		t.Fatalf("actual schema drift misclassified: %+v", failure)
+	}
+	err := q.processRefresh(ctx, msg, job, func(context.Context, RefreshJob) error { return drift }, time.Second)
 	if err == nil || strings.Contains(err.Error(), "secret") || msg.terms.Load() != 1 || msg.naks.Load() != 0 {
 		t.Fatalf("permanent outcome: %v", err)
 	}
 	status, err := q.Status(ctx, job)
-	if err != nil || status.State != "permanent" || status.Attempts != 1 {
+	if err != nil || status.State != "permanent" || status.Category != "schema" || status.Attempts != 1 || !status.NextRetryAt.IsZero() {
 		t.Fatalf("durable status: %+v %v", status, err)
 	}
 	if err := q.Publish(ctx, job, "next-schedule"); err != nil || publisher.calls != 0 {
@@ -147,8 +158,8 @@ func TestRefreshPermanentStatusSuppressesAndResetFencesOldJobs(t *testing.T) {
 	q = &RefreshQueue{status: store, js: publisher, latestSequence: func(context.Context) (uint64, error) { return 50, nil }}
 	msg = &refreshTestMessage{}
 	_ = q.processRefresh(ctx, msg, job, func(context.Context, RefreshJob) error { t.Fatal("stopped dataset ran"); return nil }, time.Second)
-	if msg.terms.Load() != 1 {
-		t.Fatal("stopped delivery not terminated")
+	if msg.terms.Load() != 1 || msg.naks.Load() != 0 || msg.acks.Load() != 0 {
+		t.Fatal("stopped delivery was not terminated without retry")
 	}
 	oldTime := time.Now().Add(-time.Second)
 	if err := q.Reset(ctx, job); err != nil {
