@@ -1,0 +1,166 @@
+{
+  "passed": true,
+  "revision": "b47ce87517a5db5ea33facb4c190196fe1a3f0c3",
+  "source_manifest_sha256": "48c8f1036c7ea85f72c20f812843f2fced04b54c0ae140e2b94e6ece7734c356",
+  "source_file_count": 973,
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "shared_bridge_unchanged": true,
+  "effective_modules_unchanged": true,
+  "binary_sha256": {
+    "kelvo": "fc512438d8f6f27fb6af65cccf16e66f78375033941eec0439753f4b67694336",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "compiler_lanes": 1,
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "failure_type": null,
+  "failure_category": null,
+  "stages": {
+    "external-modfile": {
+      "exit_code": 0,
+      "seconds": 0.003,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "python-controls": {
+      "exit_code": 0,
+      "seconds": 0.464,
+      "log_sha256": "c6b2f93488616eb8c262fa70016c29f562eb299fd0625b347158f65b269007a2"
+    },
+    "go-diagnostic-tests": {
+      "exit_code": 0,
+      "seconds": 28.921,
+      "log_sha256": "47d22a9ab524e164176e4315fe5f44aa8c261ed9290253ae6c80ba8271f630ee"
+    },
+    "go-diagnostic-vet": {
+      "exit_code": 0,
+      "seconds": 15.743,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "binary-build": {
+      "exit_code": 0,
+      "seconds": 6.525,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "launcher-build": {
+      "exit_code": 0,
+      "seconds": 0.314,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "python_controls": {
+    "passed": true,
+    "tests_run": 59,
+    "selected_tests": 59,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "expected_failures": 0,
+    "unexpected_successes": 0,
+    "loader_errors": 0,
+    "required_controls": [
+      "test_sustained_acceptance.SustainedControls.test_diagnostics_are_bounded_without_hiding_failures_or_aliasing",
+      "test_sustained_acceptance.SustainedControls.test_malformed_proc_data_remains_a_hard_failure",
+      "test_sustained_acceptance.SustainedControls.test_non_utf8_stat_is_a_hard_failure_without_status_fallback",
+      "test_sustained_acceptance.SustainedControls.test_one_stat_read_binds_rss_to_identity_even_when_pid_is_reused",
+      "test_sustained_acceptance.SustainedControls.test_open_proc_descriptors_after_child_exit_report_esrch",
+      "test_sustained_acceptance.SustainedControls.test_owned_service_watchdog_bounds_controller_loss_without_shortening_workload",
+      "test_sustained_acceptance.SustainedControls.test_partial_startup_cleanup_still_stops_owned_brokers_and_samples_cgroup",
+      "test_sustained_acceptance.SustainedControls.test_partial_startup_containment_only_allows_never_created_directories",
+      "test_sustained_acceptance.SustainedControls.test_partial_startup_containment_rejects_links_files_and_read_errors",
+      "test_sustained_acceptance.SustainedControls.test_proc_exit_errno_and_permission_errors_at_each_operation",
+      "test_sustained_acceptance.SustainedControls.test_real_linux_zombie_retains_numeric_zero_rss_before_reaping",
+      "test_sustained_acceptance.SustainedControls.test_rss_identity_distinguishes_exit_and_missing_from_malformed_data",
+      "test_sustained_acceptance.SustainedControls.test_rss_tails_and_final_cgroup_sample_are_mandatory",
+      "test_sustained_acceptance.SustainedControls.test_stat_rss_pages_convert_using_cached_validated_page_size"
+    ],
+    "required_controls_present": true,
+    "seconds": 0.296,
+    "log_sha256": "e132bae3e35d1f4dc12211a02a44c7f907cd6ee0701dd313a4bea62921e1dde1"
+  },
+  "enforced_isolation": {
+    "non_root": true,
+    "private_network": true,
+    "memory_max_bytes": 3221225472,
+    "swap_max_bytes": 0,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "tasks_max": 256
+  },
+  "enforced_watchdog": {
+    "RuntimeMaxUSec": "30min",
+    "TimeoutStopUSec": "20s",
+    "KillMode": "control-group",
+    "SendSIGKILL": "yes"
+  },
+  "shared_inputs_before": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+  },
+  "effective_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "raw_build_report_sha256": "a7de499a14c222ffb4a87e5aa2441311fe03d786d6f9e6118a0c4fdfac5e8010",
+  "unit_state": {
+    "LoadState": "not-found",
+    "ActiveState": "inactive",
+    "SubState": "dead",
+    "Result": "success",
+    "MainPID": "0"
+  },
+  "owned_service_removed": true,
+  "owned_cgroup_removed": true,
+  "build_service_exit": {
+    "revision": "b47ce87517a5db5ea33facb4c190196fe1a3f0c3",
+    "unit": "kelvo-sustained-build-b47ce87517-9819da",
+    "systemd_run_exit_code": 0
+  },
+  "build_service_exit_receipt_sha256": "aadc9485996411ade2d902f53e569e3b6a5f12ebf32ba912670c89b7f90a4c9b",
+  "build_service_exit_reconciled": true,
+  "reported_passed": true,
+  "source_current_match": true,
+  "binary_files_match": true,
+  "helpers_unchanged": true,
+  "controls_reconciled": true,
+  "go_controls": {
+    "passed": true,
+    "required_top_level_count": 9,
+    "packages": {
+      "github.com/SYNEHQ/kelvo-go/internal/cluster": {
+        "required_top_level_tests": [
+          "TestStartupChecksOverlapAndFailClosed",
+          "TestStartupDirectChecksUseFreshLookup",
+          "TestStartupDirectLookupFailureIsSanitized",
+          "TestStoreMetadataDiagnosticBoundsAndRejectsTextSpoofing",
+          "TestStoreMetadataDiagnosticClassifiesWithoutReadingText",
+          "TestStoreMetadataFailurePhasesPreserveOperations",
+          "TestStoreMetadataSuccessAndRefusalsPreserveOperations"
+        ],
+        "passed_top_level_count": 7,
+        "passed_events_including_subtests": 37,
+        "package_passed": true
+      },
+      "github.com/SYNEHQ/kelvo-go/cmd/kelvo": {
+        "required_top_level_tests": [
+          "TestLeaseFailureWatcherHandlesEarlyFailureAndOrdinaryCancellation",
+          "TestStoreMetadataDiagnosticCLIDoesNotLogUntypedErrors"
+        ],
+        "passed_top_level_count": 2,
+        "passed_events_including_subtests": 2,
+        "package_passed": true
+      }
+    },
+    "log_sha256": "47d22a9ab524e164176e4315fe5f44aa8c261ed9290253ae6c80ba8271f630ee",
+    "passed_top_level_count": 9,
+    "passed_events_including_subtests": 39,
+    "failures_or_skips": 0
+  },
+  "go_controls_reconciled": true
+}
