@@ -7,6 +7,7 @@ source database is adopted. A smoke report never certifies the multi-hour gate.
 """
 import argparse
 import concurrent.futures
+import errno
 from datetime import datetime, timezone
 import hashlib
 import http.client
@@ -197,27 +198,37 @@ class SlowHandler(urllib.request.HTTPSHandler):
         return self.do_open(SlowConnection, request, context=self._context)
 
 
-def sampled_identity(pid, proc_root=Path("/proc")):
-    """Separate ordinary process exit from unreadable or malformed identity.
+PROC_DISAPPEARED_ERRNOS = frozenset((errno.ENOENT, errno.ESRCH))
+PROCESS_DIAGNOSTIC_LIMIT = 32
 
-    Do not infer a read error by checking path existence after a failed read:
-    exit and reaping race that second lookup, and zombies still have /proc paths.
-    """
+
+def sampled_identity(pid, proc_root=Path("/proc"), diagnostic=None):
+    """Classify known exit errno directly; never hide errors with an exists check."""
+    def record(outcome, error_number=None):
+        if diagnostic is not None:
+            diagnostic("stat", outcome, error_number)
     try:
         raw = (proc_root / str(pid) / "stat").read_text()
-    except FileNotFoundError:
-        return None, "disappeared"
-    except OSError:
+    except OSError as error:
+        if error.errno in PROC_DISAPPEARED_ERRNOS:
+            record("disappeared", error.errno)
+            return None, "disappeared"
+        record("oserror", error.errno)
+        return None, "read_error"
+    except UnicodeError:
+        record("malformed")
         return None, "read_error"
     try:
         prefix, suffix = raw.rsplit(") ", 1)
         fields = suffix.split()
-        if int(prefix.split(" (", 1)[0]) != pid or len(fields[0]) != 1 or not fields[19].isdigit():
-            return None, "read_error"
+        if int(prefix.split(" (", 1)[0]) != pid or len(fields[0]) != 1 or not fields[19].isascii() or not fields[19].isdigit() or len(fields[19]) > 20 or int(fields[19]) > (1 << 64) - 1:
+            raise ValueError("invalid process stat")
         if fields[0] in ("Z", "X", "x"):
+            record("exited")
             return None, "exited"
         return (pid, fields[19]), "live"
     except (IndexError, ValueError):
+        record("malformed")
         return None, "read_error"
 
 
@@ -226,6 +237,37 @@ class LockedSamples(ops.Samples):
         super().__init__(processes)
         self.lock = threading.RLock()
         self.disappeared = 0
+        self.diagnostics = {}
+        self.diagnostic_overflow = 0
+        self.sampling_started = time.monotonic()
+
+    def diagnostic(self, operation, outcome, error_number=None):
+        # Fixed labels and numeric errno only. No PID, path, command line,
+        # source data, exception message, or unbounded per-event journal.
+        if outcome in ("oserror", "malformed"):
+            self.errors.add("PROCESS_IDENTITY_READ_FAILED" if operation == "stat" else "PROCESS_READ_FAILED")
+        elif outcome in ("disappeared", "exited"):
+            self.disappeared += 1
+        error_number = error_number if type(error_number) is int and 0 < error_number < 4096 else None
+        key = (operation, outcome, error_number)
+        if key not in self.diagnostics:
+            if len(self.diagnostics) >= PROCESS_DIAGNOSTIC_LIMIT:
+                self.diagnostic_overflow += 1
+                return
+            self.diagnostics[key] = {"operation": operation, "outcome": outcome, "errno": error_number,
+                                     "count": 0, "first_elapsed_seconds": round(time.monotonic() - self.sampling_started, 6)}
+        item = self.diagnostics[key]
+        item["count"] += 1
+        item["last_elapsed_seconds"] = round(time.monotonic() - self.sampling_started, 6)
+
+    def read_process_text(self, path, operation):
+        try:
+            return path.read_text()
+        except OSError as error:
+            self.diagnostic(operation, "disappeared" if error.errno in PROC_DISAPPEARED_ERRNOS else "oserror", error.errno)
+        except UnicodeError:
+            self.diagnostic(operation, "malformed")
+        return None
 
     def sample(self):
         with self.lock:
@@ -237,33 +279,52 @@ class LockedSamples(ops.Samples):
                     continue
                 seen.add(pid)
                 base = self.proc_root / str(pid)
-                owned, state = sampled_identity(pid, self.proc_root)
+                owned, _ = sampled_identity(pid, self.proc_root, self.diagnostic)
                 if owned is None:
-                    if state == "read_error":
-                        self.errors.add("PROCESS_IDENTITY_READ_FAILED")
-                    else:
-                        self.disappeared += 1
                     continue
                 self.owned[pid] = owned
                 if len(self.owned) > 200000:
                     self.errors.add("PROCESS_IDENTITY_BOUND_EXCEEDED")
                     break
+                status = self.read_process_text(base / "status", "status")
+                if status is None:
+                    continue
+                if re.search(r"^State:\s+[ZXx](?:\s|$)", status, re.MULTILINE):
+                    self.diagnostic("status", "exited")
+                    continue
                 try:
-                    rss = ops.rss_bytes((base / "status").read_text())
-                    if rss is not None:
-                        self.rss_available = True
-                        total += rss
-                    for task in (base / "task").iterdir():
-                        if not task.name.isdigit():
-                            continue
-                        try:
-                            pending.extend(int(value) for value in (task / "children").read_text().split())
-                        except FileNotFoundError:
-                            self.disappeared += 1
-                except FileNotFoundError:
-                    self.disappeared += 1
-                except (OSError, ValueError):
-                    self.errors.add("PROCESS_READ_FAILED")
+                    rss = ops.rss_bytes(status)
+                    if rss is None:
+                        raise ValueError("missing process RSS")
+                except (ValueError, ops.AcceptanceError):
+                    self.diagnostic("status", "malformed")
+                    continue
+                self.rss_available = True
+                total += rss
+                try:
+                    tasks = list((base / "task").iterdir())
+                except OSError as error:
+                    self.diagnostic("tasks", "disappeared" if error.errno in PROC_DISAPPEARED_ERRNOS else "oserror", error.errno)
+                    continue
+                for task in tasks:
+                    if not task.name.isdigit():
+                        continue
+                    children = self.read_process_text(task / "children", "children")
+                    if children is None:
+                        continue
+                    try:
+                        child_ids = []
+                        for field in children.split():
+                            if not field.isascii() or not field.isdigit() or len(field) > 10:
+                                raise ValueError("invalid child PID")
+                            child = int(field)
+                            if not 0 < child <= (1 << 31) - 1:
+                                raise ValueError("invalid child PID")
+                            child_ids.append(child)
+                    except (ValueError, OverflowError):
+                        self.diagnostic("children", "malformed")
+                        continue
+                    pending.extend(child_ids)
             self.samples += 1
             self.peak_rss = max(self.peak_rss, total)
 
@@ -272,6 +333,8 @@ class LockedSamples(ops.Samples):
             return {"interval_ms": 50, "samples": self.samples, "process_tree_rss_available": self.rss_available,
                     "sampled_process_tree_rss_peak_bytes": self.peak_rss if self.rss_available else None,
                     "disappeared_or_exited_process_or_thread_samples": self.disappeared, "read_errors": sorted(self.errors),
+                    "read_diagnostics": [dict(value) for value in self.diagnostics.values()],
+                    "read_diagnostic_limit": PROCESS_DIAGNOSTIC_LIMIT, "read_diagnostic_overflow_events": self.diagnostic_overflow,
                     "scope": "Owned application parents and observed descendants; excludes brokers/Python. RSS sampling can miss short peaks and double-count shared mappings. Dedicated service cgroup counters include all fixture processes."}
 
 
@@ -738,6 +801,23 @@ def inside(args):
     return 0 if not report.get("failure") and all(item.get("passed") is True for item in report["checks"]) else 1
 
 
+def service_command(args, unit, artifact):
+    """Keep the owned service bounded even if its outer controller exits."""
+    command = ["sudo", "-n", "systemd-run", "--unit=" + unit, "--uid=" + pwd.getpwuid(os.geteuid()).pw_name,
+               "--property=Delegate=yes", "--property=PrivateNetwork=yes", "--property=CPUQuota=200%", "--property=MemoryMax=6G", "--property=MemorySwapMax=0",
+               "--property=TasksMax=512", "--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=",
+               "--property=AmbientCapabilities=", "--property=RuntimeMaxSec=" + str(math.ceil(args.duration + 300)),
+               "--property=TimeoutStopSec=20", "--property=KillMode=control-group", "--property=SendSIGKILL=yes",
+               "--collect", "--wait", "--pipe", sys.executable, str(Path(__file__).resolve()),
+               "--inside", "--unit", unit, "--artifact", str(artifact), "--mode", args.mode, "--duration", str(args.duration),
+               "--expected-revision", args.expected_revision,
+               "--binary", str(Path(args.binary).resolve()), "--sandbox", str(Path(args.sandbox).resolve()), "--go", args.go,
+               "--output", str(args.output)]
+    if args.nats_archive:
+        command.extend(["--nats-archive", str(Path(args.nats_archive).resolve())])
+    return command
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", default=str(ROOT / "bin/kelvo"))
@@ -786,16 +866,7 @@ def main():
             ops.require(smoke.get("mode") == "smoke" and smoke.get("passed") is True and reconcile(smoke, args.expected_revision)
                         and smoke["source"] == report["source"] and smoke["binary_sha256"] == report["binary_sha256"], "MATCHED_PASSING_SMOKE_REQUIRED")
             report["prerequisite_smoke_sha256"] = identity.digest(args.smoke_report)
-        command = ["sudo", "-n", "systemd-run", "--unit=" + unit, "--uid=" + pwd.getpwuid(os.geteuid()).pw_name,
-                   "--property=Delegate=yes", "--property=PrivateNetwork=yes", "--property=CPUQuota=200%", "--property=MemoryMax=6G", "--property=MemorySwapMax=0",
-                   "--property=TasksMax=512", "--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=",
-                   "--property=AmbientCapabilities=", "--collect", "--wait", "--pipe", sys.executable, str(Path(__file__).resolve()),
-                   "--inside", "--unit", unit, "--artifact", str(artifact), "--mode", args.mode, "--duration", str(args.duration),
-                   "--expected-revision", args.expected_revision,
-                   "--binary", str(Path(args.binary).resolve()), "--sandbox", str(Path(args.sandbox).resolve()), "--go", args.go,
-                   "--output", str(args.output)]
-        if args.nats_archive:
-            command.extend(["--nats-archive", str(Path(args.nats_archive).resolve())])
+        command = service_command(args, unit, artifact)
         with (artifact / "service.log").open("w") as log:
             process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
             print(json.dumps({"unit": unit, "control_pid": process.pid, "private_artifact": str(artifact), "started_monotonic": started, "requested_seconds": args.duration}), flush=True)
