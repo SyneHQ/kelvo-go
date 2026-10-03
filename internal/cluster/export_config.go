@@ -92,6 +92,9 @@ func validateNodeExports(c NodeConfig) error {
 		c.Resources.OverheadMB < exportBufferMemoryMB(c.Policy) {
 		return errors.New("invalid export storage, cleanup or verification budgets")
 	}
+	if c.Audit != nil && overlappingExportPaths(e.Directory, c.Audit.Directory) {
+		return errors.New("export and audit directories must be disjoint")
+	}
 	return nil
 }
 

@@ -70,6 +70,11 @@ func runCluster(args []string) error {
 			if _, err = s.OpenRefreshQueue(ctx, true); err != nil {
 				return query.NewError("CONFIGURATION_ERROR", "Acceleration dispatch could not be initialized")
 			}
+			if tenant.Policy.Exports != nil {
+				if _, err = cluster.OpenExportStore(ctx, s, true); err != nil {
+					return query.NewError("CONFIGURATION_ERROR", "Export dispatch could not be initialized")
+				}
+			}
 		}
 	}
 	if args[0] == "cluster-init" {
