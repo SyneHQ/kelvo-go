@@ -234,7 +234,10 @@ policy:
 The parent acquires selected source slots in a stable order, rolls back partial
 acquisitions on contention, and renews ownership while work runs. Admission wait
 is included in the execution timeout. Lost renewal cancels execution; release
-follows subprocess cleanup. Accelerated reads do not consume their original
+follows subprocess cleanup. The completion check also rejects ownership lost
+after the final Arrow IPC read; such a result cannot be published as a successful
+refresh. Parent cancellation, execution deadlines and typed sink failures keep
+their existing precedence. Accelerated reads do not consume their original
 source's slots. Broker TTL reclaims crashed owners independently of host clocks.
 A distributed lease cannot fence SQL already running at a remote database:
 remote cancellation is still best effort. Read-only source permissions and
@@ -290,6 +293,14 @@ failures stop scheduled refresh immediately; invalid queries, bad configuration
 and unsupported result types are also permanent failures. Unknown driver errors
 remain retryable within the five-failure budget, with jitter capped at five
 minutes. See the [exact mappings and limits](native-error-classification.md).
+
+DuckDB's typed native out-of-memory category also returns a fixed
+`RESOURCE_EXHAUSTED` error and stops scheduled refreshes as a permanent resource
+failure. This includes analytical execution before Arrow delivery, separately
+from output row/byte limits. Repair the workload or its memory budget before
+resetting. Generic I/O errors and externally killed processes remain unclassified;
+Kelvo does not infer OOM by parsing error text. DuckDB's managed memory limit is
+not a whole-process RSS ceiling. See [worker failure validation](worker-failures.md).
 
 Inspect the dataset's durable state before changing it:
 
@@ -396,3 +407,27 @@ rollback remains protocol-fixture tested; it requires intact current and target
 payloads and is not a repair path for corrupted current data. No new micro-VM or
 throughput claims follow from this milestone. Changes and test binaries remain
 separate from any production deployment.
+
+
+For native CSV inputs on constrained workers, [paired CSV reader options](csv-memory.md)
+can reduce scanner allocation without silently changing defaults for other sources.
+Choose the line setting from actual data and retain headroom beyond DuckDB memory.
+
+
+## Additional validation at runtime revision f3886b7
+
+The ordinary and pinned-bridge suites, affected subsystem race checks, vet,
+ordinary/bridge builds and strict cgo checks passed on the designated Azure VM.
+[Four sandboxed worker cases](evidence/worker-failure-acceptance.json) verified
+native resource failure and injected quota loss across both local snapshot
+layouts, followed by exact recovery after reset.
+
+The stronger single-file verifier also passed refreshed
+[36 single-object TLS checks](evidence/snapshot-verification-object-acceptance.json)
+and [20 multipart TLS checks](evidence/snapshot-verification-multipart-acceptance.json).
+Both retained records identify the same application binary as the worker and
+[12-case CSV memory experiment](evidence/csv-memory-acceptance.json).
+All temporary fixture CAs and CSV work directories were removed.
+These storage endpoints are protocol fixtures, and quota/retry failure injection
+uses an in-memory coordination fixture. No new live-cloud, broker-failover,
+large-dataset, WAN, sustained-capacity or Oracle micro-VM results are implied.

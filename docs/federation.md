@@ -83,6 +83,22 @@ rather than waiting on a slot that another join input might hold.
 | Residual expressions retained by DuckDB | Evaluated by DuckDB |
 | Joins, aggregates, ordering and LIMIT | DuckDB; no general source pushdown for these operators |
 
+Sparse integer `IN (...)` lists can also reach adapters as an OR of exact
+equalities when the pinned optimizer supplies an optional IN filter. DuckDB
+retains its original predicate. Lists must contain at most 256 non-NULL constants
+of one supported type. Additional hints are omitted when the complete plan would
+exceed 32 KiB, 256 top-level filters or 1,024 predicate nodes. Required predicates
+keep their existing validation and cannot be dropped. Hints are never extracted
+from inside an OR arm.
+
+Unsupported, large, NULL-containing and negative IN predicates retain local
+SQL evaluation or another supported optimizer plan; source filtering is not
+guaranteed for every SQL spelling. This adds no string/collation, floating-point,
+decimal or temporal pushdown. Once an equality tree reaches an adapter, the
+existing exact-application contract still applies. Tests cover the pinned planner,
+SQL NULL behavior, global budgets and eight dialect compilers; the HTTP/Arrow
+fixture's reduced row transfer is not a live-database throughput benchmark.
+
 The bridge receives typed optimizer predicates rather than rewriting the user's
 SQL. It validates every requested column against the acquired schema. Integer
 constants retain their width and signedness; no floating-point conversion is

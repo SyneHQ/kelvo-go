@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "mode": "tls_protocol_fixtures",
+  "checked_at": "2026-10-03T03:58:53.191433+00:00",
+  "providers": [
+    "s3",
+    "r2",
+    "gcs",
+    "azure"
+  ],
+  "checks": [
+    {
+      "test": "multipart_upload_commits_descriptor_and_bounded_parts",
+      "passed": true,
+      "provider": "s3",
+      "parts": 3,
+      "encoded_bytes": 1054638
+    },
+    {
+      "test": "fresh_reader_queries_all_parts_with_reader_only_bounded_ranges",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "single_and_multipart_remote_restore_preserves_values_and_freshness",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "changed_descriptor_and_missing_last_part_fail_closed",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "multipart_transport_failures_and_reader_write_denial",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "multipart_upload_commits_descriptor_and_bounded_parts",
+      "passed": true,
+      "provider": "r2",
+      "parts": 3,
+      "encoded_bytes": 1054638
+    },
+    {
+      "test": "fresh_reader_queries_all_parts_with_reader_only_bounded_ranges",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "single_and_multipart_remote_restore_preserves_values_and_freshness",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "changed_descriptor_and_missing_last_part_fail_closed",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "multipart_transport_failures_and_reader_write_denial",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "multipart_upload_commits_descriptor_and_bounded_parts",
+      "passed": true,
+      "provider": "gcs",
+      "parts": 3,
+      "encoded_bytes": 1054638
+    },
+    {
+      "test": "fresh_reader_queries_all_parts_with_reader_only_bounded_ranges",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "single_and_multipart_remote_restore_preserves_values_and_freshness",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "changed_descriptor_and_missing_last_part_fail_closed",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "multipart_transport_failures_and_reader_write_denial",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "multipart_upload_commits_descriptor_and_bounded_parts",
+      "passed": true,
+      "provider": "azure",
+      "parts": 3,
+      "encoded_bytes": 1054638
+    },
+    {
+      "test": "fresh_reader_queries_all_parts_with_reader_only_bounded_ranges",
+      "passed": true,
+      "provider": "azure"
+    },
+    {
+      "test": "single_and_multipart_remote_restore_preserves_values_and_freshness",
+      "passed": true,
+      "provider": "azure"
+    },
+    {
+      "test": "changed_descriptor_and_missing_last_part_fail_closed",
+      "passed": true,
+      "provider": "azure"
+    },
+    {
+      "test": "multipart_transport_failures_and_reader_write_denial",
+      "passed": true,
+      "provider": "azure"
+    }
+  ],
+  "scope": "Local TLS protocol acceptance only; no real cloud, throughput or production-readiness claim",
+  "binary_sha256": "2dc3ebdf40f67786ade422822c79f3fc060488a318fdbd265d1a0176e61fab19"
+}

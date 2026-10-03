@@ -1,0 +1,34 @@
+{
+  "passed": true,
+  "runtime_changes_through": "f3886b7",
+  "fixture_only": true,
+  "required_cases": [
+    "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission/single/native_memory",
+    "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission/single/source_ownership",
+    "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission/multipart/native_memory",
+    "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission/multipart/source_ownership"
+  ],
+  "required_case_count": 4,
+  "kernel_release": "6.12.95+deb12-cloud-amd64",
+  "go_version": "go version go1.26.8 linux/amd64",
+  "binary_sha256": "2dc3ebdf40f67786ade422822c79f3fc060488a318fdbd265d1a0176e61fab19",
+  "launcher_sha256": "cb09cd6b1bcf29a50b7436e02f3aebc9c2f47b1cca74a27c4fe5a7b9ec2bfb6f",
+  "test_event_log_sha256": "b9b7138f6b4afeb12e3f78406abe792e311d49fa1bf9612f987b332105382676",
+  "scope": {
+    "actual_components": [
+      "sandboxed application worker",
+      "Arrow IPC parent validation",
+      "local single-file and multipart Manager publication",
+      "node admission and scratch cleanup"
+    ],
+    "simulated_components": [
+      "source quota cancellation injected after sink write",
+      "retry queue uses in-memory CAS fixture; restart reconstructs wrapper"
+    ],
+    "not_measured": [
+      "live NATS lease loss or broker restart",
+      "cgroup enforcement or RSS ceiling",
+      "sustained capacity or throughput"
+    ]
+  }
+}

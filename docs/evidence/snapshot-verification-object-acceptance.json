@@ -1,0 +1,408 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "mode": "tls_protocol_fixtures",
+  "checked_at": "2026-10-03T03:58:30.938330+00:00",
+  "providers": [
+    "s3",
+    "r2",
+    "gcs",
+    "azure"
+  ],
+  "checks": [
+    {
+      "test": "refresh_publishes_exact_typed_parquet",
+      "passed": true,
+      "provider": "s3",
+      "rows": 3,
+      "parquet_bytes": 3148122
+    },
+    {
+      "test": "fresh_reader_uses_bounded_remote_ranges_without_source_or_shared_snapshot",
+      "passed": true,
+      "provider": "s3",
+      "range_requests": 2,
+      "requested_bytes": 16984,
+      "parquet_bytes": 3148122
+    },
+    {
+      "test": "reader_only_status_verify_and_cloud_write_denial",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "alternating_remote_and_local_snapshot_wall_timings",
+      "passed": true,
+      "provider": "s3",
+      "trials": [
+        {
+          "trial": 1,
+          "order": [
+            "remote",
+            "local"
+          ],
+          "remote_ms": 254.373,
+          "local_ms": 57.605
+        },
+        {
+          "trial": 2,
+          "order": [
+            "local",
+            "remote"
+          ],
+          "local_ms": 59.252,
+          "remote_ms": 249.277
+        },
+        {
+          "trial": 3,
+          "order": [
+            "remote",
+            "local"
+          ],
+          "remote_ms": 248.849,
+          "local_ms": 57.15
+        }
+      ],
+      "rows": 3,
+      "remote_median_ms": 249.277,
+      "local_median_ms": 57.605,
+      "median_difference_ms": 191.672,
+      "median_ratio": 4.327,
+      "limits": {
+        "max_rows": 1000,
+        "max_bytes": 8388608,
+        "timeout_seconds": 15,
+        "threads": 1,
+        "memory_mb": 128,
+        "max_temp_mb": 64,
+        "parent_gomaxprocs": 2,
+        "worker_gomaxprocs": 1
+      },
+      "measured_scope": "CLI process startup, query, Arrow export and exact value validation; loopback TLS fixtures, no WAN or real cloud"
+    },
+    {
+      "test": "source_outage_refresh_preserves_committed_generation",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "missing_corrupt_unsupported_object_metadata_fails_closed",
+      "passed": true,
+      "provider": "s3",
+      "failure_cases": 6
+    },
+    {
+      "test": "remote_redirect_ignored_range_and_wrong_interval_fail_closed",
+      "passed": true,
+      "provider": "s3",
+      "failure_cases": 3,
+      "foreign_requests": 0
+    },
+    {
+      "test": "unsupported_manifest_version_fails_closed",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "missing_manifest_fails_closed_and_restore_recovers",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "refresh_publishes_exact_typed_parquet",
+      "passed": true,
+      "provider": "r2",
+      "rows": 3,
+      "parquet_bytes": 3148121
+    },
+    {
+      "test": "fresh_reader_uses_bounded_remote_ranges_without_source_or_shared_snapshot",
+      "passed": true,
+      "provider": "r2",
+      "range_requests": 2,
+      "requested_bytes": 16984,
+      "parquet_bytes": 3148121
+    },
+    {
+      "test": "reader_only_status_verify_and_cloud_write_denial",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "alternating_remote_and_local_snapshot_wall_timings",
+      "passed": true,
+      "provider": "r2",
+      "trials": [
+        {
+          "trial": 1,
+          "order": [
+            "remote",
+            "local"
+          ],
+          "remote_ms": 253.492,
+          "local_ms": 57.153
+        },
+        {
+          "trial": 2,
+          "order": [
+            "local",
+            "remote"
+          ],
+          "local_ms": 55.198,
+          "remote_ms": 256.239
+        },
+        {
+          "trial": 3,
+          "order": [
+            "remote",
+            "local"
+          ],
+          "remote_ms": 259.552,
+          "local_ms": 57.695
+        }
+      ],
+      "rows": 3,
+      "remote_median_ms": 256.239,
+      "local_median_ms": 57.153,
+      "median_difference_ms": 199.086,
+      "median_ratio": 4.483,
+      "limits": {
+        "max_rows": 1000,
+        "max_bytes": 8388608,
+        "timeout_seconds": 15,
+        "threads": 1,
+        "memory_mb": 128,
+        "max_temp_mb": 64,
+        "parent_gomaxprocs": 2,
+        "worker_gomaxprocs": 1
+      },
+      "measured_scope": "CLI process startup, query, Arrow export and exact value validation; loopback TLS fixtures, no WAN or real cloud"
+    },
+    {
+      "test": "source_outage_refresh_preserves_committed_generation",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "missing_corrupt_unsupported_object_metadata_fails_closed",
+      "passed": true,
+      "provider": "r2",
+      "failure_cases": 6
+    },
+    {
+      "test": "remote_redirect_ignored_range_and_wrong_interval_fail_closed",
+      "passed": true,
+      "provider": "r2",
+      "failure_cases": 3,
+      "foreign_requests": 0
+    },
+    {
+      "test": "unsupported_manifest_version_fails_closed",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "missing_manifest_fails_closed_and_restore_recovers",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "refresh_publishes_exact_typed_parquet",
+      "passed": true,
+      "provider": "gcs",
+      "rows": 3,
+      "parquet_bytes": 3148121
+    },
+    {
+      "test": "fresh_reader_uses_bounded_remote_ranges_without_source_or_shared_snapshot",
+      "passed": true,
+      "provider": "gcs",
+      "range_requests": 2,
+      "requested_bytes": 16984,
+      "parquet_bytes": 3148121
+    },
+    {
+      "test": "reader_only_status_verify_and_cloud_write_denial",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "alternating_remote_and_local_snapshot_wall_timings",
+      "passed": true,
+      "provider": "gcs",
+      "trials": [
+        {
+          "trial": 1,
+          "order": [
+            "remote",
+            "local"
+          ],
+          "remote_ms": 256.513,
+          "local_ms": 58.166
+        },
+        {
+          "trial": 2,
+          "order": [
+            "local",
+            "remote"
+          ],
+          "local_ms": 56.615,
+          "remote_ms": 244.387
+        },
+        {
+          "trial": 3,
+          "order": [
+            "remote",
+            "local"
+          ],
+          "remote_ms": 251.658,
+          "local_ms": 57.517
+        }
+      ],
+      "rows": 3,
+      "remote_median_ms": 251.658,
+      "local_median_ms": 57.517,
+      "median_difference_ms": 194.141,
+      "median_ratio": 4.375,
+      "limits": {
+        "max_rows": 1000,
+        "max_bytes": 8388608,
+        "timeout_seconds": 15,
+        "threads": 1,
+        "memory_mb": 128,
+        "max_temp_mb": 64,
+        "parent_gomaxprocs": 2,
+        "worker_gomaxprocs": 1
+      },
+      "measured_scope": "CLI process startup, query, Arrow export and exact value validation; loopback TLS fixtures, no WAN or real cloud"
+    },
+    {
+      "test": "source_outage_refresh_preserves_committed_generation",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "missing_corrupt_unsupported_object_metadata_fails_closed",
+      "passed": true,
+      "provider": "gcs",
+      "failure_cases": 6
+    },
+    {
+      "test": "remote_redirect_ignored_range_and_wrong_interval_fail_closed",
+      "passed": true,
+      "provider": "gcs",
+      "failure_cases": 3,
+      "foreign_requests": 0
+    },
+    {
+      "test": "unsupported_manifest_version_fails_closed",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "missing_manifest_fails_closed_and_restore_recovers",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "refresh_publishes_exact_typed_parquet",
+      "passed": true,
+      "provider": "azure",
+      "rows": 3,
+      "parquet_bytes": 3148121
+    },
+    {
+      "test": "fresh_reader_uses_bounded_remote_ranges_without_source_or_shared_snapshot",
+      "passed": true,
+      "provider": "azure",
+      "range_requests": 2,
+      "requested_bytes": 16984,
+      "parquet_bytes": 3148121
+    },
+    {
+      "test": "reader_only_status_verify_and_cloud_write_denial",
+      "passed": true,
+      "provider": "azure"
+    },
+    {
+      "test": "alternating_remote_and_local_snapshot_wall_timings",
+      "passed": true,
+      "provider": "azure",
+      "trials": [
+        {
+          "trial": 1,
+          "order": [
+            "remote",
+            "local"
+          ],
+          "remote_ms": 249.023,
+          "local_ms": 58.077
+        },
+        {
+          "trial": 2,
+          "order": [
+            "local",
+            "remote"
+          ],
+          "local_ms": 57.427,
+          "remote_ms": 252.267
+        },
+        {
+          "trial": 3,
+          "order": [
+            "remote",
+            "local"
+          ],
+          "remote_ms": 252.811,
+          "local_ms": 57.254
+        }
+      ],
+      "rows": 3,
+      "remote_median_ms": 252.267,
+      "local_median_ms": 57.427,
+      "median_difference_ms": 194.84,
+      "median_ratio": 4.393,
+      "limits": {
+        "max_rows": 1000,
+        "max_bytes": 8388608,
+        "timeout_seconds": 15,
+        "threads": 1,
+        "memory_mb": 128,
+        "max_temp_mb": 64,
+        "parent_gomaxprocs": 2,
+        "worker_gomaxprocs": 1
+      },
+      "measured_scope": "CLI process startup, query, Arrow export and exact value validation; loopback TLS fixtures, no WAN or real cloud"
+    },
+    {
+      "test": "source_outage_refresh_preserves_committed_generation",
+      "passed": true,
+      "provider": "azure"
+    },
+    {
+      "test": "missing_corrupt_unsupported_object_metadata_fails_closed",
+      "passed": true,
+      "provider": "azure",
+      "failure_cases": 6
+    },
+    {
+      "test": "remote_redirect_ignored_range_and_wrong_interval_fail_closed",
+      "passed": true,
+      "provider": "azure",
+      "failure_cases": 3,
+      "foreign_requests": 0
+    },
+    {
+      "test": "unsupported_manifest_version_fails_closed",
+      "passed": true,
+      "provider": "azure"
+    },
+    {
+      "test": "missing_manifest_fails_closed_and_restore_recovers",
+      "passed": true,
+      "provider": "azure"
+    }
+  ],
+  "scope": "Local TLS protocol acceptance only; no real cloud, throughput or production-readiness claim",
+  "binary_sha256": "2dc3ebdf40f67786ade422822c79f3fc060488a318fdbd265d1a0176e61fab19"
+}

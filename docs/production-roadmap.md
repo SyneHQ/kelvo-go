@@ -65,6 +65,22 @@ confirmed that authentication and revoked-grant refresh failures preserve prior
 snapshots. Unsupported native result types stop as permanent configuration
 failures. These additions do not establish live coverage for every adapter.
 
+Further correctness work rejects late source-quota cancellation before worker
+success and classifies typed DuckDB analytical memory failures as permanent
+resource failures. Sandboxed worker/refresh tests cover prior-snapshot
+preservation, admission cleanup and reset recovery for both local layouts.
+Single-file verification now checks actual Parquet footer rows and schema in
+addition to payload hashes, matching multipart integrity requirements; remote
+verification requires range-read support. These are development correctness
+checks, with injected quota loss and in-memory retry-state fixtures.
+
+The pinned native federation bridge now lowers bounded optional sparse integer
+IN hints to exact equality trees while retaining DuckDB residual evaluation.
+Typed NULL/OR semantics, mandatory filters and aggregate plan budgets are covered
+by real planner tests. Opt-in [CSV buffers](csv-memory.md) also let operators
+reduce scanner allocation with an explicit supported line-size policy. Both
+features preserve the existing execution and authorization boundaries.
+
 Provider-wide conformance/rotation coverage, full queue/stage timing,
 export-specific admission, safe remote GC,
 backup recovery and sustained fault/capacity gates remain pending. The validation

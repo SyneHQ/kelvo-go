@@ -33,7 +33,17 @@ jobs:
       - run: go vet -tags duckdb_arrow ./...
       - run: go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
       - run: cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o bin/kelvo-landlock
+      - name: Verify sandboxed worker failure and snapshot recovery
+        run: |
+          KELVO_TEST_WORKER_BINARY="$PWD/bin/kelvo" KELVO_TEST_SANDBOX_BINARY="$PWD/bin/kelvo-landlock" \
+            go test -p 2 -race -tags duckdb_arrow ./internal/cluster -run TestSandboxedWorkerFailurePreservesSnapshotAndAdmission -count=1 -timeout=5m
       - run: python3 -m pip install pyarrow==25.0.1
+      - name: Verify CSV memory comparison evidence controls
+        run: python3 -m unittest discover -s scripts -p test_csv_memory_acceptance.py
+      - name: Verify opt-in CSV buffers on a sandboxed worker
+        run: |
+          mkdir -p artifacts
+          python3 scripts/csv_memory_acceptance.py --binary bin/kelvo --launcher bin/kelvo-landlock --output artifacts/csv-memory-ci.json
       - name: Verify local multipart CLI conformance
         run: python3 scripts/multipart_acceptance.py
       - name: Verify schema evolution CLI conformance
