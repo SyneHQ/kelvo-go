@@ -17,14 +17,14 @@ The product name is **Kelvo**. The organization is **SYNEHQ**. Use **Kelvo by SY
 | [Wordmark](kelvo-wordmark.svg) · [Inverse wordmark](kelvo-wordmark-inverse.svg) | Horizontal symbol and outlined serif lockup |
 | [Banner SVG](kelvo-banner.svg) · [Banner PNG](kelvo-banner.png) | 1600 × 800 database-grid README artwork |
 | [Database marks](database-marks.svg) · [Sources and licenses](database-marks.SOURCES.md) | Eight database symbols used in the README banner |
-| [Architecture SVG](kelvo-architecture.svg) · [Architecture PNG](kelvo-architecture.png) | 1600 × 1740 editable vector board; 3200 × 3480 PNG for the README |
+| [Architecture SVG](kelvo-architecture.svg) · [Architecture PNG](kelvo-architecture.png) | 1600 × 1800 editable vector board; 3200 × 3600 PNG for the README |
 | [Architecture marks](architecture-marks.svg) · [Sources and licenses](architecture-marks.SOURCES.md) | BigQuery, Apache Arrow, Python and NATS symbols used with the existing database marks |
 | [Social SVG](kelvo-social.svg) · [Social PNG](kelvo-social.png) | 1600 × 840 master; 1200 × 630 export |
 | [Square icon](kelvo-icon.png) | 512 × 512 ink mark on vermilion |
 
 SVG lettering and marks are paths: no installed fonts or network requests are needed to display them. The README banner is entirely vector artwork, including its embedded database symbols. The social SVG embeds its grain field as a PNG; its lettering and mark remain vectors. PNG exports provide consistent rendering in GitHub and social clients.
 
-The architecture board extends the banner's warm-white grid into a workflow: sources on the left, the Go coordinator and two execution modes in the center, and Arrow consumers on the right. Vermilion arrows carry results and snapshots; dashed arrows mark cluster dispatch. Optional acceleration and cluster operation have separate rows. The [architecture walkthrough](../docs/architecture.md) is the accessible text companion and documents the execution boundaries.
+The architecture board extends the banner's warm-white grid into a workflow: sources on the left, the Go coordinator and two execution modes in the center, and Arrow consumers on the right. The coordinator shows selected credential resolution and resource/source admission. Vermilion arrows carry results and dataset transitions; dashed arrows mark cluster dispatch. Separate rows follow full refresh through schema contracts and immutable generations to pinned DuckDB reads, explain cluster routing, and distinguish verified local recovery from worker operations. The [architecture walkthrough](../docs/architecture.md) is the accessible text companion and documents scope, optional controls and execution boundaries.
 
 ## Color
 

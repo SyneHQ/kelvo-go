@@ -14,7 +14,7 @@ import cairosvg
 from PIL import Image
 from render_brand import Lettering, document, mark
 
-W, H = 1600, 1740
+W, H = 1600, 1800
 BG, WHITE, GRID, FINE = '#FCFAF8', '#FFFEFD', '#DDD3D5', '#EEE8E7'
 INK, MUTED, ORANGE, SOFT = '#211C1C', '#756A69', '#FF4B00', '#FFF2E9'
 
@@ -139,10 +139,10 @@ def render(serif, sans, database_marks, architecture_marks):
     b.text('Query gateway', 456, 463, 30, width=668)
     b.text('Go coordinator / cluster node', 456, 495, 20, MUTED, width=650)
     b.line([(800, 516), (800, 569)], GRID, end=False, weight=1)
-    b.text('Registered catalog + credentials', 456, 540, 20, width=324)
-    b.text('Selected environment references', 456, 567, 16, MUTED, width=324)
-    b.text('Admission + query lifecycle', 824, 540, 20, width=320)
-    b.text('Concurrency, deadlines, output limits', 824, 567, 16, MUTED, width=320)
+    b.text('Catalog + selected credentials', 456, 540, 20, width=324)
+    b.text('Env refs; optional private node files', 456, 567, 16, MUTED, width=324)
+    b.text('Resource + source admission', 824, 540, 20, width=320)
+    b.text('Query limits + optional node controls', 824, 567, 16, MUTED, width=320)
     b.line([(800, 588), (800, 634)])
     b.rect(432, 634, 736, 464, BG, '#AFA19F', dashed=True)
     b.text('Disposable query process', 456, 674, 24, width=570)
@@ -154,15 +154,15 @@ def render(serif, sans, database_marks, architecture_marks):
     b.text('OR', 800, 831, 16, MUTED, center=True, tracking=1)
     b.rect(456, 840, 688, 220)
     b.logo('duckdb', 480, 865, 42)
-    b.text('DuckDB federation', 544, 901, 28, width=578)
+    b.text('Local DuckDB execution', 544, 901, 28, width=578)
     b.text('Joins, CTEs, windows and aggregates.', 480, 939, 22, MUTED, width=640)
     b.rect(480, 962, 304, 73, BG)
-    b.text('Opt-in bridge + files', 500, 991, 21, width=266)
-    b.text('8 native adapters + file sources', 500, 1018, 17, MUTED, width=266)
+    b.text('Opt-in live bridge + files', 500, 991, 21, width=266)
+    b.text('8 bridge adapters + file sources', 500, 1018, 17, MUTED, width=266)
     b.rect(808, 962, 312, 73, SOFT, '#F1CDBB')
     b.text('Parquet snapshots', 830, 991, 21, width=270)
     b.text('Pinned dataset generations', 830, 1018, 16, MUTED, width=270)
-    b.text('Selected credentials only · private temporary workspace', 456, 1086, 17, MUTED, width=680)
+    b.text('Selected credentials · deadlines + output limits · private workspace', 456, 1086, 17, MUTED, width=680)
 
     # Source-side access, local inputs and output fan-in are kept spatially apart.
     b.line([(360, 680), (398, 680), (398, 754), (456, 754)], start=True)
@@ -196,60 +196,69 @@ def render(serif, sans, database_marks, architecture_marks):
         b.text(title, 1400, y + 94, 22, width=286, center=True)
         b.text(subtitle, 1400, y + 126, 17.5, MUTED, width=286, center=True)
 
-    # Optional refresh is a source lifecycle, not a third query engine.
-    b.rect(40, 1128, 1520, 144)
+    # A refresh publishes a complete generation; acquisition checks policy and age.
+    b.rect(40, 1128, 1520, 176)
     b.text('OPTIONAL / DATASET ACCELERATION', 64, 1160, 16, MUTED, tracking=.8)
-    b.text('Configured refresh query', 64, 1207, 23, width=350)
-    b.text('Manual, scheduled or queued', 64, 1243, 19, MUTED, width=350)
-    b.line([(417, 1200), (477, 1200)], ORANGE)
-    b.text('Immutable Parquet generations', 502, 1207, 23, width=490)
-    b.text('Local · S3 · R2 · GCS · Azure Blob', 502, 1243, 19, MUTED, width=485)
-    b.line([(972, 1200), (1032, 1200)], ORANGE)
-    b.text('Pinned reads into DuckDB', 1056, 1207, 23, width=475)
-    b.text('Reuse data between full refreshes', 1056, 1243, 19, MUTED, width=474)
-    b.line([(1142, 1128), (1142, 1113), (1155, 1113), (1155, 998), (1120, 998)], ORANGE)
+    stages = [
+        ('Full refresh query', 'Manual, scheduled or queued', 'Reads configured source data'),
+        ('Schema contract', 'Strict; optional forward evolution', 'One schema per generation'),
+        ('Immutable Parquet', 'Single file or multipart', 'Local · S3 / R2 · GCS · Azure Blob'),
+        ('Pinned DuckDB read', 'Freshness + policy checks', 'No automatic source fallback'),
+    ]
+    for i, (title, first, second) in enumerate(stages):
+        x = 64 + i * 372
+        b.text(title, x, 1207, 24, width=344)
+        b.text(first, x, 1241, 18, MUTED, width=344)
+        b.text(second, x, 1274, 18, MUTED, width=344)
+        if i < len(stages) - 1:
+            b.line([(x + 327, 1199), (x + 356, 1199)], ORANGE)
+    b.line([(1410, 1128), (1410, 1115), (1155, 1115), (1155, 998), (1120, 998)], ORANGE)
 
     # Dashed request/state path; solid Arrow results bypass the broker.
-    b.rect(40, 1308, 1520, 160)
-    b.text('OPTIONAL / CLUSTER MODE', 64, 1340, 16, MUTED, tracking=.8)
-    b.text('Gateway replicas', 84, 1387, 24, width=295)
-    b.text('Tenant authentication + admission', 84, 1415, 16, MUTED, width=320)
-    b.logo('nats', 600, 1360, 44)
-    b.text('NATS JetStream', 666, 1387, 24, width=365)
-    b.text('Tenant KV, state and durable dispatch', 600, 1415, 16, MUTED, width=414)
-    b.text('Tenant-bound workers', 1110, 1387, 24, width=417)
-    b.text('Each query stays on one node', 1110, 1415, 16, MUTED, width=418)
-    b.line([(402, 1378), (564, 1378)], dashed=True)
-    b.text('query IDs', 483, 1365, 16, MUTED, width=152, center=True)
-    b.line([(974, 1378), (1075, 1378)], dashed=True)
-    b.line([(1320, 1422), (1320, 1450), (220, 1450), (220, 1422)], ORANGE)
-    b.rect(540, 1434, 474, 29, WHITE, WHITE)
-    b.text('Arrow over mTLS · directly to gateway', 777, 1455, 18, ORANGE, width=468, center=True)
+    b.rect(40, 1336, 1520, 160)
+    b.text('OPTIONAL / CLUSTER MODE', 64, 1368, 16, MUTED, tracking=.8)
+    b.text('Gateway replicas', 84, 1415, 24, width=295)
+    b.text('Tenant authentication + admission', 84, 1443, 16, MUTED, width=320)
+    b.logo('nats', 600, 1388, 44)
+    b.text('NATS JetStream', 666, 1415, 24, width=365)
+    b.text('Tenant KV, state and durable dispatch', 600, 1443, 16, MUTED, width=414)
+    b.text('Tenant-bound workers', 1110, 1415, 24, width=417)
+    b.text('Each query stays on one worker', 1110, 1443, 16, MUTED, width=418)
+    b.line([(402, 1406), (564, 1406)], dashed=True)
+    b.text('query IDs', 483, 1393, 16, MUTED, width=152, center=True)
+    b.line([(974, 1406), (1075, 1406)], dashed=True)
+    b.line([(1320, 1450), (1320, 1478), (220, 1478), (220, 1450)], ORANGE)
+    b.rect(540, 1462, 474, 29, WHITE, WHITE)
+    b.text('Arrow over mTLS · directly to gateway', 777, 1483, 18, ORANGE, width=468, center=True)
 
-    # User-facing benefits, rather than promises about unmeasured performance.
-    benefits = [
-        ('Less connector glue', 'One catalog, query lifecycle', 'and typed Arrow output.'),
-        ('Compute where it fits', 'Source-native queries', 'or local DuckDB joins.'),
-        ('Reuse refreshed data', 'Snapshots avoid repeat', 'source reads between refreshes.'),
-        ('Scale independent jobs', 'Tenant-bound worker pools', 'run separate queries.'),
-    ]
-    for i, (title, first, second) in enumerate(benefits):
-        x = i * 400
-        b.rect(x, 1500, 400, 164)
-        b.text(f'0{i + 1}', x + 40, 1538, 17, ORANGE)
-        b.text(title, x + 40, 1573, 24, width=328)
-        b.text(first, x + 40, 1610, 20, MUTED, width=330)
-        b.text(second, x + 40, 1639, 20, MUTED, width=330)
-    b.rect(0, 1680, W, 60, BG, GRID)
-    b.text('Developer preview · DuckDB completes execution before Arrow delivery', 800, 1717, 21, MUTED, width=1520, center=True)
+    # Operator recovery is separate from live serving and worker diagnostics.
+    b.rect(40, 1532, 744, 176)
+    b.text('LOCAL / BACKUP + RECOVERY', 64, 1564, 16, MUTED, tracking=.8)
+    b.text('Verified local backup', 64, 1610, 23, width=280)
+    b.line([(321, 1602), (364, 1602)], ORANGE)
+    b.text('Fresh recovery root', 388, 1610, 23, width=372)
+    b.text('Operator command · single / multipart · Linux', 64, 1647, 19, MUTED, width=696)
+    b.text('Keeps schema, policy and original refresh time.', 64, 1680, 18, MUTED, width=696)
+    b.rect(816, 1532, 744, 176)
+    b.text('WORKER / OPERATIONS', 840, 1564, 16, MUTED, tracking=.8)
+    b.text('Metrics · readiness · phased drain', 840, 1610, 24, width=696)
+    b.text('Optional lifecycle traces + bounded history', 840, 1647, 20, MUTED, width=696)
+    b.text('Protected diagnostics · required-dataset readiness', 840, 1680, 18, MUTED, width=696)
+
+    b.rect(0, 1740, W, 60, BG, GRID)
+    b.text('Developer preview · DuckDB completes execution before Arrow delivery', 800, 1777, 21, MUTED, width=1520, center=True)
     description = ('Kelvo by SYNEHQ connects application, notebook and job requests to registered databases. '
-        'A Go coordinator applies source configuration and query limits, then starts a disposable process. '
-        'Native mode queries a source database; DuckDB joins supported live inputs, files and pinned Parquet snapshots. '
-        'Both return Arrow IPC to application dashboards, Python consumers and workflows, with optional LZ4 compression. '
-        'Full refresh acceleration publishes Parquet generations to local or optional cloud object storage. '
-        'Optional cluster mode uses NATS JetStream for query dispatch and tenant state, while Arrow results flow directly '
-        'from tenant workers to gateways over mTLS. One query executes on one node. Product logos are examples, not a claim '
-        'of universal federation. DuckDB execution materializes before Arrow delivery.')
+        'A Go coordinator applies source configuration, query limits and optional node resource and source admission. '
+        'The trusted parent resolves only selected source credential references from the environment or optional private node files. '
+        'A disposable process runs one execution mode: native queries at one source, or local DuckDB SQL over supported live inputs, '
+        'files and pinned Parquet snapshots. The optional live bridge has eight built-in adapters; native coverage does not imply federation. '
+        'Both modes return Arrow IPC with optional LZ4 compression. Full refresh acceleration checks a schema contract and publishes '
+        'a complete immutable single-file or multipart Parquet generation to local or optional cloud storage. DuckDB reads pin generations '
+        'after freshness and policy checks, without automatic source fallback. Optional cluster mode uses NATS JetStream for tenant state '
+        'and dispatch; Arrow results flow directly from tenant workers to gateways over mTLS. Each query executes on one worker. '
+        'Operator-only Linux backup and recovery copy a verified local generation into a fresh root while preserving its original refresh time. '
+        'Worker operations include protected metrics, dataset readiness and phased drain, with optional lifecycle traces and bounded history. '
+        'Live federation and independent datasets have no global transaction. DuckDB execution materializes before Arrow delivery.')
     if b.errors:
         raise ValueError('\n'.join(b.errors))
     return document(W, H, 'Kelvo architecture — your data, your software, one bridge', description, ''.join(b.parts)), b.labels
