@@ -252,7 +252,7 @@ func Lookup(ctx context.Context, sourceID, tableAlias string) (TablePolicy, bool
 }
 
 // ValidateRequest must run before snapshot resolution or credential access in
-// the trusted parent. Local accelerated dataset IDs may be unresolved here;
+// the trusted parent. Accelerated dataset IDs may be unresolved here;
 // the child and engine must use ValidateResolvedRequest after lease acquisition.
 func ValidateRequest(ctx context.Context, config catalog.Config, request query.Request) error {
 	return validateRequest(ctx, config, request, true)
@@ -264,11 +264,11 @@ func ValidateResolvedRequest(ctx context.Context, config catalog.Config, request
 	return validateRequest(ctx, config, request, false)
 }
 
-// GuardedSnapshot identifies paths reserved for the private Arrow reader. Never
-// register these paths as SQL views or place them in DuckDB's file allowlist.
+// GuardedSnapshot identifies paths and ranges reserved for the private Arrow
+// reader. Never register these as SQL views or place them in DuckDB's allowlists.
 // Admission and NewSnapshot separately verify the exact dataset grant.
 func GuardedSnapshot(ctx context.Context, source catalog.Source) bool {
-	return source.LocalSnapshot != nil && Restricted(ctx)
+	return (source.LocalSnapshot != nil || source.ObjectSnapshot != nil) && Restricted(ctx)
 }
 
 func validateRequest(ctx context.Context, config catalog.Config, request query.Request, unresolved bool) error {
@@ -292,15 +292,29 @@ func validateRequest(ctx context.Context, config catalog.Config, request query.R
 		}
 		names[folded] = true
 		selected[source.ID] = true
-		if source.Type == "accelerated" || source.LocalSnapshot != nil {
+		if source.Type == "accelerated" || source.LocalSnapshot != nil || source.ObjectSnapshot != nil {
 			if source.Type == "accelerated" {
-				if !unresolved || config.Acceleration == nil || config.Acceleration.ObjectStorage != nil {
+				if !unresolved || config.Acceleration == nil {
 					return unsupported()
 				}
-				if _, exists := config.Dataset(source.ID); !exists || source.Path != "" || source.LocalSnapshot != nil {
+				dataset, exists := config.Dataset(source.ID)
+				if !exists || source.Path != "" || source.LocalSnapshot != nil || source.ObjectSnapshot != nil ||
+					source.Object != nil || source.Range != nil || source.Ranges != nil || source.ParquetPaths != nil ||
+					source.Federation != nil || source.Adapter != "" || source.DSNEnv != "" || source.URLEnv != "" ||
+					source.UsernameEnv != "" || source.PasswordEnv != "" || source.TokenEnv != "" || len(source.Options) != 0 {
 					return unsupported()
 				}
-			} else if source.ValidateLocalSnapshot() != nil || source.LocalSnapshot.SchemaSHA256 == "" {
+				if _, err := dataset.EffectiveSnapshotScanLimits(); err != nil {
+					return unsupported()
+				}
+				if storage := config.Acceleration.ObjectStorage; storage != nil && storage.Validate() != nil {
+					return unsupported()
+				}
+			} else if source.LocalSnapshot != nil {
+				if source.ValidateLocalSnapshot() != nil || source.LocalSnapshot.SchemaSHA256 == "" {
+					return unsupported()
+				}
+			} else if source.ValidateObjectSnapshot() != nil || source.ObjectSnapshot.SchemaSHA256 == "" {
 				return unsupported()
 			}
 			// A dataset owns one relation in main with the dataset ID as its
