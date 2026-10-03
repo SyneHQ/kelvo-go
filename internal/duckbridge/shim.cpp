@@ -11,6 +11,8 @@
 #include "duckdb/main/extension/extension_loader.hpp"
 #include "duckdb/planner/filter/constant_filter.hpp"
 #include "duckdb/planner/filter/conjunction_filter.hpp"
+#include "duckdb/planner/filter/in_filter.hpp"
+#include "duckdb/planner/filter/optional_filter.hpp"
 #include <cstring>
 #include <new>
 
@@ -119,6 +121,77 @@ string FilterJSON(const TableFilter &filter, const string &column, idx_t depth) 
 	}
 }
 
+// Optional IN filters are redundant hints: DuckDB retains the original IN
+// predicate. Lower only exact existing scalar constants, without changing the
+// public adapter contract or advertising new column types.
+struct OptionalInPlan {
+	string json;
+	idx_t nodes;
+};
+
+string OptionalConstantType(const Value &value) {
+	if (value.IsNull()) { return ""; }
+	switch (value.type().id()) {
+	case LogicalTypeId::BOOLEAN:
+	case LogicalTypeId::TINYINT:
+	case LogicalTypeId::SMALLINT:
+	case LogicalTypeId::INTEGER:
+	case LogicalTypeId::BIGINT:
+	case LogicalTypeId::UTINYINT:
+	case LogicalTypeId::USMALLINT:
+	case LogicalTypeId::UINTEGER:
+	case LogicalTypeId::UBIGINT: return ConstantType(value);
+	default: return "";
+	}
+}
+
+void OptionalInPlans(const TableFilter &filter, const string &column, idx_t depth, vector<OptionalInPlan> &plans) {
+	if (depth > 32 || plans.size() >= 256) { return; }
+	if (filter.filter_type == TableFilterType::CONJUNCTION_AND) {
+		for (auto &child : filter.Cast<ConjunctionAndFilter>().child_filters) {
+			OptionalInPlans(*child, column, depth + 1, plans);
+		}
+		return;
+	}
+	// Never extract a hint from an OR arm: applying it independently would
+	// remove rows admitted by the other arm.
+	if (filter.filter_type != TableFilterType::OPTIONAL_FILTER) { return; }
+	auto &optional = filter.Cast<OptionalFilter>();
+	if (!optional.child_filter || optional.child_filter->filter_type != TableFilterType::IN_FILTER) { return; }
+	auto &values = optional.child_filter->Cast<InFilter>().values;
+	if (values.empty() || values.size() > 256) { return; }
+	auto kind = OptionalConstantType(values[0]);
+	if (kind.empty()) { return; }
+	string children;
+	for (auto &value : values) {
+		if (value.type() != values[0].type() || OptionalConstantType(value) != kind) { return; }
+		if (!children.empty()) { children += ","; }
+		children += "{\"kind\":\"comparison\",\"column\":" + JsonString(column) + ",\"op\":\"eq\",\"type\":" +
+		            JsonString(kind) + ",\"value\":" + JsonString(value.ToString()) + "}";
+		// A skipped hint remains enforced by DuckDB. Avoid growing a large
+		// string just to discover the final plan cannot accept this hint.
+		if (children.size() > 32 << 10) { return; }
+	}
+	if (values.size() == 1) { plans.push_back({children, 1}); }
+	else { plans.push_back({"{\"kind\":\"or\",\"children\":[" + children + "]}", values.size() + 1}); }
+}
+
+// Conservative mandatory-node accounting reserves budget before optional hints.
+// Single-child conjunctions may be simplified by FilterJSON, so overcounting
+// here only declines an optimization and cannot weaken mandatory predicates.
+idx_t MandatoryFilterNodes(const TableFilter &filter, idx_t depth) {
+	if (depth > 32) { return 1025; }
+	if (filter.filter_type == TableFilterType::OPTIONAL_FILTER) { return 0; }
+	idx_t nodes = 1;
+	if (filter.filter_type == TableFilterType::CONJUNCTION_AND || filter.filter_type == TableFilterType::CONJUNCTION_OR) {
+		for (auto &child : static_cast<const ConjunctionFilter &>(filter).child_filters) {
+			nodes += MandatoryFilterNodes(*child, depth + 1);
+			if (nodes > 1024) { return 1025; }
+		}
+	}
+	return nodes;
+}
+
 string PlanJSON(ArrowStreamParameters &parameters) {
 	string json = "{\"columns\":[";
 	for (idx_t i = 0; i < parameters.projected_columns.columns.size(); i++) {
@@ -126,18 +199,30 @@ string PlanJSON(ArrowStreamParameters &parameters) {
 		json += JsonString(parameters.projected_columns.columns[i]);
 	}
 	json += "],\"filters\":[";
-	bool first = true;
+	idx_t filters = 0, nodes = 0;
+	vector<OptionalInPlan> optional;
 	if (parameters.filters) {
 		for (auto &entry : parameters.filters->filters) {
 			auto name = parameters.projected_columns.projection_map.find(entry.first);
 			if (name == parameters.projected_columns.projection_map.end()) { return Unsupported(); }
 			auto filter = FilterJSON(*entry.second, name->second, 0);
+			OptionalInPlans(*entry.second, name->second, 0, optional);
 			if (filter.empty()) { continue; }
-			if (!first) { json += ","; }
-			first = false;
+			if (filters++) { json += ","; }
+			nodes += MandatoryFilterNodes(*entry.second, 0);
 			json += filter;
 			if (json.size() > 1 << 20) { return Unsupported(); }
 		}
+	}
+	// JSON includes projection/identifier bytes as well as all mandatory
+	// filters. A conservative 32 KiB complete-plan ceiling leaves room for
+	// native dialect casts, quoting and relation names under their 64 KiB SQL
+	// envelope. Existing larger mandatory plans simply receive no new hints.
+	for (auto &hint : optional) {
+		if (filters >= 256 || nodes + hint.nodes > 1024 || json.size() + hint.json.size() + 3 > 32 << 10) { continue; }
+		if (filters++) { json += ","; }
+		nodes += hint.nodes;
+		json += hint.json;
 	}
 	return json + "]}";
 }
