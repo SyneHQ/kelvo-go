@@ -27,12 +27,16 @@ jobs:
       - name: Verify analytical evidence reconciliation
         run: python3 scripts/test_analytics_evidence.py --campaign docs/evidence/analytics-azure-snapshot.json --validation docs/evidence/analytics-validation-measured.json
       - run: go test -tags duckdb_arrow ./...
-      - run: go test -race ./internal/admission ./internal/telemetry ./internal/secrets ./federation ./internal/federation ./cmd/kelvo ./internal/transport/httpapi ./internal/sources/... ./internal/cluster ./internal/worker ./internal/acceleration ./internal/catalog ./internal/objectstore ./internal/exports
+      - run: go test -race ./internal/containment ./internal/admission ./internal/telemetry ./internal/secrets ./federation ./internal/federation ./cmd/kelvo ./internal/transport/httpapi ./internal/sources/... ./internal/cluster ./internal/worker ./internal/acceleration ./internal/catalog ./internal/objectstore ./internal/exports
       - name: Race-check schema and multipart object consumers
         run: go test -p 2 -race -tags duckdb_arrow ./internal/acceleration ./internal/engine/duckdb -run 'Test(SchemaEvolution|ObjectDescriptor|ObjectRange|ObjectMultipart(Commit|Empty|Seal|Descriptor|Lease|Ambiguous|Options|Root|Canceled)|MultipartRanges|MultipartObject|ExecuteMultipart)' -count=1 -timeout=10m
       - run: go vet -tags duckdb_arrow ./...
       - run: go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
       - run: cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o bin/kelvo-landlock
+      - name: Verify containment evidence and cleanup controls
+        run: python3 -m unittest discover -s scripts -p test_containment_acceptance.py
+      - name: Verify delegated kernel containment and startup placement
+        run: python3 scripts/containment_acceptance.py --go go --report artifacts/containment-ci.json
       - name: Verify sandboxed worker failure and snapshot recovery
         run: |
           KELVO_TEST_WORKER_BINARY="$PWD/bin/kelvo" KELVO_TEST_SANDBOX_BINARY="$PWD/bin/kelvo-landlock" \
@@ -117,6 +121,7 @@ jobs:
             artifacts/operational-ci.json
             artifacts/gateway-key-rotation-ci.json
             artifacts/process-loss-ci.json
+            artifacts/containment-ci.json
             artifacts/release-upgrades-ci.json
           if-no-files-found: warn
           retention-days: 14
