@@ -35,7 +35,7 @@ func TestClusterLifecycleParentingAndFixedAttributes(t *testing.T) {
 	dispatch := recorder.Start(parent, ClusterDispatch)
 	wait := recorder.Start(parent, ClusterResultWait)
 	relay := recorder.Start(parent, ClusterRelay)
-	recorder.Record(Event{Parent: dispatch.Carrier(), Kind: telemetry.KindQuery, Outcome: telemetry.OutcomeSuccess, StartedAt: time.Now(), Duration: time.Millisecond})
+	recorder.Record(Event{Parent: parent, Kind: telemetry.KindQuery, Outcome: telemetry.OutcomeSuccess, StartedAt: time.Now(), Duration: time.Millisecond})
 	dispatch.End(telemetry.OutcomeSuccess)
 	wait.End(telemetry.OutcomeError)
 	relay.End(telemetry.OutcomeCanceled)
@@ -71,8 +71,8 @@ func TestClusterLifecycleParentingAndFixedAttributes(t *testing.T) {
 				t.Fatal("root operation imported ambient context")
 			}
 		case "kelvo.query":
-			if span.Parent().SpanID().String() != dispatch.Carrier().SpanID {
-				t.Fatal("worker record lost its validated dispatch parent")
+			if span.Parent().SpanID().String() != parent.SpanID {
+				t.Fatal("worker record lost its validated durable job parent")
 			}
 		case "kelvo.cluster.dispatch", "kelvo.cluster.result_wait", "kelvo.cluster.relay":
 			if span.Parent().SpanID().String() != parent.SpanID {
