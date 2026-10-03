@@ -37,6 +37,7 @@ type objectBackend struct {
 	pollInterval  time.Duration
 	renewInterval time.Duration
 	closed        atomic.Bool
+	closeOnce     sync.Once
 }
 
 type objectManifest struct {
@@ -108,9 +109,10 @@ func newObjectBackend(config catalog.AccelerationConfig, client objectstore.Clie
 }
 
 func (backend *objectBackend) Close() error {
-	if backend.closed.CompareAndSwap(false, true) {
+	backend.closeOnce.Do(func() {
+		backend.closed.Store(true)
 		backend.reader.Close()
-	}
+	})
 	return nil
 }
 
