@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "scope": "Isolated internal reader-registry package groundwork. No live provider, manifest lifecycle, query/backup reader integration, remote garbage collection or production capacity certification.",
+  "source_revision": "50fd0ce86e284441b1a90da7d26194724904cc1f",
+  "source_manifest_sha256": "79cebadf580e377e16c941f45575c2bd18e753c9df69d22d8283d1405b8927e6",
+  "source_files": {
+    "go.mod": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+    "go.sum": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb",
+    "internal/readerlease/doc.go": "aacb66ccea964e6c32b209ba692fe53ff944bec9c2dd071a921a68db9bb643c8",
+    "internal/readerlease/types.go": "ec763719a469c5174d632aed292e7396335d3c71c72e10afc6e1e711f3a7a2d0",
+    "internal/readerlease/codec.go": "8efa89400fd60fd4b1fc53daea37dbb97a92d96a53ee5fcf5c95d568d1c8fa41",
+    "internal/readerlease/registry.go": "1a55e2f8cd3ea89bb80816599ad3027037ce94ee73547d1e7cc8983de7d36d63",
+    "internal/readerlease/lease.go": "1b11cadad98e7a86d383cbb1ae33b2f78c2ce30a497fe87bd252a2bf83e0293c",
+    "internal/readerlease/registry_test.go": "a42d6c513e5295b4ac22988c53cbc0df84d8399cd27a9dceaabdc66fa0333e22",
+    "internal/readerlease/lease_test.go": "722620b339971ab2c153ab8ac46fba0e3005543b6a6ee0a8c1b09132a88d7e34"
+  },
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "offline": true,
+  "checks": {
+    "race": {
+      "exit_code": 0,
+      "seconds": 3.319,
+      "log_sha256": "27e56d4a5af686510d475b6ef234a977cd5f7ea91ef02dba8476b6cbcc1d63f7"
+    },
+    "vet": {
+      "exit_code": 0,
+      "seconds": 0.164,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "test_gate": {
+    "required_top_level_tests": [
+      "TestReaderLeaseAcquireLateCommitDoesNotGrantExpiredReader",
+      "TestReaderLeaseCheckAndRenewalPublicationAreSerialized",
+      "TestReaderLeaseCloseBoundsStuckReleaseAndDoesNotExposeErrorText",
+      "TestReaderLeaseParentCancellationAndDeadline",
+      "TestReaderLeaseRenewPreservesOtherReadersAndExtendsConservativeCutoff",
+      "TestReaderLeaseRenewalLossCancelsWithoutResurrection",
+      "TestReaderLeaseRestartCannotAdoptOrReleaseOldIncarnation",
+      "TestReaderLeaseWatchdogAndCloseBoundStuckRenewal",
+      "TestReaderRegistryBlockedAcquireReservesCapacityBeforeProviderIO",
+      "TestReaderRegistryConcurrentCASAndCapacityPreservePins",
+      "TestReaderRegistryConstructorTimingAndScope",
+      "TestReaderRegistryEncodedByteCapacityCannotBeBypassed",
+      "TestReaderRegistryLocalCapacityCoversDifferentGenerations",
+      "TestReaderRegistryRawENOENTCannotCreateProtectionMetadata",
+      "TestReaderRegistryRejectsScalarCoercionAndNoncanonicalFences",
+      "TestReaderRegistrySealRaceCannotChangeContent",
+      "TestReaderRegistryStagesSealsAndFencesImmutableBinding",
+      "TestReaderRegistryStrictPayloadAndProviderIdentity",
+      "TestReaderRegistryUnknownAcquireOutcomeRetainsPinWithoutReader"
+    ],
+    "passed_top_level_count": 19,
+    "passed_events_including_subtests": 68,
+    "failures_or_skips": 0
+  },
+  "enforced_isolation": {
+    "effective_uid": 1000,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "memory_max": 1073741824,
+    "swap_max": 0,
+    "tasks_max": 128,
+    "private_network": true,
+    "network_interface_source": "/proc/self/net/dev",
+    "network_interfaces": [
+      "lo"
+    ],
+    "non_root": true
+  },
+  "cleanup": {
+    "owned_service_unloaded": true,
+    "owned_service_inactive": true,
+    "owned_main_pid_zero": true,
+    "owned_cgroup_absent": true
+  },
+  "helper_sha256": "13dd8f5d481c4656b94f000bd474d15ceb478736c9332c919f5113968edeb5e8",
+  "validation_report_sha256": "4881c44801783e65ed72896c2843a09b5aa917454d98bfb58005435d7388b651",
+  "private_receipt_sha256": "805784f5994e57641409d9e683e65d816048872a531d976f4fd960c9b41c442b",
+  "prior_attempt": {
+    "passed": false,
+    "stage": "isolation preflight before any Go command",
+    "failure_category": "RESOURCE_BOUND_REQUIRED",
+    "cause": "Host-mounted sysfs network view was used despite a distinct private network namespace. The helper was corrected to use /proc/self/net/dev; package source was unchanged.",
+    "source_unchanged_after": true,
+    "owned_service_and_cgroup_cleanup_verified": true,
+    "receipt_sha256": "a13317d8755140338ab19646aad09b7a7313768f507f71c2b6173594e97d160d"
+  },
+  "passed": true
+}
