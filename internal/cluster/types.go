@@ -122,13 +122,14 @@ type TenantConfig struct {
 }
 
 type GatewayConfig struct {
-	Listen          string         `yaml:"listen"`
-	TLS             TLSConfig      `yaml:"tls"`
-	WorkerTLS       TLSConfig      `yaml:"worker_tls"`
-	MaxQueries      int            `yaml:"max_queries"`
-	MaxConcurrent   int            `yaml:"max_concurrent"`
-	MaxHTTPRequests int            `yaml:"max_http_requests"`
-	Tenants         []TenantConfig `yaml:"tenants"`
+	Authentication  *GatewayAuthenticationConfig `yaml:"authentication,omitempty"`
+	Listen          string                       `yaml:"listen"`
+	TLS             TLSConfig                    `yaml:"tls"`
+	WorkerTLS       TLSConfig                    `yaml:"worker_tls"`
+	MaxQueries      int                          `yaml:"max_queries"`
+	MaxConcurrent   int                          `yaml:"max_concurrent"`
+	MaxHTTPRequests int                          `yaml:"max_http_requests"`
+	Tenants         []TenantConfig               `yaml:"tenants"`
 }
 
 type NodeConfig struct {

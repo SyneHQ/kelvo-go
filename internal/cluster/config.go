@@ -29,6 +29,12 @@ func LoadGateway(path string) (GatewayConfig, error) {
 	}
 	resolveTLS(base, &c.TLS)
 	resolveTLS(base, &c.WorkerTLS)
+	if c.Authentication != nil {
+		c.Authentication.KeysFile = relativePath(base, c.Authentication.KeysFile)
+	}
+	if err := validateGatewayAuthentication(&c); err != nil {
+		return c, err
+	}
 	if c.Listen == "" || len(c.Tenants) == 0 || len(c.Tenants) > 256 || c.MaxQueries < 1 || c.MaxQueries > 65536 || c.MaxConcurrent < 1 || c.MaxConcurrent > 4096 || c.MaxHTTPRequests < 1 || c.MaxHTTPRequests > 4096 {
 		return c, errors.New("invalid gateway capacity or listener")
 	}
@@ -39,7 +45,7 @@ func LoadGateway(path string) (GatewayConfig, error) {
 		if err := ValidatePolicy(t.Policy); err != nil {
 			return c, err
 		}
-		if seen[t.Policy.TenantID] || t.TokenEnv == "" {
+		if seen[t.Policy.TenantID] {
 			return c, errors.New("tenant identities must be unique and have an API token reference")
 		}
 		seen[t.Policy.TenantID] = true

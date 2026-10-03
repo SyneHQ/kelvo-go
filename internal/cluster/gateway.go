@@ -34,6 +34,7 @@ type workerEndpoint struct {
 type Gateway struct {
 	tenants       map[string]gatewayTenant
 	tokens        map[[32]byte]string
+	auth          *gatewayAuthenticator
 	permits       chan struct{}
 	resultWaiters chan struct{}
 	ctx           context.Context
@@ -52,6 +53,9 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 	if cfg.MaxHTTPRequests < 1 || cfg.MaxHTTPRequests > 4096 || len(cfg.Tenants) == 0 {
 		return nil, errors.New("cluster gateway: max_http_requests must be positive")
 	}
+	if err := validateGatewayAuthentication(&cfg); err != nil {
+		return nil, err
+	}
 	gctx, cancel := context.WithCancel(context.Background())
 	g := &Gateway{tenants: map[string]gatewayTenant{}, tokens: map[[32]byte]string{}, permits: make(chan struct{}, cfg.MaxHTTPRequests), resultWaiters: make(chan struct{}, cfg.MaxHTTPRequests), ctx: gctx, cancel: cancel, reconcileOK: map[string]bool{}}
 	for _, tc := range cfg.Tenants {
@@ -62,17 +66,19 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 			cancel()
 			return nil, errors.New("cluster gateway: missing or mismatched tenant store")
 		}
-		token := os.Getenv(tc.TokenEnv)
-		if len(token) < 32 {
-			cancel()
-			return nil, errors.New("cluster gateway: tenant token must contain at least 32 characters")
+		if cfg.Authentication == nil {
+			token := os.Getenv(tc.TokenEnv)
+			if len(token) < 32 {
+				cancel()
+				return nil, errors.New("cluster gateway: tenant token must contain at least 32 characters")
+			}
+			sum := sha256.Sum256([]byte(token))
+			if _, ok := g.tokens[sum]; ok {
+				cancel()
+				return nil, errors.New("cluster gateway: duplicate tenant token")
+			}
+			g.tokens[sum] = tenant
 		}
-		sum := sha256.Sum256([]byte(token))
-		if _, ok := g.tokens[sum]; ok {
-			cancel()
-			return nil, errors.New("cluster gateway: duplicate tenant token")
-		}
-		g.tokens[sum] = tenant
 		gt := gatewayTenant{store: st, workers: map[string]workerEndpoint{}}
 		for _, ep := range tc.Workers {
 			u, err := url.Parse(ep.URL)
@@ -98,6 +104,23 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 			gt.workers[ep.ID] = workerEndpoint{url: u, client: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 		}
 		g.tenants[tenant] = gt
+	}
+	if cfg.Authentication != nil {
+		identities := make(map[string]bool, len(g.tenants))
+		for tenant := range g.tenants {
+			identities[tenant] = true
+		}
+		var err error
+		g.auth, err = newGatewayAuthenticator(*cfg.Authentication, identities, nil)
+		if err != nil {
+			cancel()
+			for _, tenant := range g.tenants {
+				for _, endpoint := range tenant.workers {
+					endpoint.client.CloseIdleConnections()
+				}
+			}
+			return nil, err
+		}
 	}
 	for tenant := range g.tenants {
 		g.wg.Add(1)
@@ -127,6 +150,9 @@ func (g *Gateway) Close() error {
 		g.closed = true
 		g.mu.Unlock()
 		g.cancel()
+		if g.auth != nil {
+			g.auth.close()
+		}
 		g.handlers.Wait()
 		g.wg.Wait()
 		for _, t := range g.tenants {
@@ -183,6 +209,9 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet && r.URL.Path == "/ready" {
 		g.mu.RLock()
 		ready := !g.draining && len(g.reconcileOK) == len(g.tenants)
+		if g.auth != nil {
+			ready = ready && g.auth.ready()
+		}
 		for tenant := range g.tenants {
 			ready = ready && g.reconcileOK[tenant]
 		}
@@ -202,11 +231,20 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	admission := requestAdmission{active: g.permits, waiting: g.resultWaiters, held: admissionActive}
 	defer admission.release()
-	tenant, ok := g.tenant(r)
+	tenant, authContext, ok := g.authenticate(r)
 	if !ok {
 		w.Header().Set("WWW-Authenticate", "Bearer")
 		g.err(w, 401, "UNAUTHENTICATED", "Authentication required")
 		return
+	}
+	if authContext != nil {
+		stopAuth := context.AfterFunc(authContext, cancel)
+		defer stopAuth()
+		if authContext.Err() != nil {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			g.err(w, 401, "UNAUTHENTICATED", "Authentication required")
+			return
+		}
 	}
 	p := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(p) < 2 || p[0] != "v1" || p[1] != "queries" {
@@ -238,14 +276,18 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	g.err(w, 404, "NOT_FOUND", "Not found")
 }
-func (g *Gateway) tenant(r *http.Request) (string, bool) {
-	v := r.Header.Get("Authorization")
-	if !strings.HasPrefix(v, "Bearer ") {
-		return "", false
+func (g *Gateway) authenticate(r *http.Request) (string, context.Context, bool) {
+	values := r.Header.Values("Authorization")
+	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
+		return "", nil, false
 	}
-	h := sha256.Sum256([]byte(strings.TrimPrefix(v, "Bearer ")))
+	token := strings.TrimPrefix(values[0], "Bearer ")
+	if g.auth != nil {
+		return g.auth.lookup(token)
+	}
+	h := sha256.Sum256([]byte(token))
 	t, ok := g.tokens[h]
-	return t, ok
+	return t, nil, ok
 }
 func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant) {
 	r.Body = http.MaxBytesReader(w, r.Body, gatewayRequestLimit)
