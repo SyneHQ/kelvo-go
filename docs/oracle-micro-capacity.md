@@ -1,5 +1,9 @@
 # Oracle micro VM capacity
 
+For the newer tenant-isolated worker and NATS queue campaign, see
+[Kelvo worker on Oracle E2.1.Micro](node-capacity.md). That pinned baseline places
+the gateway, NATS and source on Azure and reports worker-only accounting.
+
 On `VM.Standard.E2.1.Micro`, Kelvo completed **30/30 native million-row exports at 469,800 output rows/s** with source/result LZ4. Explicitly larger limits allowed **30/30 four-million-row exports at 443,421 rows/s**, still under a **640 MiB service cap**. SQL ran on Azure; a macOS client verified complete remote exports through SSH.
 
 The limits matter: ten simultaneous federated exports caused a service OOM (**0/10 completed**); four permits completed **12/30 attempts**, with 18 HTTP 429s. Result LZ4 slowed the separate federated CLI median, and no full-sort attempt produced a validated export. These are workload/path observations, not production capacity or availability guarantees.
