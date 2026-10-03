@@ -514,6 +514,12 @@ func publicError(err error) error {
 	if errors.Is(err, context.Canceled) {
 		return query.NewError("CANCELLED", "Query cancelled")
 	}
+	// Native execution can exhaust DuckDB memory before Arrow delivery begins.
+	// Match only the pinned driver category; I/O errors include unrelated failures.
+	var native *duck.Error
+	if errors.As(err, &native) && native != nil && native.Type == duck.ErrorTypeOutOfMemory {
+		return query.NewError("RESOURCE_EXHAUSTED", "Query exceeded DuckDB memory limit")
+	}
 	return query.NewError("QUERY_FAILED", "Query failed")
 }
 

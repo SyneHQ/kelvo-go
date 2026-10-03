@@ -114,6 +114,7 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		// resources are released before a competing job can take this reservation.
 		defer reservation.Release()
 	}
+	executionCtx := ctx // retain the deadline even if a quota child cancels first
 	quotaStarted := time.Now()
 	quotaCtx, releaseQuota, quotaErr := e.acquireSourceQuota(ctx, r)
 	admissionWait += time.Since(quotaStarted)
@@ -201,33 +202,48 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	stats.Accelerations = versions
 	stats.Rows, stats.Bytes, stats.Batches, stats.WireBytes = observed.Rows, observed.Bytes, observed.Batches, observed.WireBytes
 	stats.DurationNS = time.Since(start).Nanoseconds()
+	return stats, workerResultError(parent, executionCtx, ctx, readErr, waitErr, decodeErr, cleanupErr, outcome.Error)
+}
+
+// Decide success only after the subprocess and its descendants are cleaned up.
+// A source lease can be lost after the final IPC context check; its child
+// context does not cancel the original caller or an enclosing refresh writer.
+func workerResultError(parent, executionCtx, ctx context.Context, readErr, waitErr, decodeErr, cleanupErr error, outcomeError *query.Error) error {
 	if parent.Err() != nil {
-		return stats, parent.Err()
+		return parent.Err()
 	}
-	if ctx.Err() != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return stats, ctx.Err()
+	if errors.Is(executionCtx.Err(), context.DeadlineExceeded) {
+		return executionCtx.Err()
+	}
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return ctx.Err()
 	}
 	if readErr != nil {
-		if decodeErr == nil && outcome.Error != nil {
-			return stats, outcome.Error
+		if decodeErr == nil && outcomeError != nil {
+			return outcomeError
 		}
 		if errors.Is(readErr, context.Canceled) || errors.Is(readErr, context.DeadlineExceeded) {
-			return stats, readErr
+			return readErr
 		}
 		// Preserve typed sink limits. Other subprocess/IPC errors stay sanitized.
 		var qe *query.Error
 		if errors.As(readErr, &qe) {
-			return stats, qe
+			return qe
 		}
-		return stats, query.NewError("QUERY_FAILED", "Query worker did not complete an Arrow result")
+		return query.NewError("QUERY_FAILED", "Query worker did not complete an Arrow result")
 	}
 	if waitErr != nil || decodeErr != nil || (cleanupErr != nil && !errors.Is(cleanupErr, os.ErrProcessDone)) {
-		return stats, query.NewError("QUERY_FAILED", "Query worker failed")
+		return query.NewError("QUERY_FAILED", "Query worker failed")
 	}
-	if outcome.Error != nil {
-		return stats, outcome.Error
+	if outcomeError != nil {
+		return outcomeError
 	}
-	return stats, nil
+	if ctx.Err() != nil {
+		// Local read failures have already returned above. Do not expose an
+		// arbitrary coordination cause or mistake lost ownership for success.
+		return query.NewError("UNAVAILABLE", "Query source admission ended before completion")
+	}
+	return nil
 }
 
 // The parent retains cloud reader and writer credentials. Query children only
