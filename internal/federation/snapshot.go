@@ -53,6 +53,9 @@ func NewSnapshot(ctx context.Context, source catalog.Source, limits query.Limits
 			}
 			err = snapshotPanic(recovered)
 		}
+		if err != nil && ctx.Err() != nil {
+			err = query.PublicError(ctx.Err())
+		}
 	}()
 	if limits.Validate() != nil || (source.LocalSnapshot == nil) == (source.ObjectSnapshot == nil) ||
 		source.ValidateLocalSnapshot() != nil || source.ValidateObjectSnapshot() != nil {
@@ -287,6 +290,9 @@ func (e *snapshotExecution) Execute(ctx context.Context, _ query.Request, sink q
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = snapshotPanic(recovered)
+		}
+		if err != nil && ctx.Err() != nil {
+			err = query.PublicError(ctx.Err())
 		}
 	}()
 	if err := sink.Schema(e.schema); err != nil {
