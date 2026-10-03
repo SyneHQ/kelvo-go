@@ -1,5 +1,6 @@
 # Release upgrades and snapshot compatibility
 
+For gateway/worker rolling changes, use the separate [application compatibility matrix](rolling-upgrades.md). Snapshot compatibility alone does not establish cluster compatibility.
 Binary rollback and data rollback are separate. Before enabling a new writer, retain the old executable/configuration and a verified independent snapshot copy.
 
 ## Current compatibility boundary

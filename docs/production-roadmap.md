@@ -18,9 +18,9 @@ Kelvo remains a developer preview. The board tracks owners, dependencies and acc
 | Local backup and remote-to-local migration | [Recovery](snapshot-backup.md) |
 | Passive source observations and local lifecycle telemetry | [Source health](source-health.md) · [Tracing](tracing.md) |
 | Durable Arrow export storage primitive | [Contributor API](export-storage.md); no export jobs or download API yet |
-| Repeatable release gates | [Process loss](process-loss-acceptance.md) · [Snapshot upgrades](release-upgrades.md) · [Storage](storage-conformance.md) |
+| Repeatable release gates | [Process loss](process-loss-acceptance.md) · [Snapshot upgrades](release-upgrades.md) · [Rolling matrix](rolling-upgrades.md) · [Storage](storage-conformance.md) |
 
-Implemented controls are not deployment certification. Live-provider gates, rolling cluster upgrades and sustained fault/load campaigns remain open. Existing measurements belong to their recorded binaries.
+Implemented controls are not deployment certification. Live-provider gates and sustained fault/load campaigns remain open. The [rolling matrix](rolling-upgrades.md) covers one application pair; newer policy/audit configurations and changed broker/client versions remain unvalidated. Existing measurements belong to their recorded binaries.
 
 ## Review scope
 
