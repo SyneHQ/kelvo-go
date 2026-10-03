@@ -19,6 +19,7 @@ import subprocess
 import time
 
 from nats_export_permissions import tenant_permissions
+from export_diagnostics import ExportDiagnostics
 
 SUPPORTED_SERVERS = ("2.14.7", "2.15.0")
 
@@ -173,6 +174,7 @@ def run(args):
               "scope": ("single broker; exact runtime and initializer ACLs in two separate tenant accounts" if args.mode == "acl" else
                         "single broker; actual sandboxed worker and gateway lifecycle using separate restricted broker roles"),
               "tests": [], "failures": [], "skips": [], "passed": False}
+    diagnostics = ExportDiagnostics()
     fixture = ExportBrokerFixture(args.fixture, args.nats_server, args.server_sha256, args.server_version, args.mode)
     process = None
     try:
@@ -223,6 +225,7 @@ def run(args):
                     event = json.loads(line)
                 except ValueError:
                     continue
+                diagnostics.observe(event)
                 if event.get("Test") and event.get("Action") in ("pass", "fail", "skip"):
                     report["tests"].append({"name": event["Test"], "outcome": event["Action"]})
                     if event["Action"] == "fail":
@@ -235,6 +238,7 @@ def run(args):
     except BaseException as error:
         report["error"] = type(error).__name__
     finally:
+        report["diagnostics"] = diagnostics.report()
         report["broker_stopped"] = fixture.close()
         report["passed"] = report["passed"] and report["broker_stopped"]
         output.write_text(json.dumps(report, indent=2) + "\n")

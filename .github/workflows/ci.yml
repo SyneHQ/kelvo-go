@@ -169,7 +169,9 @@ jobs:
             -tags duckdb_arrow,duckbridge ./internal/worker ./internal/cluster \
             -run '^Test(Snapshot(WorkerSandboxPoliciesCancellationAndPinnedGeneration|PrincipalRealWorkerRevocationWithholdsEOS)|ObjectSnapshot(WorkerActualChild.*|PrincipalRealWorkerRevocationWithholdsEOS))$'
       - name: Verify export fixture and permission controls
-        run: python3 -m unittest discover -s scripts -p test_nats_export_permissions.py
+        run: |
+          python3 -m unittest discover -s scripts -p test_nats_export_permissions.py
+          python3 -m unittest discover -s scripts -p test_export_diagnostics.py
       - name: Verify export child cancellation, quota and crash recovery
         run: |
           export CGO_CXXFLAGS="-I${GITHUB_WORKSPACE}/artifacts/duckbridge/headers"
