@@ -30,6 +30,11 @@ func LoadGateway(path string) (GatewayConfig, error) {
 	if err := c.Audit.Validate(); err != nil {
 		return c, err
 	}
+	if c.Tracing != nil {
+		if err := c.Tracing.Validate(); err != nil {
+			return c, err
+		}
+	}
 	resolveTLS(base, &c.TLS)
 	resolveTLS(base, &c.WorkerTLS)
 	if c.TLS.Trust != nil {
