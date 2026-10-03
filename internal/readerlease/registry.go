@@ -287,17 +287,70 @@ func bindingMatches(d document, binding Binding) error {
 // capacity is reserved before provider I/O and held until failed acquisition
 // returns or the successful lease is closed and its background work has exited.
 func (r *Registry) Acquire(ctx context.Context, binding Binding) (*Lease, error) {
+	return r.AcquireWithLifetime(ctx, ctx, binding)
+}
+
+// AcquireWithLifetime separates acquiring a pin from the custody of a confirmed
+// pin. Either context cancels acquisition. After the final confirmation check,
+// only custodyCtx controls renewal; cancelling acquireCtx cannot drop a pin
+// while its consumer is still being cleaned up.
+//
+// This is a trusted-owner API. The caller must separately apply the request
+// deadline to consumers, retain bounded custody until those consumers stop, and
+// call Close even after request cancellation. It does not prove consumer exit
+// or authorize deletion. No acquireCtx values are retained by the returned Lease
+// unless the caller also passes that context as custodyCtx.
+func (r *Registry) AcquireWithLifetime(acquireCtx, custodyCtx context.Context, binding Binding) (*Lease, error) {
+	if acquireCtx == nil || custodyCtx == nil {
+		return nil, ErrInvalid
+	}
 	if !hexToken(binding.ContentSHA256, 64) {
 		return nil, ErrInvalid
 	}
 	if _, err := r.key(binding.Reference); err != nil {
 		return nil, err
 	}
-	if err := r.reserve(ctx); err != nil {
+	if err := context.Cause(acquireCtx); err != nil {
 		return nil, err
+	}
+	if err := context.Cause(custodyCtx); err != nil {
+		return nil, err
+	}
+	// Even acquisition cancellation callbacks belong to bounded custody. A
+	// capacity refusal must not create work that can outlive the refused call.
+	if err := r.reserve(acquireCtx); err != nil {
+		return nil, err
+	}
+	operation, cancel := context.WithCancelCause(acquireCtx)
+	var ctx context.Context = operation
+	if deadline, ok := custodyCtx.Deadline(); ok {
+		if current, bounded := acquireCtx.Deadline(); !bounded || deadline.Before(current) {
+			// Cancellation still comes from custodyCtx, preserving its cause.
+			// Expose its earlier deadline to providers without a second timer.
+			ctx = acquisitionDeadline{Context: operation, deadline: deadline}
+		}
+	}
+	callbackDone := make(chan struct{})
+	stop := context.AfterFunc(custodyCtx, func() {
+		defer close(callbackDone)
+		cancel(context.Cause(custodyCtx))
+	})
+	joined := false
+	join := func() {
+		if joined {
+			return
+		}
+		joined = true
+		if !stop() {
+			<-callbackDone
+		}
 	}
 	transferred := false
 	defer func() {
+		// Join even a cancellation callback that started before stop. On a
+		// failed acquisition, no callback may outlive its reserved capacity.
+		join()
+		cancel(context.Canceled)
 		if !transferred {
 			r.unreserve()
 		}
@@ -343,8 +396,24 @@ func (r *Registry) Acquire(ctx context.Context, binding Binding) (*Lease, error)
 		if err != nil {
 			return nil, err
 		}
-		lease, err := newLease(ctx, r, binding, reader, written.clock)
+		// Detach acquisition-only cancellation work before transferring custody.
+		// A concurrent custody cancellation is also observed by newLease itself.
+		join()
+		if err := context.Cause(acquireCtx); err != nil {
+			return nil, err
+		}
+		lease, err := newLease(custodyCtx, r, binding, reader, written.clock)
 		if err != nil {
+			return nil, err
+		}
+		if err := lease.Check(); err != nil {
+			lease.cancel(err)
+			return nil, err
+		}
+		// This check is the transfer boundary: later request cancellation must
+		// stop the consumer, while the confirmed pin remains in caller custody.
+		if err := context.Cause(acquireCtx); err != nil {
+			lease.cancel(err)
 			return nil, err
 		}
 		lease.start()
@@ -353,3 +422,12 @@ func (r *Registry) Acquire(ctx context.Context, binding Binding) (*Lease, error)
 	}
 	return nil, ErrConflict
 }
+
+// The operation's Done is cancelled by the custody callback. Reporting the
+// earlier custody deadline also lets a provider honor Deadline directly.
+type acquisitionDeadline struct {
+	context.Context
+	deadline time.Time
+}
+
+func (c acquisitionDeadline) Deadline() (time.Time, bool) { return c.deadline, true }
