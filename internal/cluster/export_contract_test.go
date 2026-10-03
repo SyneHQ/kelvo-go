@@ -168,3 +168,25 @@ func TestExportTransitionMatrixNeverAdoptsStoppedJobs(t *testing.T) {
 		}
 	}
 }
+
+func TestExportConsumerAllowsOnlyBrokerReservedMetadata(t *testing.T) {
+	f := newExportStoreFixture(t)
+	cfg := exportConsumerConfig(f.store.policy)
+	cfg.Metadata = map[string]string{"_nats.level": "5", "_nats.req.level": "0", "_nats.ver": "2.15.0"}
+	if err := validateExportConsumerConfig(cfg, f.store.policy); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Metadata["unexpected"] = "value"
+	if err := validateExportConsumerConfig(cfg, f.store.policy); err == nil {
+		t.Fatal("operator metadata silently accepted")
+	}
+	delete(cfg.Metadata, "unexpected")
+	cfg.MaxAckPending++
+	if err := validateExportConsumerConfig(cfg, f.store.policy); err == nil {
+		t.Fatal("consumer capacity mismatch accepted")
+	}
+	stream := exportStreamConfig(f.store.policy)
+	if stream.Duplicates > stream.MaxAge {
+		t.Fatal("deduplication window exceeds queue lifetime")
+	}
+}
