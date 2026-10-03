@@ -196,9 +196,15 @@ access: do not publish them or persist them in application logs. DuckDB's exact
 source allowlist separately restricts queries to the selected capabilities.
 
 These range checks do not recompute the full payload SHA-256 on every query.
-`accelerate verify` streams and hashes the full pinned object when full integrity
-verification is needed. Preserve generation immutability and the namespace's
-access controls. A query must fail if a selected revision changes.
+`accelerate verify` streams and hashes every pinned payload, then validates
+bounded Parquet footer row counts and original Arrow schema metadata. This applies
+to single-file and multipart generations. Custom object backends must implement
+`objectstore.RangeClient`; verification explicitly returns `ErrRecoveryUnsupported`
+without that capability, even for a single file. Built-in providers supply range
+reads. Legacy snapshots without a stored schema hash remain readable, but their
+actual Parquet metadata and row counts must still validate. Preserve generation
+immutability and namespace access controls. A query must fail if a selected
+revision changes.
 
 ## Limits and retention
 

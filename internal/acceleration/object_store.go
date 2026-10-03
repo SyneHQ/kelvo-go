@@ -317,17 +317,20 @@ func (backend *objectBackend) Acquire(ctx context.Context, dataset, fingerprint 
 }
 
 func (backend *objectBackend) Verify(ctx context.Context, dataset string) (Snapshot, error) {
+	// Full verification includes bounded footer/schema reads for every layout.
+	// A checksum-only client must not claim that persisted row/schema metadata
+	// was verified merely because the object's bytes match its digest.
+	if _, ok := backend.reader.(objectstore.RangeClient); !ok {
+		return Snapshot{}, ErrRecoveryUnsupported
+	}
 	snapshot, _, err := backend.status(ctx, dataset)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if len(snapshot.Parts) > 0 {
-		if _, err := backend.verifyObjectSnapshot(ctx, snapshot); err != nil {
-			return Snapshot{}, err
-		}
-		return snapshot, nil
+	if _, err := backend.verifyObjectSnapshot(ctx, snapshot); err != nil {
+		return Snapshot{}, err
 	}
-	return backend.verifyObjectBytes(ctx, snapshot)
+	return snapshot, nil
 }
 
 func (backend *objectBackend) verifyObjectBytes(ctx context.Context, snapshot Snapshot) (Snapshot, error) {

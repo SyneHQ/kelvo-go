@@ -469,12 +469,12 @@ func (s *Store) Verify(ctx context.Context, dataset string) (Snapshot, error) {
 		}
 		return lease.Snapshot, nil
 	}
-	digest, err := storeHash(ctx, lease.file)
-	if err != nil {
+	// Single-file and multipart generations obey the same integrity contract:
+	// matching bytes alone do not prove the manifest's row/schema metadata.
+	if _, err := verifyMultipartPart(ctx, lease.file, SnapshotPart{
+		Rows: lease.Snapshot.Rows, Bytes: lease.Snapshot.Bytes, SHA256: lease.Snapshot.SHA256,
+	}, lease.Snapshot.SchemaHash); err != nil {
 		return Snapshot{}, err
-	}
-	if digest != lease.Snapshot.SHA256 {
-		return Snapshot{}, fmt.Errorf("%w: snapshot checksum mismatch", ErrCorrupt)
 	}
 	return lease.Snapshot, nil
 }

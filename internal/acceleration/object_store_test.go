@@ -233,6 +233,17 @@ func writeObjectSnapshot(t *testing.T, backend Backend, payload string) Snapshot
 	return snapshot
 }
 
+// Raw-byte publication fixtures test storage durability, not valid Parquet.
+// Keep their explicit byte-integrity assertions separate from public Verify,
+// whose real-Parquet schema/row contract is exercised by remote verification tests.
+func verifyRawObjectFixture(backend *objectBackend, dataset string) (Snapshot, error) {
+	snapshot, err := backend.Status(context.Background(), dataset)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return backend.verifyObjectBytes(context.Background(), snapshot)
+}
+
 func TestObjectBackendPersistsAcrossIndependentWorkersWithoutSharedScratch(t *testing.T) {
 	objects := newFakeSnapshotObjects()
 	writer := testObjectBackend(t, objects)
@@ -250,7 +261,7 @@ func TestObjectBackendPersistsAcrossIndependentWorkersWithoutSharedScratch(t *te
 			}
 			return err
 		},
-		func() error { _, err := reader.Verify(context.Background(), "events"); return err },
+		func() error { _, err := verifyRawObjectFixture(reader, "events"); return err },
 	} {
 		if err := operation(); err != nil {
 			t.Fatal(err)
@@ -333,7 +344,7 @@ func TestObjectBackendPreservesLastGoodSnapshotWhileRefreshingAndAfterFailure(t 
 			objects.mu.Lock()
 			objects.headFault = ""
 			objects.mu.Unlock()
-			current, err = backend.Verify(context.Background(), "events")
+			current, err = verifyRawObjectFixture(backend, "events")
 			if err != nil || current.Generation != good.Generation {
 				t.Fatalf("last good snapshot lost: %+v %v", current, err)
 			}
@@ -481,7 +492,7 @@ func TestObjectBackendReconcilesAmbiguousPublicationWithoutDeletingObjects(t *te
 			if count != 3 {
 				t.Fatalf("an immutable object was removed after uncertain publication: %d objects", count)
 			}
-			current, err := backend.Verify(context.Background(), "events")
+			current, err := verifyRawObjectFixture(backend, "events")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -551,8 +562,8 @@ func TestObjectBackendPolicyAndIntegrity(t *testing.T) {
 	if readsAfter != reads {
 		t.Fatal("Acquire downloaded the payload")
 	}
-	if _, err := backend.Verify(context.Background(), "events"); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("Verify ignored corrupt bytes: %v", err)
+	if _, err := verifyRawObjectFixture(backend, "events"); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("byte audit ignored corrupt bytes: %v", err)
 	}
 	for _, fault := range []string{"size", "empty", "version", "digest"} {
 		objects.mu.Lock()

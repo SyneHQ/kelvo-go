@@ -81,25 +81,9 @@ func storeVerifyGeneration(ctx context.Context, dir *os.File, manifest storeMani
 		return nil, err
 	}
 	defer payload.Close()
-	digest, err := storeHash(ctx, payload)
-	if err != nil {
-		return nil, err
-	}
-	if digest != manifest.SHA256 {
-		return nil, fmt.Errorf("%w: generation checksum mismatch", ErrCorrupt)
-	}
-	schema, err := ReadParquetSchema(payload, manifest.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("%w: generation Parquet schema is invalid", ErrCorrupt)
-	}
-	schemaHash, err := SchemaFingerprint(schema)
-	if err != nil {
-		return nil, err
-	}
-	if manifest.SchemaHash != "" && manifest.SchemaHash != schemaHash {
-		return nil, fmt.Errorf("%w: generation schema checksum mismatch", ErrCorrupt)
-	}
-	return schema, nil
+	return verifyMultipartPart(ctx, payload, SnapshotPart{
+		Rows: manifest.Rows, Bytes: manifest.Bytes, SHA256: manifest.SHA256,
+	}, manifest.SchemaHash)
 }
 
 func (s *Store) Inventory(ctx context.Context, dataset string) ([]Generation, error) {

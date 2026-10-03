@@ -57,7 +57,9 @@ func commitTestSnapshot(t *testing.T, store *Store, payload string) Snapshot {
 
 func requireCurrentGeneration(t *testing.T, store *Store, generation string) {
 	t.Helper()
-	snapshot, err := store.Verify(context.Background(), "events")
+	// These transaction fixtures use synthetic bytes to test pointer publication,
+	// not Parquet validity. Integrity verification has dedicated real-file tests.
+	snapshot, err := store.Status("events")
 	if err != nil {
 		t.Fatal(err)
 	}
