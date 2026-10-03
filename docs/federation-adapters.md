@@ -1,49 +1,17 @@
 # Federation adapters: operator and contributor guide
 
-Kelvo is an independent open-source analytics gateway by SYNEHQ. Its optional
-Go/C++ Arrow bridge lets DuckDB plan cross-source queries while compiled-in Go
-adapters read operator-selected source tables. This guide covers five additions
-to the existing ClickHouse, PostgreSQL and MySQL adapters: SQL Server,
-Snowflake, BigQuery, Databricks and Oracle.
-
-These adapters reuse the existing native connectors. They do not turn every
-native connector into a federation source. The [bridge build and deployment
-requirements](federation.md#build-and-update) still apply. An ordinary build
-without the bridge fails explicitly when custom federation is requested.
+Configure the SQL Server, Snowflake, BigQuery, Databricks and Oracle adapters, or add a compiled-in Go adapter. All use the optional [bridge build](federation.md#build-and-update); native query support alone does not provide federation.
 
 ## Why these five
 
-The [2025 Stack Overflow Developer Survey](https://survey.stackoverflow.co/2025/technology#1-databases)
-reports the following usage among professional developers. This is a survey of
-respondents, not database market share or a performance comparison.
+These tabular engines complement ClickHouse/PostgreSQL/MySQL and reuse existing typed connectors. The [2025 Stack Overflow survey](https://survey.stackoverflow.co/2025/technology#1-databases) informed coverage priorities; it is neither market share nor a performance ranking.
 
-| Priority | Engine | Survey usage | Reason to add federation |
-| --- | --- | ---: | --- |
-| 1 | SQL Server | 30.9% | Broad relational adoption; an existing typed Go driver can feed the bridge. |
-| 2 | BigQuery | 6.5% | Common analytics warehouse; joins with operational sources are useful, with explicit query-cost limits. |
-| 3 | Snowflake | 4.2% | Warehouse data fits the tabular adapter model; the existing SQL API preserves exact scalar values. |
-| 4 | Databricks SQL | 3.2% | Adds lakehouse query results through the existing Statement Execution API, within its inline-result ceiling. |
-| 5 | Oracle | 10.4% | Important enterprise relational coverage; precise NUMBER metadata and verified TCPS need particular care. |
-
-MongoDB usage is higher than most of these, at 24.3%, but popularity alone does
-not establish a safe relational mapping. Its native connector preserves BSON
-documents in Arrow Binary. A useful collection adapter needs an explicit typed
-field policy, missing-versus-NULL behavior, mixed-type rejection, nested/array
-semantics, and collection-level authorization. MongoDB equality can also match
-array elements, and null queries can include missing fields; those semantics
-must not be substituted for SQL predicates. See the [MongoDB source
-guide](sources-mongodb.md), [null-field reference](https://www.mongodb.com/docs/manual/tutorial/query-for-null-fields/)
-and [equality reference](https://www.mongodb.com/docs/manual/reference/operator/query/eq/).
-Typed MongoDB federation is deferred until that contract is implemented and
-verified.
+MongoDB federation is deferred until typed fields, missing/NULL values, mixed types, arrays and collection authorization have a verified contract. MongoDB [null](https://www.mongodb.com/docs/manual/tutorial/query-for-null-fields/) and [equality](https://www.mongodb.com/docs/manual/reference/operator/query/eq/) semantics cannot silently replace SQL semantics. Use its [native document connector](sources-mongodb.md) meanwhile.
 
 ## Configure exact remote names
 
-The source `id` and table `name` form the local DuckDB reference, such as
-`warehouse.orders`. The `database`, `schema` and `table` fields identify the
-remote object. They are identifiers, never SQL snippets. Kelvo quotes them for
-the selected dialect; supply the exact remote names instead of relying on a
-search path or converting every name to lowercase.
+1. Choose local `id` and table `name`; together they form aliases such as `warehouse.orders`.
+2. Supply exact remote identifiers below. Kelvo quotes them by dialect; they are never SQL fragments.
 
 | Engine | Required table fields | Remote reference and case rules |
 | --- | --- | --- |
@@ -53,15 +21,7 @@ search path or converting every name to lowercase.
 | Databricks | `database`, `schema`, `table` | `` `main`.`analytics`.`orders` ``; `database` names the catalog. Backticks delimit identifiers; identifier references are case-insensitive. |
 | Oracle | `schema`, `table`; omit `database` | `"ANALYTICS"."ORDERS"`; the DSN selects the service/database. Unquoted source DDL normally produces uppercase names; quoted objects retain their spelling. |
 
-Official naming references: [SQL Server](https://learn.microsoft.com/en-us/sql/relational-databases/databases/database-identifiers),
-[Snowflake](https://docs.snowflake.com/en/sql-reference/identifiers-syntax),
-[BigQuery](https://cloud.google.com/bigquery/docs/reference/standard-sql/lexical#case_sensitivity),
-[Databricks](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-identifiers),
-and [Oracle](https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/Database-Object-Names-and-Qualifiers.html).
-
-This example exposes one table per source and bounds each scan. Environment
-variable values are supplied separately by the operator; no token or DSN belongs
-in the catalog. Replace the example remote names with real authorized objects.
+3. Register authorized tables and per-scan budgets. Keep token/DSN values in the environment:
 
 ```yaml
 sources:
@@ -138,120 +98,44 @@ sources:
           table: ORDERS
 ```
 
-BigQuery's `options.project` is the job/billing project; the table's `database`
-is its data project. Cross-project access still requires appropriate grants.
-Use a consistent BigQuery location for all referenced datasets. The billed-byte
-value above is an example ceiling, not an estimate of this query's cost.
+4. Select the source IDs in a federated request, then query aliases such as `SELECT * FROM reporting.orders`.
 
-Submit a federated query with the corresponding source IDs selected. For example,
-`SELECT * FROM reporting.orders` exposes only the configured table alias. A
-query may join these aliases with other selected federation sources. Snapshot
-aliases remain a separate, materialized acceleration feature.
+BigQuery `options.project` controls job/billing identity; table `database` selects the data project. Cross-project grants and consistent dataset locations are required. The example billed-byte ceiling is not a cost estimate.
 
-SQL Server requires verified TLS 1.2 or newer with encryption enabled; an
-Availability Group's `ApplicationIntent=ReadOnly` is a routing hint rather than
-an authorization boundary. Oracle requires verified TCPS and uses a read-only
-transaction. Use narrowly granted database users for both. Cloud connectors
-use verified HTTPS origins and source-scoped credentials; token acquisition and
-refresh remain operator responsibilities. Follow [SQL Server/Oracle
-configuration](sources-sql.md), [cloud SQL configuration](sources-cloud.md) and
-[BigQuery configuration](sources-bigquery.md). Read-only syntax checking cannot
-make a privileged source function safe.
+Use narrowly granted accounts, SQL Server verified TLS 1.2+, Oracle verified TCPS, and verified HTTPS cloud origins. Operators acquire/refresh tokens. `ApplicationIntent=ReadOnly` only routes SQL Server reads; grants control authorization, including privileged functions. See [SQL Server/Oracle](sources-sql.md), [cloud SQL](sources-cloud.md) and [BigQuery](sources-bigquery.md).
+
+Naming references: [SQL Server](https://learn.microsoft.com/en-us/sql/relational-databases/databases/database-identifiers), [Snowflake](https://docs.snowflake.com/en/sql-reference/identifiers-syntax), [BigQuery](https://cloud.google.com/bigquery/docs/reference/standard-sql/lexical#case_sensitivity), [Databricks](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-identifiers), [Oracle](https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/Database-Object-Names-and-Qualifiers.html).
 
 ## Pushdown, types and source costs
 
-DuckDB owns joins, aggregation, ordering, final LIMIT, and expressions it keeps
-above the source scan. The adapter receives ordered column names and a typed
-filter tree. It must implement every required supplied filter exactly or return
-an unsupported error. It must never drop a required filter merely because
-DuckDB can evaluate similar expressions locally: pushed filters may already
-have been removed from the DuckDB plan.
+DuckDB owns joins, aggregates, ordering, final LIMIT and residual expressions. Adapters receive ordered columns and typed filters: **apply every required filter exactly or fail**. DuckDB may already have removed it from local evaluation.
 
-The initial predicate contract is deliberately narrow: exact supported integer
-and Boolean comparisons, NULL checks, and supported AND/OR combinations.
-Support depends on the source type as represented in Arrow. SQL Server `BIT`
-needs numeric or explicitly typed bit constants; bare Boolean keywords are not
-portable T-SQL. String collations, floating-point comparisons, timestamp zones,
-decimal comparisons and document comparisons need their own conformance before
-being added to source pushdown. The bridge advertises filter support only on
-integer/Boolean columns: other column predicates, including NULL checks, stay
-in DuckDB. Those queries remain available but can fetch more rows before
-filtering. Unsupported predicates that are nevertheless supplied as required
-filters fail explicitly; adapters must never silently drop them.
+Pushdown covers supported integer/Boolean comparisons, NULL checks and AND/OR combinations. Other column types stay local, including their NULL checks. SQL Server BIT requires numeric or typed bit constants. Unsupported required filters fail explicitly; see [the full pushdown contract](federation.md#what-runs-where).
 
-In particular, [Snowflake integer names are aliases for
-NUMBER(38,0)](https://docs.snowflake.com/en/sql-reference/data-types-numeric).
-Their native result schema is normally Decimal128, not Arrow Int64. Oracle
-NUMBER is also a decimal domain and can have negative scale. Transporting these
-values exactly does not imply support for pushing decimal predicates. Do not
-narrow them to int64 to make a filter pass.
+[Snowflake integer names](https://docs.snowflake.com/en/sql-reference/data-types-numeric) normally yield Decimal128 NUMBER(38,0); Oracle NUMBER can also have negative scale. Exact transport does not enable decimal pushdown. Never narrow these domains to int64 just to push a filter.
 
-Each source retains its native type limitations:
+| Source | Type boundary |
+| --- | --- |
+| SQL Server / Oracle | Reject unusable decimal metadata, rounded decimal floats, per-value timezone offsets and standalone TIME; Oracle DATE includes time |
+| Snowflake | Supported exact decimals/binary/dates/NTZ/LTZ; TIME, TIMESTAMP_TZ, VARIANT, ARRAY and OBJECT need a supported source view |
+| BigQuery | Scalar types and decimals within Decimal256's 76 digits; reject extreme 77-digit values, repeated/STRUCT fields; TIMESTAMP is microseconds |
+| Databricks | Declared scalar schema and exact decimals; nested types need an intentional supported projection |
 
-- SQL Server/Oracle reject unverified decimal metadata, already-rounded
-  floating-point decimal values, unsupported per-value timezone offsets and
-  standalone TIME. Oracle DATE includes a time component. NUMBER without usable
-  precision/scale may require a typed source view.
-- Snowflake preserves supported exact decimals, binary, dates and NTZ/LTZ
-  timestamps. TIME, TIMESTAMP_TZ, VARIANT, ARRAY and OBJECT require a supported
-  representation in a source view; they are not silently flattened.
-- BigQuery preserves supported scalar types, NUMERIC and BIGNUMERIC within
-  Arrow Decimal256's 76-digit bound. Extreme 77-digit values, repeated/STRUCT
-  fields and other unsupported types fail. TIMESTAMP uses microsecond precision.
-- Databricks uses its declared scalar schema and exact decimals. Unsupported
-  nested types must be projected into an intentional supported representation
-  in a source view before registration.
+Discovery requires a complete schema even for empty tables. Unsupported fields may prevent registration before projection; use a narrow source view. Preserve NULLs, widths and exact values throughout.
 
-Discovery must preserve a complete typed schema even when the table is empty.
-NULL is never an empty string, zero, or a dropped row. A schema containing an
-unsupported field can prevent registration even if a later query selects fewer
-columns. Expose a narrow source view when a table has incompatible fields.
+Native caller parameters remain unsupported on Snowflake/BigQuery/Databricks despite their provider binding APIs ([Snowflake](https://docs.snowflake.com/en/developer-guide/sql-api/submitting-requests), [BigQuery](https://cloud.google.com/bigquery/docs/parameterized-queries), [Databricks](https://docs.databricks.com/aws/en/dev-tools/sql-execution-tutorial)). The bridge generates validated constants. SQL Server/Oracle use `@pN`/`:N`; identifiers still require separate validation/quoting.
 
-The public native SQL APIs currently reject caller parameters on Snowflake,
-BigQuery and Databricks. Their providers support [Snowflake `?`
-bindings](https://docs.snowflake.com/en/developer-guide/sql-api/submitting-requests),
-[BigQuery named or positional
-parameters](https://cloud.google.com/bigquery/docs/parameterized-queries) and
-[Databricks named parameters](https://docs.databricks.com/aws/en/dev-tools/sql-execution-tutorial),
-but that provider capability is distinct from Kelvo's implemented contract.
-The bridge generates validated typed constants for its supported predicates.
-SQL Server and Oracle native drivers use `@pN` and `:N` markers respectively;
-identifier names must always be validated and quoted separately from values.
+Scan limits are independent of final output. Overruns fail; rescans may repeat source jobs and do not share a snapshot.
 
-Scan row and Arrow-byte limits are independent of final output limits. An
-overflow must fail the whole query, never turn a complete relation into its
-first N rows. Each self-join/rescan can read the source again, and independently
-opened scans do not share a database snapshot.
+- Databricks JSON_ARRAY/INLINE has a [25 MiB ceiling](https://docs.databricks.com/aws/en/dev-tools/sql-execution-tutorial), plus smaller Kelvo budgets. External Arrow links are not followed.
+- Snowflake chooses [partition sizes](https://docs.snowflake.com/en/developer-guide/sql-api/handling-responses); each must fit the response/decompression budget.
+- BigQuery uses paged JSON, not Storage Read. Set `maximum_bytes_billed`; [LIMIT usually does not reduce reads](https://cloud.google.com/bigquery/docs/best-practices-costs).
 
-- Databricks currently uses JSON_ARRAY/INLINE results, with a provider ceiling
-  of [25 MiB](https://docs.databricks.com/aws/en/dev-tools/sql-execution-tutorial).
-  Kelvo also applies its smaller response/byte budgets and rejects truncation.
-  External Arrow-result links are not followed by this connector.
-- Snowflake chooses the size of its [result
-  partitions](https://docs.snowflake.com/en/developer-guide/sql-api/handling-responses).
-  A partition must fit the bounded HTTP/decompression budget; the adapter cannot
-  assume that a small Arrow batch implies a small source response.
-- BigQuery's `maximum_bytes_billed` constrains job cost. A returned row count or
-  SQL LIMIT is not a reliable storage-read cost bound; [LIMIT generally does not
-  reduce costs on non-clustered tables](https://cloud.google.com/bigquery/docs/best-practices-costs).
-  Repeated scans can submit repeated jobs. The connector uses paged JSON results,
-  not the BigQuery Storage Read API.
-
-All three warehouses can charge for source execution and result transfer.
-Arrow bytes and source wire bytes are different measurements; neither reports
-warehouse CPU time or billed storage reads. Source deadlines, provider resource
-policies and narrow projection/filtering remain necessary. Cancellation is
-cooperative and cloud cancellation is best effort. A lost Snowflake or
-Databricks submission response can leave a remote statement whose handle is
-unknown; BigQuery assigns its job ID before submission, but cancellation can
-still fail.
+Warehouses may charge for execution and transfer. Arrow/wire bytes do not measure billed reads or server CPU. Configure provider deadlines/resource policies. Cancellation is best effort; lost Snowflake/Databricks submission replies may leave unknown handles. BigQuery preassigns its job ID but cancellation can still fail. Provider cleanup may also outlast the [worker cancellation grace](usage.md#native-cancellation-and-remote-cleanup).
 
 ## Add a compiled-in Go adapter
 
-Use the public package `github.com/SYNEHQ/kelvo-go/federation`. A contributor
-implements `Driver` and `Relation`, then registers the driver during package
-initialization. It does not import `internal/federation`, access C pointers, or
-load a Go dynamic plugin.
+1. Implement `Driver` and `Relation` from `github.com/SYNEHQ/kelvo-go/federation`:
 
 ```go
 type Driver interface {
@@ -266,42 +150,20 @@ type Relation interface {
 }
 ```
 
-`Source` carries the registered source identity, environment-reference names and
-provider options. `Table` carries the local alias and remote namespace. Never
-accept a request-selected endpoint, DSN, credential, or extra table through a
-filter or column name. Validate configuration before reading credentials or
-opening the source. Use `Limits` to constrain work and allocation at the source,
-including metadata reads.
+2. Validate source/table configuration before credentials or I/O. Never accept request-selected endpoints, DSNs, credentials or tables through names/filters.
+3. Register during package initialization and compile the same registrations into gateways and workers. No dynamic Go plugin or C-pointer access is required.
 
-`ScanPlan.Columns` is ordered. Its `Filters` are the required typed predicates.
-The core normalizes a zero-column count scan to a real source column so the
-adapter can preserve its known schema. A `Sink` receives `Schema(*arrow.Schema)`
-then synchronous `Write(arrow.RecordBatch)` calls. A batch is borrowed for the
-duration of `Write`; retaining data beyond that call requires Arrow
-Retain/Release ownership. The core provides scan admission, bounded batch
-handoff, resource checks, and the DuckDB callback lifetime. The adapter owns
-source reads, credentials, exact conversion, predicate semantics and cleanup.
-Report encoded source response bytes consumed in `ScanStats.SourceWireBytes`,
-including rejected/incomplete results but excluding discovery and transport
-headers. Leave it zero when unavailable; the core counts rows, batches and
-Arrow bytes.
+`Source` carries identity, environment references and options; `Table` carries alias/namespace. `Limits` must bound discovery as well as scans. `ScanPlan.Columns` is ordered, and every `Filters` predicate is mandatory. Core normalizes zero-column counts to a real source column.
 
-The core opens an independent relation for discovery and for each scan. Do not
-share a mutable cursor between self-joins or rescans. Honor the supplied context
-during connect, discovery, execution and reading; make `Close` safe after partial
-failure. Return `federation.ErrUnsupported`, optionally wrapped, for a required
-feature you cannot implement. Custom diagnostic text is sanitized at the public
-query boundary and must never include credentials.
+Call `Sink.Schema` before synchronous `Sink.Write`. Batches are borrowed during Write; retaining them requires Arrow Retain/Release. Core owns admission, bounded handoff and callback lifetime. Adapters own source reads, exact conversion, credentials and cleanup.
+
+Report consumed encoded response bytes in `ScanStats.SourceWireBytes`, including rejected/incomplete data but excluding discovery/headers; use zero if unavailable. Core counts rows, batches and Arrow bytes.
+
+Discovery and each scan receive independent relations; never share a mutable cursor across self-joins/rescans. Honor context during connect/discovery/read, close safely after partial failure, and return wrapped `federation.ErrUnsupported` for required unsupported behavior. Diagnostics must exclude credentials.
 
 ### Minimal executable example
 
-The following teaching adapter exposes one in-memory `id` value. It demonstrates
-registration, projection, schema and borrowed-batch ownership. It deliberately
-rejects every pushed filter; replace that behavior with verified source
-semantics when building a real connector. It does not claim to connect to a
-database.
-
-Save this as `example/staticadapter/adapter.go` in a Kelvo checkout:
+Save this one-row teaching adapter as `example/staticadapter/adapter.go`. It demonstrates projection and ownership, rejects all pushed filters, and does not connect to a database:
 
 ```go
 package staticadapter
@@ -368,7 +230,7 @@ func (r *relation) Scan(ctx context.Context, plan federation.ScanPlan,
 }
 ```
 
-Add a compiled-in registration import at `cmd/kelvo/adapters_custom.go`:
+Add `cmd/kelvo/adapters_custom.go`:
 
 ```go
 package main
@@ -376,7 +238,7 @@ package main
 import _ "github.com/SYNEHQ/kelvo-go/example/staticadapter"
 ```
 
-Register its single table in the catalog:
+Register the table:
 
 ```yaml
 sources:
@@ -388,64 +250,23 @@ sources:
           table: one_row
 ```
 
-Build using the [bridge build instructions](federation.md#build-and-update), then
-select source `demo` and query `SELECT id FROM demo.sample`. Use the same binary
-and registrations on gateways and query workers. Registration is process-local,
-must complete before the first adapter lookup, and cannot replace a reserved
-built-in source name. A configuration entry alone cannot install code.
+Build with [bridge support](federation.md#build-and-update), select `demo` and query `SELECT id FROM demo.sample`. Registration must finish before the first lookup, cannot replace built-ins and cannot be installed by configuration alone.
 
 ## Contributor acceptance and live validation
 
-Before proposing another adapter, provide focused tests for these independent
-requirements:
+1. Test namespace validation/quoting, table authorization and rejection before credentials, including adversarial names and cross-namespace attempts.
+2. Assert empty/all-NULL schemas, integer/decimal limits, timestamp precision, unsupported values and schema drift; never use float64 for exact values.
+3. Compare projections, predicates/NULL truth tables, empty projections, self-joins and rescans against direct source and DuckDB results.
+4. Test borrowed ownership, multiple batches, slow consumers, partial-delivery errors and failed Schema/Write calls.
+5. Test connect/discovery/fetch cancellation, cleanup, row/byte/concurrency limits, pagination identity/counts and truncation rejection.
+6. Run a real verified-TLS source with narrow grants and cross-source joins. Record versions, settings, expected/observed values and cleanup without credentials.
 
-1. Namespace validation, quoting/case, selected-table authorization and
-   rejection before credential lookup. Include adversarial column names,
-   reserved words and cross-namespace attempts.
-2. Empty/all-NULL relations, exact integer limits and decimals, timestamp
-   precision, unsupported values and schema drift. Assert schema as well as
-   values; never use float64 as an exact-integer or decimal intermediate.
-3. Projection reordering, each supported predicate and NULL truth table,
-   unsupported required filters, empty projections, self-joins and rescans.
-   Compare pushed results with a direct source query and DuckDB evaluation.
-4. Borrowed Arrow lifetime, multiple batches, slow consumers, source errors
-   after partial delivery, and errors returned by `Sink.Schema`/`Sink.Write`.
-5. Cancellation during connect, discovery and fetch; cursor/job cleanup;
-   row/byte/concurrency overflow; pagination identity/count checks; and
-   truncation rejection. A partial stream must not become a successful query.
-6. A real source instance using narrowly granted credentials and verified TLS,
-   plus joins against another source. HTTP fixtures or a driver constructor do
-   not prove live permissions, query semantics or cancellation.
+Use the designated Linux VM under [AGENTS.md](../AGENTS.md); no local builds/downloads. Fixtures do not prove live permissions or provider semantics.
 
-Do not run builds or download packages on the local workstation for this
-repository's current workflow. Use the designated Linux test VM and bounded,
-isolated fixture resources as required by [AGENTS.md](../AGENTS.md). Preserve
-unrelated workloads. Record the engine version, relevant configuration, query,
-expected/observed values and cleanup outcome without including credentials.
-
-The [validation record](validation.md#expanded-federation-and-public-adapter-sdk)
-links live SQL Server acceptance, warehouse protocol fixtures and external
-public-SDK acceptance. Live Oracle, Snowflake, BigQuery and Databricks federation
-acceptance remains pending. SQL Server Developer can be tested on a suitable
-Linux x86-64 VM; its official
-[container quickstart](https://learn.microsoft.com/en-us/sql/linux/quickstart-install-connect-docker)
-requires at least 2 GB RAM and does not support emulated hosts. Oracle Free
-requires a suitable instance and verified TCPS setup. Snowflake, BigQuery and
-Databricks require operator-provisioned accounts, source read grants, execution
-permissions and explicit cost budgets. No live cloud credentials or acceptance
-are implied by the included YAML or protocol tests.
-
+[Validation evidence](validation.md#expanded-federation-and-public-adapter-sdk) covers live SQL Server, warehouse protocol fixtures and the public SDK. Live Oracle/Snowflake/BigQuery/Databricks federation acceptance remains pending. SQL Server's [container setup](https://learn.microsoft.com/en-us/sql/linux/quickstart-install-connect-docker) requires suitable Linux x86-64, at least 2 GB RAM and no emulation. Other providers require provisioned instances/accounts, verified transport, read/execution grants and explicit cost budgets.
 
 ## Optional capability declarations
 
-An adapter or wrapper may implement `federation.CapabilityProvider` with a v1
-`FederationCapabilities()` declaration. `InspectCapabilities` validates bounds
-and returns a detached declaration; absent, invalid, panicking or future-version
-providers are unknown. Wrappers must explicitly forward the method.
+Implement `federation.CapabilityProvider` with a v1 `FederationCapabilities()` declaration when useful. `InspectCapabilities` validates and detaches it; absent, invalid, panicking or future-version providers remain unknown. Wrappers must forward it explicitly.
 
-These are advisory declarations, not conformance certification or planner
-negotiation. Every predicate passed in `ScanPlan.Filters` remains mandatory:
-apply it exactly or return `ErrUnsupported`. Never drop an unsupported filter on
-the assumption DuckDB will reapply it. The current declaration vocabulary is
-limited to the bridge's integer/Boolean comparisons, null predicates and logical
-combinations; it does not advertise aggregate/join pushdown.
+Declarations are advisory, not certification or planner negotiation. They cover the bridge's integer/Boolean predicates, not aggregate/join pushdown. Every `ScanPlan.Filters` predicate remains mandatory regardless of the declaration.

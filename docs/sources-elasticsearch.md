@@ -1,8 +1,9 @@
 # Elasticsearch SQL
 
-Kelvo uses Elasticsearch's synchronous SQL API, with cursor pagination and Arrow
-delivery. The Elasticsearch deployment must expose the SQL API; availability and
-licensing depend on the separately operated server distribution and version.
+Read Elasticsearch SQL results through its synchronous API, with cursor pagination and Arrow delivery. The separately operated server must expose SQL; availability and licensing depend on its distribution/version.
+
+1. Create an API key restricted to SQL/read access on the intended indices.
+2. Register a verified HTTPS origin and encoded token:
 
 ```yaml
 sources:
@@ -14,40 +15,14 @@ sources:
       authentication: ApiKey
 ```
 
-Use a verified HTTPS origin. The token is the encoded API key expected by the
-`Authorization: ApiKey` header. `Bearer` is also supported. Restrict credentials
-to SQL search and read access on the intended indices. Native requests use a
-single SELECT and `connection_id: search`. Positional `?` parameters are bound in
-the SQL API's `params` array; values are never interpolated into SQL. String,
-Boolean, signed int64, finite float64 and explicit NULL are supported. uint64
-parameters must fit signed int64.
+3. Submit one native SELECT with `connection_id: search`. Positional `?` values bind through the API's `params` array.
 
-The connector requests row-oriented JSON pages of at most 1,000 rows, UTC
-timestamps, and strict rejection of multivalued fields. NULLs and signed 64-bit
-integers remain exact. Supported SQL result types include Boolean, byte, short,
-integer, long, finite floating-point values, keyword/text/IP/version strings,
-binary, and date/datetime within Arrow's nanosecond timestamp range. Unsupported
-types, including objects and unsigned_long, fail explicitly.
+`Bearer` authentication is also supported. Parameters accept strings, Boolean, signed int64, finite float64 and explicit NULL; uint64 must fit int64.
 
-Each response must fit the shared bounded HTTP budget. Partial and asynchronous
-results are rejected. Cursor cleanup runs on a separate short deadline after
-failure, cancellation or a sink error. Before the initial response supplies a
-cursor, cancellation relies on the HTTP request and provider request timeout;
-there is no confirmed server cancellation handle in that state.
+Pages contain at most 1,000 rows, use UTC timestamps and reject multivalued fields. Results preserve NULLs and integer widths. Supported types include Boolean, byte/short/integer/long, finite floats, keyword/text/IP/version strings, binary and nanosecond-range date/datetime. Objects, unsigned_long and other unsupported types fail.
 
-Protocol tests verify pagination, exact large numbers, NULLs, partial-result
-rejection, limits and cursor cleanup. [Live Elasticsearch 8.19.0 acceptance](evidence/elasticsearch-native.json) also
-passed against a verified-TLS server with an index-restricted API key: 1,205
-rows across multiple pages, integers above 2^53, NULLs, bound parameters,
-output limits, denied index access, and zero open search contexts afterward.
-Run `scripts/elasticsearch_acceptance.py` on a disposable Linux test VM to
-reproduce it. This tests the connector package, not cluster execution or throughput. This is a SQL connector; it does not
-currently expose arbitrary search DSL, indexing, or CDC.
+Responses must fit the shared HTTP budget. Partial/asynchronous results are rejected. Failure, cancellation or sink errors trigger bounded cursor cleanup once a cursor is known. Before then, only HTTP cancellation/provider timeout is available. See [worker cleanup limits](usage.md#native-cancellation-and-remote-cleanup).
 
-References: [SQL search API](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-sql-query),
-[bound parameters](https://www.elastic.co/docs/reference/query-languages/sql/sql-rest-params),
-[cursor cleanup](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-sql-clear-cursor).
+[Live Elasticsearch 8.19.0 evidence](evidence/elasticsearch-native.json) covers verified TLS, restricted index access, exact values, parameters, pagination, limits and zero remaining search contexts. Reproduce with `scripts/elasticsearch_acceptance.py` on a disposable Linux VM. Cluster execution and throughput remain unverified; search DSL, indexing and CDC are unsupported.
 
-Worker boundary: the cleanup described here requires the connector process to
-remain alive. CLI/HTTP/cluster cancellation or an outer deadline can kill that
-process before remote cleanup runs. See [native cancellation and remote cleanup](usage.md#native-cancellation-and-remote-cleanup).
+References: [SQL API](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-sql-query), [parameters](https://www.elastic.co/docs/reference/query-languages/sql/sql-rest-params), [cursor cleanup](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-sql-clear-cursor).

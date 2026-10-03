@@ -1,11 +1,8 @@
 # Exasol native SQL
 
-Kelvo executes Exasol SQL using the documented native WebSocket protocol version
-2 over verified TLS. It uses the official `exasol-driver-go` v1.1.1 package for
-DSN parsing and public metadata structs, but does not register or execute through
-its `database/sql` driver. That driver's numeric decoding passes JSON numbers
-through `float64`, which can round DECIMAL integers above 2^53; its fetch and
-rollback operations also use background contexts.
+Query Exasol through native WebSocket protocol v2 over verified TLS. Kelvo uses `exasol-driver-go` v1.1.1 for DSN/metadata only; its own transport preserves exact numbers and bounded cancellation.
+
+1. Create a narrowly granted read account and register its DSN reference:
 
 ```yaml
 sources:
@@ -14,99 +11,47 @@ sources:
     dsn_env: KELVO_SOURCE_EXASOL_DSN
 ```
 
-The environment variable contains an official-format DSN, for example:
+2. Store an official-format DSN in the environment:
 
 ```text
 exa:exasol.example.com:8563;user=reader;password=YOUR_PASSWORD;encryption=1;validateservercertificate=1;autocommit=0;schema=ANALYTICS
 ```
 
-Use the DSN builder when credentials contain semicolons; the official escaping
-is `\;`. Credentials must be explicit, nonempty username/password values. The
-constructor immediately parses and validates the DSN. It rejects disabled TLS or
-certificate verification, certificate fingerprint overrides, token authentication,
-compression, alternate URL paths, host lists/ranges, unknown parameters, and
-`resultsetmaxrows` overrides. Supported endpoints are one DNS name or IPv4
-address and a port. Options and alternate source credential fields are rejected.
-The operating system certificate trust store must trust the server certificate.
-No HTTP proxy environment variables, cookies, redirects, operating-system user
-identity, or other ambient credentials participate in authentication.
-
-Requests select the registered source explicitly:
+3. Submit a native SELECT/WITH:
 
 ```json
 {"mode":"native","connection_id":"warehouse","sql":"SELECT id, amount FROM ANALYTICS.INVOICES"}
 ```
 
-The connector permits one SELECT or WITH statement through the shared read-query
-guard. Prepared parameters currently return `UNSUPPORTED`; values are never
-interpolated into SQL. Use a database account granted only the intended read
-permissions. The guard is a conservative syntax restriction, not a full SQL
-parser or a replacement for database authorization. A default schema does not
-restrict explicitly qualified table access.
+Use the DSN builder for credentials containing semicolons (escaped as `\;`). Explicit nonempty user/password and one DNS/IPv4 host plus port are required. System roots must trust the certificate. Disabled TLS/verification, fingerprint overrides, tokens, compression, URL paths, host lists/ranges, unknown parameters, `resultsetmaxrows`, other credential fields and options are rejected. Proxies, cookies, redirects and ambient credentials are unused.
 
-Each execution establishes a separate WSS session. Login uses the documented RSA
-PKCS#1 v1.5 password challenge inside TLS and disables compression and autocommit.
-The connector requests `timestampUtcEnabled=true` and a server query timeout
-rounded up from the client deadline (or a shorter explicit DSN `querytimeout`).
-It verifies the autocommit and timestamp settings using `getAttributes` before
-sending SQL. A successful result requires cursor close, `ROLLBACK`, and disconnect
-acknowledgements. Autocommit is forced off regardless of its DSN default; the
-connector never sends `COMMIT` or enables autocommit. This rollback-only session
-is not a server-enforced read-only transaction mode.
+Parameters are unsupported and never interpolated. A default schema does not restrict qualified table access; database grants enforce reads alongside the SQL guard.
 
-Results use immutable Arrow schemas from the server's column metadata:
+Each query gets a separate WSS session with RSA PKCS#1 v1.5 password login inside TLS, compression/autocommit disabled, and verified `timestampUtcEnabled=true`. The server timeout rounds up from the client deadline or uses a shorter DSN `querytimeout`. Success requires cursor close, ROLLBACK and disconnect acknowledgements. Rollback-only operation is not a server read-only transaction mode.
 
 | Exasol type | Arrow representation |
 | --- | --- |
-| DECIMAL, including integer aliases | Decimal128 with the server's exact precision and scale |
-| BOOLEAN | Boolean |
-| DOUBLE | Finite Float64 |
+| DECIMAL, including integer aliases | Exact Decimal128; precision 1–36, scale 0–precision |
+| BOOLEAN; DOUBLE | Boolean; finite Float64 |
 | CHAR, VARCHAR | UTF-8 |
 | DATE | Date32 |
-| TIMESTAMP | Nanosecond timestamp without a timezone |
-| TIMESTAMP WITH LOCAL TIME ZONE | Nanosecond UTC timestamp, after verifying UTC transport |
+| TIMESTAMP | Naive nanoseconds |
+| TIMESTAMP WITH LOCAL TIME ZONE | UTC nanoseconds after verified UTC transport |
 
-JSON decoding uses `UseNumber`, preserving all integer and decimal digits. DECIMAL
-precision must be 1–36 and scale 0–precision. Plain decimal values and bounded
-scientific notation are converted only when the value fits exactly; scale
-rounding and overflow fail explicitly. NULLs remain NULL. Timestamps require ISO
-date/time text with at most nine fractional digits and must fit Arrow's
-nanosecond range. GEOMETRY, HASHTYPE, intervals, unknown types, and unsupported
-metadata fail with `UNSUPPORTED` instead of being guessed from sample values.
+`UseNumber` retains digits, bounded scientific notation and NULLs. Rounding, overflow, unsupported metadata, GEOMETRY, HASHTYPE and intervals fail. Timestamps require ISO text, at most nine fractional digits and Arrow's nanosecond range.
 
-An execute response supplies inline data or a cursor. Fetches advance an exact
-integer offset and validate the column-major data lengths and declared row counts.
-Repeated metadata must match. Fetch size defaults to the upstream 2,000 KiB and
-is capped at half the response budget; explicit `fetchsize` values must be
-1–65,536 KiB. Each response is capped at the smaller of 32 MiB and one quarter of
-the configured memory budget, and total normal response payload bytes at four
-times `max_bytes` plus that response budget. There are at most 100,000 pages.
-The query requests `max_rows + 1` so a provider limit cannot silently turn an
-oversized result into success. Arrow row and byte limits still apply, and batches
-are delivered synchronously. Fetch pagination does not establish bounded server
-execution memory or an engine streaming guarantee.
+Execute returns inline data or a cursor. Fetches validate exact offsets, column lengths, counts and repeated metadata. Limits:
 
-Cancellation sends `abortQuery` and allows up to two seconds to drain the pending
-response. When the session remains usable, an independent two-second cleanup
-budget closes the cursor and rolls back. A stalled, oversized, malformed, or
-unrecoverable transport is closed; in that case the operation fails and does not
-claim an acknowledged rollback. Success and failure both release the socket.
+| Setting | Bound |
+| --- | --- |
+| Fetch size | Default 2,000 KiB; explicit 1–65,536 KiB; capped at half the response budget |
+| One response | Smaller of 32 MiB and one quarter of memory |
+| Total normal payload | Four times `max_bytes` plus one response budget |
+| Pages | 100,000 |
+| Results | Request `max_rows + 1`; enforce Arrow row/byte limits without successful truncation |
 
-TLS protocol fixtures verify the RSA login and session attributes, exact decimal
-and integer values, timestamps, NULLs, inline/empty results, fetch pagination,
-Arrow batching, result limits, source binding, SQL restrictions, provider errors,
-sink errors, abort and rollback behavior, bounded stalls, certificate validation,
-and redirect rejection. These are protocol fixtures; no live Exasol database
-acceptance or throughput measurement is claimed.
+Batches are synchronous; these limits do not bound source execution memory. Cancellation sends `abortQuery`, allows two seconds to drain, then uses a separate two-second cleanup budget where possible. Unusable transports close without claiming an acknowledged rollback. See [worker cleanup limits](usage.md#native-cancellation-and-remote-cleanup).
 
-References: [WebSocket API version 2](https://github.com/exasol/websocket-api/blob/master/docs/WebsocketAPIV2.md),
-[login](https://github.com/exasol/websocket-api/blob/master/docs/commands/loginV1.md),
-[execute](https://github.com/exasol/websocket-api/blob/master/docs/commands/executeV1.md),
-[fetch](https://github.com/exasol/websocket-api/blob/master/docs/commands/fetchV1.md),
-[abort](https://github.com/exasol/websocket-api/blob/master/docs/commands/abortQueryV1.md),
-[session attributes](https://github.com/exasol/websocket-api/blob/master/docs/commands/getAttributesV1.md),
-[official Go driver](https://github.com/exasol/exasol-driver-go).
+TLS fixtures cover login, exact values, pagination, limits, abort/rollback and transport security. Live Exasol acceptance and throughput remain unverified.
 
-Worker boundary: the cleanup described here requires the connector process to
-remain alive. CLI/HTTP/cluster cancellation or an outer deadline can kill that
-process before remote cleanup runs. See [native cancellation and remote cleanup](usage.md#native-cancellation-and-remote-cleanup).
+References: [protocol v2](https://github.com/exasol/websocket-api/blob/master/docs/WebsocketAPIV2.md), [login](https://github.com/exasol/websocket-api/blob/master/docs/commands/loginV1.md), [execute](https://github.com/exasol/websocket-api/blob/master/docs/commands/executeV1.md), [fetch](https://github.com/exasol/websocket-api/blob/master/docs/commands/fetchV1.md), [abort](https://github.com/exasol/websocket-api/blob/master/docs/commands/abortQueryV1.md), [attributes](https://github.com/exasol/websocket-api/blob/master/docs/commands/getAttributesV1.md), [Go driver](https://github.com/exasol/exasol-driver-go).

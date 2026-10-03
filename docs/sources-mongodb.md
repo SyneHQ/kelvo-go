@@ -1,6 +1,9 @@
 # MongoDB SQL and native aggregation
 
-Kelvo uses the official MongoDB Go driver v2.9.1 (Apache-2.0) to execute read-only aggregation pipelines on a registered MongoDB database. The MongoDB server remains separately operated; its license is distinct from the Go driver's license. No MongoDB server is shipped inside Kelvo.
+Run read-only aggregation pipelines or restricted SQL through the official MongoDB Go driver v2.9.1. MongoDB stays separately operated; its server license is distinct from the Apache-2.0 driver license.
+
+1. Provision a database read account and TLS connection. Custom client certificate/key files are not yet supported by sandbox provisioning.
+2. Store a `mongodb://` or `mongodb+srv://` URI in the referenced environment variable:
 
 ```yaml
 sources:
@@ -11,9 +14,7 @@ sources:
       database: analytics
 ```
 
-Set the referenced environment variable to the operator-provided `mongodb://` or `mongodb+srv://` URI. Provision an account with only the required database read grants. Use TLS for remote connections. System CA roots are available in the sandbox; arbitrary client certificate/key files require explicit source-file provisioning, which is not implemented yet.
-
-Submit a native request to `POST /v1/queries` with the usual authentication, then retrieve the result handle:
+3. Submit an authenticated native request to `POST /v1/queries`, then retrieve its result handle:
 
 ```json
 {
@@ -30,12 +31,11 @@ Submit a native request to `POST /v1/queries` with the usual authentication, the
 }
 ```
 
-Native aggregation requests do not contain SQL, SQL parameters, or a `sources` list. Pipeline values accept MongoDB Extended JSON, including canonical `$numberLong`, `$numberDecimal`, `$date`, and `$oid` representations. Use canonical Extended JSON when exact BSON types matter.
+Pipeline requests exclude SQL, parameters and `sources`. Use canonical Extended JSON (`$numberLong`, `$numberDecimal`, `$date`, `$oid`) when exact BSON types matter.
 
 ## SQL SELECT requests
 
-A MongoDB source also accepts a restricted SQL SELECT through SYNEHQ's
-[zero-sql](https://github.com/SyneHQ/zero-sql) library (Apache-2.0):
+SYNEHQ's Apache-2.0 [zero-sql](https://github.com/SyneHQ/zero-sql) compiler accepts:
 
 ```json
 {
@@ -45,52 +45,26 @@ A MongoDB source also accepts a restricted SQL SELECT through SYNEHQ's
 }
 ```
 
-SQL and `mongo` are mutually exclusive. SQL parameters and `sources` are not
-accepted. Kelvo calls only zero-sql's independent
-`ConvertReadOnlySQLToMongoWithCollection` API; it does not use the legacy SQL
-preprocessor or silently strip CAST expressions. The converted pipeline passes
-through the same read-only, byte, stage, and nesting validation as native input.
-Native aggregation remains available when the SQL subset cannot express a query.
+SQL and `mongo` are mutually exclusive; parameters and `sources` are unsupported. Kelvo uses `ConvertReadOnlySQLToMongoWithCollection`, then validates the pipeline under the native limits. It never runs the legacy preprocessor or strips CAST.
 
-Supported SQL includes one collection and optional alias, `*` or named columns,
-column aliases, explicitly aliased literals, comparisons, Boolean operators,
-`IS NULL`, `IN`/`NOT IN`, `BETWEEN`/`NOT BETWEEN`, `LIKE`/`NOT LIKE`, simple-column
-`GROUP BY`, `COUNT(*)`, `COUNT(column)`, numeric `SUM`/`AVG`/`MIN`/`MAX`, one
-`ORDER BY` key, and nonnegative literal `LIMIT`/`OFFSET`. Names use simple ASCII
-identifiers. Aggregate ordering must name a selected output alias. Multiple sort
-keys fail explicitly because zero-sql's map-based pipeline API cannot preserve
-MongoDB sort-key precedence.
+| Supported | Boundary |
+| --- | --- |
+| One collection/alias, `*`, columns/aliases, aliased literals | Simple ASCII names |
+| Comparisons, Boolean logic, IS NULL, IN/NOT IN, BETWEEN/NOT BETWEEN, LIKE/NOT LIKE | SQL NULL/type checks; at most 128 IN values |
+| Simple-column GROUP BY; COUNT(*), COUNT(column), numeric SUM/AVG/MIN/MAX | At most 16 grouping keys; aggregate ordering names a selected alias |
+| ORDER BY; literal LIMIT/OFFSET | One sort key; nonnegative limits/offsets |
 
-Missing fields become NULL in explicit projections and SQL predicates. NULL
-comparisons, Boolean negation, and NULL-containing IN lists follow SQL's
-three-valued logic. Numeric aggregates use Decimal128; an all-null SUM is NULL,
-and an empty global aggregate yields one row with COUNT zero and the other
-aggregates NULL. Non-null nonnumeric aggregate inputs and incompatible comparison
-types fail explicitly. Exact int64 and Decimal128 literals never pass through
-float64; MongoDB Decimal128 arithmetic still has finite precision/range. COUNT
-preserves the integer BSON width produced by MongoDB. These outputs remain BSON
-in Arrow Binary, including SQL results.
+Missing fields become NULL in explicit projections and predicates. Comparisons, negation and NULL-containing IN lists follow SQL three-valued logic. Exact int64/Decimal128 literals avoid float64. Numeric aggregates use Decimal128; all-NULL SUM is NULL, and an empty global aggregate returns COUNT zero with other aggregates NULL. Incompatible types fail. COUNT retains MongoDB's BSON integer width; Decimal128 arithmetic has finite precision/range.
 
-LIKE performs case-sensitive full-string matching, escapes regex punctuation,
-and lets `%` and `_` match newlines. Explicit ESCAPE and ILIKE are unsupported.
-Non-null LIKE operands must be strings. Other string comparisons, grouping, and
-ordering inherit the collection's MongoDB collation; LIKE does not. Sorting and
-grouping columns should contain consistent BSON types. Joins, cross-database
-references, CTEs, subqueries, UNION, DISTINCT, HAVING, CAST, arithmetic, arbitrary
-functions, writes/DDL, hints, locks, and statement terminators are rejected.
-The SQL input is capped at 64 KiB, 4096 tokens/expression nodes, 64 nesting
-levels, 128 projections, 16 grouping keys, and 128 IN-list values; the pipeline
-must also fit the shared 128 KiB and depth limits.
+LIKE is case-sensitive full-string matching; `%` and `_` include newlines and regex punctuation is escaped. Non-NULL operands must be strings. Other string comparisons, grouping and ordering inherit collection collation. Keep sorting/grouping fields type-consistent.
 
-The strict compiler uses guarded MongoDB aggregation expressions to enforce
-NULL and type semantics. These expressions can limit index use compared with
-a hand-written native `$match`. Inspect MongoDB explain plans for important
-workloads and use the native pipeline when an indexed source query is required.
-The SQL fixtures establish result correctness; they do not establish throughput.
+Unsupported: multiple sort keys, ESCAPE/ILIKE, joins, cross-database references, CTEs, subqueries, UNION, DISTINCT, HAVING, CAST, arithmetic, arbitrary functions, writes/DDL, hints, locks and statement terminators.
+
+SQL limits are 64 KiB, 4096 tokens/expression nodes, 64 nesting levels and 128 projections; the resulting pipeline must also fit 128 KiB. Guarded expressions can reduce index use. Inspect explain plans and use native `$match` for workloads that need a particular indexed plan.
 
 ## Result delivery and limits
 
-The result schema contains one non-null Arrow Binary column, `document_bson`, with `kelvo.logical_type=bson` and `content_type=application/bson` field metadata. Each value contains the source-produced BSON document bytes. This preserves heterogeneous fields, ObjectIDs, Decimal128, int64, binary subtypes, timestamps, nested documents, and missing versus null values without inferring a common schema or coercing values through JSON floating point. Consumers must decode BSON explicitly; these are not automatically flattened Arrow columns. For example, with PyArrow and PyMongo installed:
+All results, including SQL, use one non-null Arrow Binary `document_bson` field with `kelvo.logical_type=bson` and `content_type=application/bson`. Original BSON preserves heterogeneous fields, ObjectIDs, decimals, int64, binary subtypes, timestamps, nested documents and missing versus NULL. Consumers decode it explicitly:
 
 ```python
 import bson
@@ -103,23 +77,23 @@ with ipc.open_stream("mongo-result.arrow") as result:
             print(document)
 ```
 
-The adapter rejects `$out`, `$merge`, `$where`, `$function`, `$accumulator`, JavaScript BSON values, and `$changeStream`, including nested occurrences. It rejects `system.*` and command collection names. Pipeline input is bounded to 128 stages, 128 KiB, and 64 levels of nesting. These checks complement the database account's grants; they do not grant access to another database or provide per-collection authorization.
+Pipelines allow at most 128 stages, 128 KiB and 64 nesting levels. Nested `$out`, `$merge`, `$where`, `$function`, `$accumulator`, `$changeStream` and JavaScript BSON are rejected, as are `system.*` and command collections. Database grants still control collection access.
 
-The client applies the request deadline to connection selection, aggregation, and cursor reads. Cursor cleanup uses a separate bounded context so cancellation can still issue `killCursors`; the client is then disconnected. Each query owns one connection pool with at most one application connection per server. The disposable worker model does not retain MongoDB pools between queries.
+Each query owns a pool with at most one application connection per server. Deadlines cover selection, aggregation and cursor reads; a separate bounded cleanup context attempts `killCursors`, then disconnects. Pools are not retained between disposable workers. After worker cancellation, the [bounded grace](usage.md#native-cancellation-and-remote-cleanup) can end before cleanup finishes; local termination does not confirm remote work stopped.
 
-Results are fetched in cursor batches and delivered synchronously, so a slow sink stops further cursor reads. Arrow staging targets at most 128 documents or 1 MiB; an oversized document uses a singleton batch and must fit within one quarter of the configured client memory budget, the result-byte budget, and MongoDB's 16 MiB document limit. The driver can allocate a wire batch before Kelvo inspects its documents. The client budget is not a process RSS limit or a MongoDB server query-memory limit: enforce container memory and database-side policies separately. Server-side aggregation spill is explicitly disabled with `allowDiskUse: false`.
+Arrow staging targets 128 documents or 1 MiB. An oversized document gets a singleton batch and must fit one quarter of client memory, the output budget and MongoDB's 16 MiB limit. Driver wire batches may allocate earlier; enforce process and database memory policies separately. Aggregation spill is disabled with `allowDiskUse: false`.
 
-Kelvo appends a final limit of `max_rows + 1` and reports an error if an extra row is observed. Result byte limits also fail explicitly; partial streamed data must never be treated as a successful completed analysis. MongoDB results are not yet exposed as DuckDB federation tables, and this adapter does not implement CDC.
+Kelvo adds a final `max_rows + 1` limit and fails on the extra row or byte overflow. Slow sinks stop cursor reads. Partial output is never successful completion. BSON results are not DuckDB federation tables, and this adapter has no CDC.
 
 ## Validation
 
-The connector unit suite covers nested write/JavaScript rejection, canonical numbers, nesting limits, exact BSON preservation, batch boundaries, byte/row overflow, cancellation, empty results, restricted SQL conversion, and sanitized errors. Live SQL fixtures assert returned BSON values for filtering, ordering, aliases, exact numbers, LIKE, NULL logic, grouped/all-null/empty aggregates, sums exceeding int64, and incompatible-type rejection. Run the disposable official-server acceptance on the Linux test VM:
+Run the disposable official-server fixture on the Linux test VM:
 
 ```sh
 docker pull mongo:8.0.32
 python3 scripts/mongodb_acceptance.py --go /path/to/go --output artifacts/mongodb-acceptance.json
 ```
 
-The fixture creates its own internal Docker network and publishes no host port. It creates separate administrator and read-only users with random credentials, tests exact BSON output, write denial, and SQL result semantics, and removes only the resources it created. The fixture uses a 1 GiB container ceiling and 256 MiB WiredTiger cache; these are fixture settings, not production sizing measurements.
+The fixture checks exact BSON/SQL semantics, NULLs, limits and write denial using separate read-only credentials and a private network. Its 1 GiB container/256 MiB WiredTiger settings are test bounds, not production sizing. See [validation](validation.md) and [MongoDB acceleration evidence](evidence/mongodb-acceleration.json).
 
-References: [official Go driver](https://github.com/mongodb/mongo-go-driver/tree/v2.9.1), [driver license](https://github.com/mongodb/mongo-go-driver/blob/v2.9.1/LICENSE), [aggregation](https://www.mongodb.com/docs/drivers/go/current/aggregation/), [Extended JSON](https://www.mongodb.com/docs/manual/reference/mongodb-extended-json/), [Go driver context behavior](https://www.mongodb.com/docs/drivers/go/current/fundamentals/context/), and [MongoDB licensing](https://www.mongodb.com/legal/licensing/server-side-public-license).
+References: [driver](https://github.com/mongodb/mongo-go-driver/tree/v2.9.1), [driver license](https://github.com/mongodb/mongo-go-driver/blob/v2.9.1/LICENSE), [aggregation](https://www.mongodb.com/docs/drivers/go/current/aggregation/), [Extended JSON](https://www.mongodb.com/docs/manual/reference/mongodb-extended-json/), [context behavior](https://www.mongodb.com/docs/drivers/go/current/fundamentals/context/), [server licensing](https://www.mongodb.com/legal/licensing/server-side-public-license).
