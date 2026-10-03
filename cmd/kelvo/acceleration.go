@@ -46,7 +46,10 @@ func refreshFactory(sandbox string, options ...refreshOptions) acceleration.Exec
 
 func runAcceleration(args []string) error {
 	if len(args) == 0 {
-		return query.NewError("INVALID_ARGUMENT", "Expected accelerate refresh, status, verify, inventory, restore, backup, or watch")
+		return query.NewError("INVALID_ARGUMENT", "Expected accelerate refresh, status, verify, inventory, restore, backup, migrate-backup, or watch")
+	}
+	if args[0] == "migrate-backup" {
+		return runMigrationBackup(args[1:])
 	}
 	f := flag.NewFlagSet("accelerate "+args[0], flag.ContinueOnError)
 	file := f.String("config", "kelvo.yml", "Registered sources and acceleration configuration (YAML)")

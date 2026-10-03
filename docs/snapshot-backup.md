@@ -1,8 +1,8 @@
-# Local snapshot backup and recovery
+# Snapshot backup and recovery
 
 `kelvo accelerate backup` copies one current local dataset generation into a **new private acceleration root**. It verifies the copied Parquet bytes, row counts and Arrow schema before publication, preserving the generation, fingerprint, checksums and original refresh time. Single-file and multipart generations use the same command.
 
-This is an operator command for Linux filesystems supporting atomic no-replace directory rename and directory `fsync`. Other platforms and object-storage configurations are rejected. It does not run a source query, resolve database secrets, update service configuration, or overwrite an existing destination.
+This is an operator command for Linux filesystems supporting atomic no-replace directory rename and directory `fsync`. Other platforms are rejected. The ordinary `backup` command rejects object-storage configurations; use the explicit [remote-to-local migration](#migrate-a-current-object-snapshot-to-local-storage) below when changing storage. It does not run a source query, resolve database secrets, update service configuration, or overwrite an existing destination.
 
 ## Create a backup
 
@@ -101,3 +101,128 @@ and post-publication sync failures. Five acceptance-control tests reject damaged
 or ambiguous evidence, changed types/values/NULLs, truncated IPC and concatenated
 Arrow streams. The macOS acceleration package fallback was cross-compiled on
 Linux; backup remains unsupported there.
+
+
+## Migrate a current object snapshot to local storage
+
+`kelvo accelerate migrate-backup` copies one current remote generation into a
+**new private local acceleration root**, verifying exact object versions, payload
+hashes, Parquet footer rows and Arrow schemas. It works with the configured S3,
+R2, GCS or Azure Blob reader path; it requires no remote writer identity, remote
+mutation, object listing or source-database query.
+
+This is a deliberate storage migration, distinct from an ordinary backup.
+Object-storage location and credential-reference configuration participate in
+Kelvo's snapshot fingerprint. The command therefore requires **both catalogs**
+and derives the new local fingerprint from the target catalog. It preserves the
+original generation, payload bytes, schema and refresh timestamp. Its YAML
+success output includes `source_fingerprint` and `source_generation_sha256`
+alongside the local `snapshot` for provenance. Retain that output with both
+operator catalogs. A multipart local manifest uses its own ordered-part digest;
+the original remote descriptor digest remains in the provenance output.
+
+1. Retain the remote catalog as `remote.yml`.
+2. Create `local.yml` from the same catalog. Change only
+   `acceleration.directory` to a new absolute path under an existing private
+   parent and remove `acceleration.object_storage`.
+3. Keep all source definitions, query parameters, tenant/dataset IDs,
+   authorization versions, schema policies, limits, refresh settings and
+   extension directory exactly equal. The command rejects any other change
+   before opening object credentials or storage.
+4. Run the explicit migration, then verify and query the local copy:
+
+```sh
+kelvo accelerate migrate-backup --config remote.yml \
+  --destination-config local.yml --dataset orders_daily
+
+kelvo accelerate verify --config local.yml --dataset orders_daily
+kelvo query --config local.yml --sources orders_daily \
+  --sql 'SELECT COUNT(*) AS rows FROM orders_daily' --out recovered.arrow
+```
+
+Use the usual `--sandbox` option on the verification query when deploying
+sandboxed query workers. Migration itself runs in the trusted parent and cannot
+accept a sandbox, generation selector or source-query override. It needs the
+remote catalog's **reader** environment references during copying. Database and
+writer credentials are not resolved. After success, verification and queries
+against the local catalog require neither object credentials nor object access.
+The command does not change running services, replace catalogs or transfer
+historical generations. A local root containing one dataset does not recover
+other datasets named in a shared catalog.
+
+### Integrity, policy and failure boundaries
+
+The migration captures the current authorized generation at acquisition. Each
+payload is fetched with its exact immutable version and copied sequentially
+through a 256 KiB buffer; Parquet footer verification has its existing bounded
+metadata limits. The complete encoded payload and row count must fit the
+unchanged target dataset budgets. The manager/CLI also bounds the complete
+migration by the unchanged dataset `limits.timeout` (or an earlier caller
+deadline); long copies need a suitable timeout in both catalogs before starting.
+Multipart generation descriptors and part
+counts retain their existing bounds. No complete object or dataset is buffered
+in memory, but the destination needs space for the entire copied dataset plus
+metadata and filesystem overhead.
+
+Kelvo currently never deletes remote generations automatically. That immutability
+contract lets a concurrent same-policy refresh advance `current` while the copy
+finishes with the originally captured generation. A final source-manifest check
+rejects a missing/unavailable current manifest or a changed authorization/config
+fingerprint before local publication. It is not a distributed transaction with
+future remote policy changes: propagate later source revocations and catalog
+updates to the local deployment too. A copied dataset is an independent retained
+copy and must follow the same access and retention policy.
+
+Remote freshness uses the observed object-service clock; local freshness uses
+the target host clock. The command preserves `refreshed_at` exactly and rejects
+an observed age discrepancy above five seconds before copying and publication.
+Keep the host clock synchronized. An old snapshot remains old, and local queries
+continue to reject it when `max_age` has elapsed. Migration is not a refresh.
+
+Destination validation, descriptor-relative private staging, atomic no-replace
+publication, directory syncing and cleanup uncertainty use the same filesystem
+contract as local backups. Linux support is required. A failure before
+publication leaves this operation's destination absent and cleans its owned
+staging, subject to filesystem errors. An existing or concurrently created
+destination is preserved. If publication happened but durability or cleanup is
+uncertain, the CLI returns `BACKUP_DURABILITY_UNCERTAIN`; preserve the destination
+and resolve/verify it as described above. Successful readback cannot retroactively
+prove a failed `fsync` was durable.
+
+### Reproduce migration acceptance
+
+The dedicated Linux test host needs the built CLI and sandbox launcher, approved
+extension directory and the existing Python acceptance dependencies:
+
+```sh
+go test -race ./internal/acceleration ./cmd/kelvo \
+  -run 'Test(ObjectMigration|Migration|CLIMigration)' -count=1
+
+KELVO_TEST_SANDBOX_BINARY="$PWD/bin/kelvo-landlock" \
+  python3 scripts/object_migration_acceptance.py \
+  --binary bin/kelvo --extension-directory /approved/kelvo/extensions
+```
+
+The runner uses the existing signed TLS object fixtures for all four provider
+protocols. Its CA is scoped to the fresh parent CLI processes with `SSL_CERT_FILE`
+and an empty `SSL_CERT_DIR`; it never installs host trust. Sandboxed workers read
+only local files and receive no fixture trust variables. It migrates single,
+multipart and empty snapshots,
+then removes the generated source file, makes every remote object unavailable,
+removes object credentials and checks every recovered Arrow value/type/NULL in a
+sandboxed query. It also checks policy mismatch before object access, read-only
+requests, corrupt metadata and no overwrite. These are protocol/development
+correctness gates, not real cloud account acceptance, an RTO guarantee or a
+throughput measurement. Source snapshots and test credentials remain in private
+ignored fixture directories; only bounded result evidence is public.
+
+### Migration validation
+
+The [signed TLS acceptance record](evidence/object-migration-acceptance.json) passed
+40 checks across S3, R2, GCS and Azure protocol fixtures. Each covers single-file,
+multipart and empty generations, existing-destination rejection, policy mismatch
+and corrupted metadata. Recovery queries ran through sandboxed workers after the
+source file was removed and all fixture objects and object credentials became
+unavailable. These are protocol and local recovery checks, not live cloud-provider
+acceptance or a service failover measurement. The fixture uses process-scoped CA
+trust and makes no host trust changes.

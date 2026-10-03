@@ -1,0 +1,280 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "mode": "tls_protocol_fixtures",
+  "checked_at": "2026-10-03T05:19:51.631908+00:00",
+  "providers": [
+    "s3",
+    "r2",
+    "gcs",
+    "azure"
+  ],
+  "checks": [
+    {
+      "test": "migrate_single_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "s3",
+      "rows": 3,
+      "encoded_bytes": 1050880,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_single_rejects_existing_destination",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "migration_policy_mismatch_fails_before_object_access",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "migration_corrupt_object_metadata_never_publishes",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "migrate_multipart_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "s3",
+      "rows": 3,
+      "encoded_bytes": 1054638,
+      "parts": 3,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_multipart_rejects_existing_destination",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "migrate_single_empty_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "s3",
+      "rows": 0,
+      "encoded_bytes": 943,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_single_empty_rejects_existing_destination",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "migrate_multipart_empty_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "s3",
+      "rows": 0,
+      "encoded_bytes": 943,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_multipart_empty_rejects_existing_destination",
+      "passed": true,
+      "provider": "s3"
+    },
+    {
+      "test": "migrate_single_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "r2",
+      "rows": 3,
+      "encoded_bytes": 1050880,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_single_rejects_existing_destination",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "migration_policy_mismatch_fails_before_object_access",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "migration_corrupt_object_metadata_never_publishes",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "migrate_multipart_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "r2",
+      "rows": 3,
+      "encoded_bytes": 1054638,
+      "parts": 3,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_multipart_rejects_existing_destination",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "migrate_single_empty_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "r2",
+      "rows": 0,
+      "encoded_bytes": 943,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_single_empty_rejects_existing_destination",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "migrate_multipart_empty_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "r2",
+      "rows": 0,
+      "encoded_bytes": 943,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_multipart_empty_rejects_existing_destination",
+      "passed": true,
+      "provider": "r2"
+    },
+    {
+      "test": "migrate_single_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "gcs",
+      "rows": 3,
+      "encoded_bytes": 1050879,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_single_rejects_existing_destination",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "migration_policy_mismatch_fails_before_object_access",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "migration_corrupt_object_metadata_never_publishes",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "migrate_multipart_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "gcs",
+      "rows": 3,
+      "encoded_bytes": 1054638,
+      "parts": 3,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_multipart_rejects_existing_destination",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "migrate_single_empty_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "gcs",
+      "rows": 0,
+      "encoded_bytes": 943,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_single_empty_rejects_existing_destination",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "migrate_multipart_empty_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "gcs",
+      "rows": 0,
+      "encoded_bytes": 943,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_multipart_empty_rejects_existing_destination",
+      "passed": true,
+      "provider": "gcs"
+    },
+    {
+      "test": "migrate_single_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "azure",
+      "rows": 3,
+      "encoded_bytes": 1050880,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_single_rejects_existing_destination",
+      "passed": true,
+      "provider": "azure"
+    },
+    {
+      "test": "migration_policy_mismatch_fails_before_object_access",
+      "passed": true,
+      "provider": "azure"
+    },
+    {
+      "test": "migration_corrupt_object_metadata_never_publishes",
+      "passed": true,
+      "provider": "azure"
+    },
+    {
+      "test": "migrate_multipart_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "azure",
+      "rows": 3,
+      "encoded_bytes": 1054638,
+      "parts": 3,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_multipart_rejects_existing_destination",
+      "passed": true,
+      "provider": "azure"
+    },
+    {
+      "test": "migrate_single_empty_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "azure",
+      "rows": 0,
+      "encoded_bytes": 943,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_single_empty_rejects_existing_destination",
+      "passed": true,
+      "provider": "azure"
+    },
+    {
+      "test": "migrate_multipart_empty_and_query_without_source_or_object_access",
+      "passed": true,
+      "provider": "azure",
+      "rows": 0,
+      "encoded_bytes": 943,
+      "parts": 1,
+      "sandboxed": true
+    },
+    {
+      "test": "migrate_multipart_empty_rejects_existing_destination",
+      "passed": true,
+      "provider": "azure"
+    }
+  ],
+  "scope": "Local TLS protocol acceptance only; no real cloud, throughput or production-readiness claim",
+  "binary_sha256": "28c76f9edc9d3dea2d512090434e992591e5b0bfdb534129faf03eb93b45da8a"
+}
