@@ -84,6 +84,9 @@ jobs:
       - run: python3 scripts/acceleration_acceptance.py --cluster
       - name: Verify operational evidence and HTTP integrity controls
         run: python3 -m unittest discover -s scripts -p test_operational_acceptance.py
+      - name: Verify worker capacity evidence controls
+        working-directory: scripts
+        run: python3 -m unittest test_node_capacity_client test_node_capacity_worker test_summarize_node_capacity
       - name: Verify mixed load, saturation, drain and recovery
         run: python3 scripts/operational_acceptance.py --binary bin/kelvo --sandbox bin/kelvo-landlock --duration 30 --output artifacts/operational-ci.json
       - name: Verify gateway key-rotation evidence controls
