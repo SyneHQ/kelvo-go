@@ -17,10 +17,7 @@ replaced by a public query predicate.
 
 ## Enforcement boundary
 
-The first implementation accepts callback federation sources only. A restricted
-query selecting any raw database attachment, CSV, Parquet, SQLite, DuckDB file,
-object range, or accelerated snapshot fails closed. Restricted native SQL is
-also unsupported. Those surfaces need their own sound pre-query boundary.
+Policies apply to callback federation and [guarded local/object snapshots](../../docs/guarded-snapshots.md). Raw database attachments, direct CSV/Parquet/SQLite/DuckDB files and restricted native SQL remain unsupported. Each supported path filters the relation before user SQL runs.
 
 The source's complete schema remains private. Only allowed flat columns are
 registered with DuckDB, with schema and field metadata removed. Each scan adds

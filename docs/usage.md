@@ -105,7 +105,7 @@ Source SQL, one connection:
 {"mode":"native","connection_id":"events","sql":"SELECT count() FROM events"}
 ```
 
-The [optional bridge](federation.md) supports eight native adapters for live joins. Other native results can become [accelerated Parquet aliases](acceleration.md). Native availability alone does not imply federation; independent sources have no shared transaction snapshot.
+The [optional bridge](federation.md) supports eight database adapters and [Flight SQL](federation-flight-sql.md) for live joins. Other native results can become [accelerated Parquet aliases](acceleration.md). Native availability alone does not imply federation; independent sources have no shared transaction snapshot.
 
 ## Source guides
 

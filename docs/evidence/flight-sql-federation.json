@@ -1,0 +1,738 @@
+{
+  "schema_version": 1,
+  "name": "Flight SQL federation acceptance",
+  "organization": "SYNEHQ",
+  "issue": 35,
+  "scope": "Linux SQL-backed TLS Flight fixtures, native federation, access policies and bounded failures.",
+  "not_run": [
+    "GitHub CI for this change",
+    "External provider certification",
+    "Throughput or capacity benchmarks"
+  ],
+  "limitations": [
+    "No external provider certification, throughput, production capacity or deployment claim.",
+    "Flight sources do not share an atomic cross-source snapshot; predicate pushdown is not enabled.",
+    "The CLI artifact was built; fixture execution used Go test binaries, not a released CLI.",
+    "Source wire-byte measurements are unavailable. Private raw logs and inventories are retained separately."
+  ],
+  "source": {
+    "revision": "a6a11b1bcabfc0d47d40f0b3c02371869747cf30",
+    "tree": "6a1edae60f057f900a4a0e2e55ddfc7ca2994001",
+    "archive_sha256": "d48577d19430624ec35176790370385e61d6a3ea2f0a7a822d2fe6f4f0ce1dbb",
+    "manifest_sha256": "16ebb18bc761e9c9598b4b89655b5aa3c714992bfb7bd98c012ba71206e473f7",
+    "file_count": 1096,
+    "unchanged_before_and_after": true,
+    "changed_files_sha256": {
+      "internal/catalog/federation.go": "d69a4740cfd339727bd0a5e4f2c821bcb3a9d5828188a85eaf84aacd21ea7ed9",
+      "internal/catalog/federation_flight_test.go": "03dda08d946f329c9892ef7de6570f82d4241424256c4eaf801148ab05c268fa",
+      "internal/federation/custom.go": "226f49daa087511dd4620824f3504d10da7f01aa4ed3fdc4d6fca42e43bb1881",
+      "internal/federation/table.go": "015b9bd5bb6a7bd6d57d3481d4980c26021fdeb655fa4769c25da108f6de3f28",
+      "internal/federation/flight_test.go": "e121ce950eeb96b4ca3d945e1f53afa7b157b6c49b212806d8ce09976dd7e7c0",
+      "internal/sources/flightsql/federation.go": "6c619c51719b2b25c605807afa683b53cf5f19c626b881ffe305adfea84af784",
+      "internal/sources/flightsql/federation_test.go": "e44828b3fe0f4c06c41619ac67bcbb52351ad81aacbc678ac4f21ec429e009f9",
+      "internal/engine/duckdb/flight_federation_test.go": "9a416e6d25911dedb87949de3cd97cf5ffffa48c76e0f410a7fb9ff1d4ffdb8f",
+      "internal/engine/duckdb/flight_federation_fixture_test.go": "0c0ee09cd99eadfb39403771d582bb5e549e98885cb9cb463eac1db1d8c8131f"
+    }
+  },
+  "built_binary": {
+    "sha256": "d0917e83792ab5eac3dc798f269063c5709f118075b9aacd7cdccb3e5c053ebc",
+    "bytes": 159395800
+  },
+  "go_version": "go version go1.26.8 linux/amd64",
+  "arrow_go_version": "v18.5.1",
+  "dependency_manifests_sha256": {
+    "go.mod": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+    "go.sum": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "bridge": {
+    "duckdb": "v1.5.6",
+    "driver": "v2.10506.0",
+    "source_sha256": "1fadcbe9e69e1470f9093b6bcde08daf477d729c449e59a807f45c346622099b",
+    "module_sum": "h1:mcZjUQ/kSNeZdtGCqyj5/JEDUdj7/kvILfIOUTzQIu0=",
+    "driver_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+    "tags": "duckdb_arrow,duckbridge",
+    "header_count": 1364,
+    "input_files": 1449,
+    "before_sha256": "41edccc66b6b721b9bc4548f7bbed4b79c6c4a5d5f5303b5580f50c8a670620c",
+    "after_sha256": "41edccc66b6b721b9bc4548f7bbed4b79c6c4a5d5f5303b5580f50c8a670620c",
+    "inputs_unchanged": true
+  },
+  "runner_sha256": {
+    "run_tests.py": "7223f4c38bab9a03c46814d932651ec16f963aa52ad670e7f09891f05de438a2",
+    "host_validation.py": "e4f7daf3d1be9b68549949a3f8f7cf8021037a55933e5a3a1f0823b36bd9a070",
+    "workspace_monitor.py": "764de3f551d0df18bc4820608ab67abcb39eeca652ae4f8a659d8613d531fe35",
+    "monitor_controls.py": "aca525adde974315fd34a5e97b28d39e5cd7d3f9dd63599fc520113a07bcf097"
+  },
+  "required_coverage": {
+    "new_roots": [
+      "github.com/SYNEHQ/kelvo-go/internal/catalog:TestFlightFederationCatalogRequiresExplicitProfile",
+      "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestFlightFederationResultOwnsExactValues",
+      "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestFlightFederationTLSRealEngine",
+      "github.com/SYNEHQ/kelvo-go/internal/federation:TestFlightRequiredFiltersFailBeforeScanDiscovery",
+      "github.com/SYNEHQ/kelvo-go/internal/sources/flightsql:TestFlightFederationCancellationAndCloseOwnOperations",
+      "github.com/SYNEHQ/kelvo-go/internal/sources/flightsql:TestFlightFederationConcurrentRelationsRemainIndependent",
+      "github.com/SYNEHQ/kelvo-go/internal/sources/flightsql:TestFlightFederationRefusesPlansBeforeSourceIO",
+      "github.com/SYNEHQ/kelvo-go/internal/sources/flightsql:TestFlightFederationSchemaDriftLimitsAndSinkFailure",
+      "github.com/SYNEHQ/kelvo-go/internal/sources/flightsql:TestFlightFederationTLSProjectionExactTypesAndOwnership",
+      "github.com/SYNEHQ/kelvo-go/internal/sources/flightsql:TestFlightFederationValidationPrecedesSecretsAndConstruction"
+    ],
+    "child_leaves": [
+      "TestFlightFederationTLSRealEngine/cte_cross_source_join",
+      "TestFlightFederationTLSRealEngine/null_decimal_date_and_integer_widths",
+      "TestFlightFederationTLSRealEngine/residual_filters_and_nulls",
+      "TestFlightFederationTLSRealEngine/row_policy_column_denial_and_source_denial",
+      "TestFlightFederationTLSRealEngine/scan_and_result_limits_fail_without_truncation/scan_rows_before_count",
+      "TestFlightFederationTLSRealEngine/scan_and_result_limits_fail_without_truncation/scan_bytes",
+      "TestFlightFederationTLSRealEngine/scan_and_result_limits_fail_without_truncation/result_rows",
+      "TestFlightFederationTLSRealEngine/deadline_cancels_a_blocked_flight_scan"
+    ],
+    "child_passes_are_separate_from_go_json_event_counts": true
+  },
+  "resource_budget": {
+    "cpu_percent": 200,
+    "memory_bytes": 8589934592,
+    "swap_bytes": 0,
+    "tasks": 512,
+    "runtime_seconds": 1800,
+    "stop_seconds": 30,
+    "max_file_bytes": 5368709120,
+    "monitored_workspace_bytes": 12884901888,
+    "minimum_free_bytes": 12884901888
+  },
+  "peak_sampled_workspace_bytes": 383076921,
+  "environment_scope": "Standard process variables only; the service user home and shared Go caches remain accessible. Dependency network download is disabled.",
+  "provider_environment_cleared": true,
+  "disk_scope": "Sampled logical bytes under this packet, TMPDIR and GOTMPDIR. Symlink targets are not followed; hardlinks count per name. Shared Go caches and files unlinked but still open are outside the tree byte count; filesystem available bytes are checked separately. This is a bounded concurrent scan, not an atomic snapshot or filesystem quota.",
+  "started_at": "2026-10-04T17:47:12.518746+00:00",
+  "finished_at": "2026-10-04T17:48:35.729397+00:00",
+  "selected_trial": "r2",
+  "trials": [
+    {
+      "trial": "r1",
+      "accepted": false,
+      "stages": [
+        {
+          "name": "go-version",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 0.20046332699712366,
+          "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00",
+          "argv": [
+            "$GO",
+            "version"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1"
+          }
+        },
+        {
+          "name": "regular",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 6.413593092991505,
+          "log_sha256": "0cd979c7fabacf0be4940eb1657e44be23d5c1f61c3012583a1a9546a782d2e2",
+          "argv": [
+            "$GO",
+            "test",
+            "-json",
+            "-p",
+            "2",
+            "-count=1",
+            "-timeout=8m",
+            "-mod=readonly",
+            "-tags=duckdb_arrow",
+            "./federation",
+            "./internal/catalog",
+            "./internal/federation",
+            "./internal/sources/flightsql"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1"
+          },
+          "tests": {
+            "go_pass_events": 580,
+            "required_roots_passed": 9,
+            "required_roots": 9,
+            "new_roots_passed": 8,
+            "skipped": [],
+            "failed": [],
+            "failed_packages": [],
+            "unparsed_log_lines": 0,
+            "build_fail_events": 0,
+            "build_output_events": 0
+          }
+        },
+        {
+          "name": "race",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 9.811527532001492,
+          "log_sha256": "9ac028ba2a6cba71e1250a2aca607cc5ac5529dbaf7883490e2864e07a722b10",
+          "argv": [
+            "$GO",
+            "test",
+            "-race",
+            "-json",
+            "-p",
+            "2",
+            "-count=1",
+            "-timeout=8m",
+            "-mod=readonly",
+            "-tags=duckdb_arrow",
+            "./federation",
+            "./internal/catalog",
+            "./internal/federation",
+            "./internal/sources/flightsql"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1"
+          },
+          "tests": {
+            "go_pass_events": 580,
+            "required_roots_passed": 9,
+            "required_roots": 9,
+            "new_roots_passed": 8,
+            "skipped": [],
+            "failed": [],
+            "failed_packages": [],
+            "unparsed_log_lines": 0,
+            "build_fail_events": 0,
+            "build_output_events": 0
+          }
+        },
+        {
+          "name": "provision-bridge",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 1.6011850570212118,
+          "log_sha256": "b580081557affc6eeee160d2e1644c22efe63bc68f03011aea0b5f34482b4a1b",
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/provision_duckbridge.py",
+            "$BRIDGE",
+            "--go",
+            "$GO"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1"
+          }
+        },
+        {
+          "name": "native-regular",
+          "passed": false,
+          "exit_code": 1,
+          "timed_out": false,
+          "seconds": 17.058244701998774,
+          "log_sha256": "42ad851126c5d90cfe9d8f2550b4145e5c2e29b777a3b452d31d26c7b70b568e",
+          "argv": [
+            "$GO",
+            "test",
+            "-json",
+            "-count=1",
+            "-timeout=8m",
+            "-p",
+            "2",
+            "-mod=readonly",
+            "-modfile",
+            "$BRIDGE/duckbridge.mod",
+            "-tags=duckdb_arrow,duckbridge",
+            "-run",
+            "^Test(Flight|AccessPolicies|Guard|PredicateCapabilities|Factory|Bound|Custom|Registry)",
+            "./federation",
+            "./internal/catalog",
+            "./internal/federation",
+            "./internal/sources/flightsql",
+            "./internal/access",
+            "./internal/duckbridge",
+            "./internal/engine/duckdb"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "CGO_CXXFLAGS": "-I$BRIDGE/headers"
+          },
+          "failure": "REQUIRED_TESTS_FAILED_OR_MISSING",
+          "failure_type": "RuntimeError",
+          "tests": {
+            "go_pass_events": 153,
+            "required_roots_passed": 33,
+            "required_roots": 34,
+            "new_roots_passed": 8,
+            "skipped": [
+              "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestCustomFederationNeedsExplicitBridgeBuild"
+            ],
+            "failed": [
+              "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestFlightFederationTLSRealEngine"
+            ],
+            "failed_packages": [
+              "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb"
+            ],
+            "unparsed_log_lines": 0,
+            "build_fail_events": 0,
+            "build_output_events": 0,
+            "child_leaf_passes": 3,
+            "child_leaf_failures": [
+              "TestFlightFederationTLSRealEngine/cte_cross_source_join",
+              "TestFlightFederationTLSRealEngine/null_decimal_date_and_integer_widths"
+            ],
+            "child_leaf_unrun": [
+              "TestFlightFederationTLSRealEngine/scan_and_result_limits_fail_without_truncation/scan_rows_before_count",
+              "TestFlightFederationTLSRealEngine/scan_and_result_limits_fail_without_truncation/scan_bytes",
+              "TestFlightFederationTLSRealEngine/scan_and_result_limits_fail_without_truncation/result_rows"
+            ],
+            "child_group_or_root_failures": [
+              "TestFlightFederationTLSRealEngine",
+              "TestFlightFederationTLSRealEngine/scan_and_result_limits_fail_without_truncation"
+            ]
+          }
+        }
+      ],
+      "source": {
+        "revision": "2f8ec9fd980932385fcd66763942630bde6fabdd",
+        "tree": "7dd5d5a5888887d6401a2a1b09d28cdbaa6710e1",
+        "archive_sha256": "f6c2de6475f93d4952d61a326ca70549384754d2ca405d482511800b6f4918e7",
+        "manifest_sha256": "48f9b7279ac13f711446023f69e7efb1220207cdcde61ccb999cf6c6e7d39fc8",
+        "new_roots": 9
+      },
+      "unrun_stages": [
+        "native-race",
+        "vet",
+        "build"
+      ],
+      "cleanup": {
+        "unit_absent": true,
+        "cgroup_absent": true,
+        "original_main_pid_absent": true,
+        "owned_processes_absent": true,
+        "launch_closed": true,
+        "source_hashes_unchanged": true,
+        "bridge_hashes_unchanged": true,
+        "observed_at": "2026-10-04T17:36:37.611035+00:00"
+      },
+      "receipt_sha256": {
+        "plan.json": "520d7ee44d7cea6480154bf85a149ad5a43434ccc154ae561b7a24fcc599f549",
+        "output/validation.json": "98290420b7b0a9000362678adfa0f5f470d463e531aa0e04dc2e0f301a1fcad9",
+        "final-exit.json": "1645b514582ebef387399bf9d0ec49d489d78861bccf9dbc1a554edb61532a33",
+        "cleanup-receipt.json": "00e139e51bdfd67bd1a07a8c1c82506d43b3d01053fa1ab598ec6861119c7e73",
+        "collection-observation.json": "a2b351f0f651235d2ab35469bcb80a550ad070592e26f89f50d4f9f8de98fe17"
+      },
+      "artifact_manifest_sha256": "d0a79044ee779a11138bc416593ab4c9358026dcc47ccaa1b5b5db9de7c5db62",
+      "independent_review_sha256": "337194de1e20fb0a05a9096f8bd155b90fda8f05dff94095c9c01cc51138ce9d",
+      "failure": "REQUIRED_TESTS_FAILED_OR_MISSING",
+      "failure_type": "RuntimeError"
+    },
+    {
+      "trial": "r2",
+      "accepted": true,
+      "stages": [
+        {
+          "name": "go-version",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 0.20046245399862528,
+          "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00",
+          "argv": [
+            "$GO",
+            "version"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1"
+          }
+        },
+        {
+          "name": "regular",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 6.215311428008135,
+          "log_sha256": "8f4342d2fea3ea2d884b8b05921ea47a11d980a4c9eae8b855cb108cacf620fc",
+          "argv": [
+            "$GO",
+            "test",
+            "-json",
+            "-p",
+            "2",
+            "-count=1",
+            "-timeout=8m",
+            "-mod=readonly",
+            "-tags=duckdb_arrow",
+            "./federation",
+            "./internal/catalog",
+            "./internal/federation",
+            "./internal/sources/flightsql"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1"
+          },
+          "tests": {
+            "go_pass_events": 580,
+            "required_roots_passed": 9,
+            "required_roots": 9,
+            "new_roots_passed": 8,
+            "skipped": [],
+            "failed": [],
+            "failed_packages": [],
+            "unparsed_log_lines": 0,
+            "build_fail_events": 0,
+            "build_output_events": 0
+          }
+        },
+        {
+          "name": "race",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 9.81352981296368,
+          "log_sha256": "c7badfda610d4b61e21a0b5518cea4bd01cbbce4ea3a4b112c98e76be133e44e",
+          "argv": [
+            "$GO",
+            "test",
+            "-race",
+            "-json",
+            "-p",
+            "2",
+            "-count=1",
+            "-timeout=8m",
+            "-mod=readonly",
+            "-tags=duckdb_arrow",
+            "./federation",
+            "./internal/catalog",
+            "./internal/federation",
+            "./internal/sources/flightsql"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1"
+          },
+          "tests": {
+            "go_pass_events": 580,
+            "required_roots_passed": 9,
+            "required_roots": 9,
+            "new_roots_passed": 8,
+            "skipped": [],
+            "failed": [],
+            "failed_packages": [],
+            "unparsed_log_lines": 0,
+            "build_fail_events": 0,
+            "build_output_events": 0
+          }
+        },
+        {
+          "name": "provision-bridge",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 1.6011861629667692,
+          "log_sha256": "fc65e6d89770ac1b41706c36f97993cd6289229711ed0d54c91d1215071b8474",
+          "argv": [
+            "python3",
+            "-B",
+            "scripts/provision_duckbridge.py",
+            "$BRIDGE",
+            "--go",
+            "$GO"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1"
+          }
+        },
+        {
+          "name": "native-regular",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 17.07018702098867,
+          "log_sha256": "72054a18816de5ec5d67bbbb58d180a2bfb4c7499777818fe22b2a56818f0166",
+          "argv": [
+            "$GO",
+            "test",
+            "-json",
+            "-count=1",
+            "-timeout=8m",
+            "-p",
+            "2",
+            "-mod=readonly",
+            "-modfile",
+            "$BRIDGE/duckbridge.mod",
+            "-tags=duckdb_arrow,duckbridge",
+            "-run",
+            "^Test(Flight|AccessPolicies|Guard|PredicateCapabilities|Factory|Bound|Custom|Registry)",
+            "./federation",
+            "./internal/catalog",
+            "./internal/federation",
+            "./internal/sources/flightsql",
+            "./internal/access",
+            "./internal/duckbridge",
+            "./internal/engine/duckdb"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "CGO_CXXFLAGS": "-I$BRIDGE/headers"
+          },
+          "tests": {
+            "go_pass_events": 155,
+            "required_roots_passed": 35,
+            "required_roots": 35,
+            "new_roots_passed": 10,
+            "skipped": [
+              "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestCustomFederationNeedsExplicitBridgeBuild"
+            ],
+            "failed": [],
+            "failed_packages": [],
+            "unparsed_log_lines": 0,
+            "build_fail_events": 0,
+            "build_output_events": 0,
+            "child_leaf_passes": 8,
+            "child_leaf_failures": [],
+            "child_leaf_unrun": [],
+            "child_group_or_root_failures": []
+          }
+        },
+        {
+          "name": "native-race",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 26.2260846850113,
+          "log_sha256": "d876e6175700fa52d38b41e2d10e1b4ef387a21b3cb497cdaafdfffd445262d1",
+          "argv": [
+            "$GO",
+            "test",
+            "-race",
+            "-json",
+            "-count=1",
+            "-timeout=8m",
+            "-p",
+            "2",
+            "-mod=readonly",
+            "-modfile",
+            "$BRIDGE/duckbridge.mod",
+            "-tags=duckdb_arrow,duckbridge",
+            "-run",
+            "^Test(Flight|AccessPolicies|Guard|PredicateCapabilities|Factory|Bound|Custom|Registry)",
+            "./federation",
+            "./internal/catalog",
+            "./internal/federation",
+            "./internal/sources/flightsql",
+            "./internal/access",
+            "./internal/duckbridge",
+            "./internal/engine/duckdb"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "CGO_CXXFLAGS": "-I$BRIDGE/headers",
+            "GOEXPERIMENT": "cgocheck2"
+          },
+          "tests": {
+            "go_pass_events": 155,
+            "required_roots_passed": 35,
+            "required_roots": 35,
+            "new_roots_passed": 10,
+            "skipped": [
+              "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestCustomFederationNeedsExplicitBridgeBuild"
+            ],
+            "failed": [],
+            "failed_packages": [],
+            "unparsed_log_lines": 0,
+            "build_fail_events": 0,
+            "build_output_events": 0,
+            "child_leaf_passes": 8,
+            "child_leaf_failures": [],
+            "child_leaf_unrun": [],
+            "child_group_or_root_failures": []
+          }
+        },
+        {
+          "name": "vet",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 16.24928902403917,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "argv": [
+            "$GO",
+            "vet",
+            "-p",
+            "2",
+            "-mod=readonly",
+            "-modfile",
+            "$BRIDGE/duckbridge.mod",
+            "-tags=duckdb_arrow,duckbridge",
+            "./federation",
+            "./internal/catalog",
+            "./internal/federation",
+            "./internal/sources/flightsql",
+            "./internal/access",
+            "./internal/duckbridge",
+            "./internal/engine/duckdb",
+            "./cmd/kelvo"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "CGO_CXXFLAGS": "-I$BRIDGE/headers"
+          }
+        },
+        {
+          "name": "build",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "seconds": 5.003048482001759,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "argv": [
+            "$GO",
+            "build",
+            "-p",
+            "2",
+            "-mod=readonly",
+            "-modfile",
+            "$BRIDGE/duckbridge.mod",
+            "-tags=duckdb_arrow,duckbridge",
+            "-o",
+            "$OUTPUT/kelvo",
+            "./cmd/kelvo"
+          ],
+          "environment": {
+            "GOMAXPROCS": "2",
+            "GOTOOLCHAIN": "local",
+            "GOENV": "off",
+            "GOWORK": "off",
+            "GOPROXY": "off",
+            "GOSUMDB": "off",
+            "TMPDIR": "$TMP",
+            "GOTMPDIR": "$TMP",
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "CGO_CXXFLAGS": "-I$BRIDGE/headers"
+          }
+        }
+      ],
+      "source": {
+        "revision": "a6a11b1bcabfc0d47d40f0b3c02371869747cf30",
+        "tree": "6a1edae60f057f900a4a0e2e55ddfc7ca2994001",
+        "archive_sha256": "d48577d19430624ec35176790370385e61d6a3ea2f0a7a822d2fe6f4f0ce1dbb",
+        "manifest_sha256": "16ebb18bc761e9c9598b4b89655b5aa3c714992bfb7bd98c012ba71206e473f7",
+        "new_roots": 10
+      },
+      "unrun_stages": [],
+      "cleanup": {
+        "unit_absent": true,
+        "cgroup_absent": true,
+        "original_main_pid_absent": true,
+        "owned_processes_absent": true,
+        "launch_closed": true,
+        "source_hashes_unchanged": true,
+        "bridge_hashes_unchanged": true,
+        "observed_at": "2026-10-04T17:50:20.591796+00:00"
+      },
+      "receipt_sha256": {
+        "plan.json": "89ae47a5c68d7d6162308a912356bb9da89e51d2fc672ce590ff9ebfe99e81c4",
+        "output/validation.json": "0e2daee9007bd6cad4b1804d000426b324f1be563001e9f6e08f2a6646278928",
+        "final-exit.json": "4fca0c9b993299551798ab29a1a22998dbe1c89253a5743d9079606ea049c828",
+        "cleanup-receipt.json": "f1a2036183fbf730ca5349a0b94df676b5452244d5102d9bdafa84cf925d987b",
+        "collection-observation.json": "67a56c21277f46876dfb42cfebcbf9afaae633951db72abf3075d1e54318c5fa"
+      },
+      "artifact_manifest_sha256": "034120bebe2e0664c8c952b723cb183f1094265454fee774ae3e730e62406b3a",
+      "independent_review_sha256": "9ae740787f430ada509b595b1b970973d183f43e8f1ce511cbeb7ec60169525f"
+    }
+  ]
+}

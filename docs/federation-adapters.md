@@ -1,10 +1,10 @@
 # Federation adapters: operator and contributor guide
 
-Configure the SQL Server, Snowflake, BigQuery, Databricks and Oracle adapters, or add a compiled-in Go adapter. All use the optional [bridge build](federation.md#build-and-update); native query support alone does not provide federation.
+Configure SQL Server, Snowflake, BigQuery, Databricks, Oracle or [Flight SQL](federation-flight-sql.md), or add a compiled-in Go adapter. All use the optional [bridge build](federation.md#build-and-update); native query support alone does not provide federation.
 
-## Why these five
+## Coverage choices
 
-These tabular engines complement ClickHouse/PostgreSQL/MySQL and reuse existing typed connectors. The [2025 Stack Overflow survey](https://survey.stackoverflow.co/2025/technology#1-databases) informed coverage priorities; it is neither market share nor a performance ranking.
+The five database engines above complement ClickHouse/PostgreSQL/MySQL and reuse existing typed connectors. The [2025 Stack Overflow survey](https://survey.stackoverflow.co/2025/technology#1-databases) informed coverage priorities; it is neither market share nor a performance ranking. Flight SQL services use a separate [explicit SQL profile](federation-flight-sql.md).
 
 MongoDB federation is deferred until typed fields, missing/NULL values, mixed types, arrays and collection authorization have a verified contract. MongoDB [null](https://www.mongodb.com/docs/manual/tutorial/query-for-null-fields/) and [equality](https://www.mongodb.com/docs/manual/reference/operator/query/eq/) semantics cannot silently replace SQL semantics. Use its [native document connector](sources-mongodb.md) meanwhile.
 
