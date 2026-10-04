@@ -63,6 +63,9 @@ func (*date32FixtureRelation) Close() error {
 	return nil
 }
 func date32FixtureRecord(schema *arrow.Schema) arrow.RecordBatch {
+	return date32FixtureRecordWithDays(schema, []arrow.Date32{-1, 0, 11016, 19782, 0, -2147483647, 2147483647})
+}
+func date32FixtureRecordWithDays(schema *arrow.Schema, days []arrow.Date32) arrow.RecordBatch {
 	builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
 	defer builder.Release()
 	for i, field := range schema.Fields() {
@@ -72,7 +75,7 @@ func date32FixtureRecord(schema *arrow.Schema) arrow.RecordBatch {
 		case "tenant_id":
 			builder.Field(i).(*array.Int64Builder).AppendValues([]int64{7, 7, 8, 7, 7, 8, 7}, nil)
 		case "event_day":
-			builder.Field(i).(*array.Date32Builder).AppendValues([]arrow.Date32{-1, 0, 11016, 19782, 0, -2147483647, 2147483647}, []bool{true, true, true, true, false, true, true})
+			builder.Field(i).(*array.Date32Builder).AppendValues(days, []bool{true, true, true, true, false, true, true})
 		case "date64":
 			builder.Field(i).(*array.Date64Builder).AppendValues([]arrow.Date64{-86400000, 0, 11016 * 86400000, 19782 * 86400000, 0, -100000 * 86400000, 100000 * 86400000}, []bool{true, true, true, true, false, true, true})
 		}
@@ -144,7 +147,8 @@ func assertDate32IDs(t *testing.T, sink *predicateResultSink, ids ...int64) {
 	for i, id := range ids {
 		want[i] = []any{id}
 	}
-	if !reflect.DeepEqual(sink.values, want) || sink.schema == nil || sink.schema.NumFields() != 1 || sink.schema.Field(0).Type.ID() != arrow.INT64 {
+	rowsEqual := len(sink.values) == len(want) && (len(want) == 0 || reflect.DeepEqual(sink.values, want))
+	if !rowsEqual || sink.schema == nil || sink.schema.NumFields() != 1 || sink.schema.Field(0).Type.ID() != arrow.INT64 {
 		t.Fatalf("Date32 query rows = %v, want %v", sink.values, want)
 	}
 }
@@ -228,10 +232,10 @@ type date32SnapshotRows struct{}
 func (date32SnapshotRows) Execute(ctx context.Context, _ query.Request, sink query.Sink) (query.Stats, error) {
 	full := date32FixtureSchema()
 	metadata := full.Metadata()
-	// Snapshot rows retain Date32 exactly; Date64 local fallback is exercised
-	// separately through the custom adapter above.
+	// Persisted snapshots require finite dates. Custom/native fixtures retain
+	// infinity coverage; this fixture still compares finite data with infinity.
 	schema := arrow.NewSchema(full.Fields()[:3], &metadata)
-	record := date32FixtureRecord(schema)
+	record := date32FixtureRecordWithDays(schema, []arrow.Date32{-1, 0, 11016, 19782, 0, -100000, 100000})
 	defer record.Release()
 	if err := ctx.Err(); err != nil {
 		return query.Stats{}, err
@@ -275,8 +279,8 @@ func TestDate32GuardedSnapshotPredicatesStayLocalInActualEngine(t *testing.T) {
 		ids []int64
 	}{
 		{"SELECT id FROM dates_fast WHERE event_day >= DATE '1970-01-01' OR event_day IS NULL ORDER BY id", []int64{2, 4, 5, 7}},
-		{"WITH finite AS (SELECT id FROM dates_fast WHERE event_day > DATE '-infinity' AND event_day < DATE 'infinity') SELECT id FROM finite ORDER BY id", []int64{1, 2, 4}},
-		{"SELECT id FROM dates_fast WHERE event_day = DATE 'infinity'", []int64{7}},
+		{"WITH finite AS (SELECT id FROM dates_fast WHERE event_day > DATE '-infinity' AND event_day < DATE 'infinity') SELECT id FROM finite ORDER BY id", []int64{1, 2, 4, 7}},
+		{"SELECT id FROM dates_fast WHERE event_day = DATE 'infinity'", nil},
 	}
 	for _, tc := range cases {
 		sink := &predicateResultSink{}
