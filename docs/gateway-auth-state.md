@@ -60,3 +60,5 @@ Preserve the directory when initialization or startup fails. Check ownership, st
 Restoring an old volume can restore old history. Keep `min_revision` as an external deployment floor and protect backups. Same-UID/root modifications are outside the threat model.
 
 This does not coordinate replica rollout, provide cluster-wide revocation, or make export completion atomic with revocation. Those remain open in the [production roadmap](production-status.md).
+
+[Validation evidence](evidence/gateway-auth-state.json) records restart/crash and failure checks, regular/race coverage, CLI handler tests, build and CI results, cleanup and the retained incomplete first run.

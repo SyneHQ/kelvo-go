@@ -14,6 +14,7 @@ Status reviewed 4 October 2026. This is a capability checklist, not production c
 | Metrics opt-out, bounded history, [authorized trace continuity](tracing.md), [real OTLP acceptance](tracing-acceptance.md#recorded-result), [child stage metrics](child-timings.md), source observations and [local audit](durable-audit.md) | Full distributed attribution, audit archival and broader workload-cost measurements |
 | [Paired telemetry cost](telemetry-overhead.md#recorded-full-comparison) on `93339e7`: 48 epochs, 96 measured queries and exact results | Deployment-specific cost; broker queue and separate source/compute attribution remain unknown |
 | Selected-secret forwarding, files, opt-in cloud secrets, API-key and TLS rotation | Live-provider IAM/rotation coverage and coordinated enrollment/revocation |
+| Opt-in [authentication history](gateway-auth-state.md) across gateway restarts | Shared-replica authority, restored-volume rollback protection and atomic export revocation |
 | Managed Linux scratch with inherited leases | Deployment-specific disk capacity and recovery validation |
 | [Merged `cargo` acceptance](evidence/cargo-b1a0ea5-acceptance.json) on `b1a0ea5`: both CI jobs, 15 notebooks, process-loss and snapshot-upgrade gates passed | Recurring provider, sustained-load and deployment tests on each release candidate |
 

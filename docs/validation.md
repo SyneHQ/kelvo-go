@@ -10,6 +10,12 @@ The [pinned worker-capacity gate](node-capacity.md) passed on `b1a0ea5` with obs
 
 The [first `b1a0ea5` attempt](evidence/node-capacity-b1a0ea5-preflight-refusal.json) remains recorded: its source policy refused all three preflight queries. The fresh campaign used bounded source settings, passed 24 live policy checks and retained the same runtime.
 
+## Authentication history
+
+[Linux acceptance](evidence/gateway-auth-state.json) on `6bbbc71` passed regular and race checks (all 50 required entries each), vet and the tagged CLI build. Checks cover restart rollback and token-reassignment refusal, real-process locks/crashes, blocked-I/O expiry, persistence failures, legacy behavior and offline CLI command handlers. [PR CI](https://github.com/SYNEHQ/kelvo-go/actions/runs/37214177804) passed all 68 steps.
+
+The first VM run passed regular checks but its monitor interrupted race validation; vet/build never ran. Its cause remains unknown. The fresh run used a corrected monitor with 18 passing controls; source hashes and final cleanup were independently verified. Optional fixture skips remain in the evidence. This proves local gateway history, not shared-replica revocation or throughput. [Setup and recovery](gateway-auth-state.md).
+
 ## Catalog authority
 
 [Linux acceptance](evidence/catalog-authority.json) on `bcbb3dc` passed nine stages, including all 34 required correctness/race/stub controls and 11 real sandboxed query/export/snapshot controls. It verifies legacy policy compatibility, stale-authority refusal, detached execution definitions and exact Arrow results after attempted source retargeting. Source/bridge inputs and independent cleanup checks passed; fixture-dependent skips remain in the record. No provider or capacity claim.
