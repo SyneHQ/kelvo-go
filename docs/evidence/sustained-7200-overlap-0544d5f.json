@@ -1,0 +1,202 @@
+{
+  "revision": "0544d5f013eb72598a6da608331ec8b00711866f",
+  "campaign_unit": "kelvo-sustained-c259ccfefa71",
+  "campaign_resource_cap": {
+    "cpu_percent": 200,
+    "memory_gib": 6,
+    "swap_bytes": 0
+  },
+  "planned_host_overlap": {
+    "description": "Separate offline component validation",
+    "cpu_percent": 100,
+    "memory_gib": 3,
+    "scratch_and_namespace_independent": true,
+    "actual_start_finish_pending": false
+  },
+  "interpretation": "Lifecycle and bounded resource acceptance; not maximum-throughput or standalone-host capacity certification.",
+  "component_gate": {
+    "revision": "232295489391c78c45786f46886ffa04954f97b5",
+    "unit": "kelvo-client-quiescence-2322954893-c73bbc.service",
+    "scratch": "/home/syenuser/kelvo-client-quiescence.otvHsm",
+    "launch_observed_at_utc": "2026-10-03T23:21:08Z",
+    "timestamp_basis": "Launcher observation, not systemd start timestamp",
+    "cpu_percent": 100,
+    "memory_gib": 3,
+    "private_network": true,
+    "independent_source_and_modules": true,
+    "shared_bridge_mutation": false,
+    "completion_pending": false,
+    "exec_main_start_utc": "2026-10-03T23:21:18Z",
+    "journal_start_utc": "2026-10-03T23:21:18.837305Z",
+    "journal_end_utc": "2026-10-03T23:22:22.588188Z",
+    "journal_duration_seconds": 63.750883,
+    "both_units_observed_active": true,
+    "validation_passed": true,
+    "component_service_and_cgroup_removed": true,
+    "evidence_directory": "/private/tmp/kelvo-client-quiescence-validation",
+    "evidence_sha256": {
+      "service-timing.json": "70c23883627ee201e21736198f4320e7d3e1e081840f6966bc1516f83a0b8f74",
+      "overlap-observation.json": "8fb9e83c8d325f60c2db060f06960d381d7c233a6c14ff44dce1104847293186",
+      "public-receipt.json": "cc86c49a1479077592bcb6baaeb407aecf85ba280b07fbab5819fc22293c6641"
+    }
+  },
+  "additional_component_gates": [
+    {
+      "unit": "kelvo-distributed-tracing-f2b9793c34-f9fe92.service",
+      "scratch": "/home/syenuser/kelvo-distributed-tracing.C5k0b0",
+      "journal_start_utc": "2026-10-03T23:50:36.969550Z",
+      "journal_end_utc": "2026-10-03T23:51:30.895683Z",
+      "journal_duration_seconds": 53.926133,
+      "both_units_observed_active": true,
+      "observed_at_utc": "2026-10-03T23:51:16.359861Z",
+      "cpu_percent": 100,
+      "memory_gib": 3,
+      "private_network": true,
+      "validation_passed": true,
+      "component_service_and_cgroup_removed": true,
+      "evidence_directory": "/private/tmp/kelvo-distributed-tracing-validation",
+      "evidence_sha256": {
+        "overlap-observation.json": "6fe5e3aba9b2ca7a5cf436ca308d233431a457d18b4e90cbb1fe502a513086be",
+        "service-timing.json": "1ce4bc44d11cb367a757ba12c13f9bbdf67dcbb13d0d0529ab88dc77c9e89c1a",
+        "public-receipt.json": "8b56a17e15cb0684a1cbcaa808f5586c37d01fa44ea403c81ae86a1f0ccdcf91",
+        "cleanup-independent.json": "b60baea2784e2a8b8d9207f658409639d7c73114018e9bfe178ac4ce15851369"
+      },
+      "revision": "f2b9793c3407c29e6d4212b0cd0fcff6e5b3e29c"
+    },
+    {
+      "revision": "1f48f9006a18a652bd983138eac4356978387370",
+      "unit": "kelvo-child-timing-1f48f9006a-f102d9.service",
+      "scratch": "/home/syenuser/kelvo-child-timing.omn0ab",
+      "journal_start_utc": "2026-10-04T00:12:30.973336Z",
+      "journal_end_utc": "2026-10-04T00:13:38.390758Z",
+      "journal_duration_seconds": 67.417422,
+      "both_units_observed_active": true,
+      "cpu_percent": 100,
+      "memory_gib": 3,
+      "private_network": true,
+      "validation_passed": false,
+      "validation_failure_stage": "vet",
+      "race_controls_passed": 55,
+      "component_service_and_cgroup_removed": true,
+      "evidence_directory": "/private/tmp/kelvo-child-timing-validation",
+      "evidence_sha256": {
+        "overlap-observation.json": "c5e4e2a5540b75354eefb44c089c11064f5c125af140464594f7dc4110788b37",
+        "service-timing.json": "0e992f2b50d1db363180541738aadcd479a4ddda74e67807c0cc72cf513bd078",
+        "public-receipt.json": "e79b5a127d8872604cfeea90923664c3884a8845d81cd709dfabd04cfc86a90e",
+        "cleanup-independent.json": "de6a51df0f91f85cfe578c0526778e02472a6cb87c57c2a4147f6709ff12d183"
+      },
+      "observed_at_utc": "2026-10-04T00:13:34.163786+00:00",
+      "durable_review_archive": {
+        "remote": "/home/syenuser/kelvo-child-timing.omn0ab/review-receipts.tar.gz",
+        "sha256": "eea2b3f2495947d61ed2b872338e5d894016ada86eddba61e974ca54dcc24ea6",
+        "basis": "Root report"
+      }
+    },
+    {
+      "revision": "d1b7d0e0cd43740ac2570e5ecf23294d8d14900b",
+      "unit": "kelvo-child-timing-d1b7d0e0cd-1a8dfd.service",
+      "scratch": "/home/syenuser/kelvo-child-timing.OKqhil",
+      "journal_start_utc": "2026-10-04T00:19:55.369205Z",
+      "journal_end_utc": "2026-10-04T00:21:34.692178Z",
+      "journal_duration_seconds": 99.322973,
+      "both_units_observed_active": true,
+      "observed_at_utc": "2026-10-04T00:20:10.459494+00:00",
+      "cpu_percent": 100,
+      "memory_gib": 3,
+      "private_network": true,
+      "validation_passed": true,
+      "component_service_and_cgroup_removed": true,
+      "evidence_directory": "/private/tmp/kelvo-child-timing-validation-v2",
+      "evidence_sha256": {
+        "overlap-observation.json": "6181270913115c6c03dcfde7de6ea7b0380cb5d484f27d036903e003d59b2dd2",
+        "service-timing.json": "a60458594b2d77962451385ae46263bd3c93652713de30ddee787c6552c4c7b7",
+        "public-receipt.json": "4aa41148a2dbe92c53e7ac065b10cc18745d6493b6ca6cee0520b00005843326",
+        "cleanup-independent.json": "1116effeea656cbcdb9364fbf1fa069ea6d51f5684dcac7fa60ab01e410b709f"
+      }
+    },
+    {
+      "revision": "4b54b16d17ad1938a61a0752b47b8dd7ab3ee8d0",
+      "unit": "kelvo-otlp-acceptance-4b54b16d17-b1b6d7.service",
+      "scratch": "/home/syenuser/kelvo-otlp-acceptance.9rCzuW",
+      "timing_receipt": {
+        "unit": "kelvo-otlp-acceptance-4b54b16d17-b1b6d7.service",
+        "source": "Exact-unit systemd PID1 journal entries; raw messages kept privately.",
+        "events": [
+          {
+            "kind": "started",
+            "journal_realtime_microseconds": 1791074545845217,
+            "utc": "2026-10-04T00:42:25.845217Z"
+          },
+          {
+            "kind": "failed_exit_code",
+            "journal_realtime_microseconds": 1791074579964667,
+            "utc": "2026-10-04T00:42:59.964667Z"
+          }
+        ],
+        "journal_interval_seconds": 34.11945
+      },
+      "both_units_observed_active": false,
+      "observed_at_utc": "2026-10-04T00:43:04.680306+00:00",
+      "cpu_percent": 100,
+      "memory_gib": 3,
+      "private_network": true,
+      "validation_passed": false,
+      "component_service_and_cgroup_removed": true,
+      "host_trust_unchanged": true,
+      "evidence_directory": "/private/tmp/kelvo-otlp-validation",
+      "evidence_sha256": {
+        "overlap-observation.json": "0ded2aece9b6f60ce5fe59819650f52e48909b32d395e88ee4224c48e8d27e67",
+        "service-timing.json": "c841c12c27085dff5376f1e29e817deb3fe4e3dd55646f0fe76abd6747abd36f",
+        "public-receipt.json": "b0146eaf8fc66d8582e72fff4d33319fb2b0ec797520b4758bf7cc508aab6411",
+        "cleanup-independent.json": "82d848be9bd6cab18c4fc756cad70e6b3a7554ae06b8d1cb7df0564dd489c559"
+      },
+      "validation_failure_category": "INCOMPLETE_DURABLE_ARROW",
+      "overlap_observation_limitation": "Observation arrived after component exit; it does not prove both units active simultaneously."
+    },
+    {
+      "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+      "unit": "kelvo-otlp-acceptance-93339e79ab-688362.service",
+      "scratch": "/home/syenuser/kelvo-otlp-acceptance.n8aZTg",
+      "timing_receipt": {
+        "unit": "kelvo-otlp-acceptance-93339e79ab-688362.service",
+        "source": "Exact-unit systemd PID1 journal entries; raw messages kept privately.",
+        "events": [
+          {
+            "kind": "started",
+            "journal_realtime_microseconds": 1791075041009187,
+            "utc": "2026-10-04T00:50:41.009187Z"
+          },
+          {
+            "kind": "deactivated_successfully",
+            "journal_realtime_microseconds": 1791075091975902,
+            "utc": "2026-10-04T00:51:31.975902Z"
+          }
+        ],
+        "journal_interval_seconds": 50.966715
+      },
+      "both_units_observed_active": true,
+      "observed_at_utc": "2026-10-04T00:50:50.992426+00:00",
+      "cpu_percent": 100,
+      "memory_gib": 3,
+      "private_network": true,
+      "validation_passed": true,
+      "component_service_and_cgroup_removed": true,
+      "host_trust_unchanged": true,
+      "evidence_directory": "/private/tmp/kelvo-otlp-validation-v2",
+      "evidence_sha256": {
+        "overlap-observation.json": "d55c1fdaa75325ccd0a55caea05898149d5a35ef2a7bdc0280a47add6414f7bd",
+        "service-timing.json": "2e35784cb905abbdb7d837e87de52a0a60185ff76b74a2dcb6cb555d86b255b4",
+        "public-receipt.json": "dd1c47f5f12c0c023c0044b51a3da31e2fa68e5cb8e902ed7ae4c4da201f7791",
+        "cleanup-independent.json": "cdba1dd42a141a3bea59b97f7b237894392e10dc2ac1fc9a702ac66de6b6f256"
+      }
+    }
+  ],
+  "campaign_completed": true,
+  "campaign_passed": true,
+  "raw_report_sha256": "bb695b18cf8b47cc7afe32744eccabe48e495f10a05d1eae22b7f9075568bcdc",
+  "public_receipt_sha256": "1de63e57249f8f6e8594b807a6b10d25ab1c0d048c7061443bc366977ab51b18",
+  "bound_cleanup_sha256": "4b26346a27a4df6660eb1b9948e5e65d625f63e08217d1c1dded86ec030ed831",
+  "component_gate_count": 6,
+  "component_passed_count": 4,
+  "component_failed_count": 2
+}
