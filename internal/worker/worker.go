@@ -34,6 +34,9 @@ type Input struct {
 	Config  catalog.Config `json:"config"`
 	Limits  query.Limits   `json:"limits"`
 	Request query.Request  `json:"request"`
+	// Parent and child use the same executable. Older strict child decoders do
+	// not accept this field; it is not an independent rolling wire protocol.
+	TimingVersion uint8 `json:"timing_version,omitempty"`
 }
 
 // ExecutionContext validates the trusted envelope before any child engine is
@@ -53,8 +56,10 @@ func (in Input) ExecutionContext(ctx context.Context) (context.Context, error) {
 }
 
 type Outcome struct {
-	Stats query.Stats  `json:"stats"`
-	Error *query.Error `json:"error,omitempty"`
+	Stats           query.Stats            `json:"stats"`
+	Error           *query.Error           `json:"error,omitempty"`
+	Timing          *telemetry.ChildTiming `json:"timing,omitempty"`
+	timingMalformed bool
 }
 type Executor struct {
 	Containment       *containment.Manager
@@ -207,6 +212,9 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		releaseScratch()
 	}()
 	input := Input{Config: cfg, Limits: e.Limits, Request: r}
+	if e.Metrics != nil {
+		input.TimingVersion = telemetry.ChildTimingVersion
+	}
 	if policy, restricted := access.PolicyFromContext(ctx); restricted {
 		input.Access = &policy
 	}
@@ -285,6 +293,10 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		return stats, err
 	}
 	phases.enter(telemetry.PhaseExecutionDelivery)
+	var childStarted time.Time
+	if e.Metrics != nil {
+		childStarted = time.Now()
+	}
 	if processJob != nil {
 		err = processJob.Start(cmd)
 	} else {
@@ -309,6 +321,10 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	// output pipe and would otherwise survive a successful leader exit.
 	cleanupErr := finishProcess(cmd, ctx.Err() != nil)
 	waitErr := cmd.Wait()
+	var childBound time.Duration
+	if e.Metrics != nil {
+		childBound = time.Since(childStarted)
+	}
 	if processJob != nil {
 		_, containedErr := processJob.Finish(context.Background())
 		processFinished = true
@@ -318,6 +334,10 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	}
 	var outcome Outcome
 	decodeErr := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &outcome)
+	if e.Metrics != nil {
+		terminated := cmd.ProcessState != nil && cmd.ProcessState.ExitCode() == -1
+		recordChildTiming(e.Metrics, ctx, outcome, decodeErr, terminated, childBound)
+	}
 	stats = outcome.Stats
 	stats.Accelerations = versions
 	stats.Rows, stats.Bytes, stats.Batches, stats.WireBytes = observed.Rows, observed.Bytes, observed.Batches, observed.WireBytes

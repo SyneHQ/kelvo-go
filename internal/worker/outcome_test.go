@@ -10,7 +10,7 @@ import (
 )
 
 func TestBoundedOutcomeFitsSnapshotAndFederationStatistics(t *testing.T) {
-	outcome := Outcome{}
+	outcome := Outcome{Timing: childTimingTestFixture()}
 	for i := 0; i < 64; i++ {
 		outcome.Stats.Accelerations = append(outcome.Stats.Accelerations, query.AccelerationVersion{Dataset: strings.Repeat("a", 63), Generation: strings.Repeat("f", 64), RefreshedAt: time.Now()})
 	}
