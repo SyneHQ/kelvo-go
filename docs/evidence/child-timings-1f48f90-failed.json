@@ -1,0 +1,257 @@
+{
+  "passed": false,
+  "revision": "1f48f9006a18a652bd983138eac4356978387370",
+  "staging_json_sha256": "3d02f0c80be73a0dbad2e4fa7ec6fe38d538e0549d2a5ee73cf0d4a1e2a90e64",
+  "source_manifest_sha256": "4b0b09486b46bf824985cdbb93a114016240e159e2b90c57fa230fa9b68f4c15",
+  "source_file_count": 1008,
+  "scope": "Offline child timing shape, cleanup, DuckDB materialization and optional protocol regression tests. No source-pure-compute, live-provider or throughput claim.",
+  "compiler_lanes": 1,
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "helpers_verified_before": true,
+  "helpers_verified_after": true,
+  "shared_bridge_unchanged": true,
+  "effective_modules_unchanged": true,
+  "capability_sets_zero": true,
+  "no_new_privileges": true,
+  "enforced_isolation": {
+    "non_root": true,
+    "private_network": true,
+    "memory_max_bytes": 3221225472,
+    "swap_max_bytes": 0,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "tasks_max": 256
+  },
+  "enforced_watchdog": {
+    "TimeoutStopUSec": "20s",
+    "RuntimeMaxUSec": "30min",
+    "KillMode": "control-group",
+    "SendSIGKILL": "yes"
+  },
+  "shared_inputs_before": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+  },
+  "effective_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "binary_sha256": null,
+  "failure_type": "RuntimeError",
+  "failure_category": "UNEXPECTED_STAGE_EXIT",
+  "raw_report_sha256": "53b14e8c0566ec33610d1bd5c61a505d4b37b0bb79b1f88e15837c6875715252",
+  "reported_passed": false,
+  "source_current_match": true,
+  "helpers_current_match": true,
+  "shared_inputs_current_match": true,
+  "effective_modules_current_match": true,
+  "isolation_reconciled": true,
+  "stages": {
+    "cleanup-negative": {
+      "exit_code": null,
+      "timeout": null,
+      "seconds": null,
+      "log_sha256": null
+    },
+    "command-race": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 19.008,
+      "log_sha256": "e9a9fb939c9f2e50ec7aa076aed62291e95f1565094fe4bdd28b70d8ec7b945c"
+    },
+    "control-parser": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 0.064,
+      "log_sha256": "259cf8fa7d0a33f8d2689aa1bef2a1cdb07e8a6d055438f151e05db1f0a0f70c"
+    },
+    "engine-race": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 5.676,
+      "log_sha256": "bdca3df387ecc75ea88ee5cc98b7cea8f82f98f35c4f9f6bf224ce5d0448151b"
+    },
+    "external-modfile": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 0.008,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "focused-vet": {
+      "exit_code": 1,
+      "timeout": false,
+      "seconds": 17.159,
+      "log_sha256": "49e7e78c6f1b599763f9f2d68d25b535376d8ad06ca1615620cdb6d805025b11"
+    },
+    "kelvo-build": {
+      "exit_code": null,
+      "timeout": null,
+      "seconds": null,
+      "log_sha256": null
+    },
+    "telemetry-race": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 1.918,
+      "log_sha256": "de6d794de57a82e34f37b8adec2012300ca81779943c6ff072d80c482343e73d"
+    },
+    "worker-race": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 23.109,
+      "log_sha256": "b320dea541cd50b78f801101013aeadfdd5aeffcd9a42ff4f200351029e9838c"
+    }
+  },
+  "stages_reconciled": false,
+  "positive_controls": {
+    "telemetry": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/telemetry",
+      "required_top_level_tests": [
+        "TestChildMetricsSeparateNestedSamplesFromUnknowns",
+        "TestChildRecorderClosedIntervalsAndCleanup",
+        "TestChildRecorderDisabledAndConcurrentSnapshots",
+        "TestChildRecorderRejectsIncompleteAndRepeatedBoundaries",
+        "TestChildTimingValidatesSeparateLanesAndParentBound",
+        "TestConcurrentObserveAndSnapshot",
+        "TestConcurrentPhaseObserveAndScrape",
+        "TestHistoryBoundsExpiryAndSnapshot",
+        "TestHistoryConcurrentBounds",
+        "TestHistoryValidation",
+        "TestInvalidPhaseSamplesAreIgnored",
+        "TestNilInvalidAndNegative",
+        "TestPhaseMetricsReachedIntervalsAndBoundedLabels",
+        "TestPrometheusResponse",
+        "TestSourceHealthBoundedConfigurationAndNoRequestGrowth",
+        "TestSourceHealthExpiryAndDetachedSnapshots",
+        "TestSourceHealthFixedCategoriesAndConcurrentSnapshots",
+        "TestStalledExportDoesNotBlockRecording"
+      ],
+      "log_sha256": "de6d794de57a82e34f37b8adec2012300ca81779943c6ff072d80c482343e73d",
+      "passed_top_level_count": 18,
+      "passed_events_including_subtests": 34,
+      "failures_or_skips": 0
+    },
+    "worker": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+      "required_top_level_tests": [
+        "TestBoundedOutcomeFitsSnapshotAndFederationStatistics",
+        "TestChildTimingUnknownClassificationDoesNotChangeOutcome",
+        "TestDisabledPhasesDoNotWrapSink",
+        "TestExecutionTelemetryOutcomes",
+        "TestExecutionTelemetryRejections",
+        "TestExecutorCancellationInterruptsBlockedIPC",
+        "TestExecutorChildTimingEnabledOnlyByMetrics",
+        "TestExecutorForwardsOnlySelectedSourceToken",
+        "TestExecutorIsolatesExplicitCloudCredentials",
+        "TestExecutorNormalizesModeAndCountsObservedResults",
+        "TestExecutorPhasesSuccessSinkErrorAndCancellation",
+        "TestExecutorPublicCompressionKeepsChildIPCUncompressed",
+        "TestExecutorQuotaCancellationDuringSinkReleasesReservations",
+        "TestExecutorRejectsMissingOrForbiddenSourceToken",
+        "TestExecutorRejectsRequestsBeforeStartingProcess",
+        "TestExecutorTypedSinkErrorSurvivesLocalCancellation",
+        "TestIPCSinkAbortAfterSuccessfulBatchesReleasesDictionaries",
+        "TestIPCSinkCompressedResultKeepsDecodedAndRowLimits",
+        "TestIPCSinkCompressedResultKeepsEncodedLimitIncludingEOS",
+        "TestIPCSinkCompressionOutputCancellationDoesNotEmitEOS",
+        "TestIPCSinkCompressionPreservesExactArrowBatches",
+        "TestIPCSinkRejectsNilInputsAndKeepsFinishedState",
+        "TestIPCSinkRejectsUnsupportedCompressionBeforeOutput",
+        "TestOutcomeEncodingDropsTimingBeforeCoreAtSizeLimit",
+        "TestOutcomeTimingDecodeIsOptionalStrictAndBounded",
+        "TestPhaseClockPartitionsWorkerLifecycle",
+        "TestRejectedAdmissionStillRecordsReachedPhases",
+        "TestWorkerQuotaLossDoesNotMaskLaterExecutionDeadline",
+        "TestWorkerResultCancellationPreservesExistingErrorPrecedence",
+        "TestWorkerResultRejectsQuotaLossAfterCompleteIPC"
+      ],
+      "log_sha256": "b320dea541cd50b78f801101013aeadfdd5aeffcd9a42ff4f200351029e9838c",
+      "passed_top_level_count": 30,
+      "passed_events_including_subtests": 86,
+      "failures_or_skips": 0
+    },
+    "command": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/cmd/kelvo",
+      "required_top_level_tests": [
+        "TestChildWorkerInvalidEnvelopeHasNoTiming",
+        "TestChildWorkerTimingErrorStagesAndCancellation",
+        "TestChildWorkerTimingPreservesArrowAndDisabledContext",
+        "TestChildWorkerTimingPreservesCleanupPanic",
+        "TestChildWorkerTimingWaitsForNativeCleanup"
+      ],
+      "log_sha256": "e9a9fb939c9f2e50ec7aa076aed62291e95f1565094fe4bdd28b70d8ec7b945c",
+      "passed_top_level_count": 5,
+      "passed_events_including_subtests": 12,
+      "failures_or_skips": 0
+    },
+    "engine": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+      "required_top_level_tests": [
+        "TestChildDuckDBMaterializesBeforeBlockedSink",
+        "TestChildDuckDBTimingErrorBoundaries"
+      ],
+      "log_sha256": "bdca3df387ecc75ea88ee5cc98b7cea8f82f98f35c4f9f6bf224ce5d0448151b",
+      "passed_top_level_count": 2,
+      "passed_events_including_subtests": 10,
+      "failures_or_skips": 0
+    }
+  },
+  "positive_controls_reconciled": true,
+  "metrics_export_bytes": 48006,
+  "metrics_size_reconciled": true,
+  "collection_failure_type": "FileNotFoundError",
+  "cleanup": {
+    "unit": "kelvo-child-timing-1f48f9006a-f102d9",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true
+  },
+  "local_launch": {
+    "ssh_exit_code": 1,
+    "revision": "1f48f9006a18a652bd983138eac4356978387370",
+    "unit": "kelvo-child-timing-1f48f9006a-f102d9"
+  },
+  "collection_ssh_exit_code": 1,
+  "local_launch_reconciled": false,
+  "local_stage_reconciled": true,
+  "independent_cleanup": {
+    "unit": "kelvo-child-timing-1f48f9006a-f102d9",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true,
+    "revision": "1f48f9006a18a652bd983138eac4356978387370"
+  },
+  "independent_cleanup_receipt_sha256": "de6a51df0f91f85cfe578c0526778e02472a6cb87c57c2a4147f6709ff12d183",
+  "unrun_stages": [
+    "kelvo-build",
+    "cleanup-negative"
+  ],
+  "failure_note": "55 race-tested targets passed; vet rejected timeout cancellation ownership. Build and controlled negative were not run. The collector could not reconcile the absent negative tree; the gate remains failed."
+}
