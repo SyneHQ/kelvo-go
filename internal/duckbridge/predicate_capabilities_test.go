@@ -249,7 +249,12 @@ func TestBoundPredicatesMatchDisabledWithNullsAndResiduals(t *testing.T) {
 			if fullRows != 6 || reducedRows > fullRows || fullBytes <= 0 || reducedBytes < 0 {
 				t.Fatal("invalid observed scan counters")
 			}
-			if predicate == "id=2" || predicate == "id>=2" || predicate == "id IS NULL" {
+			if predicate == "id IS NULL" && !reflect.DeepEqual(a.values, [][]any{{nil}}) {
+				t.Fatalf("NULL predicate changed exact results: %#v", a)
+			}
+			// Eligibility permits pushdown; it does not force the optimizer to
+			// choose it. v1.5.6 keeps IS NULL local in this query shape.
+			if predicate == "id=2" || predicate == "id>=2" {
 				pushed := false
 				for _, plan := range pushedPlans {
 					pushed = pushed || len(plan.Filters) != 0

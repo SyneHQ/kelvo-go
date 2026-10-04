@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -170,7 +171,7 @@ func (s *predicateResultSink) Write(record arrow.RecordBatch) error {
 			case *array.Int64:
 				values[i] = column.Value(row)
 			case *array.String:
-				values[i] = column.Value(row)
+				values[i] = strings.Clone(column.Value(row))
 			default:
 				return fmt.Errorf("unexpected result type %s", column.DataType())
 			}

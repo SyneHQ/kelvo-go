@@ -161,7 +161,9 @@ func TestPredicateCapabilitiesEmptyAndDetached(t *testing.T) {
 			t.Fatalf("incomplete or unguarded snapshot table advertised predicates: %v", got)
 		}
 	}
-	schema := arrow.NewSchema([]arrow.Field{{Name: "missing_type"}, {Name: "id", Type: arrow.PrimitiveTypes.Int64}}, nil)
+	// Arrow rejects nil field types while constructing the schema. A valid,
+	// unsupported NULL field still proves eligibility skips non-scalar fields.
+	schema := arrow.NewSchema([]arrow.Field{{Name: "unsupported", Type: arrow.Null}, {Name: "id", Type: arrow.PrimitiveTypes.Int64}}, nil)
 	table := &Table{schema: schema, dialect: dialectClickHouse}
 	first := table.PredicateCapabilities()
 	if !slices.Equal(first.Columns, []string{"id"}) {
