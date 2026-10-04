@@ -81,6 +81,9 @@ func NewNode(cfg NodeConfig, store Store, executor *worker.Executor) (*Node, err
 	if err := ValidateExportCatalog(cfg, executor.Config); err != nil {
 		return nil, err
 	}
+	if err := executor.ValidateObjectRuntime(); err != nil {
+		return nil, err
+	}
 	return newNode(cfg, store, executor)
 }
 

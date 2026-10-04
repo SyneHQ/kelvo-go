@@ -131,6 +131,9 @@ func (body *rangeFixtureBody) Read(out []byte) (int, error) {
 
 func (body *rangeFixtureBody) Close() error {
 	body.once.Do(func() { body.client.bodiesClosed.Add(1); close(body.stop) })
+	if body.client.mode == "close-error" {
+		return errors.New("fixture upstream close failed")
+	}
 	return nil
 }
 

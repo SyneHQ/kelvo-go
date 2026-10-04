@@ -32,6 +32,9 @@ const (
 // the returned sources contain only loopback URLs and public object sizes.
 // Release cancels requests, closes the listener, and waits for upstream cleanup.
 func OpenObjectRanges(ctx context.Context, storage catalog.ObjectStorage, snapshots []Snapshot) (map[string]catalog.Source, func(), error) {
+	if storage.ReaderRegistry != nil {
+		return nil, nil, errors.New("protected object ranges require a live reader guard")
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
@@ -65,22 +68,47 @@ func OpenObjectRanges(ctx context.Context, storage catalog.ObjectStorage, snapsh
 // RangeClient's exact version and response validation contract still applies;
 // this does not grant public callers authority to mint snapshot capabilities.
 func OpenObjectRangesWithClient(ctx context.Context, storage catalog.ObjectStorage, snapshots []Snapshot, client objectstore.RangeClient) (map[string]catalog.Source, func(), error) {
+	if storage.ReaderRegistry != nil {
+		if client != nil {
+			client.Close()
+		}
+		return nil, nil, errors.New("protected object ranges require a live reader guard")
+	}
 	return openObjectRanges(ctx, storage, snapshots, client)
 }
 
 // The injected client is owned by this helper, including on failed setup.
 func openObjectRanges(parent context.Context, storage catalog.ObjectStorage, snapshots []Snapshot, client objectstore.RangeClient) (map[string]catalog.Source, func(), error) {
+	return openObjectRangesOwned(parent, storage, snapshots, client, true, nil)
+}
+
+// Protected ranges borrow one node-owned client. Their guard consumer stays
+// held until all handlers and body-close callbacks join; Close never closes the
+// shared provider underneath a different query.
+func openProtectedObjectRanges(parent context.Context, storage catalog.ObjectStorage, snapshots []Snapshot, client objectstore.RangeClient, check func() error) (map[string]catalog.Source, func(), error) {
+	if storage.ReaderRegistry == nil || check == nil {
+		return nil, nil, errors.New("protected object ranges require a live reader guard")
+	}
+	return openObjectRangesOwned(parent, storage, snapshots, client, false, check)
+}
+
+func openObjectRangesOwned(parent context.Context, storage catalog.ObjectStorage, snapshots []Snapshot, client objectstore.RangeClient, owned bool, check func() error) (map[string]catalog.Source, func(), error) {
 	if client == nil {
 		return nil, nil, errors.New("object ranges require a reader")
 	}
 	ready := false
 	defer func() {
-		if !ready {
+		if !ready && owned {
 			client.Close()
 		}
 	}()
 	if err := parent.Err(); err != nil {
 		return nil, nil, err
+	}
+	if check != nil {
+		if err := check(); err != nil {
+			return nil, nil, err
+		}
 	}
 	if err := storage.ObjectLocation.Validate(); err != nil {
 		return nil, nil, err
@@ -121,7 +149,7 @@ func openObjectRanges(parent context.Context, storage catalog.ObjectStorage, sna
 		return nil, nil, errors.New("object range listener is unavailable")
 	}
 	lifetime, cancel := context.WithCancel(parent)
-	bridge := &objectRangeBridge{client: client, authority: listener.Addr().String(), routes: make(map[string]Snapshot, len(selected)), slots: make(chan struct{}, objectRangeConcurrency)}
+	bridge := &objectRangeBridge{client: client, check: check, authority: listener.Addr().String(), routes: make(map[string]Snapshot, len(selected)), slots: make(chan struct{}, objectRangeConcurrency)}
 	sources := make(map[string]catalog.Source, len(selected))
 	for dataset, leaves := range selected {
 		source := catalog.Source{ID: dataset, Type: "parquet"}
@@ -161,7 +189,9 @@ func openObjectRanges(parent context.Context, storage catalog.ObjectStorage, sna
 			_ = server.Close()
 			<-served
 			bridge.active.Wait()
-			client.Close()
+			if owned {
+				client.Close()
+			}
 			close(released)
 		})
 	}
@@ -175,6 +205,12 @@ func openObjectRanges(parent context.Context, storage catalog.ObjectStorage, sna
 		}
 	}()
 	ready = true
+	if check != nil {
+		if err := check(); err != nil {
+			release()
+			return nil, nil, err
+		}
+	}
 	return sources, release, nil
 }
 
@@ -233,6 +269,7 @@ func objectRangeLeaves(storage catalog.ObjectStorage, snapshot Snapshot) ([]Snap
 
 type objectRangeBridge struct {
 	client    objectstore.RangeClient
+	check     func() error
 	authority string
 	routes    map[string]Snapshot
 	slots     chan struct{}
@@ -251,6 +288,10 @@ func (bridge *objectRangeBridge) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	bridge.active.Add(1)
 	bridge.mu.Unlock()
 	defer bridge.active.Done()
+	if bridge.check != nil && bridge.check() != nil {
+		objectRangeError(w, http.StatusServiceUnavailable)
+		return
+	}
 	if r.Host != bridge.authority || r.URL.Scheme != "" || r.URL.Host != "" || r.URL.RawQuery != "" || r.URL.ForceQuery ||
 		r.URL.RawPath != "" || r.RequestURI != r.URL.Path {
 		objectRangeError(w, http.StatusForbidden)
@@ -294,6 +335,10 @@ func (bridge *objectRangeBridge) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
+	if bridge.check != nil && bridge.check() != nil {
+		objectRangeError(w, http.StatusServiceUnavailable)
+		return
+	}
 	body, info, err := bridge.client.GetRange(ctx, snapshot.ObjectKey, snapshot.ObjectVersion, start, length)
 	if err != nil {
 		if body != nil {
@@ -307,19 +352,24 @@ func (bridge *objectRangeBridge) ServeHTTP(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var closeOnce sync.Once
-	closeBody := func() { closeOnce.Do(func() { _ = body.Close() }) }
+	var closeErr error
+	closeBody := func() { closeOnce.Do(func() { closeErr = body.Close() }) }
 	callbackDone := make(chan struct{})
 	stopClose := context.AfterFunc(ctx, func() {
 		defer close(callbackDone)
 		closeBody()
 	})
-	defer func() {
-		stopped := stopClose()
-		closeBody()
-		if !stopped {
-			<-callbackDone
-		}
-	}()
+	var joinOnce sync.Once
+	joinBody := func() {
+		joinOnce.Do(func() {
+			stopped := stopClose()
+			closeBody()
+			if !stopped {
+				<-callbackDone
+			}
+		})
+	}
+	defer joinBody()
 	if validateSnapshotObject(snapshot, info) != nil {
 		objectRangeError(w, http.StatusBadGateway)
 		return
@@ -338,7 +388,10 @@ func (bridge *objectRangeBridge) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	}
 	var tail [2]byte
 	n, err := io.ReadFull(body, tail[:])
-	if n != 1 || !errors.Is(err, io.ErrUnexpectedEOF) || ctx.Err() != nil {
+	// Complete upstream ownership before publishing a complete HTTP range.
+	// Exact bytes followed by failed Close must remain an incomplete result.
+	joinBody()
+	if n != 1 || !errors.Is(err, io.ErrUnexpectedEOF) || closeErr != nil || ctx.Err() != nil || (bridge.check != nil && bridge.check() != nil) {
 		panic(http.ErrAbortHandler)
 	}
 	if _, err := w.Write(tail[:1]); err != nil {
