@@ -77,8 +77,9 @@ def cases():
             f"SELECT id FROM {{events}} WHERE toInt32(day) = {days} ORDER BY id", date_push=True)
     add("classic_date", "SELECT id FROM warehouse.events WHERE classic >= DATE '2000-02-29' ORDER BY id",
         "SELECT id FROM {events} WHERE toInt32(classic) >= 11016 ORDER BY id", date_push=True)
+    # DuckDB keeps this nullable disjunction local; verify exact result parity.
     add("null_and_or", "SELECT id FROM warehouse.events WHERE (day < DATE '1970-01-01' OR day IS NULL) AND id >= 1 ORDER BY id",
-        "SELECT id FROM {events} WHERE (toInt32(day) < 0 OR day IS NULL) AND id >= 1 ORDER BY id", date_push=True)
+        "SELECT id FROM {events} WHERE (toInt32(day) < 0 OR day IS NULL) AND id >= 1 ORDER BY id")
     add("not_null", "SELECT id FROM warehouse.events WHERE day IS NOT NULL ORDER BY id",
         "SELECT id FROM {events} WHERE day IS NOT NULL ORDER BY id")
     add("projection_reorder", "SELECT classic,day,id,label FROM warehouse.events WHERE day >= DATE '1970-01-01' ORDER BY id",
