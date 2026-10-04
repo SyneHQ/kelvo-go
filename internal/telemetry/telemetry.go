@@ -53,13 +53,17 @@ type Histogram struct {
 }
 
 type Snapshot struct {
-	Outcomes     [2][3]uint64
-	Rejections   [2][2]uint64
-	QueueWait    [2]Histogram
-	Duration     [2]Histogram
-	Phases       [2][PhaseCount]Histogram
-	FirstBatch   [2]Histogram
-	SinkDuration [2]Histogram
+	Outcomes          [2][3]uint64
+	Rejections        [2][2]uint64
+	QueueWait         [2]Histogram
+	Duration          [2]Histogram
+	Phases            [2][PhaseCount]Histogram
+	FirstBatch        [2]Histogram
+	SinkDuration      [2]Histogram
+	ChildReports      [2][childTimingStatusCount]uint64
+	ChildUnknown      [2][ChildStageCount][childTimingStatusCount]uint64
+	ChildWorkerStages [2][ChildEngineSetup]Histogram
+	ChildDuckDBStages [2][ChildStageCount - ChildEngineSetup]Histogram
 }
 
 // Registry's zero value is usable. All state has a fixed size, regardless of
@@ -159,6 +163,7 @@ func writeMetrics(w io.Writer, s Snapshot) error {
 	writeHistogram(&out, "kelvo_job_queue_wait_seconds", "Observed worker admission wait of terminal jobs; excludes distributed dispatch wait.", s.QueueWait)
 	writeHistogram(&out, "kelvo_job_duration_seconds", "Observed worker call duration including setup and transfer but excluding admission wait.", s.Duration)
 	writePhaseMetrics(&out, s)
+	writeChildMetrics(&out, s)
 	_, err := w.Write(out.data)
 	return err
 }
