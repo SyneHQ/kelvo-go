@@ -26,15 +26,15 @@ Admission reserves budgets; optional containment enforces native process-tree li
 
 | Available | Still needed |
 | --- | --- |
-| Immutable local/remote full refresh, fenced publication and local reader pins | Durable remote reader integration and live acceleration acceptance for each intended provider |
+| Immutable local/remote full refresh, fenced publication, local pins and opt-in [protected object readers](protected-object-readers.md) | Protected runtime acceptance (#118), maintenance readers, legacy cutover and live-provider gates |
 | Strict schemas, optional nullable additions and conservative widening | Separate proof for any broader evolution policy |
 | Multipart snapshots and over-4-GiB development gates | Selective replacement, part reuse and incremental checkpoints |
 | Verified inventory/restore, local backup and remote-to-local migration | Remote-destination recovery, cross-host cutover and measured RTO/RPO |
-| Local pruning with reader protection | Durable remote reader protection, orphan accounting, GC and compaction |
+| Local pruning with reader protection | Remote orphan accounting, retirement, GC and compaction |
 
 [Object writer shutdown](object-writer-shutdown.md) joins pending factories, transactions and owned client cleanup; 45 focused race tests and vet passed on `997157e`. Reader activation and remote deletion remain separate.
 
-The [durable reader registry](durable-reader-registry.md), [object-store adapter and immutable binding](reader-objectstore.md) passed isolated race tests and vet; runtime integration and live-provider acceptance remain open. Remote pruning intentionally deletes nothing. Protect current, retained, pinned, staging and orphan data before adding GC. Remote v4 writes require coordinated reader/writer upgrades. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
+The [durable reader registry](durable-reader-registry.md) and [object-store binding](reader-objectstore.md) have isolated component evidence. [#118](https://github.com/SYNEHQ/kelvo-go/issues/118) tracks the new contained runtime's acceptance. Protected v5 requires a fresh namespace; legacy v4 still needs coordinated reader/writer upgrades. Remote pruning deletes nothing. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
 
 ## Results and interoperability
 

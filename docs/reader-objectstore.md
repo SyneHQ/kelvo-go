@@ -2,10 +2,9 @@
 
 Kelvo has two tested internal components for protecting remote snapshot readers:
 an adapter from `objectstore.Client` to the reader registry, and a canonical
-binding for immutable snapshot metadata. They are **not wired into snapshot
-publication, queries or maintenance readers yet**. There is no new configuration
-switch or remote deletion capability. [Issue 14](https://github.com/SYNEHQ/kelvo-go/issues/14)
-still tracks the remaining integration and acceptance work.
+binding for immutable snapshot metadata. [Protected object snapshots](protected-object-readers.md)
+use both for publication and contained queries. Remote deletion remains disabled;
+[issue 14](https://github.com/SYNEHQ/kelvo-go/issues/14) tracks the remaining work.
 
 ## Registry storage adapter
 
@@ -35,13 +34,12 @@ adapter never calls client `Close`, `Head`, listing or deletion methods.
 
 The client must authenticate service time and honor current reads, atomic
 conditions and cancellation. A timestamp field alone does not prove that trust.
-Production wiring must use dedicated parent-only registry rights and reuse a
+The protected runtime uses dedicated parent-only registry rights and reuses a
 bounded Registry/provider owner across queries.
 
 See [object client and upload lifetime](object-upload-lifetime.md) for input
 ownership and shutdown behavior. The built-in shutdown extension passed its
-offline validation gate; production reader ownership and live-provider
-acceptance remain open.
+offline validation gate; live-provider acceptance remains open.
 
 ## Immutable snapshot binding
 
@@ -75,11 +73,10 @@ and a private network namespace with only loopback. The exact service unloaded
 and its cgroup disappeared afterward. These are validation limits, not a
 production sizing or throughput claim.
 
-The remaining [reader lifecycle gates](durable-reader-registry.md#integration-gates-still-open)
-include provider acceptance, credential ownership, versioned manifest
-publication, acquisition before any remote data read, guard propagation through
-native execution and cleanup, maintenance readers, and a controlled legacy
-cutover. Retirement and deletion require their own reviewed protocol. These
-fixture tests do not establish any of those outcomes.
+This historical receipt covers the adapter and binding components.
+[Runtime acceptance](protected-object-readers.md#validation-and-remaining-work)
+is separate. Remaining [lifecycle gates](durable-reader-registry.md#integration-gates-still-open)
+include providers, maintenance readers and legacy cutover. Retirement and
+deletion need their own reviewed protocol.
 
 [Reader registry](durable-reader-registry.md) · [Object storage](object-storage.md) · [Production roadmap](production-roadmap.md)

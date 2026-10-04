@@ -1,10 +1,9 @@
 # Reader acquisition and custody lifetimes
 
 Kelvo's internal reader registry can separate request cancellation from the
-lifetime of a confirmed snapshot pin. This tested API is **not connected to
-production query, range, subprocess or maintenance consumers yet**. It adds no
-configuration switch or remote garbage collection. [Issue 14](https://github.com/SYNEHQ/kelvo-go/issues/14)
-still tracks those integration and acceptance gates.
+lifetime of a confirmed snapshot pin. [Protected object snapshots](protected-object-readers.md)
+use this API through a shared owner. Remote garbage collection remains disabled;
+[issue 14](https://github.com/SYNEHQ/kelvo-go/issues/14) tracks the remaining gates.
 
 ## API contract
 
@@ -46,13 +45,10 @@ An uncooperative provider retains acquisition capacity until its actual method,
 body cleanup and cancellation callback return. Closing a successful lease is
 bounded; `Quiesced()` may remain open after that bounded call returns.
 
-The [private owner and guard](reader-owner.md) now provide tested groundwork for
-bounded custody. Production query, range, subprocess and maintenance consumers
-remain unwired. Integration must preserve the original execution deadline,
-retain pins through actual consumer cleanup and check them before exposing
-success. Neither a bare lease pointer nor its execution context supplies that
-protocol. Missing metadata, expiry, cancellation, restart and local quiescence
-never authorize deletion.
+The [private owner and guard](reader-owner.md) preserve the execution deadline
+and retain pins through preparation, ranges, the process tree and scratch cleanup.
+Final completion checks ownership again. Missing metadata, expiry, cancellation,
+restart and local quiescence never authorize deletion.
 
 ## Frozen-source validation
 
