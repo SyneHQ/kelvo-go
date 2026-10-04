@@ -10,6 +10,10 @@ The [pinned worker-capacity gate](node-capacity.md) passed on `b1a0ea5` with obs
 
 The [first `b1a0ea5` attempt](evidence/node-capacity-b1a0ea5-preflight-refusal.json) remains recorded: its source policy refused all three preflight queries. The fresh campaign used bounded source settings, passed 24 live policy checks and retained the same runtime.
 
+## Catalog authority
+
+[Linux acceptance](evidence/catalog-authority.json) on `bcbb3dc` passed nine stages, including all 34 required correctness/race/stub controls and 11 real sandboxed query/export/snapshot controls. It verifies legacy policy compatibility, stale-authority refusal, detached execution definitions and exact Arrow results after attempted source retargeting. Source/bridge inputs and independent cleanup checks passed; fixture-dependent skips remain in the record. No provider or capacity claim.
+
 ## Expanded federation and public adapter SDK
 
 The optional Go/C++ bridge supports ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and Databricks. See the [adapter guide](federation-adapters.md) for namespaces, types and the public `github.com/SYNEHQ/kelvo-go/federation` interface.

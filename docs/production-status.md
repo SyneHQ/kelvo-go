@@ -46,7 +46,7 @@ The [durable reader registry](durable-reader-registry.md), [object-store adapter
 | Automatic remote joins/aggregates | Pending bound-plan integration and parity checks |
 | Flight SQL | Client available; read-only server pending |
 | PostgreSQL/MySQL CDC | Pending checkpoint/publication and replay contracts |
-| Principal access | [Keys and handle ownership](principal-access.md), [callback](row-column-access.md), [local/object snapshot policies](guarded-snapshots.md) and [federated exports](exports.md); native row policies, cache and coordinated revocation remain open |
+| Principal access | [Keys and handle ownership](principal-access.md), opt-in [catalog authority](catalog-authority.md), [callback](row-column-access.md), [local/object snapshot policies](guarded-snapshots.md) and [federated exports](exports.md); native row policies, cache and coordinated revocation remain open |
 | Single-query distribution | Outside this design; workers distribute independent queries |
 
 ## Gates that can run on the dedicated test hosts

@@ -45,4 +45,10 @@ The fingerprint identifies normalized catalog definitions, including secret-refe
 
 This is configuration consistency, not a signature or independent database-identity check. Operators, configurations and secret stores remain trusted.
 
+## Validation
+
+[Recorded Linux acceptance](evidence/catalog-authority.json) on `bcbb3dc` passed all nine stages: build, correctness, race/cgocheck2, stub, vet and actual sandboxed query/export/snapshot checks. Every required control passed; ordinary fixture-dependent skips remain listed. Source and bridge inputs stayed unchanged, and independent cleanup verified the owned service was gone.
+
+This does not validate live-provider identity, deployment capacity or coordinated policy rollout.
+
 [Principal access](principal-access.md) · [Row and column rules](row-column-access.md) · [Cluster setup](cluster.md)
