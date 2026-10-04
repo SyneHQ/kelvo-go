@@ -68,3 +68,25 @@ func New(location catalog.ObjectLocation, credentials catalog.ObjectCredentials)
 	}
 	return newS3(location, credentials)
 }
+
+// NewWithTransport snapshots credentials and borrows a fixed node transport.
+// Client.Close still joins its own operations but never closes the shared pool.
+func NewWithTransport(location catalog.ObjectLocation, credentials catalog.ObjectCredentials, transport *SharedTransport) (Client, error) {
+	if err := location.Validate(); err != nil {
+		return nil, err
+	}
+	if err := credentials.Validate(location.Provider); err != nil {
+		return nil, err
+	}
+	if transport == nil {
+		return nil, errors.New("object client requires a shared transport")
+	}
+	client, err := transport.client(location)
+	if err != nil {
+		return nil, err
+	}
+	if location.Provider == "azure" {
+		return newAzureWithHTTP(location, credentials, client)
+	}
+	return newS3WithHTTP(location, credentials, client)
+}

@@ -22,14 +22,19 @@ const azureStorageVersion = "2023-11-03"
 // azureClient uses the explicitly configured endpoint and SAS only. A SAS can
 // authorize operations but cannot change the endpoint, key, or operation here.
 type azureClient struct {
-	lifetime clientLifetime
-	location catalog.ObjectLocation
-	origin   *url.URL
-	sas      url.Values
-	http     *http.Client
+	lifetime  clientLifetime
+	location  catalog.ObjectLocation
+	origin    *url.URL
+	sas       url.Values
+	http      *http.Client
+	closeIdle func()
 }
 
 func newAzure(location catalog.ObjectLocation, credentials catalog.ObjectCredentials) (Client, error) {
+	return newAzureWithHTTP(location, credentials, nil)
+}
+
+func newAzureWithHTTP(location catalog.ObjectLocation, credentials catalog.ObjectCredentials, client *http.Client) (Client, error) {
 	if location.Provider != "azure" {
 		return nil, errors.New("Azure snapshot provider is required")
 	}
@@ -47,33 +52,39 @@ func newAzure(location catalog.ObjectLocation, credentials catalog.ObjectCredent
 	if err != nil {
 		return nil, errors.New("Azure snapshot endpoint is invalid")
 	}
-	transport := &http.Transport{
-		Proxy:                  nil,
-		DialContext:            (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-		TLSClientConfig:        &tls.Config{MinVersion: tls.VersionTLS12},
-		TLSHandshakeTimeout:    5 * time.Second,
-		ResponseHeaderTimeout:  30 * time.Second,
-		IdleConnTimeout:        90 * time.Second,
-		MaxIdleConns:           4,
-		MaxIdleConnsPerHost:    4,
-		MaxConnsPerHost:        4,
-		MaxResponseHeaderBytes: 64 << 10,
-		DisableCompression:     true,
-	}
-	return &azureClient{
-		location: location,
-		origin:   origin,
-		sas:      sas,
-		http: &http.Client{
+	closeIdle := func() {}
+	if client == nil {
+		transport := &http.Transport{
+			Proxy:                  nil,
+			DialContext:            (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+			TLSClientConfig:        &tls.Config{MinVersion: tls.VersionTLS12},
+			TLSHandshakeTimeout:    5 * time.Second,
+			ResponseHeaderTimeout:  30 * time.Second,
+			IdleConnTimeout:        90 * time.Second,
+			MaxIdleConns:           4,
+			MaxIdleConnsPerHost:    4,
+			MaxConnsPerHost:        4,
+			MaxResponseHeaderBytes: 64 << 10,
+			DisableCompression:     true,
+		}
+		client = &http.Client{
 			Transport: transport,
 			CheckRedirect: func(*http.Request, []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
-		},
-	}, nil
+		}
+		closeIdle = client.CloseIdleConnections
+	}
+	return &azureClient{location: location, origin: origin, sas: sas, http: client, closeIdle: closeIdle}, nil
 }
 
-func (c *azureClient) Close() { c.lifetime.close(c.http.CloseIdleConnections) }
+func (c *azureClient) Close() {
+	closeIdle := c.closeIdle
+	if closeIdle == nil {
+		closeIdle = c.http.CloseIdleConnections
+	}
+	c.lifetime.close(closeIdle)
+}
 
 func (c *azureClient) request(ctx context.Context, method, key, version string, body io.Reader) (*http.Request, error) {
 	if err := ctx.Err(); err != nil {
