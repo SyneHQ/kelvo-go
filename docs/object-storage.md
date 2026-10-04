@@ -118,7 +118,7 @@ The bounded root manifest binds committed identity, digest, size, fingerprint, a
 
 ETags are opaque revisions, not digests. Refresh uploads immutable data, verifies metadata, then conditionally replaces current. The 60-second lease renews every 15 seconds; renewal loss cancels extraction and prevents stale publication.
 
-Service response time establishes lease/age; process-local monotonic elapsed time advances observed age and refresh scheduling. Failed refresh retains current, but expired `max_age` still rejects new queries.
+Service time establishes lease and snapshot age; monotonic elapsed time advances the observation through I/O. Acquisition selects `current.yaml` once, rejects fingerprint mismatches or stale snapshots before generation reads, and rechecks `max_age` after descriptor and metadata reads. `status` still validates stale snapshots; failed refresh retains current.
 
 Lost publication replies trigger bounded readback. Exact matches succeed; unresolved outcomes preserve both generations and possibly published writer state. Inspect `status`/`verify` before another refresh.
 

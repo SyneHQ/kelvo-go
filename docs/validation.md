@@ -118,6 +118,8 @@ Early CI found inherited Git discovery skipping a native accessor patch and an E
 
 ## Object snapshots and MongoDB refresh
 
+[Acquisition evidence](evidence/object-acquisition.json) on [`219f2a8`](https://github.com/SYNEHQ/kelvo-go/commit/219f2a8cb9e3bc1e55149ceb09e3f9f76ee33049) reproduces both original regressions and passes all 28 required tests in regular/race runs plus vet. The first run's 2 GiB file limit blocked a sparse-file fixture; the 5 GiB rerun changed no source. Skips, source hashes and verified cleanup are recorded. These are local-fixture results; provider and capacity gates remain open.
+
 [Build provenance](evidence/object-storage-build.json), [tagged tests](evidence/tests-object-storage.log), [race checks](evidence/race-object-storage.log), vet/builds and [CLI/HTTP](evidence/acceptance-object-storage.json), [cluster](evidence/cluster-object-storage.json), [14 snapshot checks](evidence/acceleration-object-storage.json) passed on the recorded baseline.
 
 [36 object checks](evidence/object-acceleration.json) used private S3/R2/GCS/Azure TLS fixtures: selected columns fetched 16,984 bytes in two ranges from ~3.15 MB objects. Tests covered reader identity, outages, exact data, failed refresh, metadata corruption and redirect/range refusal; foreign endpoints received no requests.
