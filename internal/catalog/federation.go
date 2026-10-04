@@ -67,6 +67,15 @@ func (s Source) ValidateFederation() error {
 		if err := validateFederationOptions(s); err != nil {
 			return err
 		}
+	case "arrow_flight":
+		if s.URLEnv == "" || s.TokenEnv == "" || s.DSNEnv != "" || s.UsernameEnv != "" || s.PasswordEnv != "" {
+			return errors.New("Flight SQL federation requires only URL and token environment references")
+		}
+		// Flight SQL defines a transport, not a SQL dialect. Require the
+		// operator to select the narrow quoted-identifier profile explicitly.
+		if len(s.Options) != 2 || s.Options["protocol"] != "flightsql" || s.Options["federation_dialect"] != "ansi" {
+			return errors.New("Flight SQL federation requires protocol flightsql and federation_dialect ansi")
+		}
 	default:
 		var ok bool
 		custom, ok = federationapi.Lookup(s.Type)
@@ -88,6 +97,10 @@ func (s Source) ValidateFederation() error {
 			}
 			if err := validateCustomFederation(custom, s, table); err != nil {
 				return err
+			}
+		} else if s.Type == "arrow_flight" {
+			if !ValidID(table.Schema) || table.Database != "" {
+				return errors.New("Flight SQL federation requires schema and omits database")
 			}
 		} else if s.Type == "postgres" || s.Type == "oracle" {
 			// PostgreSQL connections select one database through the DSN. Never

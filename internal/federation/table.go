@@ -12,6 +12,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/duckbridge"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/flightsql"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 )
@@ -70,7 +71,11 @@ func New(ctx context.Context, source catalog.Source, table catalog.FederationTab
 	var result *Table
 	dialect, err := dialectFor(source.Type)
 	if err != nil {
-		if driver, ok := federationapi.Lookup(source.Type); ok {
+		// Built-in Flight SQL uses the public driver contract without making
+		// its reserved type replaceable through the custom adapter registry.
+		if source.Type == "arrow_flight" {
+			result, err = newCustomTable(ctx, source, table, limits, flightsql.FederationDriver{})
+		} else if driver, ok := federationapi.Lookup(source.Type); ok {
 			result, err = newCustomTable(ctx, source, table, limits, driver)
 		} else {
 			return nil, err
