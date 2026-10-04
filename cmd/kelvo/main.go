@@ -250,31 +250,23 @@ func runWorkerIO(parent context.Context, input io.Reader, stream, diagnostics io
 func runWorkerInput(parent context.Context, in worker.Input, stream io.Writer, timings *telemetry.ChildRecorder, factory workerExecutorFactory) (outcome worker.Outcome, resultErr error) {
 	var sink *worker.IPCSink
 	var executorCloser io.Closer
-	var cancel, stop context.CancelFunc
 	outerStage, outerActive := telemetry.ChildWorkerSetup, timings != nil
+	cleanupStarted := false
+	beginCleanup := func() {
+		if timings == nil || cleanupStarted {
+			return
+		}
+		if outerActive {
+			timings.End(outerStage)
+		}
+		timings.Begin(telemetry.ChildWorkerCleanup)
+		cleanupStarted = true
+	}
 	defer func() {
-		if timings != nil {
-			if outerActive {
-				timings.End(outerStage)
-			}
-			timings.Begin(telemetry.ChildWorkerCleanup)
-		}
-		// Preserve the original defer order and error semantics. Native Close
-		// errors remain ignored, and later cleanup still runs if a closer panics.
-		defer timings.End(telemetry.ChildWorkerCleanup)
-		if stop != nil {
-			defer stop()
-		}
-		if cancel != nil {
-			defer cancel()
-		}
-		if executorCloser != nil {
-			defer executorCloser.Close()
-		}
-		if sink != nil {
-			// Abort never substitutes a successful EOS.
-			defer sink.Abort()
-		}
+		// Early validation failures own no resources. Other returns reach this
+		// only after sink, native engine and context cleanup have all unwound.
+		beginCleanup()
+		timings.End(telemetry.ChildWorkerCleanup)
 	}()
 	if err := in.Limits.Validate(); err != nil {
 		return outcome, err
@@ -285,9 +277,22 @@ func runWorkerInput(parent context.Context, in worker.Input, stream io.Writer, t
 	if err := query.ValidateRequest(in.Request); err != nil {
 		return outcome, err
 	}
-	parent, stop = signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
-	var ctx context.Context
-	ctx, cancel = context.WithTimeout(parent, in.Limits.Timeout)
+	parent, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ctx, cancel := context.WithTimeout(parent, in.Limits.Timeout)
+	defer cancel()
+	defer func() {
+		beginCleanup()
+		// Preserve sink -> native -> cancel -> signal-stop order, including
+		// panic unwind. Native Close errors retain their original semantics.
+		if executorCloser != nil {
+			defer executorCloser.Close()
+		}
+		if sink != nil {
+			// Abort never substitutes a successful EOS.
+			defer sink.Abort()
+		}
+	}()
 	ctx, err := in.ExecutionContext(ctx)
 	if err != nil {
 		return outcome, err
