@@ -29,7 +29,7 @@ The collector runs in every epoch. Full mode uses six alternating AB/BA pairs pe
 Run the pure controls before launching a fixture:
 
 ```sh
-python3 -m unittest discover -s scripts/telemetry_overhead -p test_harness.py
+python3 -m unittest discover -s scripts/telemetry_overhead -p 'test_*.py'
 ```
 
 Both modes require 2 CPU, 6 GiB RAM, no swap and 512 tasks. Smoke runs two epochs with four warmups and four measured queries; its watchdog is 15 minutes. Full mode has a one-hour watchdog. No mode downloads packages, compiles Kelvo or launches another campaign.
@@ -45,3 +45,20 @@ Use `--help` for required paths and hashes. Full mode rejects a different source
 - Fractional sampling is not exporter loss. Offered and lost spans stay unknown without a valid denominator.
 
 DuckDB materializes before Arrow delivery. These comparisons cannot separate source, pure compute and network time. Smoke durations are diagnostic only; publish comparisons only after all 48 full-run epochs and outer checks pass.
+
+## Format a reconciled full run
+
+The [formatter](../scripts/telemetry_overhead/format_summary.py) checks all 48 epochs and recomputes the paired statistics before writing two tables. It rejects smoke, failed or inconsistent receipts; raw-evidence reconciliation remains a separate prerequisite.
+
+```sh
+python3 scripts/telemetry_overhead/format_summary.py \
+  --input <reconciled-full-receipt.json> --output <new-summary.md>
+```
+
+[Six formatter controls](evidence/telemetry-formatter-controls.json) passed on the designated Linux VM. CI discovers these plus the nine harness controls.
+
+## Recorded trials
+
+The [first smoke](evidence/telemetry-overhead-smoke-93339e7-failed.json) stopped at the campaign guard before creating queries. Its guard searched every `systemctl` column and could match a path in DESCRIPTION; the original offending row was not retained. The corrected guard checks complete UNIT names.
+
+The [corrected smoke](evidence/telemetry-overhead-smoke-93339e7.json) passed both epochs and all eight warmup/measured queries, with exact Arrow results, no tracing traffic and independent cleanup. All 13 VM controls passed (nine harness and four outer controls). Both attempts remain recorded.
