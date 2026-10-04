@@ -151,6 +151,10 @@ There is no remote garbage collector or distributed reader lease. Prune never li
 
 Changing provider, bucket, prefix or dataset definition does not migrate data. Refresh the new configuration or use an explicit [remote-to-local migration](snapshot-backup.md#migrate-a-current-object-snapshot-to-local-storage).
 
+## Writer shutdown
+
+[Object backend shutdown](object-writer-shutdown.md) cancels and joins admitted writers before closing its reader client. Embedders must finish borrowed files and call `Commit` or `Abort`; cancellation alone does not prove cleanup.
+
 ## Validation scope
 
 [Remote multipart evidence](evidence/object-multipart-acceptance.json) and [legacy regression](evidence/object-multipart-legacy-acceptance.json) cover conditional publication, independent workers, failure recovery and guarded ranges against provider-shaped fixtures. They do not establish live cloud IAM, availability or throughput.

@@ -1,0 +1,218 @@
+{
+  "passed": true,
+  "revision": "997157efa3176aca35021782460f67209d8125e9",
+  "staging_json_sha256": "263330406b51a6711ed4bbb8c011829a9400a95014b10a022209677a0f88f7ff",
+  "source_manifest_sha256": "8610b28d46d27419fdb8160e6059fc8e6dcec9e790f2de70aa15c43de4869adc",
+  "source_file_count": 1035,
+  "baseline_revision": "b23e34e624ec4192739fecfe36271a6d972fa94a",
+  "scope": "Offline object-writer drain, owned/shared client cleanup, single/multipart publication and staging controls. No live-provider, reader-custody activation, throughput or production sizing claim.",
+  "compiler_lanes": 1,
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "helpers_verified_before": true,
+  "helpers_verified_after": true,
+  "shared_bridge_unchanged": true,
+  "effective_modules_unchanged": true,
+  "capability_sets_zero": true,
+  "no_new_privileges": true,
+  "enforced_isolation": {
+    "non_root": true,
+    "private_network": true,
+    "memory_max_bytes": 3221225472,
+    "swap_max_bytes": 0,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "tasks_max": 256
+  },
+  "enforced_watchdog": {
+    "TimeoutStopUSec": "20s",
+    "RuntimeMaxUSec": "30min",
+    "KillMode": "control-group",
+    "SendSIGKILL": "yes"
+  },
+  "shared_inputs_before": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+  },
+  "effective_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "raw_report_sha256": "56cdc69d83ebc15e87db839100c606c475e6638e600ace01311b88f0abaa6eb5",
+  "reported_passed": true,
+  "source_current_match": true,
+  "helpers_current_match": true,
+  "shared_inputs_current_match": true,
+  "effective_modules_current_match": true,
+  "isolation_reconciled": true,
+  "stages": {
+    "external-modfile": {
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "timeout": false,
+      "seconds": 0.003,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "objectstore-race": {
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "timeout": false,
+      "seconds": 4.12,
+      "log_sha256": "e042abfd0b0c18264d0c7fe9ec6349d8ff0bffa6f8fb1812f5cc7d59c154d8fa"
+    },
+    "acceleration-race": {
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "timeout": false,
+      "seconds": 21.601,
+      "log_sha256": "745398265c22f81884bd526a556cc48b8865fb13fa14cd2fd3a57c9801682fee"
+    },
+    "focused-vet": {
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "timeout": false,
+      "seconds": 12.539,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "stages_reconciled": true,
+  "positive_controls": {
+    "objectstore": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/objectstore",
+      "required_top_level_tests": [
+        "TestProviderClientCloseJoinsNonemptyUploadOwnership",
+        "TestProviderPutJoinsTransportBodyOwnership",
+        "TestProviderPutZeroBodyAndPreHandoffFailures",
+        "TestUploadBodyRequiresCloseAfterExactBoundedRead",
+        "TestUploadBodySealsPromptlyAndJoinsSerializedReads"
+      ],
+      "log_sha256": "e042abfd0b0c18264d0c7fe9ec6349d8ff0bffa6f8fb1812f5cc7d59c154d8fa",
+      "passed_top_level_count": 5,
+      "passed_events_including_subtests": 41,
+      "failures_or_skips": 0
+    },
+    "acceleration": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+      "required_top_level_tests": [
+        "TestMultipartStoreBoundsAndFailuresPreserveCurrent",
+        "TestMultipartStoreRejectsCorruptAnyPart",
+        "TestMultipartStoreRestoreAndWholeGenerationPins",
+        "TestMultipartStoreRoundTripAndEmpty",
+        "TestObjectBackendConcurrentCloseJoinsReader",
+        "TestObjectBackendExpiredOwnerIsFencedFromPublishingOrReleasingNewOwner",
+        "TestObjectBackendFreshnessUsesStorageClock",
+        "TestObjectBackendNamespacesAndClosedState",
+        "TestObjectBackendNeverLoadsWriterCredentialsForReadConstruction",
+        "TestObjectBackendPersistsAcrossIndependentWorkersWithoutSharedScratch",
+        "TestObjectBackendPolicyAndIntegrity",
+        "TestObjectBackendPreservesLastGoodSnapshotWhileRefreshingAndAfterFailure",
+        "TestObjectBackendReadersAndPruneRetainImmutableObjects",
+        "TestObjectBackendReconcilesAmbiguousPublicationWithoutDeletingObjects",
+        "TestObjectBackendRejectsMalformedManifests",
+        "TestObjectBackendRenewalFailureCancelsExtractionContext",
+        "TestObjectBackendRenewsUsingStorageClockAndKeepsCommittedEntry",
+        "TestObjectBackendSerializesIndependentWritersAndHonorsCancellation",
+        "TestObjectMultipartAmbiguousPublication",
+        "TestObjectMultipartCanceledAfterUploadCannotPublish",
+        "TestObjectMultipartCommitStagesOnePartAndPublishesDescriptor",
+        "TestObjectMultipartDescriptorFailurePreservesCurrentAndParts",
+        "TestObjectMultipartEmptyGeneration",
+        "TestObjectMultipartLeaseLossCannotPublish",
+        "TestObjectMultipartOptionsAndDescriptorEquality",
+        "TestObjectMultipartRootVersionAndCompleteCommitEquality",
+        "TestObjectMultipartSealFailurePoisonsPublication",
+        "TestObjectWriterLifetimeCloseJoinsPendingFactoryAndLateOwnedClient",
+        "TestObjectWriterLifetimeCommitAbortAndDrainPreservePreviousGeneration",
+        "TestObjectWriterLifetimeDrainWaitsForSharedSingleAndMultipartBorrowers",
+        "TestObjectWriterLifetimeFactoryErrorHonorsPartialClientOwnership",
+        "TestObjectWriterLifetimePublishedCommitSurvivesDrainDuringClientCleanup",
+        "TestSingleAndMultipartVerificationRejectFooterRowMismatch",
+        "TestSingleVerificationLegacySchemaHashRemainsOptional",
+        "TestSingleVerificationRejectsMetadataMismatchAcrossRecovery",
+        "TestStoreConcurrentAcquireRefreshAndPrune",
+        "TestStoreFailedRefreshPreservesPreviousSnapshot",
+        "TestStoreLeasesSurviveRefreshAndPrune",
+        "TestStorePersistsImmutableGenerationAndTenantIsolation",
+        "TestStoreWriterLockCancellation"
+      ],
+      "log_sha256": "745398265c22f81884bd526a556cc48b8865fb13fa14cd2fd3a57c9801682fee",
+      "passed_top_level_count": 40,
+      "passed_events_including_subtests": 100,
+      "failures_or_skips": 0
+    }
+  },
+  "positive_controls_reconciled": true,
+  "negative_control": {
+    "executed": false,
+    "definition": {
+      "revision": "b23e34e624ec4192739fecfe36271a6d972fa94a",
+      "enabled": false,
+      "cases": {},
+      "reason_category": "ONE_FILE_BASELINE_DOES_NOT_COMPILE",
+      "reason": "Restoring only old object_store.go removes objectBackend.writers, which the new object_writer_lifetime.go references. That would be a compilation failure, not regression evidence. The gate does not remove the new helper or widen the baseline replacement.",
+      "basis": "Static inspection only; no old-source build or test was run."
+    }
+  },
+  "negative_scope_reconciled": true,
+  "service_exit": {
+    "revision": "997157efa3176aca35021782460f67209d8125e9",
+    "unit": "kelvo-object-writer-997157efa3-530da5",
+    "systemd_run_exit_code": 0
+  },
+  "service_exit_receipt_sha256": "5315ef02e0219e6b76472008ea15e1d5e413b078d4e53dd846d70f3bbd927fcf",
+  "service_exit_reconciled": true,
+  "cleanup": {
+    "unit": "kelvo-object-writer-997157efa3-530da5",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true
+  },
+  "local_launch": {
+    "ssh_exit_code": 0,
+    "revision": "997157efa3176aca35021782460f67209d8125e9",
+    "unit": "kelvo-object-writer-997157efa3-530da5"
+  },
+  "collection_ssh_exit_code": 0,
+  "local_launch_reconciled": true,
+  "local_stage_reconciled": true,
+  "independent_cleanup": {
+    "unit": "kelvo-object-writer-997157efa3-530da5",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true,
+    "revision": "997157efa3176aca35021782460f67209d8125e9"
+  },
+  "original_receipt_sha256": "8d82c27e4a17f686508adf72f394459ab109fce76658b1b2757ca96cdc79667c",
+  "preserved_private_evidence": {
+    "archive_sha256": "4f1326c0c436d9010b32d7a92f5c45729190d17032535b927ef5f38dcab2225e",
+    "archive_bytes": 378880,
+    "source_bundle_sha256": "201a07caa5b1397b2da0ab1b3d7fbd784b8c24fd5e3236cb25200305ddebae25",
+    "scope": "Private raw logs, source manifest, reviewed helpers and module receipts. A preserved archive does not imply a passing validation.",
+    "receipt_sha256": "2f8b214e7c1057229c9b3b525aec9ade22d21e9cde8b7566e63b85727070aa31"
+  },
+  "independent_cleanup_receipt_sha256": "bde21981f889563650871d3aa73ca5f41f76b2030c8890d00ee01c9eefc40a44"
+}
