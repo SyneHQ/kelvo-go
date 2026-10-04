@@ -61,6 +61,58 @@ def protected_output():
 
 
 class ContainmentControls(unittest.TestCase):
+    def test_direct_runner_without_bytecode_flag_keeps_imports_out_of_source(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runner = root / "containment_acceptance.py"
+            runner.write_bytes(Path(fixture.__file__).read_bytes())
+            (root / "provision_duckbridge.py").write_text("# Import-only fixture; help must not provision anything.\n")
+            env = {key: value for key, value in fixture.os.environ.items() if not key.startswith("PYTHON")}
+            result = subprocess.run([fixture.sys.executable, str(runner), "--help"],
+                                    env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((root / "__pycache__").exists())
+
+    def test_python_provision_and_delegated_commands_disable_bytecode_explicitly(self):
+        for protected in (False, True):
+            with self.subTest(protected=protected), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                artifact = root / "artifact"
+                artifact.mkdir()
+                report = root / "report.json"
+                args = ["containment_acceptance.py", "--repo", str(root), "--report", str(report), "--unit", TEST_UNIT]
+                if protected:
+                    args.append("--protected-objects")
+                process = mock.Mock()
+                process.wait.return_value = 0
+                process.poll.return_value = 0
+                identity = valid_report(protected)["source"]
+                with mock.patch.object(fixture.sys, "argv", args), \
+                        mock.patch.object(fixture.sys, "platform", "linux"), \
+                        mock.patch.object(fixture.os, "geteuid", return_value=1000), \
+                        mock.patch.object(fixture.os, "chdir"), \
+                        mock.patch.object(fixture.pwd, "getpwuid", return_value=SimpleNamespace(pw_name=TEST_USER)), \
+                        mock.patch.object(fixture, "prepare_artifact", return_value=artifact), \
+                        mock.patch.object(fixture, "require_fresh_unit"), \
+                        mock.patch.object(fixture, "source_manifest", return_value=identity), \
+                        mock.patch.object(fixture, "bridge_provenance", return_value={}), \
+                        mock.patch.object(fixture, "digest", return_value="a" * 64), \
+                        mock.patch.object(fixture, "run", return_value=subprocess.CompletedProcess([], 0, "go fixture\n")), \
+                        mock.patch.object(fixture, "run_logged", return_value=subprocess.CompletedProcess([], 0, "")) as logged, \
+                        mock.patch.object(fixture.subprocess, "Popen", return_value=process) as launch, \
+                        mock.patch.object(fixture, "checked_outside_probe", return_value="pass"), \
+                        mock.patch.object(fixture, "cleanup_owned", return_value={"owned_service_removed": True, "owned_cgroup_removed": True}), \
+                        mock.patch.object(fixture, "reconcile", return_value=True), mock.patch("builtins.print"):
+                    self.assertEqual(fixture.main(), 0)
+                delegated = launch.call_args.args[0]
+                python = delegated.index(fixture.sys.executable)
+                self.assertEqual(delegated[python:python + 4],
+                                 [fixture.sys.executable, "-B", str(Path(fixture.__file__).resolve()), "--inside"])
+                provisioning = [call.args[0] for call in logged.call_args_list if call.args[0][0] == fixture.sys.executable]
+                self.assertEqual(len(provisioning), int(protected))
+                if protected:
+                    self.assertEqual(provisioning[0][:3], [fixture.sys.executable, "-B", str(root / "scripts/provision_duckbridge.py")])
+
     def test_protected_mode_requires_its_gate_and_cannot_be_downgraded(self):
         self.assertTrue(fixture.reconcile(valid_report(protected=True)))
         for state in ("missing", "skip", "fail", "duplicate", True, None):

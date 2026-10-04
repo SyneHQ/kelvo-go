@@ -19,6 +19,8 @@ import tempfile
 import time
 import uuid
 
+# Direct invocation must not write a cache before the source identity is sampled.
+sys.dont_write_bytecode = True
 import provision_duckbridge as bridge
 
 KERNEL_GATES = [
@@ -593,7 +595,7 @@ def main():
             if args.bridge_archive is not None:
                 seed_bridge_archive(args.bridge_archive, artifact)
             env.update(CGO_ENABLED="1", CGO_CXXFLAGS="-I" + str(artifact / "duckbridge/headers"), GOWORK="off", GOFLAGS="")
-            result = run_logged([sys.executable, str(repo / "scripts/provision_duckbridge.py"), str(artifact / "duckbridge"),
+            result = run_logged([sys.executable, "-B", str(repo / "scripts/provision_duckbridge.py"), str(artifact / "duckbridge"),
                                 "--go", args.go, "--source-directory", str(repo)], artifact / (stage + ".log"), env=env, timeout=300)
             if result.returncode:
                 raise RuntimeError("pinned bridge provisioning failed")
@@ -616,7 +618,7 @@ def main():
                    *["--property=" + key + "=" + value for key, value in RESOURCE_LIMITS.items()], "--property=NoNewPrivileges=yes",
                    *dependencies,
                    "--property=CapabilityBoundingSet=", "--property=AmbientCapabilities=", "--collect", "--wait", "--pipe",
-                   sys.executable, str(Path(__file__).resolve()), "--inside", "--artifact", str(artifact),
+                   sys.executable, "-B", str(Path(__file__).resolve()), "--inside", "--artifact", str(artifact),
                    "--unit", unit, "--report", str(args.report)]
         if args.protected_objects:
             command.append("--protected-objects")
