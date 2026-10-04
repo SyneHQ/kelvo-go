@@ -189,6 +189,7 @@ jobs:
             artifacts/containment-protected-ci.json
             artifacts/containment-protected-private/run/*.log
             artifacts/containment-protected-private/run/inside.json
+            artifacts/containment-protected-private/run/live-service.json
             artifacts/containment-protected-private/run/run.json
           if-no-files-found: warn
           retention-days: 14

@@ -12,11 +12,27 @@ from unittest import mock
 
 import containment_acceptance as fixture
 
+TEST_UNIT = "kelvo-containment-0123456789ab"
+TEST_DESCRIPTION = "Kelvo containment acceptance " + "a" * 32
+TEST_USER = "fixture-user"
+
+
+def live_service(parent=None):
+    properties = {key: str(value) for key, value in fixture.LIVE_NUMERIC_LIMITS.items()}
+    properties.update(CPUQuotaPerSecUSec="1s", RuntimeMaxUSec="10min", TimeoutStopUSec="30s",
+                      Id=TEST_UNIT + ".service", Description=TEST_DESCRIPTION, InvocationID="b" * 32,
+                      User=TEST_USER, Transient="yes", ControlGroup="/system.slice/" + TEST_UNIT + ".service",
+                      ActiveState="active", LoadState="loaded", Delegate="yes", KillMode="control-group",
+                      Requisite=parent or "", BindsTo=parent or "", After="sysinit.target" + (" " + parent if parent else ""))
+    return {"verified": True, "properties": properties}
+
 
 def valid_report(protected=False):
     files = {name: "a" * 64 for name in fixture.SOURCE_REQUIRED | (fixture.PROTECTED_SOURCE_REQUIRED if protected else set())}
     canonical = json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
     report = {
+        "schema": 3, "owned_unit": TEST_UNIT, "service_description": TEST_DESCRIPTION,
+        "service_user": TEST_USER, "parent_unit": None, "live_service": live_service(),
         "mode": fixture.PROTECTED_MODE if protected else fixture.BASE_MODE,
         "gates": {name: "pass" for name in fixture.required_gates(protected)},
         "non_root": True, "capability_sets_zero": True,
@@ -63,7 +79,100 @@ class ContainmentControls(unittest.TestCase):
         self.assertFalse(fixture.reconcile(report))
         report = valid_report()
         del report["mode"]
+        report["schema"] = 2
+        del report["live_service"]
         self.assertTrue(fixture.reconcile(report), "existing baseline reports remain compatible")
+
+    def test_new_reports_require_actual_service_readback_in_both_modes(self):
+        for protected in (False, True):
+            report = valid_report(protected=protected)
+            del report["live_service"]
+            self.assertFalse(fixture.reconcile(report))
+            for field in ("owned_unit", "service_description", "service_user"):
+                report = valid_report(protected=protected)
+                del report[field]
+                self.assertFalse(fixture.reconcile(report), field)
+            for key in fixture.LIVE_PROPERTIES:
+                report = valid_report(protected=protected)
+                del report["live_service"]["properties"][key]
+                self.assertFalse(fixture.reconcile(report), key)
+                report = valid_report(protected=protected)
+                report["live_service"]["properties"][key] = "wrong"
+                if key not in ("Requisite", "BindsTo", "After"):
+                    self.assertFalse(fixture.reconcile(report), key)
+        report = valid_report(protected=True)
+        report["schema"] = 2
+        del report["live_service"]
+        self.assertFalse(fixture.reconcile(report), "legacy schema cannot bypass protected readback")
+
+    def test_live_readback_checks_parent_dependencies_and_never_trusts_verified_flag_alone(self):
+        parent = "kelvo-protected-readers-validation-0123456789ab.service"
+        report = valid_report(protected=True)
+        report.update(parent_unit=parent, live_service=live_service(parent))
+        self.assertTrue(fixture.reconcile(report))
+        for key in ("Requisite", "BindsTo", "After"):
+            for value in ("", parent + "-other", parent + " " + parent):
+                report["live_service"] = live_service(parent)
+                report["live_service"]["properties"][key] = value
+                self.assertFalse(fixture.reconcile(report), (key, value))
+        report["live_service"] = live_service(parent)
+        report["parent_unit"] = None
+        self.assertFalse(fixture.reconcile(report))
+        report["parent_unit"] = parent
+        for value in (False, 1, "true", None):
+            report["live_service"]["verified"] = value
+            self.assertFalse(fixture.reconcile(report))
+
+    def test_live_time_readback_normalizes_units_and_rejects_unbounded_or_ambiguous_values(self):
+        for value, expected in (("1s", 1_000_000), ("1000ms", 1_000_000), ("1000000us", 1_000_000),
+                                ("10min", 600_000_000), ("0h 10min 0s", 600_000_000)):
+            self.assertEqual(fixture.duration_usec(value), expected)
+        for value in (None, False, "infinity", "600", "-1s", "10minjunk", "1e3ms", "1s\n", "1s  1s"):
+            self.assertIsNone(fixture.duration_usec(value), value)
+
+    def test_live_readback_is_retained_and_rejects_duplicate_unknown_missing_or_failed_output(self):
+        evidence = live_service()
+        output = "".join(key + "=" + value + "\n" for key, value in evidence["properties"].items())
+        with tempfile.TemporaryDirectory() as temporary:
+            artifact = Path(temporary)
+            for raw, code, passed in ((output, 0, True), (output + "MemoryMax=1073741824\n", 0, False),
+                                      (output + "Unexpected=value\n", 0, False),
+                                      (output.replace("MemorySwapMax=0\n", ""), 0, False),
+                                      (output.replace("MemoryMax=1073741824", "MemoryMax=infinity"), 0, False),
+                                      (output, 1, False)):
+                with mock.patch.object(fixture, "run", return_value=subprocess.CompletedProcess([], code, raw)) as run:
+                    result = fixture.capture_live_service(artifact, TEST_UNIT, TEST_DESCRIPTION, TEST_USER)
+                self.assertEqual(result["verified"], passed)
+                self.assertEqual(json.loads((artifact / "live-service.json").read_text()), result)
+                self.assertEqual((artifact / "live-service.log").read_text(), raw)
+                command = run.call_args.args[0]
+                self.assertEqual(command[:3], ["systemctl", "show", TEST_UNIT + ".service"])
+            with mock.patch.object(fixture, "run", side_effect=subprocess.TimeoutExpired([], 10, output=b"partial properties\n")):
+                result = fixture.capture_live_service(artifact, TEST_UNIT, TEST_DESCRIPTION, TEST_USER)
+            self.assertFalse(result["verified"])
+            self.assertEqual(result["failure"], "TimeoutExpired")
+            self.assertFalse(json.loads((artifact / "live-service.json").read_text())["verified"])
+            self.assertEqual((artifact / "live-service.log").read_bytes(), b"partial properties\n")
+
+    def test_no_probe_or_inside_release_runs_when_live_limits_are_unproven(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            artifact, report = Path(temporary), {}
+            failure = {"verified": False, "properties": {}}
+            with mock.patch.object(fixture, "wait_for_file"), \
+                    mock.patch.object(fixture, "capture_live_service", return_value=failure), \
+                    mock.patch.object(fixture, "outside_check") as outside:
+                with self.assertRaisesRegex(RuntimeError, "live delegated service"):
+                    fixture.checked_outside_probe(artifact, TEST_UNIT, mock.Mock(), report,
+                        description=TEST_DESCRIPTION, user=TEST_USER, protected=True)
+                outside.assert_not_called()
+            self.assertIs(report["live_service"], failure)
+            self.assertFalse((artifact / "outside-complete").exists())
+            with mock.patch.object(fixture, "wait_for_file"), \
+                    mock.patch.object(fixture, "capture_live_service", return_value=live_service()), \
+                    mock.patch.object(fixture, "outside_check", return_value="pass") as outside:
+                self.assertEqual(fixture.checked_outside_probe(artifact, TEST_UNIT, mock.Mock(), report,
+                    description=TEST_DESCRIPTION, user=TEST_USER, protected=True), "pass")
+                outside.assert_called_once()
 
     def test_protected_gate_rejects_nested_skip_or_failure_behind_outer_pass(self):
         root = fixture.PROTECTED_GATE

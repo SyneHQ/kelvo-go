@@ -56,6 +56,12 @@ UNIT_PATTERN = re.compile(r"^kelvo-containment-[0-9a-f]{12}$")
 PARENT_PATTERN = re.compile(r"^kelvo-protected-readers-validation-[0-9a-f]{12}\.service$")
 RESOURCE_LIMITS = {"MemoryMax": "1G", "MemorySwapMax": "0", "CPUQuota": "100%", "TasksMax": "256",
                    "RuntimeMaxSec": "600", "TimeoutStopSec": "30", "KillMode": "control-group", "LimitFSIZE": "5G"}
+LIVE_NUMERIC_LIMITS = {"MemoryMax": 1 << 30, "MemorySwapMax": 0, "TasksMax": 256,
+                       "LimitFSIZE": 5 << 30, "LimitFSIZESoft": 5 << 30}
+LIVE_TIME_LIMITS = {"CPUQuotaPerSecUSec": 1_000_000, "RuntimeMaxUSec": 600_000_000, "TimeoutStopUSec": 30_000_000}
+LIVE_PROPERTIES = {*LIVE_NUMERIC_LIMITS, *LIVE_TIME_LIMITS, "Id", "Description", "InvocationID", "User",
+                   "Transient", "ControlGroup", "ActiveState", "LoadState", "Delegate", "KillMode",
+                   "Requisite", "BindsTo", "After"}
 
 
 def run(command, *, env=None, timeout=180):
@@ -199,6 +205,73 @@ def require_parent_unit(unit):
         raise RuntimeError("validation parent is not active")
 
 
+def duration_usec(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9]+(?:us|ms|min|s|h)(?: [0-9]+(?:us|ms|min|s|h))*", value):
+        return None
+    units = {"us": 1, "ms": 1_000, "s": 1_000_000, "min": 60_000_000, "h": 3_600_000_000}
+    return sum(int(amount) * units[unit] for amount, unit in re.findall(r"([0-9]+)(us|ms|min|s|h)", value))
+
+
+def valid_live_service(evidence, unit, description, user, parent=None):
+    if (not isinstance(evidence, dict) or evidence.get("verified") is not True or evidence.get("failure")
+            or not isinstance(unit, str) or not UNIT_PATTERN.fullmatch(unit)
+            or not isinstance(description, str) or not re.fullmatch(r"Kelvo containment acceptance [0-9a-f]{32}", description)
+            or not isinstance(user, str) or not user or user == "root"
+            or parent is not None and (not isinstance(parent, str) or not PARENT_PATTERN.fullmatch(parent))):
+        return False
+    properties = evidence.get("properties")
+    if not isinstance(properties, dict) or set(properties) != LIVE_PROPERTIES or not all(isinstance(value, str) for value in properties.values()):
+        return False
+    expected = {"Id": unit + ".service", "Description": description, "User": user,
+                "ControlGroup": "/system.slice/" + unit + ".service", "ActiveState": "active", "LoadState": "loaded",
+                "Transient": "yes", "Delegate": "yes", "KillMode": "control-group"}
+    if (any(properties[key] != value for key, value in expected.items())
+            or not re.fullmatch(r"[0-9a-f]{32}", properties["InvocationID"])
+            or any(properties[key] != str(value) for key, value in LIVE_NUMERIC_LIMITS.items())
+            or any(duration_usec(properties[key]) != value for key, value in LIVE_TIME_LIMITS.items())):
+        return False
+    for key in ("Requisite", "BindsTo", "After"):
+        dependencies = properties[key].split()
+        if len(set(dependencies)) != len(dependencies) or (parent is not None and parent not in dependencies):
+            return False
+        if parent is None and any(PARENT_PATTERN.fullmatch(value) for value in dependencies):
+            return False
+    return True
+
+
+def capture_live_service(artifact, unit, description, user, parent=None):
+    evidence = {"verified": False, "properties": {}}
+    try:
+        result = run_logged(["systemctl", "show", unit + ".service", "--all",
+                             "--property=" + ",".join(sorted(LIVE_PROPERTIES))], artifact / "live-service.log", timeout=10)
+        if result.returncode:
+            return evidence
+        properties = evidence["properties"]
+        for line in result.stdout.splitlines():
+            key, separator, value = line.partition("=")
+            if not separator or key not in LIVE_PROPERTIES or key in properties:
+                return evidence
+            properties[key] = value
+        evidence["verified"] = True
+        evidence["verified"] = valid_live_service(evidence, unit, description, user, parent)
+        return evidence
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        evidence["failure"] = type(exc).__name__
+        return evidence
+    finally:
+        (artifact / "live-service.json").write_text(json.dumps(evidence, indent=2) + "\n")
+
+
+def checked_outside_probe(artifact, unit, process, report, *, description, user, parent=None, protected=False):
+    wait_for_file(artifact / "fixture-ready.json", process)
+    report["live_service"] = capture_live_service(artifact, unit, description, user, parent)
+    if not report["live_service"]["verified"]:
+        # The inside service stays at its rendezvous. Do not create the release
+        # marker or run even the outside-placement gate under unproven bounds.
+        raise RuntimeError("live delegated service identity, limits or dependencies do not match")
+    return outside_check(artifact, unit, process, protected)
+
+
 def bridge_provenance(repo, artifact):
     directory = artifact / "duckbridge"
     headers, modfile = directory / "headers", directory / "duckbridge.mod"
@@ -306,6 +379,13 @@ def reconcile(report):
     if mode not in (BASE_MODE, PROTECTED_MODE):
         return False
     protected = mode == PROTECTED_MODE
+    schema = report.get("schema", 2)
+    if type(schema) is not int or schema not in (2, 3):
+        return False
+    if protected or schema == 3 or "live_service" in report:
+        if not valid_live_service(report.get("live_service"), report.get("owned_unit"), report.get("service_description"),
+                                  report.get("service_user"), report.get("parent_unit")):
+            return False
     required = required_gates(protected)
     if protected:
         expected = {"outer", "inner", *PROTECTED_LEAVES}
@@ -481,7 +561,7 @@ def main():
     description = "Kelvo containment acceptance " + uuid.uuid4().hex
     (artifact / "run.json").write_text(json.dumps({"unit": unit, "description": description, "parent_unit": args.parent_unit,
         "artifact": str(artifact), "resource_limits": RESOURCE_LIMITS}, indent=2) + "\n")
-    report = {"schema": 2, "mode": PROTECTED_MODE if args.protected_objects else BASE_MODE,
+    report = {"schema": 3, "mode": PROTECTED_MODE if args.protected_objects else BASE_MODE,
               "scope": "single Linux node process-tree containment and query/refresh custody",
               "passed": False, "gates": {name: "missing" for name in required_gates(args.protected_objects)}, "limitations": [
                   "No hostile native escape reproduction was executed.",
@@ -489,7 +569,7 @@ def main():
                   "Stale root identity rejection is tested; arbitrary host reboot recovery is not promised.",
                   "No throughput or multi-host production capacity claim is made."],
               "kernel": os.uname().release, "architecture": os.uname().machine}
-    report.update(owned_unit=unit, resource_limits=RESOURCE_LIMITS)
+    report.update(owned_unit=unit, service_description=description, parent_unit=args.parent_unit, resource_limits=RESOURCE_LIMITS)
     if args.protected_objects:
         report["protected_gates"] = protected_gates("")
         report["limitations"].append("Protected objects use a local TLS fixture; live S3, R2, Azure Blob and GCS certification is separate.")
@@ -524,6 +604,7 @@ def main():
                 raise RuntimeError("bounded build failed")
         report["binary_sha256"] = {name: digest(artifact / name) for name in BINARIES}
         account = pwd.getpwuid(os.geteuid()).pw_name
+        report["service_user"] = account
         require_fresh_unit(unit)
         dependencies = []
         if args.parent_unit is not None:
@@ -541,7 +622,8 @@ def main():
         stage = "kernel-service"
         with (artifact / "service.log").open("w") as log:
             process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
-            report["gates"][OUTSIDE_GATE] = outside_check(artifact, unit, process, args.protected_objects)
+            report["gates"][OUTSIDE_GATE] = checked_outside_probe(artifact, unit, process, report,
+                description=description, user=account, parent=args.parent_unit, protected=args.protected_objects)
             report["service_exit_code"] = process.wait(timeout=330)
         if (artifact / "inside.json").exists():
             inner = json.loads((artifact / "inside.json").read_text())
