@@ -1,0 +1,381 @@
+{
+  "schema_version": 1,
+  "name": "Object snapshot acquisition acceptance",
+  "organization": "SYNEHQ",
+  "scope": "Offline Linux package tests for remote snapshot acquisition ordering and freshness.",
+  "limitations": [
+    "No CLI, release binary, live-provider compatibility, throughput or production capacity claim.",
+    "Durable reader pins and remote deletion remain unimplemented runtime integrations.",
+    "Skipped tests are listed; live-provider and large-dataset gates remain unverified.",
+    "Workspace monitoring samples logical bytes; it is not a disk quota and excludes shared Go caches and open unlinked files."
+  ],
+  "source": {
+    "revision": "219f2a8cb9e3bc1e55149ceb09e3f9f76ee33049",
+    "tree": "97448a38f27311cef4990f7639485753f64de266",
+    "archive_sha256": "66c6c73abf71144a018582167439632377fdccfd5cfdaadb0ac7894ea9951983",
+    "manifest_sha256": "6773f587ba5e3166ec0c1598b4d1ded71c6068cb938c6eda84c8616a51534ecf",
+    "file_count": 1089,
+    "unchanged_before_and_after": true,
+    "changed_file": "internal/acceleration/object_store.go",
+    "changed_file_sha256": "8ecfaed824582e19bc891b9e35e517e597eeccfcc4c261c2f86252cb2666e4e9"
+  },
+  "baseline": {
+    "revision": "ca194bdcb335bcbdfd3067c843f8a021bf86b50c",
+    "replaced_file": "internal/acceleration/object_store.go",
+    "replaced_file_sha256": "71cf562b6fb857aa7eb5bb2dd53745b5af993462c42e5119e3f38e4234239480",
+    "only_this_file_differs": true,
+    "same_new_tests": true,
+    "unchanged_before_and_after": true
+  },
+  "runtime_validation_accepted": true,
+  "go_version": "go version go1.26.8 linux/amd64",
+  "build_tags": [
+    "duckdb_arrow"
+  ],
+  "started_at": "2026-10-04T16:52:11.465650+00:00",
+  "finished_at": "2026-10-04T16:53:23.865630+00:00",
+  "required_coverage": {
+    "new_roots": 11,
+    "existing_roots": 17,
+    "required_per_fixed_stage": 28,
+    "tests": [
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestManagerObjectSchedulingUsesStorageClock",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestMultipartRangesRejectMetadataConfusion",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquireChecksCancellationAndClosureAfterIO",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquireDescriptorReadConsumesFreshness",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquireManifestFailuresStopGenerationReads",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquireMetadataReadConsumesFreshness",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquireMultipartFreshnessUsesSelectedServiceClock",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquirePolicyPrecedesGenerationReads",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquireRetainsGenerationIntegrityChecks",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquireUsesOneImmutableSelection",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendConcurrentCloseJoinsReader",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendFreshnessUsesStorageClock",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendNamespacesAndClosedState",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendNeverLoadsWriterCredentialsForReadConstruction",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendPersistsAcrossIndependentWorkersWithoutSharedScratch",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendPolicyAndIntegrity",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendPreservesLastGoodSnapshotWhileRefreshingAndAfterFailure",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendReadersAndPruneRetainImmutableObjects",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendRejectsMalformedManifests",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendRenewsUsingStorageClockAndKeepsCommittedEntry",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectMultipartRootVersionAndCompleteCommitEquality",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectRangesRejectChangedMetadataAndIncompleteBodies",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectRangesRejectSnapshotKeyConfusionBeforeServing",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectSnapshotAgeIncludesDescriptorRead",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectStatusPreservesUnfilteredValidation",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestResolveFailsClosedForUnavailableOrChangedDatasets",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestResolveRejectedObjectSnapshotsNeverMintCapabilities",
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestSnapshotAgeObservationIsMonotonicAndNeverSerialized"
+    ]
+  },
+  "stages": [
+    {
+      "name": "go-version",
+      "passed": true,
+      "accepted": true,
+      "expected_failure": false,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 0.2005031409789808,
+      "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00"
+    },
+    {
+      "name": "original-regression",
+      "passed": false,
+      "accepted": true,
+      "expected_failure": true,
+      "exit_code": 1,
+      "timed_out": false,
+      "seconds": 10.012823459983338,
+      "log_sha256": "0155bd0ac31aab2577a5a26c55914822f171ea6fa876d6a5f5a4fe990593c824",
+      "failed_roots": [
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquirePolicyPrecedesGenerationReads",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectSnapshotAgeIncludesDescriptorRead"
+      ],
+      "failed_subtests": [
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquirePolicyPrecedesGenerationReads/single/fingerprint",
+          "assertion_markers": [
+            "wanted 1 manifest calls and no generation access"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquirePolicyPrecedesGenerationReads/single/stale",
+          "assertion_markers": [
+            "wanted 1 manifest calls and no generation access"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquirePolicyPrecedesGenerationReads/multipart/fingerprint",
+          "assertion_markers": [
+            "wanted 1 manifest calls and no generation access"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquirePolicyPrecedesGenerationReads/multipart/stale",
+          "assertion_markers": [
+            "wanted 1 manifest calls and no generation access"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectSnapshotAgeIncludesDescriptorRead/status/-4h0m0s",
+          "assertion_markers": [
+            "descriptor read reset the selected clock observation"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectSnapshotAgeIncludesDescriptorRead/status/4h0m0s",
+          "assertion_markers": [
+            "descriptor read reset the selected clock observation"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectSnapshotAgeIncludesDescriptorRead/unlimited-acquire/-4h0m0s",
+          "assertion_markers": [
+            "descriptor read reset the selected clock observation"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectSnapshotAgeIncludesDescriptorRead/unlimited-acquire/4h0m0s",
+          "assertion_markers": [
+            "descriptor read reset the selected clock observation"
+          ],
+          "observed_failure": true
+        }
+      ],
+      "optional_skips": []
+    },
+    {
+      "name": "regular",
+      "passed": true,
+      "accepted": true,
+      "expected_failure": false,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 26.877746685990132,
+      "log_sha256": "17b2dc7656583f0d972fe058efe704400a15a521cf2fd384a0e951632c4c8157",
+      "test_pass_events": 978,
+      "required_roots_passed": 28,
+      "optional_skip_count": 4,
+      "optional_skips": [
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestMongoPipelineLiveAcceleration",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestMultipartDatasetLargerThanFourGiB",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectMultipartDatasetLargerThanFourGiB",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestStoreProcessHelper"
+      ]
+    },
+    {
+      "name": "race",
+      "passed": true,
+      "accepted": true,
+      "expected_failure": false,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 34.02612494799541,
+      "log_sha256": "35ef62968531769cc2b307cb4059e27ee08c9c738371600ab5047fc7725b7088",
+      "test_pass_events": 978,
+      "required_roots_passed": 28,
+      "optional_skip_count": 4,
+      "optional_skips": [
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestMongoPipelineLiveAcceleration",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestMultipartDatasetLargerThanFourGiB",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectMultipartDatasetLargerThanFourGiB",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestStoreProcessHelper"
+      ]
+    },
+    {
+      "name": "vet",
+      "passed": true,
+      "accepted": true,
+      "expected_failure": false,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 1.0305915490025654,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "resources": {
+    "configured_limits": {
+      "cpu_percent": 200,
+      "memory_bytes": 8589934592,
+      "swap_bytes": 0,
+      "tasks": 512,
+      "runtime_seconds": 1800,
+      "stop_seconds": 30,
+      "max_file_bytes": 5368709120,
+      "monitored_workspace_bytes": 12884901888,
+      "minimum_free_bytes": 12884901888
+    },
+    "temporary_filesystem": "ext4",
+    "peak_observed_workspace_bytes": 222877003,
+    "monitor_samples_total": 16,
+    "monitor_samples_retained": 16,
+    "resource_failures": []
+  },
+  "monitor_controls": {
+    "passed": true,
+    "case_count": 18,
+    "fixture_removed": true,
+    "receipt_sha256": "28daba55a24c1f1e5a3b9b6351349661da3279e13d050c736f48122e7286ab6e"
+  },
+  "cleanup": {
+    "unit_absent": true,
+    "cgroup_absent": true,
+    "original_process_absent": true,
+    "owned_processes_absent": true,
+    "launch_closed": true,
+    "receipt_sha256": "954ef8b22297034af348704b55ad89c8a3952cf3776bccf021626fe80b1f11c6",
+    "observation_sha256": "40432fad0461bd3cb7140d22935ffcf0bb3e18c2110deeef2854c286c7cef282"
+  },
+  "earlier_attempt": {
+    "runtime_validation_accepted": false,
+    "source_revision": "219f2a8cb9e3bc1e55149ceb09e3f9f76ee33049",
+    "source_unchanged": true,
+    "go_version_stage": {
+      "name": "go-version",
+      "passed": true,
+      "accepted": true,
+      "expected_failure": false,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 0.20046433998504654,
+      "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00"
+    },
+    "original_regression": {
+      "name": "original-regression",
+      "passed": false,
+      "accepted": true,
+      "expected_failure": true,
+      "exit_code": 1,
+      "timed_out": false,
+      "seconds": 10.212204145966098,
+      "log_sha256": "d13672f590bcd9218b8b6684f90fc414e00caa49f438b83a936f5ff81e8076fa",
+      "failed_roots": [
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquirePolicyPrecedesGenerationReads",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectSnapshotAgeIncludesDescriptorRead"
+      ],
+      "failed_subtests": [
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquirePolicyPrecedesGenerationReads/single/fingerprint",
+          "assertion_markers": [
+            "wanted 1 manifest calls and no generation access"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquirePolicyPrecedesGenerationReads/single/stale",
+          "assertion_markers": [
+            "wanted 1 manifest calls and no generation access"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquirePolicyPrecedesGenerationReads/multipart/fingerprint",
+          "assertion_markers": [
+            "wanted 1 manifest calls and no generation access"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectAcquirePolicyPrecedesGenerationReads/multipart/stale",
+          "assertion_markers": [
+            "wanted 1 manifest calls and no generation access"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectSnapshotAgeIncludesDescriptorRead/status/-4h0m0s",
+          "assertion_markers": [
+            "descriptor read reset the selected clock observation"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectSnapshotAgeIncludesDescriptorRead/status/4h0m0s",
+          "assertion_markers": [
+            "descriptor read reset the selected clock observation"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectSnapshotAgeIncludesDescriptorRead/unlimited-acquire/-4h0m0s",
+          "assertion_markers": [
+            "descriptor read reset the selected clock observation"
+          ],
+          "observed_failure": true
+        },
+        {
+          "test": "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectSnapshotAgeIncludesDescriptorRead/unlimited-acquire/4h0m0s",
+          "assertion_markers": [
+            "descriptor read reset the selected clock observation"
+          ],
+          "observed_failure": true
+        }
+      ],
+      "optional_skips": []
+    },
+    "regular": {
+      "passed": false,
+      "accepted": false,
+      "exit_code": 1,
+      "test_pass_events": 976,
+      "required_roots_passed": 27,
+      "required_roots_total": 28,
+      "failed_tests": [
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendPreservesLastGoodSnapshotWhileRefreshingAndAfterFailure",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectBackendPreservesLastGoodSnapshotWhileRefreshingAndAfterFailure/oversize"
+      ],
+      "optional_skip_count": 4,
+      "optional_skips": [
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestMongoPipelineLiveAcceleration",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestMultipartDatasetLargerThanFourGiB",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectMultipartDatasetLargerThanFourGiB",
+        "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestStoreProcessHelper"
+      ],
+      "log_sha256": "494972476ea270051e84df7e9200d3d7d3e587fae98c6e4077f6af952b50de41"
+    },
+    "unrun_stages": [
+      "race",
+      "vet"
+    ],
+    "failure_category": "validation-fixture-file-size-limit",
+    "cause": "The existing oversize fixture requested a sparse 4 GiB plus one byte file under a 2 GiB file-size limit, failing before Commit checked rejection.",
+    "fixture_bytes": 4294967297,
+    "configured_file_limit_bytes": 2147483648,
+    "retry": "Only the per-file limit changed to 5 GiB; product source and all other configured resource bounds stayed unchanged.",
+    "cleanup": {
+      "unit_absent": true,
+      "cgroup_absent": true,
+      "original_process_absent": true,
+      "owned_processes_absent": true,
+      "launch_closed": true,
+      "receipt_sha256": "65585d6701eed382b89ea42274abea3567fa85242bddae89d4b50063be24f7db",
+      "observation_sha256": "74ce9053e0000d0a6f4d6bc848ec498cd876adfd13b6eb405b1354761b138ae1"
+    },
+    "receipt_hashes": {
+      "plan": "fdbfaab06bdf9e5911e6f2b09b49349776d75b28bdd500c8087c4c428495fff7",
+      "artifact_manifest": "a5403464c75f77684a5af2998909aba189670d0b552a8c9b8e54ad410bb44dc3",
+      "independent_review": "3ececc3ac9c6123526a8755df32b197165e6e4c439af54a8448199a31db1ba12",
+      "validation": "ecdc84ba764f4a59d00040e08efbe0dccdf7638d074620cbcb606c3f9409aac9",
+      "final_exit": "4ee6e1fa30904e0113bcc50ef98ddcdbadbddb5a906769e617e815eba557b22b"
+    }
+  },
+  "receipt_hashes": {
+    "plan": "2bbb97038f9747322587f09697191cb1018d5421f9a2b9520e271f568fc0d0d3",
+    "artifact_manifest": "d70f3b804f8ba02f3825915cd4988e4080a099a2867c978fc8d1d4935629531f",
+    "independent_final_review": "2e1dac5406212d5041be06418220517a9b34f2f91df07f33c618b8765e3e4880",
+    "independent_source_review": "aa05eabf0b5c68e126b6ee0e2cd05c93260e44b4c2755efc140330c91ad94cfd",
+    "independent_helper_review": "6cb2428fff17c298c2f212649807e1f40dae30043865796f4251acf09bc4e5ec",
+    "validation": "e4f40c44ffc366855909c5a952de4ba8b94cb8b56f9f5743ee9ca14584625843",
+    "final_exit": "4c33b71f519aaed25a8c5fe6219194c3ab4e793a1888546e5f90ca8056f412ed",
+    "extractor": "a55ffe1dfa0c6209fd14b295153f4f982767fd35568ebfb7074c489e7c44abb6"
+  }
+}
