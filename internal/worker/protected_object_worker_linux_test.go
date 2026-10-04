@@ -17,7 +17,9 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
 	"github.com/SYNEHQ/kelvo-go/internal/access"
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/decimal128"
@@ -122,6 +124,41 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	digest, err := catalog.AuthorityFingerprint(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, err := executor.WithCatalogBinding(digest)
+	if err != nil || bound.ObjectRuntime != runtime {
+		t.Fatal("catalog-bound copy lost the shared runtime", err)
+	}
+	boundCtx, err := WithCatalogAuthority(ctx, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exportCopy := *bound
+	exportCopy.ResourcePool = nil
+	executeWithOuterCustody := func(t *testing.T, sink query.Sink) (query.Stats, error) {
+		t.Helper()
+		// Exports bind the catalog, copy the executor and pass an externally
+		// owned reservation. Exercise that calling convention through a real child.
+		reservation, err := pool.Acquire(boundCtx, admission.Request{MemoryBytes: 224 << 20, ScratchBytes: 16 << 20})
+		if err != nil {
+			t.Fatal(err)
+		}
+		custody, _ := containment.NewCustody(reservation.Release)
+		defer custody.Complete()
+		stats, executionErr := exportCopy.Execute(containment.WithCustody(boundCtx, custody), request, sink)
+		state := custody.State()
+		if state.Completed || state.Released || state.Held != 0 || pool.Snapshot().Active != 1 || processManager.Status().Active != 0 {
+			t.Fatal("worker completed outer custody early or retained a native consumer", state)
+		}
+		custody.Complete()
+		if pool.Snapshot().Active != 0 {
+			t.Fatal("outer completion retained its reservation")
+		}
+		return stats, executionErr
+	}
 	clean := func(t *testing.T) {
 		t.Helper()
 		if pool.Snapshot().Active != 0 || processManager.Status().Active != 0 || service.readers() != 0 {
@@ -193,6 +230,12 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 			t.Fatal("protected query lost policy metadata or decimal type")
 		}
 		clean(t)
+		copiedSink := &objectExactSink{}
+		copiedStats, copiedErr := executeWithOuterCustody(t, copiedSink)
+		if copiedErr != nil || copiedStats.Rows != 3 || len(copiedStats.Accelerations) != 2 || !reflect.DeepEqual(copiedSink.values, want) {
+			t.Fatal("catalog-bound copy with outer custody changed the protected result", copiedErr, copiedSink.values)
+		}
+		clean(t)
 	})
 	t.Run("hidden-column-and-uncontained-refusal", func(t *testing.T) {
 		denied := request
@@ -248,7 +291,7 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 	t.Run("binding-loss-after-last-batch-refuses-completion", func(t *testing.T) {
 		allowCleanupFailure = true
 		sink := &protectedLastBatchSink{objectExactSink: objectExactSink{}, after: service.invalidateBindings}
-		_, err := executor.Execute(ctx, request, sink)
+		_, err := executeWithOuterCustody(t, sink)
 		if err == nil || len(sink.values) != 3 || query.PublicError(err).Code != "DATASET_UNAVAILABLE" || query.PublicError(err).Message != "Snapshot ownership or cleanup did not complete" {
 			t.Fatal("complete result concealed terminal binding loss", err)
 		}
