@@ -18,18 +18,21 @@ const (
 )
 
 // ReaderOwner must not be copied. Its clients and unfinished guards stay owned
-// after a bounded Close failure. Construction/attachment are private test seams;
-// production resource opening and every reader path remain separate gates.
+// after a bounded Close failure. The immutable object runtime reserves the
+// owner before construction; fixture attachment takes completed bundles only.
 type ReaderOwner struct {
-	budget    *ReaderBudget
-	spec      readerOwnerSpec
-	mu        sync.Mutex
-	state     readerOwnerState
-	resources readerResources
-	guards    map[*ReadGuard]struct{}
-	outcome   readerOutcome
-	wake      chan struct{}
-	quiesced  chan struct{}
+	budget        *ReaderBudget
+	spec          readerOwnerSpec
+	mu            sync.Mutex
+	state         readerOwnerState
+	resources     readerResources
+	guards        map[*ReadGuard]struct{}
+	outcome       readerOutcome
+	wake          chan struct{}
+	quiesced      chan struct{}
+	opening       bool
+	openingDone   chan struct{}
+	openingCancel context.CancelCauseFunc
 }
 
 func (b *ReaderBudget) newOwner(spec readerOwnerSpec) (*ReaderOwner, error) {
@@ -52,20 +55,58 @@ func (b *ReaderBudget) newOwner(spec readerOwnerSpec) (*ReaderOwner, error) {
 
 // attach only transfers an already-created fixture bundle. No method call or
 // provider construction takes place here. A rejected attachment does not take
-// custody from its caller. Any future partial resource opening must already be
-// owned by this reserved Opening record before an external operation starts.
+// custody from its caller. Runtime construction uses open so partial resources
+// remain owned by the reserved Opening record.
 func (o *ReaderOwner) attach(resources readerResources) error {
 	if nilReaderDependency(resources) {
 		return errReaderInvalid
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if o.state != readerOpening {
+	if o.state != readerOpening || o.opening {
 		return errReaderClosed
 	}
 	o.resources = resources
 	o.state = readerOwnerActive
 	return nil
+}
+
+// open keeps the Opening reservation charged while a synchronous constructor
+// runs. Every late or partial result is adopted before cleanup can finish.
+func (o *ReaderOwner) open(factory func(context.Context) (readerResources, error)) error {
+	if factory == nil {
+		return errReaderInvalid
+	}
+	o.mu.Lock()
+	if o.state != readerOpening || o.opening {
+		o.mu.Unlock()
+		return errReaderClosed
+	}
+	ctx, cancel := context.WithCancelCause(context.Background())
+	o.opening, o.openingCancel, o.openingDone = true, cancel, make(chan struct{})
+	o.mu.Unlock()
+	resources, err := factory(ctx)
+	if nilReaderDependency(resources) {
+		resources = nil
+		if err == nil {
+			err = errReaderInvalid
+		}
+	}
+	o.mu.Lock()
+	o.resources = resources
+	if err == nil && o.state == readerOpening {
+		o.state = readerOwnerActive
+	} else if err == nil {
+		err = errReaderClosed
+	}
+	o.opening = false
+	close(o.openingDone)
+	o.mu.Unlock()
+	cancel(errReaderClosed)
+	if err != nil {
+		o.startClose()
+	}
+	return err
 }
 
 func (o *ReaderOwner) begin(ctx context.Context, bindings []readerlease.Binding) (*ReadGuard, error) {
@@ -100,6 +141,7 @@ func (o *ReaderOwner) startClose() {
 		return
 	}
 	o.state = readerDraining
+	openingCancel := o.openingCancel
 	var guards [readerGuardLimit]*ReadGuard
 	n := 0
 	for g := range o.guards {
@@ -107,6 +149,9 @@ func (o *ReaderOwner) startClose() {
 		n++
 	}
 	o.mu.Unlock()
+	if openingCancel != nil {
+		openingCancel(errReaderOwnerClosed)
+	}
 	for _, g := range guards[:n] {
 		g.startClose(errReaderOwnerClosed)
 	}
@@ -161,7 +206,12 @@ func (o *ReaderOwner) finish() {
 		o.mu.Lock()
 		empty := len(o.guards) == 0
 		resources := o.resources
+		opening, openingDone := o.opening, o.openingDone
 		o.mu.Unlock()
+		if opening {
+			<-openingDone
+			continue
+		}
 		if empty {
 			if resources != nil {
 				err := resources.Close()

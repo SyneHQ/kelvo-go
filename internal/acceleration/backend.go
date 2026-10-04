@@ -49,6 +49,9 @@ func OpenBackend(config catalog.AccelerationConfig) (Backend, error) {
 		return &localBackend{store}, nil
 	}
 	storage := *config.ObjectStorage
+	if storage.ReaderRegistry != nil {
+		return nil, errors.New("protected object snapshots require the node object runtime")
+	}
 	reader, err := objectstore.New(storage.ObjectLocation, storage.ReadCredentials)
 	if err != nil {
 		return nil, err
@@ -70,6 +73,9 @@ func OpenBackend(config catalog.AccelerationConfig) (Backend, error) {
 func NewObjectBackend(config catalog.AccelerationConfig, client objectstore.Client) (Backend, error) {
 	if client == nil {
 		return nil, errors.New("object snapshot backend requires a client")
+	}
+	if config.ObjectStorage != nil && config.ObjectStorage.ReaderRegistry != nil {
+		return nil, errors.New("protected object snapshots require the node object runtime")
 	}
 	return newObjectBackend(config, client)
 }

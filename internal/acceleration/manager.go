@@ -31,6 +31,26 @@ func NewManager(c catalog.Config, factory ExecutorFactory) (*Manager, error) {
 	return &Manager{config: c, store: s, factory: factory}, nil
 }
 
+// NewManagerWithRuntime borrows the node's immutable object resources. Closing
+// the manager does not close providers used by queries, exports or diagnostics.
+func NewManagerWithRuntime(c catalog.Config, factory ExecutorFactory, runtime *ObjectRuntime) (*Manager, error) {
+	if !ProtectedObjects(c) {
+		return NewManager(c, factory)
+	}
+	if runtime == nil || factory == nil {
+		return nil, errors.New("protected acceleration requires an object runtime and executor factory")
+	}
+	store, err := runtime.backendFor(c)
+	if err != nil {
+		return nil, err
+	}
+	private, _, err := catalog.AuthoritySnapshot(c)
+	if err != nil {
+		return nil, err
+	}
+	return &Manager{config: private, store: store, factory: factory}, nil
+}
+
 func (m *Manager) Close() error { return m.store.Close() }
 
 // Refresh publishes only after a complete successful source result and Parquet
@@ -231,6 +251,9 @@ func nextRefreshAt(snapshot Snapshot, interval time.Duration) time.Time {
 // process has exited. Child processes see immutable Parquet paths, never the
 // acceleration directory, refresh SQL, or credentials for the original source.
 func Resolve(ctx context.Context, c catalog.Config, request query.Request) ([]catalog.Source, []query.AccelerationVersion, func(), error) {
+	if ProtectedObjects(c) {
+		return nil, nil, func() {}, query.NewError("CONFIGURATION_ERROR", "Protected snapshots require the node object runtime")
+	}
 	return resolve(ctx, c, request, resolveResources{openBackend: OpenBackend, openRanges: OpenObjectRanges})
 }
 

@@ -32,9 +32,8 @@ var (
 	errReaderCleanupUnknown = errors.New("reader cleanup is uncertain")
 )
 
-// This state machine has private constructors and no production callers. It
-// neither constructs a provider nor resolves/authorizes a snapshot. One budget
-// must span all tenant/config owner replacements in its trusted node scope.
+// A budget spans the node's provider owners, guards and pending acquisitions.
+// The fixed object runtime shares it across all managers and executor copies.
 type ReaderBudget struct {
 	mu     sync.Mutex
 	counts readerCounts
@@ -137,10 +136,12 @@ func (s readerOwnerSpec) validBindings(bindings []readerlease.Binding) bool {
 	return true
 }
 
-// Private injection contracts. Production adapters are intentionally absent.
+// Private resource contracts, including the node's real Registry adapter.
 // Check/Context/Quiesced perform no I/O. Close is once-only and its return alone
-// does not prove local quiescence. Resources include all client-internal work in
-// their Quiesced signal, not just an idle-connection close call.
+// does not prove local quiescence. Quiesced joins admitted registry operations,
+// renewals, provider methods, body reads/Close, upload reads and our callbacks.
+// Standard HTTP internals belong to separately bounded node transports; this
+// signal is not a promise that every HTTP goroutine exited or memory was erased.
 type readerPin interface {
 	Context() context.Context
 	Check() error
