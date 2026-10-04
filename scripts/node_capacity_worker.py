@@ -14,6 +14,7 @@ from pathlib import Path
 import pwd
 import re
 import signal
+import stat
 import subprocess
 import sys
 import time
@@ -25,6 +26,13 @@ import containment_acceptance as identity
 import operational_acceptance as ops
 
 MIB = 1 << 20
+UNIT_PATTERN = r'kelvo-micro-node-[0-9a-f]{12}'
+STOP_SECONDS = 15
+RUNTIME_GRACE_SECONDS = 20
+INTENT_MAX_AGE_SECONDS = 60
+SERVICE_PROPERTIES = ('LoadState', 'Description', 'User', 'ExecStart', 'ControlGroup',
+                      'Transient', 'RuntimeMaxUSec', 'TimeoutStopUSec', 'KillMode',
+                      'SendSIGKILL', 'Restart')
 
 
 def digest(path):
@@ -49,6 +57,239 @@ def save(path, data):
         output.flush()
         os.fsync(output.fileno())
     temporary.replace(path)
+
+
+def fsync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def create_private_json(path, data):
+    """An interrupted or reused intent is evidence, never a replaceable file."""
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'w') as output:
+        json.dump(data, output, sort_keys=True)
+        output.write('\n')
+        output.flush()
+        os.fsync(output.fileno())
+    fsync_directory(path.parent)
+
+
+def safe_path(path):
+    # systemctl serializes ExecStart as a tuple, not JSON. Reject ambiguous
+    # tokens rather than interpreting shell quoting during ownership checks.
+    return isinstance(path, str) and re.fullmatch(r'/[A-Za-z0-9_./-]+', path) is not None
+
+
+def inside_command(intent):
+    return [intent['python'], intent['script'], '--inside', '--directory', intent['directory'],
+            '--profile', intent['profile'], '--metrics', intent['metrics'],
+            '--runtime', str(intent['runtime']), '--unit', intent['unit'],
+            '--expires-at', str(intent['expires_at'])]
+
+
+def new_intent(args, directory, now):
+    expiry = args.expires_at if args.expires_at is not None else now + args.runtime + 60
+    intent = {'schema': 1, 'unit': args.unit or 'kelvo-micro-node-' + uuid.uuid4().hex[:12],
+              'directory': str(directory), 'profile': args.profile, 'metrics': args.metrics,
+              'runtime': args.runtime, 'created_at': now, 'expires_at': expiry,
+              'account': pwd.getpwuid(os.getuid()).pw_name, 'uid': os.getuid(),
+              'python': os.path.abspath(sys.executable),
+              'script': str(Path(__file__).resolve(strict=True)),
+              'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+              'token': uuid.uuid4().hex}
+    validate_intent(intent, directory / 'profiles' / args.profile, now=now)
+    ops.require(expiry - now >= args.runtime + RUNTIME_GRACE_SECONDS + STOP_SECONDS + 5,
+                'LAUNCH_EXPIRY_TOO_CLOSE')
+    return intent
+
+
+def validate_intent(intent, profile, *, now=None):
+    required = {'schema', 'unit', 'directory', 'profile', 'metrics', 'runtime', 'created_at',
+                'expires_at', 'account', 'uid', 'python', 'script', 'boot_id', 'token'}
+    ops.require(isinstance(intent, dict) and set(intent) == required, 'LAUNCH_INTENT_INVALID')
+    ops.require(type(intent['schema']) is int and intent['schema'] == 1
+                and type(intent['runtime']) is int and 60 <= intent['runtime'] <= 1200
+                and type(intent['created_at']) is int and type(intent['expires_at']) is int
+                and 0 < intent['created_at'] < intent['expires_at'] < 1 << 53
+                and type(intent['uid']) is int and intent['uid'] == os.getuid(), 'LAUNCH_INTENT_INVALID')
+    for key, pattern in (('unit', UNIT_PATTERN), ('profile', r'[a-z0-9-]{1,48}'),
+                         ('account', r'[a-z_][a-z0-9_-]{0,31}'), ('token', r'[0-9a-f]{32}'),
+                         ('boot_id', r'[0-9a-f-]{36}')):
+        ops.require(isinstance(intent[key], str) and re.fullmatch(pattern, intent[key]), 'LAUNCH_INTENT_INVALID')
+    ops.require(all(safe_path(intent[key]) for key in ('directory', 'python', 'script'))
+                and intent['metrics'] in ('enabled', 'disabled')
+                and Path(intent['directory']).resolve(strict=True) == Path(intent['directory'])
+                and profile == Path(intent['directory']) / 'profiles' / intent['profile']
+                and intent['account'] == pwd.getpwuid(os.getuid()).pw_name
+                and intent['boot_id'] == Path('/proc/sys/kernel/random/boot_id').read_text().strip(), 'LAUNCH_INTENT_INVALID')
+    if now is not None:
+        ops.require(0 <= now - intent['created_at'] <= INTENT_MAX_AGE_SECONDS, 'LAUNCH_INTENT_STALE')
+        ops.require(intent['expires_at'] - now >= intent['runtime'] + RUNTIME_GRACE_SECONDS + STOP_SECONDS,
+                    'LAUNCH_EXPIRY_TOO_CLOSE')
+
+
+def read_intent(profile, *, now=None):
+    info = profile.lstat()
+    ops.require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and not info.st_mode & 0o077
+                and profile.resolve(strict=True) == profile,
+                'PRIVATE_PROFILE_REQUIRED')
+    path = profile / 'launch-intent.json'
+    ops.require(path.lstat().st_nlink == 1, 'PRIVATE_INPUT_REQUIRED')
+    intent = private_json(path)
+    validate_intent(intent, profile, now=now)
+    return intent
+
+
+def systemd_command(intent):
+    return ['sudo', '-n', 'systemd-run', '--unit=' + intent['unit'], '--uid=' + intent['account'],
+            '--description=Kelvo capacity ' + intent['token'],
+            '--property=Delegate=yes', '--property=MemoryMax=640M', '--property=MemorySwapMax=0',
+            '--property=TasksMax=128', '--property=CPUWeight=20', '--property=NoNewPrivileges=yes',
+            '--property=CapabilityBoundingSet=', '--property=AmbientCapabilities=',
+            '--property=RuntimeMaxSec=' + str(intent['runtime'] + RUNTIME_GRACE_SECONDS),
+            '--property=TimeoutStopSec=' + str(STOP_SECONDS), '--property=KillMode=control-group',
+            '--property=SendSIGKILL=yes', '--property=Restart=no',
+            '--collect', '--wait', '--pipe', *inside_command(intent)]
+
+
+def parse_service_status(output):
+    result = {}
+    for line in output.splitlines():
+        key, separator, value = line.partition('=')
+        ops.require(separator and key in SERVICE_PROPERTIES and key not in result, 'SERVICE_STATUS_INVALID')
+        result[key] = value
+    ops.require('LoadState' in result, 'SERVICE_STATUS_INVALID')
+    if result['LoadState'] != 'not-found':
+        ops.require(set(result) == set(SERVICE_PROPERTIES), 'SERVICE_STATUS_INVALID')
+    return result
+
+
+class SystemdService:
+    """Small process boundary; controls use a fake manager, not subprocess patches."""
+    def status(self, unit):
+        result = subprocess.run(['systemctl', 'show', unit + '.service', '--no-pager',
+                                 '--property=' + ','.join(SERVICE_PROPERTIES)],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+        status = parse_service_status(result.stdout)
+        ops.require(result.returncode == 0 or (status['LoadState'] == 'not-found' and result.returncode in (1, 4)),
+                    'SERVICE_STATUS_UNAVAILABLE')
+        return status
+
+    def group_exists(self, unit):
+        return Path('/sys/fs/cgroup/system.slice', unit + '.service').exists()
+
+    def launch(self, intent, log):
+        return subprocess.run(systemd_command(intent), stdout=log, stderr=subprocess.STDOUT,
+                              timeout=intent['runtime'] + 90).returncode
+
+    def stop(self, unit):
+        result = subprocess.run(['sudo', '-n', 'systemctl', 'stop', unit + '.service'],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+        ops.require(result.returncode == 0, 'OWNED_SERVICE_STOP_FAILED')
+
+
+def require_owned_service(intent, status, group_exists):
+    command = inside_command(intent)
+    prefix = '{ path=' + command[0] + ' ; argv[]=' + ' '.join(command) + ' ; ignore_errors=no ; '
+    expected = {'LoadState': 'loaded', 'Description': 'Kelvo capacity ' + intent['token'],
+                'User': intent['account'], 'Transient': 'yes', 'KillMode': 'control-group',
+                'SendSIGKILL': 'yes', 'Restart': 'no'}
+    ops.require(all(status.get(key) == value for key, value in expected.items())
+                and isinstance(status.get('ExecStart'), str) and status['ExecStart'].startswith(prefix)
+                and re.fullmatch(r'start_time=[^;{}]* ; stop_time=[^;{}]* ; pid=[0-9]+ ; code=[^;{}]* ; status=[0-9]+(?:/[^;{}]*)? }',
+                                 status['ExecStart'][len(prefix):]) is not None,
+                'SERVICE_OWNERSHIP_MISMATCH')
+    expected_group = '/system.slice/' + intent['unit'] + '.service'
+    ops.require(status.get('ControlGroup') == expected_group
+                or (status.get('ControlGroup') == '' and not group_exists), 'SERVICE_OWNERSHIP_MISMATCH')
+    # The limits are set explicitly by our command; verify their manager values
+    # before authorizing cleanup or allowing the inner worker to start.
+    ops.require(status.get('RuntimeMaxUSec') == format_systemd_seconds(intent['runtime'] + RUNTIME_GRACE_SECONDS)
+                and status.get('TimeoutStopUSec') == format_systemd_seconds(STOP_SECONDS), 'SERVICE_EXPIRY_MISMATCH')
+
+
+def format_systemd_seconds(seconds):
+    minutes, seconds = divmod(seconds, 60)
+    return ((str(minutes) + 'min ' if minutes else '') + (str(seconds) + 's' if seconds else '')).strip()
+
+
+def require_open_launch(profile):
+    try:
+        (profile / 'launch-closed.json').lstat()
+    except FileNotFoundError:
+        return
+    raise ops.AcceptanceError('LAUNCH_INTENT_CLOSED')
+
+
+def close_launch(intent):
+    """Fence a delayed StartTransientUnit request before claiming absence."""
+    profile = Path(intent['directory']) / 'profiles' / intent['profile']
+    ops.require(read_intent(profile) == intent, 'LAUNCH_INTENT_MISMATCH')
+    expected = {'schema': 1, 'intent_sha256': digest(profile / 'launch-intent.json')}
+    path = profile / 'launch-closed.json'
+    try:
+        create_private_json(path, expected)
+    except FileExistsError:
+        # A previous interrupted fsync is not evidence of durable cancellation.
+        # Revalidate without following symlinks, then fsync both file and parent.
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, 'r') as source:
+            info = os.fstat(source.fileno())
+            ops.require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
+                        and not info.st_mode & 0o077 and info.st_nlink == 1 and info.st_size <= MIB,
+                        'PRIVATE_CLOSED_INTENT_REQUIRED')
+            ops.require(json.load(source) == expected, 'CLOSED_INTENT_MISMATCH')
+            os.fsync(source.fileno())
+        fsync_directory(profile)
+
+
+def cleanup_owned_launch(intent, service):
+    result = {'owned_service_removed': False, 'owned_cgroup_removed': False, 'launch_closed': False}
+    try:
+        close_launch(intent)
+        result['launch_closed'] = True
+    except BaseException as error:
+        result['cleanup_failure'] = str(error) if isinstance(error, ops.AcceptanceError) else type(error).__name__
+    # Even failed cancellation persistence must not skip stopping a live service
+    # whose exact identity is known. It can never produce a clean receipt.
+    try:
+        unit = intent['unit']
+        status, exists = service.status(unit), service.group_exists(unit)
+        if status['LoadState'] != 'not-found':
+            require_owned_service(intent, status, exists)
+            service.stop(unit)
+            status, exists = service.status(unit), service.group_exists(unit)
+        result['owned_service_removed'] = result['launch_closed'] and status['LoadState'] == 'not-found'
+        result['owned_cgroup_removed'] = result['launch_closed'] and not exists
+    except BaseException as error:
+        result.setdefault('cleanup_failure', str(error) if isinstance(error, ops.AcceptanceError) else type(error).__name__)
+    return result
+
+
+def cleanup_launch(profile, service=None):
+    """Controller recovery, including a launch that never wrote started.json."""
+    try:
+        return cleanup_owned_launch(read_intent(profile), service or SystemdService())
+    except BaseException as error:
+        return {'owned_service_removed': False, 'owned_cgroup_removed': False,
+                'cleanup_failure': str(error) if isinstance(error, ops.AcceptanceError) else type(error).__name__}
+
+
+def claim_launch(args, profile, service, current_group, now):
+    intent = read_intent(profile, now=now)
+    require_open_launch(profile)
+    ops.require(all(getattr(args, key) == intent[key] for key in ('unit', 'profile', 'metrics', 'runtime', 'expires_at'))
+                and intent['script'] == str(Path(__file__).resolve(strict=True))
+                and intent['python'] == os.path.abspath(sys.executable), 'LAUNCH_INTENT_MISMATCH')
+    require_owned_service(intent, service.status(args.unit), service.group_exists(args.unit))
+    ops.require(current_group == '0::/system.slice/' + args.unit + '.service', 'OWNED_SERVICE_REQUIRED')
+    create_private_json(profile / 'launch-claimed.json', {'intent_sha256': digest(profile / 'launch-intent.json')})
+    require_open_launch(profile)
+    return intent
 
 
 def counters(path):
@@ -247,7 +488,7 @@ def inside(args, directory, profile):
               'config_unchanged': False, 'binary_unchanged': False, 'inputs_unchanged': False}
     process = sampler = None
     try:
-        ops.require(Path('/proc/self/cgroup').read_text().strip() == '0::/system.slice/' + args.unit + '.service', 'OWNED_SERVICE_REQUIRED')
+        claim_launch(args, profile, SystemdService(), Path('/proc/self/cgroup').read_text().strip(), int(time.time()))
         ops.require(identity.zero_capabilities(Path('/proc/self/status').read_text()), 'ZERO_CAPABILITIES_REQUIRED')
         for name, expected in (('memory.max', 640 * MIB), ('memory.swap.max', 0), ('pids.max', 128), ('cpu.weight', 20)):
             ops.require(int((group / name).read_text()) == expected, 'SERVICE_RESOURCE_LIMIT_MISMATCH')
@@ -276,6 +517,7 @@ def inside(args, directory, profile):
         report['config_sha256'], report['binary_sha256'] = config_hash, binary_hash
         sampler = Samples(group, scratch, binary)
         with (profile / 'node.log').open('w') as log:
+            require_open_launch(profile)
             process = subprocess.Popen([str(binary), 'node', '--config', str(config), '--drain-timeout', '8s'], env=env, cwd=profile, stdout=log, stderr=subprocess.STDOUT)
             started = time.monotonic()
             save(profile / 'started.json', {'pid': process.pid, 'unit': args.unit, 'metrics_enabled': args.metrics == 'enabled', 'config_sha256': config_hash, 'binary_sha256': binary_hash})
@@ -300,6 +542,41 @@ def inside(args, directory, profile):
     return 0 if not report.get('failure') and report.get('node_exit_code') == 0 else 1
 
 
+def launch_profile(args, directory, service=None, write_report=save):
+    service = service or SystemdService()
+    profile = directory / 'profiles' / args.profile
+    report = {'schema': 1, 'metrics_enabled': args.metrics == 'enabled', 'resource_budget': {'memory_bytes': 640 * MIB, 'swap_bytes': 0, 'tasks': 128, 'cpu_weight': 20}}
+    intent = new_intent(args, directory, int(time.time()))
+    profile.parent.mkdir(mode=0o700, exist_ok=True)
+    info = profile.parent.lstat()
+    ops.require(stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and not info.st_mode & 0o077
+                and profile.parent.resolve(strict=True) == profile.parent, 'PRIVATE_PROFILE_REQUIRED')
+    profile.mkdir(mode=0o700)  # Existing profiles are never resumed or overwritten.
+    intent_persisted = False
+    try:
+        fsync_directory(profile.parent)
+        fsync_directory(directory)
+        status = service.status(intent['unit'])
+        ops.require(status['LoadState'] == 'not-found' and not service.group_exists(intent['unit']), 'FRESH_SERVICE_REQUIRED')
+        create_private_json(profile / 'launch-intent.json', intent)
+        intent_persisted = True
+        report['launch_intent_sha256'] = digest(profile / 'launch-intent.json')
+        validate_intent(intent, profile, now=int(time.time()))
+        with (profile / 'service.log').open('w') as log:
+            report['service_exit_code'] = service.launch(intent, log)
+        if (profile / 'inside.json').is_file():
+            report.update(json.loads((profile / 'inside.json').read_text()))
+    except BaseException as error:
+        report['failure'] = str(error) if isinstance(error, ops.AcceptanceError) else type(error).__name__
+        report['interrupted'] = isinstance(error, (KeyboardInterrupt, InterruptedError))
+    finally:
+        if intent_persisted:
+            report.update(cleanup_owned_launch(intent, service))
+        report['passed'] = valid_profile(report)
+        write_report(profile / 'report.json', report)
+    return report
+
+
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -308,33 +585,16 @@ def main():
     parser.add_argument('--metrics', choices=('enabled', 'disabled'), required=True)
     parser.add_argument('--runtime', type=int, default=600)
     parser.add_argument('--inside', action='store_true', help=argparse.SUPPRESS)
-    parser.add_argument('--unit', help=argparse.SUPPRESS)
+    parser.add_argument('--unit', help='fresh kelvo-micro-node- unit with 12 lowercase hex digits')
+    parser.add_argument('--expires-at', type=int, help='absolute Unix deadline reserved for this service, before fixture cleanup')
     args = parser.parse_args()
     ops.require(sys.platform == 'linux' and os.getuid() != 0 and re.fullmatch(r'[a-z0-9-]{1,48}', args.profile) and 60 <= args.runtime <= 1200, 'BOUNDED_NONROOT_LINUX_PROFILE_REQUIRED')
+    ops.require(args.unit is None or re.fullmatch(UNIT_PATTERN, args.unit), 'FRESH_SERVICE_REQUIRED')
     directory = args.directory.resolve(strict=True)
-    profile = directory / 'profiles' / args.profile
     if args.inside:
-        return inside(args, directory, profile)
-    profile.mkdir(mode=0o700, parents=True)
-    report = {'schema': 1, 'metrics_enabled': args.metrics == 'enabled', 'resource_budget': {'memory_bytes': 640 * MIB, 'swap_bytes': 0, 'tasks': 128, 'cpu_weight': 20}}
-    unit = 'kelvo-micro-node-' + uuid.uuid4().hex[:12]
-    command = ['sudo', '-n', 'systemd-run', '--unit=' + unit, '--uid=' + pwd.getpwuid(os.getuid()).pw_name,
-               '--property=Delegate=yes', '--property=MemoryMax=640M', '--property=MemorySwapMax=0', '--property=TasksMax=128',
-               '--property=CPUWeight=20', '--property=NoNewPrivileges=yes', '--property=CapabilityBoundingSet=', '--property=AmbientCapabilities=',
-               '--collect', '--wait', '--pipe', sys.executable, str(Path(__file__).resolve()), '--inside', '--directory', str(directory),
-               '--profile', args.profile, '--metrics', args.metrics, '--runtime', str(args.runtime), '--unit', unit]
-    try:
-        with (profile / 'service.log').open('w') as log:
-            report['service_exit_code'] = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=args.runtime + 90).returncode
-        if (profile / 'inside.json').is_file():
-            report.update(json.loads((profile / 'inside.json').read_text()))
-    except BaseException as error:
-        report['failure'] = type(error).__name__
-        report['interrupted'] = isinstance(error, (KeyboardInterrupt, InterruptedError))
-    finally:
-        report.update(identity.cleanup_owned(unit))
-        report['passed'] = valid_profile(report)
-        save(profile / 'report.json', report)
+        ops.require(args.unit is not None and args.expires_at is not None, 'LAUNCH_INTENT_REQUIRED')
+        return inside(args, directory, directory / 'profiles' / args.profile)
+    report = launch_profile(args, directory)
     print(json.dumps({key: report.get(key) for key in ('passed', 'metrics_enabled', 'failure', 'node_exit_code', 'service_exit_code')}), flush=True)
     return 0 if report['passed'] else 1
 
