@@ -1,0 +1,373 @@
+{
+  "schema_version": 1,
+  "passed": true,
+  "scope": "Bound per-table integer/Boolean predicate eligibility; native bridge, custom fallback, policy isolation and ownership fixtures.",
+  "required_top_level_tests": {
+    "internal/duckbridge": [
+      "TestBoundPredicatesKeepPerRelationPlansAcrossJoins",
+      "TestBoundPredicatesUseOriginalSchemaOrdinals",
+      "TestBoundPredicatesMatchDisabledWithNullsAndResiduals",
+      "TestBoundPredicatesRejectInvalidRegistrationAndPlans",
+      "TestBoundPredicatesMatchDisabledAcrossNullableJoins",
+      "TestBoundPredicatesRequireExactBoundLogicalType",
+      "TestBoundPredicatesKeepRequiredProducerFailures"
+    ],
+    "internal/engine/duckdb": [
+      "TestProjectionOnlyCustomAdaptersKeepQueryPredicatesLocal",
+      "TestProjectionOnlyAdapterRejectsAnExplicitRequiredFilter",
+      "TestGuardedCustomEligibilityPreservesPolicyAndRawScanBudget"
+    ],
+    "internal/federation": [
+      "TestPredicateCapabilitiesNativeDialects",
+      "TestPredicateCapabilitiesCustomDeclarationsRemainAdvisory",
+      "TestPredicateCapabilitiesGuardUsesOnlyExposedLocalColumns",
+      "TestPredicateCapabilitiesEmptyAndDetached"
+    ]
+  },
+  "validation_modes": {
+    "regular": "Five packages with duckdb_arrow,duckbridge.",
+    "race": "Same five packages with race detection and GOEXPERIMENT=cgocheck2.",
+    "stub": "Three packages without native build tags; internal/duckbridge compiles without tagged tests.",
+    "vet_and_build": "Tagged vet for the five packages and a tagged Kelvo CLI build."
+  },
+  "accepted_run": {
+    "revision": "f92ee68c7e53f40f5ee41c720737831621972d58",
+    "tree": "3ca8b19e45c4efd1ed18807231f69c41caca0276",
+    "passed": true,
+    "source_files": 1045,
+    "source_manifest_sha256": "3a72fd8380f748c695c9a85e152b4b7d2b6eb82f82486fcb135f1bb4440a06e9",
+    "source_archive_sha256": "be12b8493d602d3712e5a934f73f4ad1a76dcc9ff2228abf7986687aa20f394a",
+    "runner_sha256": "e0d510c2c342a2c4efe0dd336144543eff2a11e7b7ebf80c26918c520ac34bcb",
+    "host_helper_sha256": "fa19b23e3e76f04a118786a9ae4f0f4a38955558e9951abf615a5f7cb02d87c6",
+    "go_version": "go version go1.26.8 linux/amd64",
+    "bridge": {
+      "duckdb": "v1.5.6",
+      "driver": "v2.10506.0",
+      "source_sha256": "1fadcbe9e69e1470f9093b6bcde08daf477d729c449e59a807f45c346622099b",
+      "module_sum": "h1:mcZjUQ/kSNeZdtGCqyj5/JEDUdj7/kvILfIOUTzQIu0=",
+      "driver_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+      "tags": "duckdb_arrow,duckbridge",
+      "header_count": 1364
+    },
+    "source_verified_before": true,
+    "source_verified_after": {
+      "passed": true,
+      "method": "runner_manifest_verification"
+    },
+    "stages": [
+      {
+        "name": "go-version",
+        "passed": true,
+        "exit_code": 0,
+        "timed_out": false,
+        "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00"
+      },
+      {
+        "name": "provision-bridge",
+        "passed": true,
+        "exit_code": 0,
+        "timed_out": false,
+        "log_sha256": "0a350de2def458aaa34d7bda22805468c23a654e20baf2c22370c438ef56fb77"
+      },
+      {
+        "name": "regular",
+        "passed": true,
+        "exit_code": 0,
+        "timed_out": false,
+        "log_sha256": "b77b8a6b8848550ea781745ef4c49816be7e1865ae1ca2241b19afc2a61c85ed",
+        "distinct_passed_tests_including_subtests": 354,
+        "required_top_level_tests": 14,
+        "required_top_level_passed": 14,
+        "failed_test_or_package_names": [],
+        "skipped_test_or_package_names": [
+          "internal/engine/duckdb:TestCustomFederationNeedsExplicitBridgeBuild",
+          "internal/engine/duckdb:TestExecuteRealPostgresMySQLFederation",
+          "internal/engine/duckdb:TestExecuteSQLiteFixture",
+          "internal/engine/duckdb:TestPinnedMultipartObjectRangeQuery",
+          "internal/engine/duckdb:TestPinnedObjectRangesUseRangesAndExactAllowlist",
+          "internal/engine/duckdb:TestRealConnectionMetadataDoesNotExposeDSNs"
+        ],
+        "missing_required_tests": [],
+        "skipped_required_tests": [],
+        "packages_passed": [
+          "federation",
+          "internal/access",
+          "internal/duckbridge",
+          "internal/engine/duckdb",
+          "internal/federation"
+        ],
+        "missing_required_packages": [],
+        "compiled_without_tests": []
+      },
+      {
+        "name": "race",
+        "passed": true,
+        "exit_code": 0,
+        "timed_out": false,
+        "log_sha256": "f1d939ceafe4934964b6025886911e58c94b8a00e7a5fe48c4decd7a275af08e",
+        "distinct_passed_tests_including_subtests": 354,
+        "required_top_level_tests": 14,
+        "required_top_level_passed": 14,
+        "failed_test_or_package_names": [],
+        "skipped_test_or_package_names": [
+          "internal/engine/duckdb:TestCustomFederationNeedsExplicitBridgeBuild",
+          "internal/engine/duckdb:TestExecuteRealPostgresMySQLFederation",
+          "internal/engine/duckdb:TestExecuteSQLiteFixture",
+          "internal/engine/duckdb:TestPinnedMultipartObjectRangeQuery",
+          "internal/engine/duckdb:TestPinnedObjectRangesUseRangesAndExactAllowlist",
+          "internal/engine/duckdb:TestRealConnectionMetadataDoesNotExposeDSNs"
+        ],
+        "missing_required_tests": [],
+        "skipped_required_tests": [],
+        "packages_passed": [
+          "federation",
+          "internal/access",
+          "internal/duckbridge",
+          "internal/engine/duckdb",
+          "internal/federation"
+        ],
+        "missing_required_packages": [],
+        "compiled_without_tests": []
+      },
+      {
+        "name": "stub",
+        "passed": true,
+        "exit_code": 0,
+        "timed_out": false,
+        "log_sha256": "27981d456cbd2443f7710656e5234722127d1715dd08fcb35906770fe10f6a27",
+        "distinct_passed_tests_including_subtests": 168,
+        "required_top_level_tests": 4,
+        "required_top_level_passed": 4,
+        "failed_test_or_package_names": [],
+        "skipped_test_or_package_names": [
+          "internal/duckbridge:<package>"
+        ],
+        "missing_required_tests": [],
+        "skipped_required_tests": [],
+        "packages_passed": [
+          "federation",
+          "internal/federation"
+        ],
+        "missing_required_packages": [],
+        "compiled_without_tests": [
+          "internal/duckbridge"
+        ]
+      },
+      {
+        "name": "vet",
+        "passed": true,
+        "exit_code": 0,
+        "timed_out": false,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "build",
+        "passed": true,
+        "exit_code": 0,
+        "timed_out": false,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "unrun_stages": [],
+    "terminal": {
+      "exit_code": 0,
+      "service_result": "success",
+      "runner_finished": true,
+      "validation_accepted": true
+    },
+    "cleanup": {
+      "controller_passed": true,
+      "independently_verified": true,
+      "unit_absent": true,
+      "cgroups_absent": true,
+      "owned_processes_absent": true,
+      "launch_closed": true
+    },
+    "proof_sha256": {
+      "staging": "0fc3b83cd65b0bf0925e7f9cc3e5e5243e2452662e6193f083e7589001f886f9",
+      "running_properties": "210fe80cc3164f872a005812fd1a6c3f44f654924044b1c4db460d98be42a0e7",
+      "validation": "15125b73f5af3233b4584ddfd0ce9851617bbd6459f42f399829bfaa78b57546",
+      "terminal": "9cdb1dbff1a2169efb3eb998a6c8ef195553496ee5a5a4c77c4e0450a10377df",
+      "cleanup": "0c2453750e6c2f46dc91597634f0c1744ccd6a049498a4bcedb6b9fc4ead7b1c",
+      "independent_cleanup": "378302cf770d3b5c6790bc8dbf8105857899e2ea957972579b834df8cd23b219"
+    },
+    "binary_sha256": "3992d7bcc4a7311f3fc92eb582c80a8328989061772bf03d59b66569f1ed1988"
+  },
+  "previous_failed_run": {
+    "revision": "f15bcdb0c91b1439e888c8c7b6968eeb91e611ac",
+    "tree": "c78c38ff4b697142e9962f9b24171750ad9ec0e4",
+    "passed": false,
+    "source_files": 1045,
+    "source_manifest_sha256": "dd0cae62625b4653cf127fc6c1bee1111dfaa5b1dd98368a2a813126b32bb71e",
+    "source_archive_sha256": "27573fba2c69b363d5ffd0a3730fff217044bc0b22dd71a3db6c5d78f80caaa3",
+    "runner_sha256": "e0d510c2c342a2c4efe0dd336144543eff2a11e7b7ebf80c26918c520ac34bcb",
+    "host_helper_sha256": "fa19b23e3e76f04a118786a9ae4f0f4a38955558e9951abf615a5f7cb02d87c6",
+    "go_version": "go version go1.26.8 linux/amd64",
+    "bridge": {
+      "duckdb": "v1.5.6",
+      "driver": "v2.10506.0",
+      "source_sha256": "1fadcbe9e69e1470f9093b6bcde08daf477d729c449e59a807f45c346622099b",
+      "module_sum": "h1:mcZjUQ/kSNeZdtGCqyj5/JEDUdj7/kvILfIOUTzQIu0=",
+      "driver_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+      "tags": "duckdb_arrow,duckbridge",
+      "header_count": 1364
+    },
+    "source_verified_before": true,
+    "source_verified_after": {
+      "passed": true,
+      "method": "separate_post_failure_manifest_verification"
+    },
+    "stages": [
+      {
+        "name": "go-version",
+        "passed": true,
+        "exit_code": 0,
+        "timed_out": false,
+        "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00"
+      },
+      {
+        "name": "provision-bridge",
+        "passed": true,
+        "exit_code": 0,
+        "timed_out": false,
+        "log_sha256": "ea62f1514d9c7f7c2b11f7a1738cd278defd7a0c0effc581b2e1e97237ca7c10"
+      },
+      {
+        "name": "regular",
+        "passed": false,
+        "exit_code": 1,
+        "timed_out": false,
+        "log_sha256": "5e5938d95f0db6c1277214212104250935f42a4af19e7089b5560622e2ddfe24",
+        "distinct_passed_tests_including_subtests": 255,
+        "required_top_level_tests": 14,
+        "required_top_level_passed": 10,
+        "failed_test_or_package_names": [
+          "internal/duckbridge:<package>",
+          "internal/duckbridge:TestBoundPredicatesMatchDisabledWithNullsAndResiduals",
+          "internal/duckbridge:TestBoundPredicatesMatchDisabledWithNullsAndResiduals/id_IS_NULL",
+          "internal/engine/duckdb:<package>",
+          "internal/engine/duckdb:TestGuardedCustomEligibilityPreservesPolicyAndRawScanBudget",
+          "internal/engine/duckdb:TestProjectionOnlyCustomAdaptersKeepQueryPredicatesLocal",
+          "internal/engine/duckdb:TestProjectionOnlyCustomAdaptersKeepQueryPredicatesLocal/absent",
+          "internal/engine/duckdb:TestProjectionOnlyCustomAdaptersKeepQueryPredicatesLocal/full",
+          "internal/engine/duckdb:TestProjectionOnlyCustomAdaptersKeepQueryPredicatesLocal/invalid",
+          "internal/engine/duckdb:TestProjectionOnlyCustomAdaptersKeepQueryPredicatesLocal/new",
+          "internal/engine/duckdb:TestProjectionOnlyCustomAdaptersKeepQueryPredicatesLocal/panic",
+          "internal/engine/duckdb:TestProjectionOnlyCustomAdaptersKeepQueryPredicatesLocal/partial",
+          "internal/federation:<package>",
+          "internal/federation:TestPredicateCapabilitiesEmptyAndDetached"
+        ],
+        "skipped_test_or_package_names": [
+          "internal/engine/duckdb:TestCustomFederationNeedsExplicitBridgeBuild",
+          "internal/engine/duckdb:TestExecuteRealPostgresMySQLFederation",
+          "internal/engine/duckdb:TestExecuteSQLiteFixture",
+          "internal/engine/duckdb:TestPinnedMultipartObjectRangeQuery",
+          "internal/engine/duckdb:TestPinnedObjectRangesUseRangesAndExactAllowlist",
+          "internal/engine/duckdb:TestRealConnectionMetadataDoesNotExposeDSNs"
+        ],
+        "missing_required_tests": [
+          "internal/duckbridge:TestBoundPredicatesMatchDisabledWithNullsAndResiduals",
+          "internal/engine/duckdb:TestGuardedCustomEligibilityPreservesPolicyAndRawScanBudget",
+          "internal/engine/duckdb:TestProjectionOnlyCustomAdaptersKeepQueryPredicatesLocal",
+          "internal/federation:TestPredicateCapabilitiesEmptyAndDetached"
+        ],
+        "skipped_required_tests": [],
+        "packages_passed": [
+          "federation",
+          "internal/access"
+        ],
+        "missing_required_packages": [
+          "internal/duckbridge",
+          "internal/engine/duckdb",
+          "internal/federation"
+        ],
+        "compiled_without_tests": []
+      }
+    ],
+    "unrun_stages": [
+      "race",
+      "stub",
+      "vet",
+      "build"
+    ],
+    "terminal": {
+      "exit_code": 1,
+      "service_result": "exit-code",
+      "runner_finished": true,
+      "validation_accepted": false
+    },
+    "cleanup": {
+      "controller_passed": true,
+      "independently_verified": true,
+      "unit_absent": true,
+      "cgroups_absent": true,
+      "owned_processes_absent": true,
+      "launch_closed": true
+    },
+    "proof_sha256": {
+      "staging": "a314aac0dca4a406cd3fc2f566f3b25c26f4545cbc73964f9774aa8b4ebeb17b",
+      "running_properties": "175d3ff06bfa22bbc5ed390a9407830894c3dbb8dd55b3ad53903d69702f5352",
+      "validation": "813de2d7d9d06d8d7bdd872572a6033b6dc40e1fe9a55206dc262c869b271094",
+      "terminal": "1659b86830f86a6e8d40ac447799ba55eebc3f27faf28b610413f92ab9d79057",
+      "cleanup": "eb87470441a01c61c2be34f3ed09cde6792c24c5910d05f4d9ec4294afa1f29a",
+      "independent_cleanup": "cf464e55f70dad7d058ee18fd50d4205683434e1da49b95d39553c4a835ab8f9",
+      "failure_diagnostics": "7910edd1bb287c9dc6291e11c24982c4fdd3fac5092de3372edf1a762a09be88"
+    }
+  },
+  "previous_failed_ci": {
+    "run_id": 37188490371,
+    "revision": "f15bcdb0c91b1439e888c8c7b6968eeb91e611ac",
+    "url": "https://github.com/SyneHQ/kelvo-go/actions/runs/37188490371",
+    "conclusion": "failure",
+    "jobs": [
+      {
+        "name": "federation",
+        "conclusion": "failure",
+        "failed_steps": [
+          "Verify pinned Arrow bridge and native adapters"
+        ],
+        "skipped_steps": 6
+      },
+      {
+        "name": "validate",
+        "conclusion": "failure",
+        "failed_steps": [
+          "Run go test -tags duckdb_arrow ./..."
+        ],
+        "skipped_steps": 40
+      }
+    ],
+    "scope": "Recorded CI job/step states. The VM diagnoses do not attribute every CI failure; skipped downstream gates did not pass."
+  },
+  "correction": {
+    "revision": "f92ee68c7e53f40f5ee41c720737831621972d58",
+    "production_files_changed": 0,
+    "changes": [
+      "Copy retained Arrow strings in the result test sink before batch release.",
+      "Use a valid unsupported Arrow NULL datatype; Arrow rejects nil field types before eligibility is tested.",
+      "Require exact NULL results and pushdown-off parity without requiring the optimizer to push IS NULL."
+    ],
+    "prior_failures": [
+      "Borrowed result strings were corrupted after Arrow release; integers and NULLs matched.",
+      "The unsupported-type fixture panicked during schema construction.",
+      "The NULL fixture incorrectly required source placement; this query kept the filter local."
+    ]
+  },
+  "enforced_test_limits": {
+    "cpu_percent": 200,
+    "memory_bytes": 8589934592,
+    "swap_bytes": 0,
+    "tasks": 512,
+    "runtime_seconds": 3600,
+    "stop_timeout_seconds": 20,
+    "kill_mode": "control-group",
+    "restart": false
+  },
+  "isolation_scope": "Non-root service with cleared provider environment. Service-user credential files were not filesystem-isolated. These are test bounds, not production sizing.",
+  "exclusions": [
+    "No live-vendor conformance or new source/type support is certified.",
+    "No throughput, telemetry overhead, minimum-RAM or deployment-capacity claim.",
+    "No general remote join/aggregate pushdown; richer constants and full local/source plan diagnostics remain open in #25.",
+    "This focused gate does not replace the whole-release, cluster, provider or sustained-load suites."
+  ]
+}
