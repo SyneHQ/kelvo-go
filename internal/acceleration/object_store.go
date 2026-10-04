@@ -270,23 +270,67 @@ func (backend *objectBackend) snapshot(dataset string, committed *objectCommitte
 }
 
 func (backend *objectBackend) status(ctx context.Context, dataset string) (Snapshot, time.Duration, error) {
-	if err := backend.check(ctx, dataset); err != nil {
+	snapshot, err := backend.currentSnapshot(ctx, dataset, "", 0, false)
+	if err != nil {
 		return Snapshot{}, 0, err
+	}
+	return snapshot, snapshot.Age(), nil
+}
+
+// currentSnapshot selects the manifest once. Query policy is checked before
+// generation access; Status still resolves and validates snapshots of any age.
+func (backend *objectBackend) currentSnapshot(ctx context.Context, dataset, fingerprint string, maxAge time.Duration, checkPolicy bool) (Snapshot, error) {
+	if err := backend.check(ctx, dataset); err != nil {
+		return Snapshot{}, err
 	}
 	state, err := backend.readState(ctx, dataset, backend.reader)
 	if err != nil {
-		return Snapshot{}, 0, err
+		return Snapshot{}, err
 	}
-	snapshot, err := backend.loadObjectSnapshot(ctx, dataset, state.manifest.Committed, state.now(), backend.reader)
+	if err := backend.check(ctx, dataset); err != nil {
+		return Snapshot{}, err
+	}
+	committed := state.manifest.Committed
+	if committed == nil {
+		return Snapshot{}, ErrNotFound
+	}
+	// Observe the selected manifest's service clock before descriptor I/O. Keep
+	// this monotonic anchor even when Date rounding puts RefreshedAt ahead of
+	// the observation: resetting it later would erase elapsed read time.
+	reference := state.now()
+	observation := Snapshot{Fingerprint: committed.Fingerprint, RefreshedAt: committed.RefreshedAt}.observeClock(reference)
+	accept := func() error {
+		if err := backend.check(ctx, dataset); err != nil {
+			return err
+		}
+		if checkPolicy {
+			if observation.Fingerprint != fingerprint {
+				return ErrFingerprintMismatch
+			}
+			if maxAge > 0 && observation.Age() > maxAge {
+				return ErrStale
+			}
+		}
+		return nil
+	}
+	if err := accept(); err != nil {
+		return Snapshot{}, err
+	}
+	snapshot, err := backend.loadObjectSnapshot(ctx, dataset, committed, reference, backend.reader)
 	if err != nil {
-		return Snapshot{}, 0, err
+		return Snapshot{}, err
+	}
+	snapshot.ageObserved, snapshot.ageObservedAt = observation.ageObserved, observation.ageObservedAt
+	if err := accept(); err != nil {
+		return Snapshot{}, err
 	}
 	if err := backend.headObjectSnapshot(ctx, snapshot); err != nil {
-		return Snapshot{}, 0, err
+		return Snapshot{}, err
 	}
-	// Refresh timestamps and maximum age use the same storage-service clock;
-	// skew on a query worker must neither expire nor extend a valid snapshot.
-	return snapshot, snapshot.Age(), nil
+	if err := accept(); err != nil {
+		return Snapshot{}, err
+	}
+	return snapshot, nil
 }
 
 func validateSnapshotObject(snapshot Snapshot, info objectstore.Info) error {
@@ -305,15 +349,9 @@ func (backend *objectBackend) Acquire(ctx context.Context, dataset, fingerprint 
 	if maxAge < 0 {
 		return nil, errors.New("acceleration maximum age cannot be negative")
 	}
-	snapshot, age, err := backend.status(ctx, dataset)
+	snapshot, err := backend.currentSnapshot(ctx, dataset, fingerprint, maxAge, true)
 	if err != nil {
 		return nil, err
-	}
-	if snapshot.Fingerprint != fingerprint {
-		return nil, ErrFingerprintMismatch
-	}
-	if maxAge > 0 && age > maxAge {
-		return nil, ErrStale
 	}
 	// Object generations are immutable and automatic remote deletion is disabled.
 	// Therefore an acquired key remains valid without a distributed reader lease.
