@@ -59,7 +59,7 @@ Tenant policy metadata must match exactly across replicas. Access-policy changes
 
 Key removal cancels active requests. Completion also checks current key membership and expiry before releasing final Arrow EOS. Already delivered bytes or committed results cannot be recalled. Revocation reaches each replica only after its operator-managed key-file update.
 
-Never reuse a key for another identity. A gateway retains up to 8,192 token-to-identity bindings, including retired keys, for its process lifetime. Exceeding that bound rejects new bindings without eviction; restart with the current file/revision floor when needed. Binding history is not persisted across restarts.
+Never reuse a key for another identity. A gateway retains up to 8,192 bindings, including retired keys, without eviction. By default, this history lasts for the process lifetime. Enable [persistent authentication state](gateway-auth-state.md) to keep revision and ownership history across restarts; exhaustion fails closed and has no automatic reset.
 
 ## Boundaries
 
