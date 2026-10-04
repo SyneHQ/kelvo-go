@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "kind": "formatter_pure_controls",
+  "passed": true,
+  "scope": "Synthetic receipt validation and Markdown formatting; no telemetry overhead or capacity measurement.",
+  "collected_at": "2026-10-04T01:36:08.968057+00:00",
+  "unit": "kelvo-telemetry-summary-controls-a02f47e63315",
+  "reviewed_file_sha256": {
+    "format_summary.py": "760ee683b624a7502a9c64665905cb2b71869e5afb03d82e6bbc975149129e58",
+    "test_format_summary.py": "9aae3de332a91e62ab710c1adb3aebd426113549153f0b587c0511ed8875f2fd",
+    "README.md": "01d8fcb663d3370e2f3d320167b2800416654965da51e7335c6d5d4b970f3ac5"
+  },
+  "controller_sha256": "ce76dec5e475fda83ff7cc274d25cae232c7c53e12ee05b3f1a15c8baf8b182f",
+  "files_unchanged": true,
+  "tests": {
+    "discovered_count": 6,
+    "executed_count": 6,
+    "discovered_and_executed_ids": [
+      "test_format_summary.FormatterTests.test_duplicate_json_fields_are_rejected",
+      "test_format_summary.FormatterTests.test_missing_or_inconsistent_collector_evidence_is_rejected",
+      "test_format_summary.FormatterTests.test_missing_or_mismatched_provenance_is_rejected",
+      "test_format_summary.FormatterTests.test_refuses_smoke_failed_or_unreconciled_receipts",
+      "test_format_summary.FormatterTests.test_rejects_incomplete_or_inconsistent_epochs",
+      "test_format_summary.FormatterTests.test_two_tables_with_all_four_comparisons"
+    ],
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "expected_failures": 0,
+    "unexpected_successes": 0,
+    "unittest_reported_seconds": 0.063,
+    "controller_seconds": 0.07691078100469895
+  },
+  "enforced_isolation": {
+    "memory_bytes": 1073741824,
+    "swap_bytes": 0,
+    "tasks": 64,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "non_root": true,
+    "private_network": true,
+    "zero_capabilities": true,
+    "no_new_privileges": true,
+    "inputs_read_only": true
+  },
+  "observed_service_watchdog": {
+    "RuntimeMaxUSec": "2min",
+    "TimeoutStopUSec": "10s",
+    "KillMode": "control-group",
+    "SendSIGKILL": "yes"
+  },
+  "independent_cleanup": {
+    "systemd_run_exit_code": 0,
+    "systemctl_exit_code": 0,
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "fields": {
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "MainPID": "0"
+    }
+  },
+  "private_evidence_sha256": {
+    "control_receipt": "9c0bf384e90343c5fa34e22e087cb782699485ca4b9b3e8e4b2e17f4280a5106",
+    "control_log": "e0c019fea662a75468dcfbab760c870ece14354bb47d151b2d259a01ec1593c2",
+    "service_exit_receipt": "6fc6a1c60c0448ae25730721a6d03b58d716cb72f35bd1c45015c909e8cedfc0",
+    "service_log": "f6d47522f5da641d4f53414515c07f3794af4e0ce00f91632c5cfcda0e1e48c6",
+    "independent_collection_receipt": "2c00f3e6ab4dc2bdee1345bdc43ba4ed908950ed21b60f486c27188357630a6d"
+  }
+}
