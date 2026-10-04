@@ -71,6 +71,10 @@ func NewNode(cfg NodeConfig, store Store, executor *worker.Executor) (*Node, err
 	if runtime.GOOS != "linux" || executor == nil || executor.SandboxPath == "" {
 		return nil, errors.New("cluster nodes require the Linux sandbox launcher")
 	}
+	executor, err := bindCatalogExecutor(cfg.Policy, executor)
+	if err != nil {
+		return nil, err
+	}
 	if executor.Config.Acceleration != nil && executor.Config.Acceleration.TenantID != cfg.Policy.TenantID {
 		return nil, errors.New("acceleration tenant must match worker tenant")
 	}
