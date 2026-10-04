@@ -8,7 +8,7 @@ Status reviewed 4 October 2026. This is a capability checklist, not production c
 | --- | --- |
 | Shared query/export/refresh budgets, interactive reserves and source quotas | Sustained mixed-workload capacity gates |
 | [Pinned two-hour campaign (#7)](sustained-acceptance.md#recorded-two-hour-run) on `0544d5f`: all ten gates, exact source/binary checks and independent cleanup passed | Sustained acceptance for later releases; joins/exports, WAN, live providers and deployment capacity need separate evidence |
-| [Pinned worker-capacity gate (#8)](node-capacity.md): five metrics on/off pairs and 130 exact workload queries on `d144a43` | Revalidate after runtime changes; worker-only warm-cache evidence does not establish sustained or deployment-wide capacity |
+| [Pinned worker-capacity gate (#8)](node-capacity.md): five metrics on/off pairs and 130 exact workload queries on `d144a43` | `b1a0ea5` revalidation failed its three-query preflight; no measured pairs ran. Runtime, sustained and deployment-wide capacity still need validation |
 | Opt-in Linux process-tree memory, CPU and PID limits | Deployment-specific headroom, restart recovery and sustained fault/load validation |
 | Independent probes, dataset readiness, phased drain and [application](rolling-upgrades.md) and [broker/client](nats-compatibility.md) upgrade matrices | Deployment-specific rollout and multi-hour fault/load campaigns |
 | Metrics opt-out, bounded history, [authorized trace continuity](tracing.md), [real OTLP acceptance](tracing-acceptance.md#recorded-result), [child stage metrics](child-timings.md), source observations and [local audit](durable-audit.md) | Full distributed attribution, audit archival and broader workload-cost measurements |

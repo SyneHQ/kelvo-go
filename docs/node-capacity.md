@@ -4,7 +4,18 @@ This measures one Kelvo **worker** on the micro VM. The Azure gateway, NATS,
 source database and every SSH tunnel are outside its accounting. It does not
 establish that a whole cluster or standalone deployment fits on the micro VM.
 
-## Latest pinned campaign
+## Latest revalidation
+
+The [`b1a0ea5` attempt](evidence/node-capacity-b1a0ea5-preflight-refusal.json)
+stopped at its required preflight: all three queries returned HTTP 503
+`QUERY_FAILED`, with no result bytes. No measured pairs ran. Worker resource
+checks passed, but failed queries cannot establish capacity. The source fixture's
+`readonly=1` policy rejected the requested HTTP cancellation setting with ClickHouse
+`READONLY` error 164. Independent checks verified both-host cleanup and unchanged
+source identity, limits and table row metadata. The successful results below
+belong to the earlier binary.
+
+## Last successful pinned campaign
 
 The [final-runtime campaign](evidence/node-capacity-d144a43-r2.json) passed
 **130/130 workload queries** across five metrics-disabled/enabled pairs, plus a
@@ -71,6 +82,7 @@ readiness.
 | `b09f2da`, bounded campaign | Three complete pairs plus one profile; 91/91 queries; deadline guard stopped further launch | [Partial campaign](evidence/node-capacity-b09f2da.json) |
 | `b09f2da`, two fresh preflights | 3/3 queries each; sampling gaps 2.635/2.986 s failed the two-second gate; no pairs launched | [Observer refusals](evidence/node-capacity-observer-gap-refusals.json) |
 | `d144a43`, first corrected-observer trial | Two pairs; 52/52 queries; local ENOSPC stopped the next lease observation before launch; both hosts cleaned independently | [Controller refusal](evidence/node-capacity-d144a43-enospc.json) |
+| `b1a0ea5`, fresh runtime revalidation | Three preflight queries failed with HTTP 503 `QUERY_FAILED`; zero result bytes; no measured pairs launched | [Preflight refusal](evidence/node-capacity-b1a0ea5-preflight-refusal.json) |
 
 For historical context, the original `6749369` baseline produced these full-delivery
 times. Its runtime and observer differ from the latest campaign; this table does
