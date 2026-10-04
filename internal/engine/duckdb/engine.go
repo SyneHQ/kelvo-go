@@ -24,6 +24,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/federation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 )
 
 // Engine creates a fresh DuckDB database instance for every execution. It is a
@@ -70,6 +71,10 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 }
 
 func (e *Engine) Execute(parent context.Context, req query.Request, sink query.Sink) (stats query.Stats, err error) {
+	// Failed setup stays within the outer executor call. Only a completed setup
+	// leading into materialization is published as a finer child interval.
+	timings := telemetry.ChildRecorderFromContext(parent)
+	timings.Begin(telemetry.ChildEngineSetup)
 	stats.Backend = "duckdb"
 	stats.EngineStreaming = false // v2.10506.0 uses DuckDB's non-streaming pending result API.
 	started := time.Now()
@@ -503,11 +508,23 @@ func deliver(ctx context.Context, driverConn driver.Conn, sqlText string, values
 	if err != nil {
 		return err
 	}
+	timings := telemetry.ChildRecorderFromContext(ctx)
+	if timings != nil {
+		timings.End(telemetry.ChildEngineSetup)
+		timings.Begin(telemetry.ChildMaterialization)
+	}
+	// The pinned driver materializes here, before it returns an Arrow reader.
 	reader, err := arrowQuery.QueryContext(ctx, sqlText, values...)
+	timings.End(telemetry.ChildMaterialization)
 	if err != nil {
 		return err
 	}
 	defer reader.Release()
+	if timings != nil {
+		timings.Begin(telemetry.ChildArrowDrain)
+		// Register after Release so the drain ends before reader cleanup begins.
+		defer timings.End(telemetry.ChildArrowDrain)
+	}
 	if err := sink.Schema(reader.Schema()); err != nil {
 		return err
 	}

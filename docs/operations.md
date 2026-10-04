@@ -42,6 +42,7 @@ Worker `GET /metrics` and `GET /resources` require gateway mTLS. Metrics have fi
 | Query phases | Validation, node admission, source admission, preparation, execution/delivery, cleanup |
 | First batch | Executor entry to first decoded Arrow record; absent for empty streams |
 | Sink callbacks | Subset of execution/delivery, not an additional phase or pure network time |
+| [Child stages](child-timings.md) | Disjoint worker stages and nested DuckDB setup/materialization/Arrow drain; unknown stages are counted separately |
 
 The startup SELECT probe counts as execution. Metrics reset on restart; there is no durable history. Optional [tracing](tracing.md) links authorized gateway and worker activity with bounded sampled spans. Broker queue time, assignment-to-claim delay and separate source/compute/transfer time remain unknown. See [phase definitions](tracing.md#what-is-recorded).
 

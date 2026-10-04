@@ -46,7 +46,7 @@ Only fixed kind/outcome attributes and `service.name=kelvo` are exported. SQL, p
 
 ## Still unmeasured
 
-JetStream queue time, assignment-to-claim delay and separate child setup/source/compute/delivery phases remain unknown. Admission rejections remain metrics rather than execution spans. DuckDB materializes before Arrow delivery. Distributed tracing overhead and deployment capacity need workload measurements; [#24](https://github.com/SyneHQ/kelvo-go/issues/24) tracks those gates.
+JetStream queue time, assignment-to-claim delay and separate source/compute costs remain unknown. [Child stage metrics](child-timings.md) separate worker setup, execution, IPC finalization and cleanup, with nested DuckDB intervals; these are not child spans. Admission rejections remain metrics rather than execution spans. DuckDB materializes before Arrow delivery. Distributed tracing overhead and deployment capacity need workload measurements; [#24](https://github.com/SyneHQ/kelvo-go/issues/24) tracks those gates.
 
 ## Validation
 
