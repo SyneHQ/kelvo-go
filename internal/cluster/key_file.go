@@ -23,9 +23,10 @@ var errGatewayAuthUnavailable = errors.New("cluster gateway: authentication keys
 // GatewayAuthenticationConfig is opt-in and excludes every legacy token_env.
 // Its file contains service keys for the fixed, already-provisioned tenants.
 type GatewayAuthenticationConfig struct {
-	KeysFile       string        `yaml:"keys_file"`
-	ReloadInterval time.Duration `yaml:"reload_interval,omitempty"`
-	MinRevision    uint64        `yaml:"min_revision,omitempty"`
+	KeysFile       string                            `yaml:"keys_file"`
+	ReloadInterval time.Duration                     `yaml:"reload_interval,omitempty"`
+	MinRevision    uint64                            `yaml:"min_revision,omitempty"`
+	State          *GatewayAuthenticationStateConfig `yaml:"state,omitempty"`
 }
 
 func (c GatewayAuthenticationConfig) normalized() (GatewayAuthenticationConfig, error) {
@@ -37,6 +38,13 @@ func (c GatewayAuthenticationConfig) normalized() (GatewayAuthenticationConfig, 
 	}
 	if len(c.KeysFile) > 4096 || !filepath.IsAbs(c.KeysFile) || filepath.Clean(c.KeysFile) != c.KeysFile || c.KeysFile == "/" || c.ReloadInterval < time.Second || c.ReloadInterval > time.Minute {
 		return c, errGatewayAuthConfig
+	}
+	if c.State != nil {
+		state := *c.State
+		if !validGatewayAuthStateConfig(state) {
+			return c, errGatewayAuthConfig
+		}
+		c.State = &state
 	}
 	return c, nil
 }

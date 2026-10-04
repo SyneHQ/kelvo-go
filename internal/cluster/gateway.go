@@ -193,7 +193,7 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 		if err != nil {
 			cancel()
 			if g.auth != nil {
-				g.auth.close()
+				err = errors.Join(err, g.auth.close())
 			}
 			return nil, err
 		}
@@ -201,7 +201,7 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 	if err := g.initExports(cfg); err != nil {
 		cancel()
 		if g.auth != nil {
-			g.auth.close()
+			err = errors.Join(err, g.auth.close())
 		}
 		for _, tenant := range g.tenants {
 			for _, endpoint := range tenant.workers {
@@ -239,8 +239,9 @@ func (g *Gateway) Close() error {
 		g.closed = true
 		g.mu.Unlock()
 		g.cancel()
+		var authCloseErr error
 		if g.auth != nil {
-			g.auth.close()
+			authCloseErr = g.auth.close()
 		}
 		if g.workerIdentity != nil {
 			g.workerIdentity.close()
@@ -250,7 +251,7 @@ func (g *Gateway) Close() error {
 		}
 		g.handlers.Wait()
 		g.wg.Wait()
-		g.closeErr = errors.Join(g.audit.CloseBounded(), g.closeTracing())
+		g.closeErr = errors.Join(authCloseErr, g.audit.CloseBounded(), g.closeTracing())
 		for _, t := range g.tenants {
 			for _, endpoint := range t.workers {
 				endpoint.client.CloseIdleConnections()
