@@ -20,7 +20,11 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/decimal128"
+	"github.com/apache/arrow-go/v18/arrow/decimal256"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
 type flightFederationResult struct {
@@ -34,13 +38,69 @@ func (s *flightFederationResult) Write(record arrow.RecordBatch) error {
 		values := make([]string, record.NumCols())
 		for col := range values {
 			values[col] = "<NULL>"
-			if !record.Column(col).IsNull(row) {
-				values[col] = record.Column(col).ValueStr(row)
+			if column := record.Column(col); !column.IsNull(row) {
+				switch column := column.(type) {
+				case *array.Decimal128:
+					values[col] = column.Value(row).ToString(column.DataType().(*arrow.Decimal128Type).Scale)
+				case *array.Decimal256:
+					values[col] = column.Value(row).ToString(column.DataType().(*arrow.Decimal256Type).Scale)
+				default:
+					// String ValueStr borrows record storage, which is released after Write.
+					values[col] = strings.Clone(column.ValueStr(row))
+				}
 			}
 		}
 		s.values = append(s.values, values)
 	}
 	return nil
+}
+
+func TestFlightFederationResultOwnsExactValues(t *testing.T) {
+	result := &flightFederationResult{}
+	want := [][]string{
+		{"Ada", "9007199254740993.123456788", "90071992547409931234567890.123456788"},
+		{"Lin", "9007199254740993.123456789", "90071992547409931234567890.123456789"},
+		{"<NULL>", "<NULL>", "<NULL>"},
+	}
+	func() {
+		schema := arrow.NewSchema([]arrow.Field{
+			{Name: "name", Type: arrow.BinaryTypes.String, Nullable: true},
+			{Name: "amount", Type: &arrow.Decimal128Type{Precision: 28, Scale: 9}, Nullable: true},
+			{Name: "large_amount", Type: &arrow.Decimal256Type{Precision: 50, Scale: 9}, Nullable: true},
+		}, nil)
+		builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
+		defer builder.Release()
+		for _, values := range want[:2] {
+			builder.Field(0).(*array.StringBuilder).Append(values[0])
+			amount, err := decimal128.FromString(values[1], 28, 9)
+			if err != nil {
+				t.Fatal(err)
+			}
+			builder.Field(1).(*array.Decimal128Builder).Append(amount)
+			large, err := decimal256.FromString(values[2], 50, 9)
+			if err != nil {
+				t.Fatal(err)
+			}
+			builder.Field(2).(*array.Decimal256Builder).Append(large)
+		}
+		for col := range schema.Fields() {
+			builder.Field(col).AppendNull()
+		}
+		record := builder.NewRecordBatch()
+		defer record.Release()
+		if err := result.Write(record); err != nil {
+			t.Fatal(err)
+		}
+		text := record.Column(0).(*array.String)
+		borrowed := text.ValueStr(0)
+		copy(text.ValueBytes(), "xxxxxx")
+		if borrowed != "xxx" {
+			t.Fatal("control did not overwrite the borrowed Arrow string")
+		}
+	}() // Release the record before inspecting the captured values.
+	if !reflect.DeepEqual(result.values, want) {
+		t.Fatalf("capture lost text ownership or decimal precision: got=%v want=%v", result.values, want)
+	}
 }
 
 // A fresh test process loads this test's CA through the standard Linux trust
