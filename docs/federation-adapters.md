@@ -110,7 +110,7 @@ Naming references: [SQL Server](https://learn.microsoft.com/en-us/sql/relational
 
 DuckDB owns joins, aggregates, ordering, final LIMIT and residual expressions. Adapters receive ordered columns and typed filters: **apply every required filter exactly or fail**. DuckDB may already have removed it from local evaluation.
 
-Pushdown covers supported integer/Boolean comparisons, NULL checks and AND/OR combinations. Other column types stay local, including their NULL checks. SQL Server BIT requires numeric or typed bit constants. Unsupported required filters fail explicitly; see [the full pushdown contract](federation.md#what-runs-where).
+Built-in pushdown is bound per table to the native dialect's exact integer/Boolean types. Other fields stay local, including their NULL checks. SQL Server BIT requires numeric or typed bit constants. Unsupported required filters fail explicitly; see [the full pushdown contract](federation.md#what-runs-where).
 
 [Snowflake integer names](https://docs.snowflake.com/en/sql-reference/data-types-numeric) normally yield Decimal128 NUMBER(38,0); Oracle NUMBER can also have negative scale. Exact transport does not enable decimal pushdown. Never narrow these domains to int64 just to push a filter.
 
@@ -269,4 +269,4 @@ Use the designated Linux VM under [AGENTS.md](../AGENTS.md); no local builds/dow
 
 Implement `federation.CapabilityProvider` with a v1 `FederationCapabilities()` declaration when useful. `InspectCapabilities` validates and detaches it; absent, invalid, panicking or future-version providers remain unknown. Wrappers must forward it explicitly.
 
-Declarations are advisory, not certification or planner negotiation. They cover the bridge's integer/Boolean predicates, not aggregate/join pushdown. Every `ScanPlan.Filters` predicate remains mandatory regardless of the declaration.
+Declarations are advisory. Custom adapters receive projections while DuckDB keeps query predicates local, including when a declaration advertises filters. Under a tenant policy, Kelvo's guard may evaluate supported query predicates alongside the policy; the underlying adapter receives neither. Every filter in a directly supplied `ScanPlan.Filters` remains mandatory: apply it exactly or return `ErrUnsupported`.

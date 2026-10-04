@@ -52,13 +52,15 @@ PostgreSQL/MySQL require their [native verified-TLS connection formats](sources-
 | Operation | Execution |
 | --- | --- |
 | Requested columns | Source SQL; required Arrow order retained |
-| Integer/Boolean comparisons | Exact typed constants in source dialect |
-| Integer/Boolean NULL checks and supported AND/OR | Source when pushed by the optimizer; otherwise DuckDB |
+| Eligible integer/Boolean comparisons, NULL checks and AND/OR | Native source with exact types; policy-guarded tables use the local guard |
+| Query predicates for custom adapters | DuckDB; declarations do not enable pushdown |
 | String, decimal, float, temporal and other predicates, including NULL checks | DuckDB |
 | Unsupported required pushed predicate | Explicit error |
 | Residual expressions, joins, aggregates, ordering and LIMIT | DuckDB; no general source pushdown |
 
-The bridge receives typed optimizer predicates, validates columns against the schema and preserves integer width/signedness. Required predicates cannot be dropped: DuckDB assumes the source applied them. Restricting pushdown avoids collation, rounding or timezone changes, but may fetch more rows and reach scan limits sooner.
+Each bound table has its own eligible columns, derived after discovery and policy binding. Unsupported columns keep their predicates in DuckDB. Required filters cannot be dropped or retried without filtering: DuckDB assumes the producer applied them. Local filtering can fetch more rows and reach source scan limits sooner.
+
+Disabling query pushdown never disables tenant policy. The guard still removes unauthorized rows and hidden columns before DuckDB sees them; raw source rows remain charged to scan limits.
 
 Sparse integer IN lists may become optional OR-of-equality hints while DuckDB keeps the original predicate. Hints permit at most 256 non-NULL constants of one supported type. They are omitted if the plan exceeds 32 KiB, 256 top-level filters or 1,024 predicate nodes, and are never extracted from an OR arm. Unsupported, negative, NULL-containing or larger lists keep local evaluation or another supported optimizer plan; every SQL spelling is not guaranteed to push down.
 
