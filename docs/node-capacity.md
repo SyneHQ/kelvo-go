@@ -134,6 +134,17 @@ Start `node_capacity_worker.py --directory ... --profile ... --metrics disabled`
 on the worker VM. Run `node_capacity_client.py` with the matching profile/mode
 and the client fixture directory on the separate host. When it finishes, create
 the worker profile's `stop` file, then wait for service and cgroup cleanup.
+For remote orchestration, pre-record a fresh `--unit kelvo-micro-node-<12 hex digits>`
+and pass `--expires-at <Unix seconds>` before the fixture's cleanup reserve.
+The observer exclusively creates and fsyncs a private launch intent before start;
+existing profiles, intents and services are rejected. Its service expires after
+`runtime + 20` seconds, with a 15-second stop limit and whole-cgroup SIGKILL fallback.
+Cleanup verifies the exact service command, account, cgroup and private launch token,
+even when startup never produced `started.json`. `cleanup_launch(profile)` in the
+observer provides the same check for controller recovery after an expired intent.
+Cleanup first fsyncs an intent-bound cancellation marker; a delayed service start
+then refuses to launch a worker. Failed cancellation persistence keeps cleanup uncertain.
+Use canonical fixture paths without whitespace or shell punctuation.
 The outer controller must remain alive and use bounded SSH keepalives/timeouts.
 Use the [cleanup coordinator](../scripts/cleanup_coordinator.py) to attempt both
 hosts before persisting local receipts. Keep each hard-expiry timer armed until
