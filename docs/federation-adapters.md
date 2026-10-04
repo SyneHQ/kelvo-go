@@ -110,7 +110,7 @@ Naming references: [SQL Server](https://learn.microsoft.com/en-us/sql/relational
 
 DuckDB owns joins, aggregates, ordering, final LIMIT and residual expressions. Adapters receive ordered columns and typed filters: **apply every required filter exactly or fail**. DuckDB may already have removed it from local evaluation.
 
-Built-in pushdown is bound per table to the native dialect's exact integer/Boolean types. Other fields stay local, including their NULL checks. SQL Server BIT requires numeric or typed bit constants. Unsupported required filters fail explicitly; see [the full pushdown contract](federation.md#what-runs-where).
+Built-in pushdown is bound per table to exact integer/Boolean types, plus Arrow Date32 on unguarded native ClickHouse tables. Other fields stay local, including their NULL checks. SQL Server BIT requires numeric or typed bit constants. Unsupported required filters fail explicitly; see [the full pushdown contract](federation.md#what-runs-where).
 
 [Snowflake integer names](https://docs.snowflake.com/en/sql-reference/data-types-numeric) normally yield Decimal128 NUMBER(38,0); Oracle NUMBER can also have negative scale. Exact transport does not enable decimal pushdown. Never narrow these domains to int64 just to push a filter.
 

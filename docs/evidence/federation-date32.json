@@ -1,0 +1,974 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "issue": 109,
+  "revision": "416e2516d4c8c40215c4cc3a9ca9f758e63e7838",
+  "tree": "704754fe4c0827def8550304d55df207a9ba2333",
+  "archive_sha256": "6070bb35b746b95915b9431f34b4f5c71f25d32ff2b1d60c00a1941b98ed3812",
+  "started_at": "2026-10-04T11:54:43.154021+00:00",
+  "finished_at": "2026-10-04T11:55:53.188859+00:00",
+  "binary_sha256": "56165bd94ba78d8af4c691423b73a7bd5eae6411ca7d343bd499ceef0304d98a",
+  "live_test_binary_sha256": "21255be012ff747a4b5568a684e431a4d804d7d6803a618e814034930c4546b6",
+  "go_version": "go version go1.26.8 linux/amd64",
+  "bridge": {
+    "duckdb": "v1.5.6",
+    "driver": "v2.10506.0",
+    "source_sha256": "1fadcbe9e69e1470f9093b6bcde08daf477d729c449e59a807f45c346622099b",
+    "module_sum": "h1:mcZjUQ/kSNeZdtGCqyj5/JEDUdj7/kvILfIOUTzQIu0=",
+    "driver_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+    "tags": "duckdb_arrow,duckbridge",
+    "header_count": 1364
+  },
+  "resource_budget": {
+    "cpu_percent": 200,
+    "memory_bytes": 8589934592,
+    "swap_bytes": 0,
+    "tasks": 512,
+    "runtime_seconds": 3600,
+    "stop_seconds": 240,
+    "max_file_bytes": 2147483648,
+    "monitored_workspace_bytes": 12884901888,
+    "minimum_free_bytes": 12884901888
+  },
+  "provider_environment_cleared": true,
+  "environment_scope": "Standard process variables only; service-user credential files are not isolated by this test runner.",
+  "disk_scope": "The 5-second workspace monitor covers the fresh packet and GOTMPDIR. Shared Go module/build caches are reused outside that counter; the host free-space floor includes their growth. Aggregate workspace size is monitored, not a filesystem quota.",
+  "peak_observed_workspace_bytes": 704545103,
+  "source_unchanged_before": true,
+  "source_unchanged_after": true,
+  "bridge_input_files": 1449,
+  "bridge_manifest_before_sha256": "92a1eb72e0ff4b3d5e4362ddc9c3bcaaff0cff2cc05834a68d7374d343df218d",
+  "bridge_manifest_after_sha256": "92a1eb72e0ff4b3d5e4362ddc9c3bcaaff0cff2cc05834a68d7374d343df218d",
+  "bridge_inputs_unchanged_after": true,
+  "source_files": 1065,
+  "harness_controls": 16,
+  "required_roots": {
+    "regular": 40,
+    "race": 40,
+    "stub": 27
+  },
+  "stages": [
+    {
+      "name": "go-version",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 0.011663760000374168,
+      "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00"
+    },
+    {
+      "name": "python-version",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 0.07011461301590316,
+      "log_sha256": "180c0fc0e6e5ad1243cddb959edbe495817c3b9ab7d34c172c3c7d21c3ee06b9"
+    },
+    {
+      "name": "harness-controls",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 0.2203699320089072,
+      "log_sha256": "b5ecfaadde809942addf9c09e8a8409082a11fcc0582d02663f6eb316b21f54e"
+    },
+    {
+      "name": "fixture-inventory",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 0.12059033900732175,
+      "log_sha256": "c3baf1ba9cf6f25f6d8aa5a880847dac075cecc6266aa1fae329857135cfb2a0"
+    },
+    {
+      "name": "provision-bridge",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 1.921001957001863,
+      "log_sha256": "06a8e86d9489d32d07eadd5a758c88d96f746a9fd823ea1c089e4bc7fd137d61"
+    },
+    {
+      "name": "build",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 14.536536397004966,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build-live-test",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 5.673698740021791,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "regular",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 11.58679554000264,
+      "log_sha256": "80626f06836800d4a79cc87df83170a97be261f72d1ff60c53827958de3c997a",
+      "tests_passed": 506,
+      "skipped_test_names": [
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestCustomFederationNeedsExplicitBridgeBuild",
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestExecuteRealPostgresMySQLFederation",
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestExecuteSQLiteFixture",
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestPinnedMultipartObjectRangeQuery",
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestPinnedObjectRangesUseRangesAndExactAllowlist",
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestRealConnectionMetadataDoesNotExposeDSNs",
+        "github.com/SYNEHQ/kelvo-go/internal/federation:TestDate32LiveClickHouse"
+      ],
+      "compiled_without_tests": [],
+      "all_required_roots_passed": true
+    },
+    {
+      "name": "race",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 23.61486634699395,
+      "log_sha256": "408b2336ca1ac4df304c05ed55d4ca3991ac74eafd5cdf199163010767eb1092",
+      "tests_passed": 506,
+      "skipped_test_names": [
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestCustomFederationNeedsExplicitBridgeBuild",
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestExecuteRealPostgresMySQLFederation",
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestExecuteSQLiteFixture",
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestPinnedMultipartObjectRangeQuery",
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestPinnedObjectRangesUseRangesAndExactAllowlist",
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:TestRealConnectionMetadataDoesNotExposeDSNs",
+        "github.com/SYNEHQ/kelvo-go/internal/federation:TestDate32LiveClickHouse"
+      ],
+      "compiled_without_tests": [],
+      "all_required_roots_passed": true
+    },
+    {
+      "name": "stub",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 3.051987877988722,
+      "log_sha256": "0ca1ff0e5e0cd44634682583d75e1d9287fe97f23b0951659ce1ca5ca1fbb16e",
+      "tests_passed": 310,
+      "skipped_test_names": [
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb:<package>"
+      ],
+      "compiled_without_tests": [
+        "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb"
+      ],
+      "all_required_roots_passed": true
+    },
+    {
+      "name": "vet",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 1.1266419129970018,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "live-clickhouse",
+      "passed": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 6.960446968005272,
+      "log_sha256": "95532f47925b5e853f25eab94a8ee5ee9a105da44dcab92b771392aee22dc9a6"
+    }
+  ],
+  "live": {
+    "fixture_rows": 14,
+    "expected_cases": 24,
+    "source_version": "26.9.7.9",
+    "conversion_probe": {
+      "date_epoch": 0,
+      "before_epoch": -1,
+      "nullable_type": "Nullable(Int32)",
+      "preserved_null": 1
+    },
+    "measurement_scope": "Fresh synthetic source; phase timing includes source discovery, DuckDB setup, query and all closure. Warm uncontrolled caches; no throughput or pruning claim. Source wire bytes are dechunked HTTP bodies, not TCP bytes.",
+    "comparison": "Identical SQL with pushdown enabled and disabled, both matched to direct-source typed results.",
+    "accepted_phases": 48,
+    "cases": [
+      {
+        "name": "epoch_eq",
+        "sql": "SELECT id FROM warehouse.events WHERE day = DATE '1970-01-01' ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 2,
+            "arrow_buffer_bytes": 16,
+            "source_http_body_bytes": 400,
+            "scans": 1,
+            "output_rows": 2,
+            "result_sha256": "f1b2b196c3034d11640f795c21c7d20b90955570f6c8d1c115e1facb55ef746c",
+            "setup_query_close_seconds": 0.026330415
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 2,
+            "result_sha256": "f1b2b196c3034d11640f795c21c7d20b90955570f6c8d1c115e1facb55ef746c",
+            "setup_query_close_seconds": 0.02391948
+          }
+        ]
+      },
+      {
+        "name": "epoch_ne",
+        "sql": "SELECT id FROM warehouse.events WHERE day <> DATE '1970-01-01' ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 10,
+            "arrow_buffer_bytes": 80,
+            "source_http_body_bytes": 464,
+            "scans": 1,
+            "output_rows": 10,
+            "result_sha256": "435b0f0b5f14db669c720289b96a6467554cba4c05c49b634147399a53d75aef",
+            "setup_query_close_seconds": 0.025301321
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 10,
+            "result_sha256": "435b0f0b5f14db669c720289b96a6467554cba4c05c49b634147399a53d75aef",
+            "setup_query_close_seconds": 0.024638298
+          }
+        ]
+      },
+      {
+        "name": "epoch_lt",
+        "sql": "SELECT id FROM warehouse.events WHERE day < DATE '1970-01-01' ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 3,
+            "arrow_buffer_bytes": 24,
+            "source_http_body_bytes": 416,
+            "scans": 1,
+            "output_rows": 3,
+            "result_sha256": "688fadfc4ba76b57f346fc347a9dffb1cf16ec202b4b0aad10c189e325260007",
+            "setup_query_close_seconds": 0.024097927
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 3,
+            "result_sha256": "688fadfc4ba76b57f346fc347a9dffb1cf16ec202b4b0aad10c189e325260007",
+            "setup_query_close_seconds": 0.02369124
+          }
+        ]
+      },
+      {
+        "name": "epoch_le",
+        "sql": "SELECT id FROM warehouse.events WHERE day <= DATE '1970-01-01' ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 5,
+            "arrow_buffer_bytes": 40,
+            "source_http_body_bytes": 432,
+            "scans": 1,
+            "output_rows": 5,
+            "result_sha256": "5d6daedb3479d1287d94dad9075bb119eca2f3f5fc96aa9d37ffac3724609b8d",
+            "setup_query_close_seconds": 0.024068075
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 5,
+            "result_sha256": "5d6daedb3479d1287d94dad9075bb119eca2f3f5fc96aa9d37ffac3724609b8d",
+            "setup_query_close_seconds": 0.024466229
+          }
+        ]
+      },
+      {
+        "name": "epoch_gt",
+        "sql": "SELECT id FROM warehouse.events WHERE day > DATE '1970-01-01' ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 7,
+            "arrow_buffer_bytes": 56,
+            "source_http_body_bytes": 448,
+            "scans": 1,
+            "output_rows": 7,
+            "result_sha256": "911ad67f620e8666ebf0d8fa891e2d4e2bb84c7e98080f42bbe777306242bc91",
+            "setup_query_close_seconds": 0.02677132
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 7,
+            "result_sha256": "911ad67f620e8666ebf0d8fa891e2d4e2bb84c7e98080f42bbe777306242bc91",
+            "setup_query_close_seconds": 0.025558037
+          }
+        ]
+      },
+      {
+        "name": "epoch_ge",
+        "sql": "SELECT id FROM warehouse.events WHERE day >= DATE '1970-01-01' ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 9,
+            "arrow_buffer_bytes": 72,
+            "source_http_body_bytes": 464,
+            "scans": 1,
+            "output_rows": 9,
+            "result_sha256": "06c55a68c7e86335bf16ae3b1bc83bc2095400d2772df750fb48c9ab199fed11",
+            "setup_query_close_seconds": 0.024318143
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 9,
+            "result_sha256": "06c55a68c7e86335bf16ae3b1bc83bc2095400d2772df750fb48c9ab199fed11",
+            "setup_query_close_seconds": 0.023566529
+          }
+        ]
+      },
+      {
+        "name": "leap",
+        "sql": "SELECT id FROM warehouse.events WHERE day = (DATE '2000-02-29') ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 1,
+            "arrow_buffer_bytes": 8,
+            "source_http_body_bytes": 400,
+            "scans": 1,
+            "output_rows": 1,
+            "result_sha256": "498d4e1414eefaf994ee9db2f585e5e46b6f8187e118c3adb6056958f8b19484",
+            "setup_query_close_seconds": 0.024283932
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 1,
+            "result_sha256": "498d4e1414eefaf994ee9db2f585e5e46b6f8187e118c3adb6056958f8b19484",
+            "setup_query_close_seconds": 0.024585419
+          }
+        ]
+      },
+      {
+        "name": "finite_min",
+        "sql": "SELECT id FROM warehouse.events WHERE day = (DATE '1970-01-01' - 2147483646) ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 0,
+            "arrow_buffer_bytes": 0,
+            "source_http_body_bytes": 184,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.025736907
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.024329566
+          }
+        ]
+      },
+      {
+        "name": "finite_max",
+        "sql": "SELECT id FROM warehouse.events WHERE day = (DATE '1970-01-01' + 2147483646) ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 0,
+            "arrow_buffer_bytes": 0,
+            "source_http_body_bytes": 184,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.024280832
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.02430795
+          }
+        ]
+      },
+      {
+        "name": "negative_infinity",
+        "sql": "SELECT id FROM warehouse.events WHERE day = (DATE '-infinity') ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 0,
+            "arrow_buffer_bytes": 0,
+            "source_http_body_bytes": 184,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.024264099
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.025611028
+          }
+        ]
+      },
+      {
+        "name": "positive_infinity",
+        "sql": "SELECT id FROM warehouse.events WHERE day = (DATE 'infinity') ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 0,
+            "arrow_buffer_bytes": 0,
+            "source_http_body_bytes": 184,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.025203369
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.023840675
+          }
+        ]
+      },
+      {
+        "name": "before_source_calendar",
+        "sql": "SELECT id FROM warehouse.events WHERE day = (DATE '1970-01-01' - 4000000) ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 0,
+            "arrow_buffer_bytes": 0,
+            "source_http_body_bytes": 184,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.024734108
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.023539907
+          }
+        ]
+      },
+      {
+        "name": "after_source_calendar",
+        "sql": "SELECT id FROM warehouse.events WHERE day = (DATE '1970-01-01' + 4000000) ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 0,
+            "arrow_buffer_bytes": 0,
+            "source_http_body_bytes": 184,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.024063531
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 0,
+            "result_sha256": "718824e2dfbe2f0dfd9667035e5412449d907fbf568ef529c96cfef40792874d",
+            "setup_query_close_seconds": 0.023759374
+          }
+        ]
+      },
+      {
+        "name": "classic_date",
+        "sql": "SELECT id FROM warehouse.events WHERE classic >= DATE '2000-02-29' ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 6,
+            "arrow_buffer_bytes": 48,
+            "source_http_body_bytes": 432,
+            "scans": 1,
+            "output_rows": 6,
+            "result_sha256": "46987cc54b12d35c8f3ba9ae489eceb07d5a235d4689664d011a447a4b115e0d",
+            "setup_query_close_seconds": 0.025383477
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 6,
+            "result_sha256": "46987cc54b12d35c8f3ba9ae489eceb07d5a235d4689664d011a447a4b115e0d",
+            "setup_query_close_seconds": 0.024176188
+          }
+        ]
+      },
+      {
+        "name": "null_and_or",
+        "sql": "SELECT id FROM warehouse.events WHERE (day < DATE '1970-01-01' OR day IS NULL) AND id >= 1 ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 13,
+            "arrow_buffer_bytes": 106,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 4,
+            "result_sha256": "986c5e7b7cc7a6667c8ce941853182b91d5f9ea503da5a356c759347ad499b67",
+            "setup_query_close_seconds": 0.024319726
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 4,
+            "result_sha256": "986c5e7b7cc7a6667c8ce941853182b91d5f9ea503da5a356c759347ad499b67",
+            "setup_query_close_seconds": 0.024606943
+          }
+        ]
+      },
+      {
+        "name": "not_null",
+        "sql": "SELECT id FROM warehouse.events WHERE day IS NOT NULL ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 12,
+            "result_sha256": "87f9c46d2ad0a57cdfacc276ea97415bb7afd27883b1a252375d61416729ffc4",
+            "setup_query_close_seconds": 0.024121085
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 114,
+            "source_http_body_bytes": 496,
+            "scans": 1,
+            "output_rows": 12,
+            "result_sha256": "87f9c46d2ad0a57cdfacc276ea97415bb7afd27883b1a252375d61416729ffc4",
+            "setup_query_close_seconds": 0.024471235
+          }
+        ]
+      },
+      {
+        "name": "projection_reorder",
+        "sql": "SELECT classic,day,id,label FROM warehouse.events WHERE day >= DATE '1970-01-01' ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 9,
+            "arrow_buffer_bytes": 175,
+            "source_http_body_bytes": 776,
+            "scans": 1,
+            "output_rows": 9,
+            "result_sha256": "33bf25f6c07bce1a7e88c4ca82581b24822a2365b8dd011aa0783206bbdcdd1a",
+            "setup_query_close_seconds": 0.025687889
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 273,
+            "source_http_body_bytes": 864,
+            "scans": 1,
+            "output_rows": 9,
+            "result_sha256": "33bf25f6c07bce1a7e88c4ca82581b24822a2365b8dd011aa0783206bbdcdd1a",
+            "setup_query_close_seconds": 0.024999493
+          }
+        ]
+      },
+      {
+        "name": "count_only",
+        "sql": "SELECT count(*) AS n FROM warehouse.events WHERE day = DATE '2000-02-29'",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 1,
+            "arrow_buffer_bytes": 4,
+            "source_http_body_bytes": 280,
+            "scans": 1,
+            "output_rows": 1,
+            "result_sha256": "a684957495daaa711bd8166d19037f524bbbcc032e7934875a3391b5e49e6564",
+            "setup_query_close_seconds": 0.028241937
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 58,
+            "source_http_body_bytes": 328,
+            "scans": 1,
+            "output_rows": 1,
+            "result_sha256": "a684957495daaa711bd8166d19037f524bbbcc032e7934875a3391b5e49e6564",
+            "setup_query_close_seconds": 0.0258416
+          }
+        ]
+      },
+      {
+        "name": "mixed_residual",
+        "sql": "SELECT id,label FROM warehouse.events WHERE day >= DATE '1970-01-01' AND length(label)>1 ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 9,
+            "arrow_buffer_bytes": 139,
+            "source_http_body_bytes": 640,
+            "scans": 1,
+            "output_rows": 6,
+            "result_sha256": "57eff7dc1e8ef55f0768005cd1d21cb1dd9e2e130482bc35d1b05e5ea70c05ab",
+            "setup_query_close_seconds": 0.03199312
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 215,
+            "source_http_body_bytes": 712,
+            "scans": 1,
+            "output_rows": 6,
+            "result_sha256": "57eff7dc1e8ef55f0768005cd1d21cb1dd9e2e130482bc35d1b05e5ea70c05ab",
+            "setup_query_close_seconds": 0.028533104
+          }
+        ]
+      },
+      {
+        "name": "self_join",
+        "sql": "SELECT a.id AS left_id,b.id AS right_id FROM warehouse.events a JOIN warehouse.events b ON a.id=b.id WHERE a.day >= DATE '1970-01-01' AND b.classic <= DATE '2000-02-29' ORDER BY left_id,right_id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 21,
+            "arrow_buffer_bytes": 168,
+            "source_http_body_bytes": 944,
+            "scans": 2,
+            "output_rows": 9,
+            "result_sha256": "5105ebfc2becc1840682dfd67c4591211ce3544941c7128c214bfa7bdefae397",
+            "setup_query_close_seconds": 0.029691202
+          },
+          {
+            "mode": "disabled",
+            "rows": 28,
+            "arrow_buffer_bytes": 228,
+            "source_http_body_bytes": 992,
+            "scans": 2,
+            "output_rows": 9,
+            "result_sha256": "5105ebfc2becc1840682dfd67c4591211ce3544941c7128c214bfa7bdefae397",
+            "setup_query_close_seconds": 0.027073501
+          }
+        ]
+      },
+      {
+        "name": "independent_aliases",
+        "sql": "SELECT a.id AS left_id,b.id AS right_id FROM warehouse.events a JOIN warehouse.peer b ON a.id=b.id WHERE a.day >= DATE '1970-01-01' AND b.day <= DATE '2000-02-29' ORDER BY left_id,right_id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 15,
+            "arrow_buffer_bytes": 120,
+            "source_http_body_bytes": 896,
+            "scans": 2,
+            "output_rows": 6,
+            "result_sha256": "e265256b5d97b5c074db63aa804bf0a48d94826d25f758679ddc7c9fcbe4e9a8",
+            "setup_query_close_seconds": 0.029799522
+          },
+          {
+            "mode": "disabled",
+            "rows": 28,
+            "arrow_buffer_bytes": 228,
+            "source_http_body_bytes": 992,
+            "scans": 2,
+            "output_rows": 6,
+            "result_sha256": "e265256b5d97b5c074db63aa804bf0a48d94826d25f758679ddc7c9fcbe4e9a8",
+            "setup_query_close_seconds": 0.026688634
+          }
+        ]
+      },
+      {
+        "name": "outer_join",
+        "sql": "SELECT a.id AS left_id,b.id AS right_id FROM warehouse.events a LEFT JOIN warehouse.peer b ON a.id=b.id AND b.day < DATE '1970-01-01' WHERE a.day >= DATE '1970-01-01' ORDER BY left_id,right_id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 12,
+            "arrow_buffer_bytes": 96,
+            "source_http_body_bytes": 880,
+            "scans": 2,
+            "output_rows": 9,
+            "result_sha256": "03a8b5419a162c8712dca6cebce66962d7b15c42957ed50cd17d6eed3742733a",
+            "setup_query_close_seconds": 0.027668353
+          },
+          {
+            "mode": "disabled",
+            "rows": 28,
+            "arrow_buffer_bytes": 228,
+            "source_http_body_bytes": 992,
+            "scans": 2,
+            "output_rows": 9,
+            "result_sha256": "03a8b5419a162c8712dca6cebce66962d7b15c42957ed50cd17d6eed3742733a",
+            "setup_query_close_seconds": 0.026254228
+          }
+        ]
+      },
+      {
+        "name": "cte_window",
+        "sql": "WITH selected AS (SELECT id,amount FROM warehouse.events WHERE day >= DATE '1970-01-01') SELECT id,CAST(sum(amount) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS BIGINT) AS running_amount FROM selected ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 9,
+            "arrow_buffer_bytes": 108,
+            "source_http_body_bytes": 592,
+            "scans": 1,
+            "output_rows": 9,
+            "result_sha256": "ea7d035937de322a6d57fcfc756a901a5c285559387a4e8b4e634c4b43bd2eab",
+            "setup_query_close_seconds": 0.024515593
+          },
+          {
+            "mode": "disabled",
+            "rows": 14,
+            "arrow_buffer_bytes": 170,
+            "source_http_body_bytes": 640,
+            "scans": 1,
+            "output_rows": 9,
+            "result_sha256": "ea7d035937de322a6d57fcfc756a901a5c285559387a4e8b4e634c4b43bd2eab",
+            "setup_query_close_seconds": 0.024954936
+          }
+        ]
+      },
+      {
+        "name": "repeated_scan",
+        "sql": "SELECT id FROM warehouse.events WHERE day < DATE '1970-01-01' UNION ALL SELECT id FROM warehouse.peer WHERE day > DATE '2000-02-29' ORDER BY id",
+        "passed": true,
+        "phases": [
+          {
+            "mode": "pushed",
+            "rows": 6,
+            "arrow_buffer_bytes": 48,
+            "source_http_body_bytes": 832,
+            "scans": 2,
+            "output_rows": 6,
+            "result_sha256": "4a98adf39b431025088551c4e770edc291c1ec2cad8b8678de30301c034d3788",
+            "setup_query_close_seconds": 0.026509672
+          },
+          {
+            "mode": "disabled",
+            "rows": 28,
+            "arrow_buffer_bytes": 228,
+            "source_http_body_bytes": 992,
+            "scans": 2,
+            "output_rows": 6,
+            "result_sha256": "4a98adf39b431025088551c4e770edc291c1ec2cad8b8678de30301c034d3788",
+            "setup_query_close_seconds": 0.024671393
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "pushed": {
+        "rows": 152,
+        "arrow_buffer_bytes": 1422,
+        "source_http_body_bytes": 11392,
+        "scans": 28,
+        "setup_query_close_seconds": 0.621385555
+      },
+      "disabled": {
+        "rows": 392,
+        "arrow_buffer_bytes": 3452,
+        "source_http_body_bytes": 14448,
+        "scans": 28,
+        "setup_query_close_seconds": 0.598084987
+      }
+    }
+  },
+  "cleanup": {
+    "cleanup_passed": true,
+    "reviewed_at": "2026-10-04T12:05:23.388208+00:00",
+    "live_observed_at": "2026-10-04T12:02:00.336005+00:00",
+    "terminal_exit_code": 0,
+    "actual_start_and_terminal_bounds_verified": true,
+    "launch_closure_and_cleanup_chain_verified": true,
+    "unit_cgroup_initial_pid_and_owned_processes_absent": true,
+    "fixture_database_and_reader_absent": true,
+    "existing_clickhouse_identity_allocation_start_time_and_rows_unchanged": true
+  },
+  "evidence_sha256": {
+    "validation": "32386eda5edd7c4b738fc9f31c81bb70bce7047590fa988c5367f9ab6e4a2ab0",
+    "live_acceptance": "6f6bf68e0f0f32570719697021b67154d2bda3b2b05cbc01eb35b599484637f8",
+    "live_cleanup": "1343878b9ab4934c66e7242fc49be2b0be45e25cab0b315ccd6d7828da6f056a",
+    "host_cleanup": "f8a8645ef779a48198604bc3c8a4c009a3abb954769fa7b4b93b8d4a172a4fd4",
+    "final_exit": "893862909ac1659e31c22d36fbe9625571fcfc01a32715b2820e2c71e08153df",
+    "readback": "065196d22973a8b00ab08148e9a2e2899cb53f868a06429abc8ba530f2838e0b",
+    "reference_decode": "8aa7479dab21e3957293cd08e997d786d43e14db7ad44747e870804c14060af8",
+    "reference_decode_command": "1b54b725e9941d26ff768fc705d91b31fa4dfe84264134b58a4d90ef16b74efc",
+    "metadata_command": "7d9df3e8a0cd723b6b8f29ea7f4def45ebfaea483f7f1259b152343d4c4b3c68",
+    "binary": "56165bd94ba78d8af4c691423b73a7bd5eae6411ca7d343bd499ceef0304d98a",
+    "live_test_binary": "21255be012ff747a4b5568a684e431a4d804d7d6803a618e814034930c4546b6",
+    "collection_manifest": "ceeeed476771111a948fc28b91e2c56ff1722d89127e5ae2d6d43604c0f9d44b",
+    "collection_archive": "29c6ef80548d9b061a5dd2154491ef61a3a6b18f3097e14b2ea3293acfcbf04b",
+    "independent_review": "245454c38f7023d26e8674c09780088308444ee955d2c8ac67e807920c8b1fb3",
+    "activation_review": "92fa22b654caf5d4efac77d28bd1bd5a60c437f3b3c0840c16b26c3b11f1b518",
+    "source_review": "30f98cfcd334b14fc5d946c99987ac7697a920be0e5c201a6f9fad34b67194df"
+  },
+  "retained_failures": [
+    {
+      "revision": "4fa762290b0c9a96943e7bc5c7e6245ba1cf7283",
+      "kind": "ci",
+      "url": "https://github.com/SYNEHQ/kelvo-go/actions/runs/37197761784",
+      "cause": "Snapshot test attempted to persist infinity dates rejected by the existing Parquet guard.",
+      "correction": "Finite snapshot data; infinity query constants and separate native/custom infinity coverage retained.",
+      "receipt_sha256": "3fc90b6b6d75e420039eaa574c106b91a777f622a8b107a9f3a1ea0000add2d5"
+    },
+    {
+      "revision": "6eaaf9475089d3c9e8a882b70824532055cf1575",
+      "kind": "live_acceptance",
+      "validation_passed": false,
+      "complete_cases": 14,
+      "accepted_phases": 28,
+      "cause": "Nullable-OR returned correct typed rows but the harness incorrectly required Date32 pushdown.",
+      "correction": "Allow this expression to stay local; keep typed parity and all other assertions.",
+      "disabled_phase_for_failing_case_executed": false,
+      "cleanup_passed": true,
+      "validation_sha256": "c4e9748e88c92ab94a5bfb83f9b42fabe18257bfbbe7e70f7606b901c80569d8",
+      "archive_sha256": "7064b91e6d32823df21300c4289d3c7083c6364ffc6374b33efdd1edf20ddcc1",
+      "cleanup_review_sha256": "214180940766342400e4236e5dfe3955ed636912e40fc708d825e90cb565862d"
+    },
+    {
+      "revision": "125fe4b710419e81ad1cc22a4f5f1a3ce9d3bd6a",
+      "kind": "live_acceptance",
+      "validation_passed": false,
+      "complete_cases": 19,
+      "accepted_phases": 39,
+      "cause": "Self-join passed with pushdown enabled but failed in the disabled lane when late join filters bypassed per-table eligibility.",
+      "correction": "Preserve all static predicates; admit dynamic join filters only for eligible original columns. No optimizer flags changed.",
+      "disabled_phase_for_failing_case_executed": true,
+      "unexecuted_cases": 4,
+      "cleanup_passed": true,
+      "validation_sha256": "0e262e8b219792f62fb0d1e80a5726cdec2923a558d2874ed49905468cd42f30",
+      "cleanup_review_sha256": "923ea49412662f4a60fbd6971c395b8672b23ecaaca236667ea13067335d5bb3"
+    },
+    {
+      "revision": "4fa762290b0c9a96943e7bc5c7e6245ba1cf7283",
+      "kind": "inert_staging",
+      "cause": "Local command-receipt filename collided with the staging receipt after successful inert upload.",
+      "correction": "Distinct command receipt label; new packet and fixture for subsequent validation.",
+      "service_activated": false
+    }
+  ],
+  "join_regression": {
+    "base_revision": "125fe4b710419e81ad1cc22a4f5f1a3ce9d3bd6a",
+    "scope": "Base Git revision plus reviewed overlays; exact executed files are in the source manifest.",
+    "source_differences": [
+      "internal/duckbridge/shim.cpp"
+    ],
+    "fixed_shim_sha256": "29dc55135f47e485c3351858e73d83db7d4d376a1a58835b913df9e35912b6e3",
+    "test_sha256": "8fe74dbe4ae823cdeae41e4b6456e4c8f532ad41a4a74cd642d73bca17edd8d7",
+    "baseline": {
+      "passed": false,
+      "expected_failure": true,
+      "failed_roots": 2,
+      "failed_leaves": 8,
+      "passed_leaves": 8,
+      "failure_marker_leaves": 8,
+      "log_sha256": "85f6206649679f32b4a41fc0714991eac612346b76178ff68990f4201e59f128"
+    },
+    "fixed": {
+      "passed": true,
+      "passed_roots": 2,
+      "passed_leaves": 16,
+      "log_sha256": "47fa5f74d877ff38fc36c80cbcec98b29bb98c84b2e1c33429c72c0a652eac34"
+    },
+    "skipped_tests": 0,
+    "cleanup_passed": true,
+    "report_sha256": "982ceb44a7de4c37f97fbb54ab08d16f29334bff6d5ca354e083a1e90bf8d102",
+    "independent_review_sha256": "6811d212d5423525b75fbd2b415569496e964fcf2f58afa9bdf97beb3cf2fe94",
+    "source_unchanged": true,
+    "bridge_inputs_unchanged": true
+  },
+  "limitations": [
+    "A synthetic 14-row correctness fixture; no throughput, index-pruning or production-capacity claim.",
+    "Date32 eligibility is limited to unguarded native ClickHouse; other date paths remain local.",
+    "DuckDB controls placement; nullable disjunctions may stay local and fetch more source rows.",
+    "Date32 infinity constants are compared to finite ClickHouse rows; physical infinity values are covered by native/custom tests.",
+    "Source byte counts are observed dechunked HTTP bodies excluding discovery, headers and network framing.",
+    "Optional provider gates remain skipped; configured service-user credential files were not isolated.",
+    "Shared Go caches were reused; workspace monitoring is not a filesystem quota.",
+    "Cleanup is a scoped point-in-time readback; no deployment or release was performed."
+  ]
+}
