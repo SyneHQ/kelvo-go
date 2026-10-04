@@ -23,7 +23,7 @@ Reports contain seven fixed intervals from one child-local monotonic clock. The 
 
 Parent and child run the same executable; this is not an independently versioned cross-service protocol. Timings remain outside query statistics, durable jobs and trace context. Metrics use fixed labels, with no SQL, source or tenant identifiers.
 
-For parent phases and access control, see [operations](operations.md#diagnostics). Workload overhead and real multi-process trace acceptance remain tracked in [#24](https://github.com/SyneHQ/kelvo-go/issues/24).
+For parent phases and access control, see [operations](operations.md#diagnostics). [Real CLI OTLP acceptance](tracing-acceptance.md#recorded-result) and [paired telemetry cost](telemetry-overhead.md#recorded-full-comparison) passed on `93339e7` with controlled local workloads. Broker queue timing, separate source/compute attribution and deployment-specific measurements remain in [#24](https://github.com/SyneHQ/kelvo-go/issues/24).
 
 ## Validation
 

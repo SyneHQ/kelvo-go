@@ -15,7 +15,9 @@ Previously running handles must remain failed/cancelled and reject results with 
 
 The fixture restarts only a worker observed exiting with the fixed lease-loss diagnostic. It verifies old descendants are gone, waits a conservative lease-expiry bound, and reuses the exact configuration with a fresh owner. Original 10-second cancellation and 25-second queued-recovery deadlines remain unchanged. A broker trial where neither worker fences does not exercise this restart path; the report records which workers actually exited.
 
-Use `--managed-scratch` for [ownership-based recovery](worker-scratch.md). The runner verifies the sandbox inherited a lease before injecting the fault. SIGKILL leftovers must be reclaimed before verdict; the harness does not delete them to manufacture a pass. Omitting the flag tests legacy temp behavior.
+Use `--managed-scratch` for [ownership-based recovery](worker-scratch.md). Before worker SIGKILL, the runner waits up to four seconds for an owned sandbox child holding the inode-matched lease, rechecking the original query states, pending results and process identities. Timeout or observation failure prevents the fault. This proves child lease ownership, not which query created the child.
+
+SIGKILL leftovers must be reclaimed before verdict; the harness does not delete them to manufacture a pass. Omitting the flag tests legacy temp behavior.
 
 ## Run on an isolated Linux test host
 
@@ -59,6 +61,7 @@ These include fixture assertions; they are not recovery SLAs or latency percenti
 | [Initial harness](evidence/process-loss-initial-harness-failure.json) | Legacy scratch remained; broker sampler bookkeeping race was fixed |
 | [Legacy scratch](evidence/process-loss-legacy-scratch-failure.json) | Execution/recovery passed but one workspace remained; managed scratch addresses this gap |
 | [Cancellation observation](evidence/process-loss-cancellation-observation-failure.json) | Harness required the first response to be 200 without retaining its status; bounded cancellation/status retries now handle 409/429/503 or transport failure |
+| [Child readiness](evidence/process-loss-child-readiness-failure.json) | CI stopped before worker SIGKILL after one zero lease observation. Running can precede child startup; the bounded readiness check replaces that single observation. The original cause remains undetermined. |
 
 Cancellation retries never resubmit SQL or repeat result claims. The passing run needed no retry; controls test transient failures/deadlines.
 

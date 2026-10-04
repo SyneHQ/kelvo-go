@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "passed": false,
+  "ci": {
+    "run_url": "https://github.com/SYNEHQ/kelvo-go/actions/runs/37189529115",
+    "head_revision": "1ced5497e350483e3d6cb1c65902abef7d147b55",
+    "artifact_id": 11297739436,
+    "artifact_zip_sha256": "8a5c43b57dc4501b896a43d62f83f53c81212f39744b73e9bdb95ca3fb23967e",
+    "report_sha256": "056bb552fcbaad4bead772da13a65f000855d3ebfc380c66c8246267b5c24817"
+  },
+  "checked_at": "2026-10-04T08:49:48.489348+00:00",
+  "scope": "Bounded single-host process termination under admitted mixed jobs; not multi-host HA, snapshot publication loss, provider faults or sustained capacity",
+  "checks": [
+    {
+      "test": "startup",
+      "passed": true,
+      "seconds": 7.961,
+      "workers": 2,
+      "tenants": 2,
+      "broker_replicas": 3,
+      "source_rows_per_tenant": 100000,
+      "dataset": "Deterministic synthetic Parquet with nullable integers and tenant markers",
+      "gateways": 2,
+      "max_http_requests_per_gateway": 8,
+      "fault_signals": "SIGKILL of exact owned identities",
+      "original_configuration_count": 12,
+      "managed_scratch": true
+    },
+    {
+      "test": "gateway_loss_under_admitted_load",
+      "passed": true,
+      "seconds": 1.197,
+      "running_before_fault": 2,
+      "queued_before_fault": 2,
+      "surviving_tenant_exact_result": true,
+      "failed_attempt_result_rejected": true,
+      "queued_handles_preserved": true,
+      "replay_scope": "Original failed handles remain terminal and reject result requests before and after recovery; no exactly-once source execution claim",
+      "replacement_gateway_ready": true,
+      "surviving_gateway": 2
+    },
+    {
+      "test": "worker_loss_under_admitted_load",
+      "passed": false,
+      "category": "SANDBOX_WORKER_DID_NOT_INHERIT_SCRATCH_LEASE",
+      "seconds": 0.043
+    },
+    {
+      "test": "broker_loss_under_admitted_load",
+      "passed": false,
+      "category": "DEPENDENCY_FAILED"
+    },
+    {
+      "test": "cleanup",
+      "passed": true,
+      "seconds": 2.077,
+      "forced_application_kills": 0,
+      "observed_live_descendants": 0,
+      "worker_scratch_directories": 0,
+      "original_configurations_untouched": true,
+      "original_configurations_verified": true,
+      "all_owned_brokers_healthy": true,
+      "intentional_fault_kills": 1
+    }
+  ],
+  "script_sha256": "8ce67ca9f2f5972de28be2b655b4764f96bb0a65c8f68e4ef29860af5c9c8df8",
+  "operational_script_sha256": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639",
+  "fixture_script_sha256": "e60495da2807690c6177f40a87c9c12fcc0793fd0a7e06510b795b83ce245f60",
+  "binary_sha256": "57e0eb731c7070c76e315c66073526ff015251cf06b9c39f4bf20f5a03e6c14a",
+  "sandbox_sha256": "a2dc9f21d53654d740722288172673558580f11597f6ad7ed5a52e7fca7b7697",
+  "worker_fault_injected": false,
+  "finding": "The worker gate stopped before SIGKILL after one zero lease observation. Running can precede subprocess startup. This establishes missing fixture synchronization; the original observation cannot distinguish early startup, missing inheritance or a process-read failure.",
+  "correction": "Wait within four seconds for a fresh owned descendant holding the inode-matched managed lease. Preserve the original Running/Queued handles and pending results. Refuse fault injection on timeout, state change, observation error or changed target identity.",
+  "evidence_boundary": "Lease ownership identifies an owned managed sandbox child, not a particular query. This failed run does not exercise worker-loss or broker-loss recovery. A corrected run must pass separately; do not replace this failure."
+}

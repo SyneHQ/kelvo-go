@@ -76,6 +76,8 @@ Implement `Driver` and `Relation` from the public [`federation` package](../fede
 
 ## Validation
 
+[Bound predicate acceptance](evidence/bound-predicate-eligibility-f92ee68.json) passed on `f92ee68`: 14 required tests in both regular and race lanes, plus stub, vet and CLI build gates. The record preserves the failed `f15bcdb` VM/CI runs, skipped tests and cleanup evidence. These fixture checks do not certify live providers or throughput.
+
 [Expanded acceptance](validation.md#expanded-federation-and-public-adapter-sdk) separates live SQL Server, protocol fixtures and public SDK checks from pending live Oracle/Snowflake/BigQuery/Databricks acceptance.
 
 [Initial live checks](validation.md#duckdb-custom-federation-adapter) cover exact values, filtering, self-joins and CSV joins. [NYC Taxi capacity tests](federation-capacity.md) cover larger joins, sorting, constrained memory, remote delivery and tenant workloads. Use their recorded conditions when citing throughput; fixture measurements are not general production capacity.
