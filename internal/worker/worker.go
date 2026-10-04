@@ -6,6 +6,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,6 +63,9 @@ type Outcome struct {
 	timingMalformed bool
 }
 type Executor struct {
+	// Bound definitions are private; exported Config is a detached inspection
+	// copy and cannot retarget queries or copied export executors after binding.
+	catalogBinding    *boundCatalog
 	Containment       *containment.Manager
 	ContainmentBudget containment.Budget
 	Tracing           *tracing.Recorder
@@ -79,6 +83,60 @@ type Executor struct {
 	SourceHealth          *telemetry.SourceHealth
 	SourceAdmission       SourceAdmitter
 	Secrets               SecretResolver
+}
+
+type boundCatalog struct {
+	config catalog.Config
+	digest string
+}
+
+type catalogAuthorityKey struct{}
+
+// WithCatalogAuthority carries authenticated execution authority independently
+// of row policies. Empty explicitly means legacy-unbound; absence is reserved
+// for trusted operator work such as a worker's startup probe.
+func WithCatalogAuthority(ctx context.Context, expected string) (context.Context, error) {
+	if ctx == nil || (expected != "" && !validCatalogFingerprint(expected)) {
+		return nil, query.NewError("CONFIGURATION_ERROR", "Invalid catalog authority")
+	}
+	return context.WithValue(ctx, catalogAuthorityKey{}, expected), nil
+}
+
+func validCatalogFingerprint(expected string) bool {
+	if len(expected) != 64 {
+		return false
+	}
+	decoded, err := hex.DecodeString(expected)
+	return err == nil && hex.EncodeToString(decoded) == expected
+}
+
+// WithCatalogBinding returns a separate executor pinned to approved operator
+// definitions. Rebinding checks the effective private catalog, never a caller's
+// subsequently mutated public Config. Source secrets are not resolved here.
+func (e *Executor) WithCatalogBinding(expected string) (*Executor, error) {
+	bad := query.NewError("CONFIGURATION_ERROR", "Worker catalog authority does not match")
+	if e == nil || !validCatalogFingerprint(expected) {
+		return nil, bad
+	}
+	config := e.Config
+	if e.catalogBinding != nil {
+		if e.catalogBinding.digest != expected {
+			return nil, bad
+		}
+		config = e.catalogBinding.config
+	}
+	private, digest, err := catalog.AuthoritySnapshot(config)
+	if err != nil || digest != expected {
+		return nil, bad
+	}
+	public, _, err := catalog.AuthoritySnapshot(private)
+	if err != nil {
+		return nil, bad
+	}
+	bound := *e
+	bound.Config = public
+	bound.catalogBinding = &boundCatalog{config: private, digest: digest}
+	return &bound, nil
 }
 
 func New(c catalog.Config, l query.Limits) (*Executor, error) {
@@ -108,6 +166,24 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 }
 
 func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink) (stats query.Stats, resultErr error) {
+	if expected, present := ctx.Value(catalogAuthorityKey{}).(string); present {
+		actual := ""
+		if e.catalogBinding != nil {
+			actual = e.catalogBinding.digest
+		}
+		if actual != expected {
+			return stats, query.NewError("PERMISSION_DENIED", "Query catalog authority does not match")
+		}
+	}
+	if e.catalogBinding != nil {
+		bound := *e
+		bound.Config = e.catalogBinding.config
+		return bound.execute(ctx, r, sink)
+	}
+	return e.execute(ctx, r, sink)
+}
+
+func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink) (stats query.Stats, resultErr error) {
 	parent := ctx
 	start := time.Now()
 	var admissionWait time.Duration
