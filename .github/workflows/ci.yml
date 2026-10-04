@@ -22,6 +22,8 @@ jobs:
           cache: true
       - name: Verify storage gate control flow
         run: python3 -m unittest discover -s scripts -p test_storage_conformance.py
+      - name: Verify telemetry measurement receipts and service guards
+        run: python3 -m unittest discover -s scripts/telemetry_overhead -p test_harness.py
       - name: Verify relational fixture evidence and cleanup
         run: python3 -m unittest discover -s scripts -p test_relational_acceptance.py
       - name: Verify analytical evidence reconciliation
