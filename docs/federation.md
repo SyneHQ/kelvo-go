@@ -53,8 +53,9 @@ PostgreSQL/MySQL require their [native verified-TLS connection formats](sources-
 | --- | --- |
 | Requested columns | Source SQL; required Arrow order retained |
 | Eligible integer/Boolean comparisons, NULL checks and AND/OR | Native source with exact types; policy-guarded tables use the local guard |
+| Arrow Date32 comparisons and NULL checks | Unguarded native ClickHouse; exact signed epoch days |
 | Query predicates for custom adapters | DuckDB; declarations do not enable pushdown |
-| String, decimal, float, temporal and other predicates, including NULL checks | DuckDB |
+| String, decimal, float, other temporal and unsupported predicates, including NULL checks | DuckDB |
 | Unsupported required pushed predicate | Explicit error |
 | Residual expressions, joins, aggregates, ordering and LIMIT | DuckDB; no general source pushdown |
 
@@ -62,7 +63,11 @@ Each bound table has its own eligible columns, derived after discovery and polic
 
 Disabling query pushdown never disables tenant policy. The guard still removes unauthorized rows and hidden columns before DuckDB sees them; raw source rows remain charged to scan limits.
 
+ClickHouse `Date`/`Date32` fields qualify when discovery returns Arrow Date32. Comparisons use `toInt32(column)` and exact day constants, preserving pre-epoch dates, NULLs and DuckDB infinity ordering. DuckDB chooses placement; nullable disjunctions may stay local. Date64, timestamps and date filters on guarded tables, snapshots or custom adapters stay in DuckDB. Date IN lists receive no new optional hints.
+
 Sparse integer IN lists may become optional OR-of-equality hints while DuckDB keeps the original predicate. Hints permit at most 256 non-NULL constants of one supported type. They are omitted if the plan exceeds 32 KiB, 256 top-level filters or 1,024 predicate nodes, and are never extracted from an OR arm. Unsupported, negative, NULL-containing or larger lists keep local evaluation or another supported optimizer plan; every SQL spelling is not guaranteed to push down.
+
+Join-generated filters use the same per-table type boundaries. Ineligible late hints stay local; required static predicates are still enforced or rejected explicitly.
 
 ClickHouse supplies ArrowStream. PostgreSQL/MySQL/SQL Server/Oracle convert native driver rows to Arrow; Snowflake/BigQuery/Databricks convert paged JSON. These latter routes do not provide columnar source wire transport.
 

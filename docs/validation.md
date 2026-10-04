@@ -2,7 +2,7 @@
 
 This is recorded developer-preview evidence, tied to specific binaries and fixtures. Use [production status](production-status.md) for current release gates; these results do not certify arbitrary multi-tenant deployments.
 
-Latest: [merged-cargo acceptance](evidence/cargo-b1a0ea5-acceptance.json) passed both CI jobs on `b1a0ea5`, including worker/broker export gates and all 15 notebooks. [Export lifecycle acceptance](export-ci-diagnostics.md) separates these direct passes from the retained historical failure and its unknown cause. [Earlier combined validation](export-validation.md) remains tied to `d144a43`.
+Baseline: [merged-cargo acceptance](evidence/cargo-b1a0ea5-acceptance.json) passed both CI jobs on `b1a0ea5`, including worker/broker export gates and all 15 notebooks. [Export lifecycle acceptance](export-ci-diagnostics.md) separates these direct passes from the retained historical failure and its unknown cause. [Earlier combined validation](export-validation.md) remains tied to `d144a43`.
 
 The [telemetry comparison](telemetry-overhead.md#recorded-full-comparison) passed all 48 epochs on `93339e7`, with 96 warmups and 96 measured queries. Paired metrics/tracing ratios describe one local million-row fixture; they do not establish deployment capacity or separate source/compute time. Both smoke attempts and full cleanup evidence are retained.
 
@@ -21,13 +21,16 @@ The optional Go/C++ bridge supports ClickHouse, PostgreSQL, MySQL, SQL Server, O
 | Evidence | Executed scope |
 | --- | --- |
 | [Build](evidence/federation-expansion.json) | Ordinary/bridge tests and vet; SDK/catalog/federation/bridge/DuckDB/worker race checks with `cgocheck2` on Azure |
+| [Date32 and join eligibility](evidence/federation-date32.json) | 24 live ClickHouse cases with pushdown on/off; 40 required correctness/race tests, 27 portable tests and 16 harness controls on `416e251` |
 | [SQL Server 2022](evidence/federation-sqlserver.json) | 25 native/federated checks: exact types including 100ns timestamps, pushdown, self/cross-source joins, CTE/windows, verified TLS negatives, SELECT grants, namespaces, limits, observed cancellation and recovery |
 | Snowflake/BigQuery/Databricks protocol fixtures | HTTPS types/pages/failures/cancellation; real DuckDB joins of fixture results with CSV |
 | [External SDK example](evidence/federation-adapter-example.json) | 13 CLI/direct-worker cases: external-module build, CSV join, pushdown/local filters, separate worker and limits without partial export |
 
 Pinned build versions: Go 1.26.8, DuckDB 1.5.6, duckdb-go 2.10506.0 and Arrow Go 18.5.1. Live Oracle TCPS, Snowflake, BigQuery and Databricks acceptance remains pending; protocol fixtures establish neither warehouse grants nor billing behavior.
 
-Integer/Boolean filters can push down. String, decimal, float and temporal predicates, including their NULL checks, remain in DuckDB; unsupported required predicates fail. Private pointer scanners cannot be called from user SQL.
+Integer/Boolean filters can push down, as can Arrow Date32 on unguarded native ClickHouse tables. Other temporal, string, decimal and float predicates stay in DuckDB; unsupported required predicates fail. Private pointer scanners cannot be called from user SQL. See the [current type boundaries](federation.md#what-runs-where).
+
+In the 14-row Date32 fixture, epoch equality fetched 2 rows instead of 14 and 400 HTTP body bytes instead of 496, with identical typed results. Total setup/query/close time was 0.621s with pushdown versus 0.598s disabled: avoided transfer, no latency win or throughput/pruning claim. The record retains the initial failures and a reproduced late-join bug; the corrected bridge passed both sparse and singleton join regressions.
 
 Adapters are trusted compiled-in code responsible for source authorization, verified transport and cleanup. The core checks selection, schema, limits and borrowed batches; the SDK is not an untrusted-plugin sandbox. Reproduce with the [SQL harness](../scripts/federation_sql_acceptance.py) and [SDK harness](../scripts/test_federation_adapter_example.py). SQL fixtures were removed while existing ClickHouse data was preserved. No new throughput claim follows.
 
