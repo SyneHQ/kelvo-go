@@ -213,6 +213,13 @@ func customError(err error) error {
 }
 
 func (t *Table) prepareCustomScan(plan federationapi.ScanPlan) (federationapi.ScanPlan, *arrow.Schema, error) {
+	// This transport does not define predicate semantics. Refuse required
+	// filters before opening a scan relation (Open also performs discovery).
+	// Bound user predicates remain in DuckDB; access.Relation applies policy
+	// predicates locally before exposing protected rows to the query engine.
+	if len(plan.Filters) != 0 && len(t.config.Sources) == 1 && t.config.Sources[0].Type == "arrow_flight" {
+		return plan, nil, query.NewError("UNSUPPORTED", "Flight SQL federation does not support required source predicates")
+	}
 	if len(plan.Columns) > 1024 || len(plan.Filters) > 256 {
 		return plan, nil, query.NewError("UNSUPPORTED", "Federation scan plan exceeds supported complexity")
 	}

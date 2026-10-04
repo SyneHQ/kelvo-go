@@ -43,7 +43,7 @@ The [durable reader registry](durable-reader-registry.md), [object-store adapter
 | Arrow delivery and optional LZ4 | Available; decoded limits remain unchanged |
 | Durable exports | Delivered: [opt-in federated jobs and repeat downloads](exports.md). [Merged-cargo gates](export-ci-diagnostics.md) passed on NATS 2.14.7 and 2.15.0; the earlier failure's cause remains unknown. Sustained capacity, live providers and deployment acceptance remain separate |
 | Result cache | Pending authorization/generation keys, bounded fills and revocation fencing |
-| Eight federation adapters | Available; live Oracle/warehouse gates remain open |
+| Eight database adapters and Flight SQL federation | Available; live Oracle/warehouse gates remain open; Flight SQL compatibility is service-specific |
 | Automatic remote joins/aggregates | Pending bound-plan integration and parity checks |
 | Flight SQL | Client available; read-only server pending |
 | PostgreSQL/MySQL CDC | Pending checkpoint/publication and replay contracts |

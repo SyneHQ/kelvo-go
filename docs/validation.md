@@ -22,7 +22,7 @@ The first VM run passed regular checks but its monitor interrupted race validati
 
 ## Expanded federation and public adapter SDK
 
-The optional Go/C++ bridge supports ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and Databricks. See the [adapter guide](federation-adapters.md) for namespaces, types and the public `github.com/SYNEHQ/kelvo-go/federation` interface.
+The optional Go/C++ bridge supports ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery, Databricks and compatible Flight SQL services. See the [adapter guide](federation-adapters.md) for namespaces, types and the public `github.com/SYNEHQ/kelvo-go/federation` interface.
 
 | Evidence | Executed scope |
 | --- | --- |
@@ -31,6 +31,9 @@ The optional Go/C++ bridge supports ClickHouse, PostgreSQL, MySQL, SQL Server, O
 | [SQL Server 2022](evidence/federation-sqlserver.json) | 25 native/federated checks: exact types including 100ns timestamps, pushdown, self/cross-source joins, CTE/windows, verified TLS negatives, SELECT grants, namespaces, limits, observed cancellation and recovery |
 | Snowflake/BigQuery/Databricks protocol fixtures | HTTPS types/pages/failures/cancellation; real DuckDB joins of fixture results with CSV |
 | [External SDK example](evidence/federation-adapter-example.json) | 13 CLI/direct-worker cases: external-module build, CSV join, pushdown/local filters, separate worker and limits without partial export |
+| [Flight SQL](evidence/flight-sql-federation.json) | Two SQL-backed TLS fixture services: exact cross-source CTE/join results, policy/residual enforcement, limits and cancellation; regular/race/native/race-with-`cgocheck2`, vet and CLI build passed on `a6a11b1` |
+
+Flight SQL projects registered columns; user filters and joins stay in DuckDB. All eight TLS fixture checks passed in both native profiles. The evidence retains the first failed fixture run: its collector borrowed released Arrow strings and used lossy decimal display text. Copying strings and comparing exact decimals fixed the collector; production transport was unchanged. One expected build-mode skip per native profile is recorded. External provider and capacity acceptance remain separate. [Configure Flight SQL](federation-flight-sql.md).
 
 Pinned build versions: Go 1.26.8, DuckDB 1.5.6, duckdb-go 2.10506.0 and Arrow Go 18.5.1. Live Oracle TCPS, Snowflake, BigQuery and Databricks acceptance remains pending; protocol fixtures establish neither warehouse grants nor billing behavior.
 

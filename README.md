@@ -52,8 +52,8 @@ One query runs on one worker. Add workers to run more independent queries. [Arch
 | Path | Sources |
 | --- | --- |
 | DuckDB attachments | CSV, Parquet, DuckDB, SQLite, PostgreSQL, MySQL |
-| Optional native federation bridge | ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery, Databricks |
-| Native queries | The eight federation databases above, MongoDB, D1, Trino/Presto, Elasticsearch, Exasol, Spanner, Ignite 2, Athena, DynamoDB, Cosmos DB, Flight SQL |
+| Optional native federation bridge | ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery, Databricks, [Flight SQL](docs/federation-flight-sql.md) |
+| Native queries | The federation sources above, MongoDB, D1, Trino/Presto, Elasticsearch, Exasol, Spanner, Ignite 2, Athena, DynamoDB, Cosmos DB |
 | External adapters | Additional engines through configured `dbapi` or Flight SQL services |
 
 Use the [coverage matrix](docs/source-coverage.md) for exact modes, types and validation. Native connector support does not imply federation support. Live sources have no shared transaction snapshot.

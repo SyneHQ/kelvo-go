@@ -48,10 +48,10 @@ Use this matrix to choose a query route. Query support does not imply metadata b
 | `ga4` | External adapter |
 | `stripe` | External adapter |
 | `redis` | External adapter |
-| `arrow_flight` | Native Flight SQL only |
+| `arrow_flight` | Native queries; opt-in [Flight SQL federation](federation-flight-sql.md) |
 | `google_sheets` | External adapter |
 
-Start with [native configuration](../deploy/examples/sources-native.yml) and the [source guides](usage.md#source-guides). The [native bridge](federation.md) supports selected tables from eight engines; [custom adapters](federation-adapters.md) use the public Go contract.
+Start with [native configuration](../deploy/examples/sources-native.yml) and the [source guides](usage.md#source-guides). The [native bridge](federation.md) supports selected tables from eight database engines and compatible Flight SQL services; [custom adapters](federation-adapters.md) use the public Go contract.
 
 ## Acceleration and federation capabilities
 
@@ -67,7 +67,8 @@ All 24 built-in native routes can feed full-refresh Arrow-to-Parquet snapshots w
 | SQL Server, Oracle | Eligible | [Opt-in native bridge](federation-adapters.md); selected tables and supported scalar types | Live acceleration acceptance pending; federation validation is separate |
 | Snowflake, Databricks, BigQuery | Eligible | [Opt-in native bridge](federation-adapters.md); native API transfer/type limits apply | Live acceleration acceptance pending; federation validation is separate |
 | Exasol, Ignite 2, Spanner, Athena, Elasticsearch | Eligible | No | Live acceleration acceptance pending |
-| Trino, Presto, Flight SQL | Eligible | No; the remote engine may itself federate | Live acceleration acceptance pending |
+| Trino, Presto | Eligible | No; the remote engine may itself federate | Live acceleration acceptance pending |
+| Flight SQL | Eligible | [Opt-in native bridge](federation-flight-sql.md); explicit ANSI profile, projection only | Live acceleration acceptance pending |
 | Cloudflare D1 | Conditional: value-inferred schema | No | Live acceleration acceptance pending |
 | MongoDB | Eligible through restricted SQL or read-only aggregation pipeline; BSON documents stay binary | No | [Live MongoDB 8.0.32 refresh, exact values and rejected writes](evidence/mongodb-acceleration.json) |
 | DynamoDB, Cosmos DB for NoSQL | Eligible; document payloads stay binary | No | Live acceleration acceptance pending |

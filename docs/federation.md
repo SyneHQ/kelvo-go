@@ -1,6 +1,6 @@
 # Native DuckDB federation
 
-Join selected source tables in DuckDB through Kelvo's optional Go/C++ Arrow bridge. Built-in adapters cover ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and Databricks on Linux amd64.
+Join selected source tables in DuckDB through Kelvo's optional Go/C++ Arrow bridge. Built-in adapters cover ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and Databricks on Linux amd64. [Flight SQL](federation-flight-sql.md) adds compatible services through a projection-only adapter.
 
 ## Configure selected tables
 
@@ -40,6 +40,7 @@ Only listed tables become views. Names are plain SQL identifiers, with at most 3
 | SQL Server, Snowflake, Databricks | `database` and `schema` |
 | Oracle | `schema`; omit `database` |
 | BigQuery | `database` is data project; `schema` is dataset |
+| Flight SQL | `schema`; omit `database`; explicit ANSI profile |
 
 Use exact remote names, without search-path inference. See the [three-source example](../examples/federation-relational.yml) and [additional configurations](federation-adapters.md#configure-exact-remote-names).
 
@@ -54,7 +55,7 @@ PostgreSQL/MySQL require their [native verified-TLS connection formats](sources-
 | Requested columns | Source SQL; required Arrow order retained |
 | Eligible integer/Boolean comparisons, NULL checks and AND/OR | Native source with exact types; policy-guarded tables use the local guard |
 | Arrow Date32 comparisons and NULL checks | Unguarded native ClickHouse; exact signed epoch days |
-| Query predicates for custom adapters | DuckDB; declarations do not enable pushdown |
+| Query predicates for custom adapters and Flight SQL | DuckDB; declarations do not enable pushdown |
 | String, decimal, float, other temporal and unsupported predicates, including NULL checks | DuckDB |
 | Unsupported required pushed predicate | Explicit error |
 | Residual expressions, joins, aggregates, ordering and LIMIT | DuckDB; no general source pushdown |
@@ -69,7 +70,7 @@ Sparse integer IN lists may become optional OR-of-equality hints while DuckDB ke
 
 Join-generated filters use the same per-table type boundaries. Ineligible late hints stay local; required static predicates are still enforced or rejected explicitly.
 
-ClickHouse supplies ArrowStream. PostgreSQL/MySQL/SQL Server/Oracle convert native driver rows to Arrow; Snowflake/BigQuery/Databricks convert paged JSON. These latter routes do not provide columnar source wire transport.
+ClickHouse supplies ArrowStream; Flight SQL supplies Arrow batches over verified TLS. PostgreSQL/MySQL/SQL Server/Oracle convert native driver rows to Arrow; Snowflake/BigQuery/Databricks convert paged JSON. These latter routes do not provide columnar source wire transport.
 
 Each scan owns an independent reader, retains one batch for handoff and waits for consumption. C exports pin Go buffers until DuckDB releases them. Connections/databases close before callback factories; DuckDB may copy during type conversion, so complete queries are not guaranteed zero-copy.
 
