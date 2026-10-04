@@ -32,6 +32,7 @@ func predicateSchema() *arrow.Schema {
 		{Name: "float64", Type: arrow.PrimitiveTypes.Float64},
 		{Name: "decimal", Type: &arrow.Decimal128Type{Precision: 20, Scale: 3}},
 		{Name: "date", Type: arrow.FixedWidthTypes.Date32},
+		{Name: "date64", Type: arrow.FixedWidthTypes.Date64},
 		{Name: "timestamp", Type: &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: "UTC"}},
 		{Name: "null", Type: arrow.Null},
 	}, nil)
@@ -44,7 +45,7 @@ func TestPredicateCapabilitiesNativeDialects(t *testing.T) {
 		dialect scanDialect
 		want    []string
 	}{
-		{"clickhouse", dialectClickHouse, append(slices.Clone(allIntegers), "boolean")},
+		{"clickhouse", dialectClickHouse, append(slices.Clone(allIntegers), "boolean", "date")},
 		{"postgres", dialectPostgres, []string{"i16", "i32", "i64", "u32", "boolean"}},
 		{"mysql", dialectMySQL, allIntegers},
 		{"sqlserver", dialectSQLServer, []string{"i16", "i32", "i64", "u8", "boolean"}},
@@ -92,6 +93,7 @@ func TestPredicateCapabilitiesCustomDeclarationsRemainAdvisory(t *testing.T) {
 	declarations := []federationapi.Capabilities{
 		{}, {Version: federationapi.CapabilityVersion + 1}, full,
 		{Version: federationapi.CapabilityVersion, Comparisons: []federationapi.ComparisonCapability{{Type: "int64", Operators: []string{"eq"}}}},
+		{Version: federationapi.CapabilityVersion, Comparisons: []federationapi.ComparisonCapability{{Type: "date32", Operators: []string{"eq", "ne", "lt", "le", "gt", "ge"}}}},
 	}
 	drivers := []federationapi.Driver{predicateNoIODriver{}, predicateAdvisoryDriver{
 		declaration: func() federationapi.Capabilities { panic("advisory declaration must not be called") },
@@ -117,7 +119,7 @@ func TestPredicateCapabilitiesCustomDeclarationsRemainAdvisory(t *testing.T) {
 func TestPredicateCapabilitiesGuardUsesOnlyExposedLocalColumns(t *testing.T) {
 	fields := append(predicateSchema().Fields(), arrow.Field{Name: "tenant_id", Type: arrow.PrimitiveTypes.Int64})
 	raw := arrow.NewSchema(fields, nil)
-	visible := []string{"boolean", "u64", "u32", "u16", "u8", "i64", "i32", "i16", "i8", "text", "decimal"}
+	visible := []string{"boolean", "u64", "u32", "u16", "u8", "i64", "i32", "i16", "i8", "text", "decimal", "date", "date64", "timestamp"}
 	guard, err := access.NewRelation(raw, access.TablePolicy{Columns: visible,
 		Rows: &access.Predicate{Kind: "comparison", Column: "tenant_id", Op: "eq", Type: "int64", Value: "7"}},
 		func(context.Context, federationapi.ScanPlan) (array.RecordReader, error) {
@@ -131,6 +133,7 @@ func TestPredicateCapabilitiesGuardUsesOnlyExposedLocalColumns(t *testing.T) {
 		table *Table
 	}{
 		{"native", &Table{dialect: dialectMySQL}},
+		{"clickhouse", &Table{dialect: dialectClickHouse}},
 		{"unknown", &Table{dialect: scanDialect(255)}},
 		{"custom", &Table{customDriver: predicateNoIODriver{}}},
 		{"snapshot", &Table{snapshot: &snapshotTable{}}},
