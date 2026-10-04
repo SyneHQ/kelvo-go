@@ -1,0 +1,738 @@
+{
+  "schema_version": 1,
+  "name": "Gateway authentication state acceptance",
+  "organization": "SYNEHQ",
+  "scope": "Source-only Linux acceptance of opt-in durable gateway authentication state.",
+  "limitations": [
+    "These checks establish no throughput, capacity, or production performance result.",
+    "Persistence is local to one gateway; these checks do not establish cluster-wide revocation.",
+    "Optional provider, broker, and containment integration tests listed as skipped remain separate gates.",
+    "The workspace monitor samples logical bytes; it is not an atomic snapshot or filesystem quota.",
+    "Shared Go caches and files unlinked but still open are outside the tree byte counter."
+  ],
+  "source": {
+    "revision": "6bbbc71bca24a366c70832994e6e2933b6277b1c",
+    "tree": "09a501d26d9d09b2d8be99473c8e351ab9d66fcf",
+    "archive_sha256": "22a8ce625350b3014eb4c1f97669eb937036c32783ebda911b0c87198ea60ea6",
+    "manifest_sha256": "90c5fa5c6a90152dab7e5145b19bc5ef0ab9bde4c0c2db3ecc6fbddaf0165030",
+    "file_count": 1084,
+    "unchanged_before_and_after": true
+  },
+  "runtime_validation_accepted": true,
+  "go_version": "go version go1.26.8 linux/amd64",
+  "started_at": "2026-10-04T16:14:03.553357+00:00",
+  "finished_at": "2026-10-04T16:17:15.084926+00:00",
+  "required_coverage": {
+    "substantive_new_roots": 39,
+    "subprocess_helper_roots": 1,
+    "legacy_roots": 6,
+    "explicit_crash_subtests": 4,
+    "required_per_test_stage": 50
+  },
+  "stages": [
+    {
+      "name": "go-version",
+      "passed": true,
+      "accepted": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 0.20043003599857911,
+      "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00"
+    },
+    {
+      "name": "regular",
+      "passed": true,
+      "accepted": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 90.29826890700497,
+      "log_sha256": "64696cb1c7285c19cab8ecfdec11462c8fab97b413bab2f3ac2dd469f20af0d8",
+      "test_pass_events": 810,
+      "optional_skips": [
+        "github.com/SYNEHQ/kelvo-go/cmd/kelvo:TestContainedNodeStartupPlacement",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestCatalogBindingActualGuardedSnapshot",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestCatalogBindingActualNodeAndExportExecution",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportClusterActualWorkerLifecycle",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerCancellationReapsSandboxAndReservations",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerConstructorBindsKernelContainment",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerCrashAcrossLocalCommit",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerSourceQuotaRevocationReapsChild",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerUsesSandboxAndExternalCustody",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSAccountIsolation",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSExportRetainedLifecycleAndProvisioning",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSExportRuntimeACLAndAccountIsolation",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSRefreshQueueProvisionDedupRetry",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSRefreshStatusDurabilityResetAndBudget",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreAdmissionCASAndReuse",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreCorruptJobFailsClosed",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreQueueAndWorkerLease",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreReconcileFailsStaleAssigned",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreRejectsMetadataMismatch",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/multipart",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/single",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS"
+      ],
+      "optional_skip_count": 26,
+      "packages_passed": [
+        "github.com/SYNEHQ/kelvo-go/cmd/kelvo",
+        "github.com/SYNEHQ/kelvo-go/internal/authstate",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster"
+      ],
+      "required_checks": [
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/cmd/kelvo:TestAuthStateCLIArgumentsAndErrorsAreRedacted",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/cmd/kelvo:TestAuthStateCLIInitializesOfflineAndRefusesOverwrite",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/cmd/kelvo:TestAuthStateCLIOutputFailurePreservesInitializedState",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestAuthstateSubprocessHelper",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStateCanonicalRoundTripAndCapacity",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStateDefensiveCopiesAndScopeValidation",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStateOwnershipAndRevisionTransitions",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStateRejectsMalformedOrForeignDocuments",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreBlockedAdmissionRetainsOwnershipUntilQuiescence",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreBlockedCloseRetainsLock",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreBlockedStartupCleansUpWithoutReturnedStore",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreCrashRecoveryAtPublicationBoundaries",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreCrashRecoveryAtPublicationBoundaries/before-write",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreCrashRecoveryAtPublicationBoundaries/directory-synced",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreCrashRecoveryAtPublicationBoundaries/renamed",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreCrashRecoveryAtPublicationBoundaries/staging-synced",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreDeadlineFencedWithoutCancellationDelivery",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreInitializationRequiresSafeExistingParents",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreNoopDoesNotWriteAndOpenReestablishesDurability",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreOpenSyncFailuresReturnNoAuthority",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreProcessLockSurvivesCompetingOpenAndInitialization",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStorePublicationFailuresPoisonAndPreserveRecoverableFloor",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreRejectsUnsafeFilesystemObjectsAndReplacement",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreRestartPreservesRetiredOwnershipAndRevision",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreStartupNeverResetsOrAdoptsStaging",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateBlockedAdmissionExpiresAndRejectsLateSuccess",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateBudgetStartsBeforeLoaderScheduling",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateCloseCancelsAuthorityBeforeWaitingForStorage",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateConfigurationIsOptInCanonicalAndDetached",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateConfiguredFailuresNeverFallBackOrReset",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateGatewayClosePropagatesRedactedFailure",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateInitializerIsCreateOnlyAndExactTenantBound",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateInitializerRejectsMissingConfigBeforeIO",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateLaterConstructorFailureReleasesWriter",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateOmissionPreservesMemoryOnlyShutdown",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateOpenReadAndAdmissionShareOneDeadline",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStatePublicationRechecksOriginalDeadline",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateRejectedCandidateRecoversButUncertaintyLatches",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateRestartFencesRemovedTenantAndPrincipalOwners",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateRestartRetainsRevisionAndExactDocumentDigest",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateRotationPreservesOverlapUntilDurableAdmission",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateScopeAndCandidateRetainOnlyDetachedFingerprints",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateStartupDeadlineOwnsLateOpenAndRead",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateYAMLValidatesWithoutTouchingStorage",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayKeyOverlapAndRevocationPreserveTenantBoundary",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayKeyRevocationCancelsDeliveryWithoutCompletion",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayKeysFailClosedForRevisionEquivocationAndExpiry",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayPrincipalRevocationAtCommitWithholdsEOSWithoutCallback",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestPrincipalFinalCheckObservesDocumentExpiryWithoutTimer",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestPrincipalRetiredTokensRemainBoundedAndCannotBeReassigned",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "race",
+      "passed": true,
+      "accepted": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 93.27790877601365,
+      "log_sha256": "b742c4301bcc0ef42a2f25ef2537fe330f922681c5aeca2792a741f4d930ea27",
+      "test_pass_events": 810,
+      "optional_skips": [
+        "github.com/SYNEHQ/kelvo-go/cmd/kelvo:TestContainedNodeStartupPlacement",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestCatalogBindingActualGuardedSnapshot",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestCatalogBindingActualNodeAndExportExecution",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportClusterActualWorkerLifecycle",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerCancellationReapsSandboxAndReservations",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerConstructorBindsKernelContainment",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerCrashAcrossLocalCommit",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerSourceQuotaRevocationReapsChild",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerUsesSandboxAndExternalCustody",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSAccountIsolation",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSExportRetainedLifecycleAndProvisioning",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSExportRuntimeACLAndAccountIsolation",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSRefreshQueueProvisionDedupRetry",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSRefreshStatusDurabilityResetAndBudget",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreAdmissionCASAndReuse",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreCorruptJobFailsClosed",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreQueueAndWorkerLease",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreReconcileFailsStaleAssigned",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreRejectsMetadataMismatch",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/multipart",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/single",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster:TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS"
+      ],
+      "optional_skip_count": 26,
+      "packages_passed": [
+        "github.com/SYNEHQ/kelvo-go/cmd/kelvo",
+        "github.com/SYNEHQ/kelvo-go/internal/authstate",
+        "github.com/SYNEHQ/kelvo-go/internal/cluster"
+      ],
+      "required_checks": [
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/cmd/kelvo:TestAuthStateCLIArgumentsAndErrorsAreRedacted",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/cmd/kelvo:TestAuthStateCLIInitializesOfflineAndRefusesOverwrite",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/cmd/kelvo:TestAuthStateCLIOutputFailurePreservesInitializedState",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestAuthstateSubprocessHelper",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStateCanonicalRoundTripAndCapacity",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStateDefensiveCopiesAndScopeValidation",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStateOwnershipAndRevisionTransitions",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStateRejectsMalformedOrForeignDocuments",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreBlockedAdmissionRetainsOwnershipUntilQuiescence",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreBlockedCloseRetainsLock",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreBlockedStartupCleansUpWithoutReturnedStore",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreCrashRecoveryAtPublicationBoundaries",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreCrashRecoveryAtPublicationBoundaries/before-write",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreCrashRecoveryAtPublicationBoundaries/directory-synced",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreCrashRecoveryAtPublicationBoundaries/renamed",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreCrashRecoveryAtPublicationBoundaries/staging-synced",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreDeadlineFencedWithoutCancellationDelivery",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreInitializationRequiresSafeExistingParents",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreNoopDoesNotWriteAndOpenReestablishesDurability",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreOpenSyncFailuresReturnNoAuthority",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreProcessLockSurvivesCompetingOpenAndInitialization",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStorePublicationFailuresPoisonAndPreserveRecoverableFloor",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreRejectsUnsafeFilesystemObjectsAndReplacement",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreRestartPreservesRetiredOwnershipAndRevision",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/authstate:TestStoreStartupNeverResetsOrAdoptsStaging",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateBlockedAdmissionExpiresAndRejectsLateSuccess",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateBudgetStartsBeforeLoaderScheduling",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateCloseCancelsAuthorityBeforeWaitingForStorage",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateConfigurationIsOptInCanonicalAndDetached",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateConfiguredFailuresNeverFallBackOrReset",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateGatewayClosePropagatesRedactedFailure",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateInitializerIsCreateOnlyAndExactTenantBound",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateInitializerRejectsMissingConfigBeforeIO",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateLaterConstructorFailureReleasesWriter",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateOmissionPreservesMemoryOnlyShutdown",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateOpenReadAndAdmissionShareOneDeadline",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStatePublicationRechecksOriginalDeadline",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateRejectedCandidateRecoversButUncertaintyLatches",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateRestartFencesRemovedTenantAndPrincipalOwners",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateRestartRetainsRevisionAndExactDocumentDigest",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateRotationPreservesOverlapUntilDurableAdmission",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateScopeAndCandidateRetainOnlyDetachedFingerprints",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateStartupDeadlineOwnsLateOpenAndRead",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayAuthStateYAMLValidatesWithoutTouchingStorage",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayKeyOverlapAndRevocationPreserveTenantBoundary",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayKeyRevocationCancelsDeliveryWithoutCompletion",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayKeysFailClosedForRevisionEquivocationAndExpiry",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayPrincipalRevocationAtCommitWithholdsEOSWithoutCallback",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestPrincipalFinalCheckObservesDocumentExpiryWithoutTimer",
+          "passed": true
+        },
+        {
+          "marker": "github.com/SYNEHQ/kelvo-go/internal/cluster:TestPrincipalRetiredTokensRemainBoundedAndCannotBeReassigned",
+          "passed": true
+        }
+      ]
+    },
+    {
+      "name": "vet",
+      "passed": true,
+      "accepted": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 2.0270477940212004,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "build",
+      "passed": true,
+      "accepted": true,
+      "exit_code": 0,
+      "timed_out": false,
+      "seconds": 5.403334086004179,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "binary": {
+    "sha256": "1475e642acab958b29626151fa4a160952ddcda87ed625077a78465b147167ae",
+    "size_bytes": 158068552
+  },
+  "resources": {
+    "configured_limits": {
+      "cpu_percent": 200,
+      "memory_bytes": 8589934592,
+      "swap_bytes": 0,
+      "tasks": 512,
+      "runtime_seconds": 1800,
+      "stop_seconds": 30,
+      "max_file_bytes": 2147483648,
+      "monitored_workspace_bytes": 12884901888,
+      "minimum_free_bytes": 12884901888
+    },
+    "temporary_filesystem": "ext4",
+    "peak_observed_workspace_bytes": 349316956,
+    "monitor_samples_total": 40,
+    "monitor_samples_retained": 16,
+    "resource_failures": [],
+    "all_retained_samples_passed": true
+  },
+  "monitor_controls": {
+    "passed": true,
+    "fixture_removed": true,
+    "case_count": 18,
+    "cases": [
+      {
+        "name": "depth-budget",
+        "passed": true
+      },
+      {
+        "name": "directory-replaced-by-file",
+        "passed": true
+      },
+      {
+        "name": "disk-usage-error",
+        "passed": true
+      },
+      {
+        "name": "entry-budget",
+        "passed": true
+      },
+      {
+        "name": "exact-threshold-admission",
+        "passed": true
+      },
+      {
+        "name": "nofollow-and-fifo",
+        "passed": true
+      },
+      {
+        "name": "old-iterator-boundary",
+        "passed": true
+      },
+      {
+        "name": "old-real-enotdir-race",
+        "passed": true
+      },
+      {
+        "name": "persistent-enotdir-is-failure",
+        "passed": true
+      },
+      {
+        "name": "persistent-real-permission-denial",
+        "passed": true
+      },
+      {
+        "name": "real-free-space-measurement",
+        "passed": true
+      },
+      {
+        "name": "real-workspace-limit",
+        "passed": true
+      },
+      {
+        "name": "removed-directory",
+        "passed": true
+      },
+      {
+        "name": "scan-time-budget",
+        "passed": true
+      },
+      {
+        "name": "surviving-directory-enumeration-failure",
+        "passed": true
+      },
+      {
+        "name": "temporary-permission-denial",
+        "passed": true
+      },
+      {
+        "name": "unexpected-failure-explicit",
+        "passed": true
+      },
+      {
+        "name": "unknown-metadata-failure",
+        "passed": true
+      }
+    ],
+    "receipt_sha256": "639c478d610e57b68d0bcfcee32eb4c021dc2ed2e20def3c98af5c60bbc37768",
+    "monitor_sha256": "764de3f551d0df18bc4820608ab67abcb39eeca652ae4f8a659d8613d531fe35",
+    "controls_sha256": "aca525adde974315fd34a5e97b28d39e5cd7d3f9dd63599fc520113a07bcf097"
+  },
+  "cleanup": {
+    "unit_absent": true,
+    "cgroup_absent": true,
+    "original_process_absent": true,
+    "owned_processes_absent": true,
+    "launch_closed": true,
+    "receipt_sha256": "8090c9ca414a4bd35bb0669e1de5329775ad690006619d3f43069cf1f492a4bc",
+    "observation_sha256": "d0fcc1851ba85f12ae1e0cdfee3db7278dc28a145c0b3c9b68b6051287d93b68"
+  },
+  "receipt_hashes": {
+    "plan": "381d727100478957b8e766c1669681aa399e597158d758feffe3acb24bbc05cd",
+    "artifact_manifest": "6b15880cd0892c1d45b736cd9da2d32f77c6b6f509fe14b1b4586f8259dddc74",
+    "independent_review": "2b6bd0188b3e13968c536ec34692db35e9676e34eb9eb82032db202f50bc7870",
+    "validation": "91e32e2ec0c00ee59ef33bc46fb8a74d618484a5e094b1e96b91849274572d72",
+    "running_properties": "0ae9c1dee5e1395c254740516ccc89f4ba36efa840fc9d1a12af432017f08df4",
+    "final_exit": "0c62007e80b03f0bc9f1d82554d4a4ce82828cb11f0d1af956774c58e2ca8380",
+    "extractor": "d0cb72cdf99b6be12775083d546723e2e468a3f4cb6fd38f94ac71a48f0051fb"
+  },
+  "ci": {
+    "head_sha": "6bbbc71bca24a366c70832994e6e2933b6277b1c",
+    "run_id": 37214177804,
+    "attempt": 1,
+    "conclusion": "success",
+    "url": "https://github.com/SYNEHQ/kelvo-go/actions/runs/37214177804",
+    "jobs": [
+      {
+        "name": "federation",
+        "conclusion": "success",
+        "step_count": 15,
+        "successful_steps": 15,
+        "skipped_steps": 0
+      },
+      {
+        "name": "validate",
+        "conclusion": "success",
+        "step_count": 53,
+        "successful_steps": 53,
+        "skipped_steps": 0
+      }
+    ],
+    "receipt_sha256": "298a1e891d6c0b73b12a7ad15e4c278c0cfcee1543a57513e5ec0f316c35e54a",
+    "successful_steps": 68,
+    "run_sha256": "75c399c2d722b8ac4950ac96dc9a46ea085ebe9f08fc3733d88d2a24f369cb71",
+    "jobs_sha256": "face81f4f613675224c9d91c6e69992c804ce19849bbf8934933a022b1fdcad1"
+  },
+  "earlier_attempt": {
+    "runtime_validation_accepted": false,
+    "source_revision": "6bbbc71bca24a366c70832994e6e2933b6277b1c",
+    "regular": {
+      "test_pass_events": 810,
+      "required_passed": 50,
+      "required_total": 50,
+      "log_sha256": "17f7c29bbaf14f916008c29c08d51cec31324f22204dbc632288d9109a91c26b"
+    },
+    "race": {
+      "test_pass_events_before_termination": 127,
+      "required_passed": 22,
+      "required_total": 50,
+      "complete": false,
+      "test_failure_events": 0,
+      "race_warnings_observed": false,
+      "log_sha256": "a48ec46e249d522da1c68b47f1c4bf54768b036464c802da500885c350d5d6c3"
+    },
+    "unrun_stages": [
+      "vet",
+      "build"
+    ],
+    "reported_failure": "WORKSPACE_OR_FREE_SPACE_LIMIT",
+    "cause": "Unknown. The first runner did not retain the failing monitor reason or sample.",
+    "later_controls": "Controls demonstrate possible traversal failures; they do not establish the first run cause.",
+    "metadata_correction": "The original collection summary named the wrong command receipt. Independent review verified the actual receipt and envelope hashes; the original summary was preserved.",
+    "actual_collection_receipt_sha256": "e5615c3643bfef9214e221b784ca78ea5c2b0716da0b3b656f47cd90c1c59a19",
+    "independent_review_sha256": "67034f36c538c091666ce7ba868875a8e4bd6c603229e12fc3ef29396f2e382f",
+    "artifact_manifest_sha256": "f8471bc515a6b377d46fc48b0f1a9973bb985c270279d914a60eaf70943d6b5e",
+    "receipt_hashes": {
+      "final-exit.json": "5098188f3768c2773526fdb916e7af2ae5096e83955e712971f9c1b2dda84ff6",
+      "cleanup-receipt.json": "c74796711f4a2c1586d5f52e1fe5d2e796d385ae42f106d6696de09f8d30c602",
+      "collection-observation.json": "5102e6f8365adee1f8aed9b0b18c2921fa3c4e2e44719f97f228ec72867114ae"
+    }
+  }
+}
