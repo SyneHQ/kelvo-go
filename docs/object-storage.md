@@ -4,6 +4,8 @@ Publish full-refresh Parquet snapshots to S3, R2, GCS or Azure Blob with `accele
 
 Refreshers need private staging disk for one in-progress file/part. Queries read remote ranges without a full local copy. [Source/type/freshness rules](acceleration.md) still apply; object storage adds neither CDC nor a lakehouse table format.
 
+For durable reader leases, use a fresh namespace and the [protected-reader setup](protected-object-readers.md). It requires contained nodes and a separate registry identity. The commands below describe legacy namespaces unless stated otherwise.
+
 ## Configure one provider
 
 1. Start with the [complete example](../examples/object-storage.yml). Keep one YAML document and one active provider block.
@@ -107,7 +109,7 @@ Single-file keys use:
 <prefix>/<tenant>/<dataset>/current.yaml
 ```
 
-[Multipart generations](multipart-acceleration.md) add immutable parts/descriptors. **Readers accept manifest v2/v3/v4; every writer action emits v4, including a lease claim before any successful refresh.** Coordinate upgrades first; disabling multipart does not make old-binary rollback safe.
+[Multipart generations](multipart-acceleration.md) add immutable parts/descriptors. **Legacy readers accept v2/v3/v4; legacy writers emit v4. Protected namespaces require v5 throughout.** A writer lease claim can upgrade the root before any successful refresh. Coordinate upgrades first; disabling multipart does not make old-binary rollback safe.
 
 The bounded root manifest binds committed identity, digest, size, fingerprint, age, revision, history and writer lease. Pointer and lease share one conditional object, fencing replaced writers.
 
@@ -147,7 +149,7 @@ Request headers/read/idle times are bounded. Excess concurrency/ranges fail. The
 
 Object/local snapshots can join each other. Legacy PostgreSQL/MySQL extensions require broader external access and cannot share object queries; use [custom Go adapters](federation.md) or snapshots instead.
 
-There is no remote garbage collector or distributed reader lease. Prune never lists/deletes payloads; retired/orphaned objects remain until operators establish that all possible readers have stopped. Age-only lifecycle deletion can remove committed/readable data and is unsafe.
+Legacy namespaces have no distributed reader lease. [Protected namespaces](protected-object-readers.md) add durable leases, but **neither mode enables remote garbage collection**. Prune never lists/deletes payloads. Keep retired/orphaned objects; age-only lifecycle deletion can remove committed/readable data.
 
 Changing provider, bucket, prefix or dataset definition does not migrate data. Refresh the new configuration or use an explicit [remote-to-local migration](snapshot-backup.md#migrate-a-current-object-snapshot-to-local-storage).
 

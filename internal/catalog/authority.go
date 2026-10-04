@@ -128,7 +128,11 @@ func boundedAuthority(c Config) bool {
 			!budget.text(storage.Region, 64) || !budget.text(storage.Account, 24) {
 			return false
 		}
-		for _, refs := range []ObjectCredentials{storage.ReadCredentials, storage.WriteCredentials} {
+		credentials := []ObjectCredentials{storage.ReadCredentials, storage.WriteCredentials}
+		if storage.ReaderRegistry != nil {
+			credentials = append(credentials, storage.ReaderRegistry.Credentials)
+		}
+		for _, refs := range credentials {
 			for _, ref := range refs.EnvironmentNames() {
 				if !budget.reference(ref) {
 					return false

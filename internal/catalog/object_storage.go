@@ -28,8 +28,15 @@ type ObjectLocation struct {
 
 type ObjectStorage struct {
 	ObjectLocation   `yaml:",inline"`
-	ReadCredentials  ObjectCredentials `json:"read_credentials" yaml:"read_credentials"`
-	WriteCredentials ObjectCredentials `json:"write_credentials" yaml:"write_credentials"`
+	ReadCredentials  ObjectCredentials     `json:"read_credentials" yaml:"read_credentials"`
+	WriteCredentials ObjectCredentials     `json:"write_credentials" yaml:"write_credentials"`
+	ReaderRegistry   *ObjectReaderRegistry `json:"reader_registry,omitempty" yaml:"reader_registry,omitempty"`
+}
+
+// ObjectReaderRegistry opts into a protected namespace. Its parent-only identity
+// can update reader lease metadata, independently of data readers and publishers.
+type ObjectReaderRegistry struct {
+	Credentials ObjectCredentials `json:"credentials" yaml:"credentials"`
 }
 
 // ObjectRead is resolved by the parent for one selected immutable generation.
@@ -141,6 +148,19 @@ func (s ObjectStorage) Validate() error {
 	for _, name := range s.WriteCredentials.EnvironmentNames() {
 		if name != "" && seen[name] {
 			return errors.New("object readers and publishers require separate credential references")
+		}
+		if name != "" {
+			seen[name] = true
+		}
+	}
+	if s.ReaderRegistry != nil {
+		if err := s.ReaderRegistry.Credentials.Validate(s.Provider); err != nil {
+			return err
+		}
+		for _, name := range s.ReaderRegistry.Credentials.EnvironmentNames() {
+			if name != "" && seen[name] {
+				return errors.New("object reader registry requires separate credential references")
+			}
 		}
 	}
 	return nil

@@ -1,6 +1,6 @@
 # Production delivery checklist
 
-Status reviewed 4 October 2026. This is a capability checklist, not production certification. Owners and acceptance criteria live on the [board](https://github.com/orgs/SyneHQ/projects/3) and [tracker #32](https://github.com/SyneHQ/kelvo-go/issues/32).
+Status reviewed 5 October 2026. This is a capability checklist, not production certification. Owners and acceptance criteria live on the [board](https://github.com/orgs/SyneHQ/projects/3) and [tracker #32](https://github.com/SyneHQ/kelvo-go/issues/32).
 
 ## Operational foundation
 
@@ -26,15 +26,15 @@ Admission reserves budgets; optional containment enforces native process-tree li
 
 | Available | Still needed |
 | --- | --- |
-| Immutable local/remote full refresh, fenced publication and local reader pins | Durable remote reader integration and live acceleration acceptance for each intended provider |
+| Immutable local/remote full refresh, fenced publication, local pins and opt-in [protected object readers](protected-object-readers.md) | Protected maintenance readers, legacy cutover and live-provider gates |
 | Strict schemas, optional nullable additions and conservative widening | Separate proof for any broader evolution policy |
 | Multipart snapshots and over-4-GiB development gates | Selective replacement, part reuse and incremental checkpoints |
-| Verified inventory/restore, local backup and remote-to-local migration | Remote-destination recovery, cross-host cutover and measured RTO/RPO |
-| Local pruning with reader protection | Durable remote reader protection, orphan accounting, GC and compaction |
+| Verified inventory and restore for local and legacy object snapshots, local backup and legacy remote-to-local migration | Remote-destination recovery, cross-host cutover and measured RTO/RPO |
+| Local pruning with reader protection | Remote orphan accounting, retirement, GC and compaction |
 
-[Object writer shutdown](object-writer-shutdown.md) joins pending factories, transactions and owned client cleanup; 45 focused race tests and vet passed on `997157e`. Reader activation and remote deletion remain separate.
+[Object writer shutdown](object-writer-shutdown.md) joins pending factories, transactions and owned client cleanup; 45 focused race tests and vet passed on `997157e`. Protected-reader acceptance is recorded below; remote deletion remains disabled.
 
-The [durable reader registry](durable-reader-registry.md), [object-store adapter and immutable binding](reader-objectstore.md) passed isolated race tests and vet; runtime integration and live-provider acceptance remain open. Remote pruning intentionally deletes nothing. Protect current, retained, pinned, staging and orphan data before adding GC. Remote v4 writes require coordinated reader/writer upgrades. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
+The [protected-runtime fixture](evidence/protected-object-readers.json) passed all ten Linux stages on `c8bae34`, including contained queries and late lease-loss checks. [#119](https://github.com/SYNEHQ/kelvo-go/issues/119) tracks verification and inventory. Full protected gateway/export and live-provider acceptance remain separate. Protected v5 requires a fresh namespace; legacy v4 still needs coordinated reader/writer upgrades. Remote pruning deletes nothing. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
 
 ## Results and interoperability
 

@@ -53,7 +53,7 @@ func refreshFactory(sandbox string, options ...refreshOptions) acceleration.Exec
 	}
 }
 
-func runAcceleration(args []string) error {
+func runAcceleration(args []string) (resultErr error) {
 	if len(args) == 0 {
 		return query.NewError("INVALID_ARGUMENT", "Expected accelerate refresh, status, verify, inventory, restore, backup, migrate-backup, or watch")
 	}
@@ -101,7 +101,20 @@ func runAcceleration(args []string) error {
 	if args[0] == "backup" && c.Acceleration != nil && c.Acceleration.ObjectStorage != nil {
 		return query.NewError("UNSUPPORTED", "Snapshot backup requires local acceleration storage")
 	}
-	m, err := acceleration.NewManager(c, refreshFactory(*sandbox))
+	objectRuntime, runtimeErr := acceleration.OpenObjectRuntime(c)
+	defer func() {
+		if objectRuntime != nil {
+			cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := objectRuntime.Close(cleanup); err != nil {
+				resultErr = errors.Join(resultErr, query.NewError("UNAVAILABLE", "Protected object runtime shutdown remains uncertain"))
+			}
+		}
+	}()
+	if runtimeErr != nil {
+		return query.NewError("CONFIGURATION_ERROR", "Protected object runtime is unavailable")
+	}
+	m, err := acceleration.NewManagerWithRuntime(c, refreshFactory(*sandbox), objectRuntime)
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Acceleration store cannot be opened")
 	}
@@ -192,8 +205,8 @@ func backupCLIError(snapshot acceleration.Snapshot, err error) error {
 // Cluster dispatch uses a tenant's existing authenticated JetStream account.
 // Messages contain dataset identity and definition fingerprint only. Every node
 // must mount the same tenant snapshot store with working POSIX flock semantics.
-func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate, sourceQuotas worker.SourceAdmitter, secrets worker.SecretResolver, sourceHealth *telemetry.SourceHealth, scratchRoot *worker.ScratchRoot, processManager *containment.Manager, processBudget containment.Budget, runtimeAudit *cluster.ServiceAudit, policy cluster.Policy, recorders ...*tracing.Recorder) error {
-	m, err := acceleration.NewManager(c, refreshFactory(sandbox, refreshOptions{Admission: sourceQuotas, Secrets: secrets, SourceHealth: sourceHealth, ScratchRoot: scratchRoot, Containment: processManager, ContainmentBudget: processBudget, ResourceOverheadBytes: overhead}))
+func runClusterRefresh(ctx context.Context, c catalog.Config, sandbox string, queue *cluster.RefreshQueue, pool *admission.Pool, overhead int64, metrics *telemetry.Registry, gate *refreshGate, sourceQuotas worker.SourceAdmitter, secrets worker.SecretResolver, sourceHealth *telemetry.SourceHealth, scratchRoot *worker.ScratchRoot, processManager *containment.Manager, processBudget containment.Budget, objectRuntime *acceleration.ObjectRuntime, runtimeAudit *cluster.ServiceAudit, policy cluster.Policy, recorders ...*tracing.Recorder) error {
+	m, err := acceleration.NewManagerWithRuntime(c, refreshFactory(sandbox, refreshOptions{Admission: sourceQuotas, Secrets: secrets, SourceHealth: sourceHealth, ScratchRoot: scratchRoot, Containment: processManager, ContainmentBudget: processBudget, ResourceOverheadBytes: overhead}), objectRuntime)
 	if err != nil {
 		return err
 	}

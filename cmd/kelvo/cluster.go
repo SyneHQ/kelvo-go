@@ -240,6 +240,30 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 			return err
 		}
 	}
+	if acceleration.ProtectedObjects(catalogue) && (executor.Containment == nil || executor.ScratchRoot == nil) {
+		return query.NewError("CONFIGURATION_ERROR", "Protected object snapshots require node containment and managed scratch")
+	}
+	objectRuntime, runtimeErr := acceleration.OpenObjectRuntime(catalogue)
+	runtimeTransferred := false
+	closeObjectRuntime := func() error {
+		if objectRuntime == nil {
+			return nil
+		}
+		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return objectRuntime.Close(cleanup)
+	}
+	defer func() {
+		if !runtimeTransferred {
+			if err := closeObjectRuntime(); err != nil {
+				resultErr = errors.Join(resultErr, query.NewError("UNAVAILABLE", "Protected object runtime shutdown remains uncertain"))
+			}
+		}
+	}()
+	if runtimeErr != nil {
+		return query.NewError("CONFIGURATION_ERROR", "Protected object runtime is unavailable")
+	}
+	executor.ObjectRuntime = objectRuntime
 	store, err := cluster.OpenStore(ctx, cfg.NATS, cfg.Policy, false)
 	if err != nil {
 		reportStoreMetadataDiagnostic(err)
@@ -267,17 +291,25 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	closeDatasets := func() {}
 	datasetsTransferred := false
 	if catalogue.Acceleration != nil {
-		backend, err := acceleration.OpenBackend(*catalogue.Acceleration)
-		if err != nil {
-			return query.NewError("CONFIGURATION_ERROR", "Dataset diagnostics backend is unavailable")
+		var reader cluster.DatasetStatusReader
+		closeBackend := func() {}
+		if objectRuntime != nil {
+			reader = objectRuntime
+		} else {
+			backend, err := acceleration.OpenBackend(*catalogue.Acceleration)
+			if err != nil {
+				return query.NewError("CONFIGURATION_ERROR", "Dataset diagnostics backend is unavailable")
+			}
+			reader = backend
+			closeBackend = func() { _ = backend.Close() }
 		}
-		reporter, err := cluster.NewDatasetReporter(catalogue, backend, cfg.RequiredDatasets)
+		reporter, err := cluster.NewDatasetReporter(catalogue, reader, cfg.RequiredDatasets)
 		if err != nil {
-			_ = backend.Close()
+			closeBackend()
 			return query.NewError("CONFIGURATION_ERROR", "Invalid required dataset configuration")
 		}
 		cfg.RuntimeDatasets = reporter
-		closeDatasets = func() { reporter.Close(); _ = backend.Close() }
+		closeDatasets = func() { reporter.Close(); closeBackend() }
 	} else if len(cfg.RequiredDatasets) != 0 {
 		return query.NewError("CONFIGURATION_ERROR", "Required datasets need acceleration configuration")
 	}
@@ -313,7 +345,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	if refreshQueue != nil {
 		refreshDone = make(chan error, 1)
 		go func() {
-			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeSourceHealth, executor.ScratchRoot, executor.Containment, executor.ContainmentBudget, cfg.RuntimeAudit, cfg.Policy, cfg.RuntimeTracing)
+			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeSourceHealth, executor.ScratchRoot, executor.Containment, executor.ContainmentBudget, objectRuntime, cfg.RuntimeAudit, cfg.Policy, cfg.RuntimeTracing)
 			stop()
 		}()
 	}
@@ -324,9 +356,10 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	})
 	defer stopLeaseWatch()
 	cleanupDone := make(chan struct{})
-	var refreshErr, auditCloseErr error // read only after cleanupDone closes
+	var refreshErr, auditCloseErr, objectCloseErr error // read only after cleanupDone closes
 	datasetsTransferred = true
 	auditTransferred = true
+	runtimeTransferred = true
 	result := serveCluster(runCtx, ln, serverTLS.Config, serverTLS.Handler(lifecycle), func() {
 		defer close(cleanupDone)
 		stopRefresh()
@@ -339,12 +372,16 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 		}
 		<-nodeDone
 		<-datasetsDone
+		objectCloseErr = closeObjectRuntime()
 		auditCloseErr = cfg.RuntimeAudit.CloseBounded()
 	}, drainTimeout)
 	stop()
 	// serveCluster bounds both joins; never wait again after its deadline.
 	select {
 	case <-cleanupDone:
+		if objectCloseErr != nil && result == nil {
+			result = query.NewError("UNAVAILABLE", "Protected object runtime shutdown remains uncertain")
+		}
 		if auditCloseErr != nil && result == nil {
 			result = query.NewError("UNAVAILABLE", "Worker audit shutdown remains uncertain")
 		}

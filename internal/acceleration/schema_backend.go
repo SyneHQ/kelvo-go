@@ -69,6 +69,9 @@ func (tx *objectTransaction) PreviousSchema() (*arrow.Schema, error) {
 	if err := context.Cause(tx.ctx); err != nil {
 		return nil, err
 	}
+	if tx.backend.protected() {
+		return tx.protectedPreviousSchema()
+	}
 	tx.stateMu.Lock()
 	committed := tx.state.manifest.Committed
 	reference := tx.state.now()
@@ -81,6 +84,34 @@ func (tx *objectTransaction) PreviousSchema() (*arrow.Schema, error) {
 		return nil, err
 	}
 	return tx.backend.objectSnapshotSchema(tx.ctx, snapshot, false)
+}
+
+func (tx *objectTransaction) protectedPreviousSchema() (schema *arrow.Schema, resultErr error) {
+	if tx.backend.runtime == nil {
+		return nil, ErrProtectionRequired
+	}
+	op, err := tx.backend.runtime.beginOperation(tx.ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { resultErr = errors.Join(resultErr, op.Close()) }()
+	tx.stateMu.Lock()
+	state := tx.state
+	state.manifest.Committed = cloneObjectCommit(state.manifest.Committed)
+	tx.stateMu.Unlock()
+	selected, err := tx.backend.selectObjectState(op.Context(), tx.dataset, state, "", 0, false)
+	if err != nil {
+		return nil, err
+	}
+	_, err = tx.backend.readProtectedSelection(op.Context(), selected, func(ctx context.Context, snapshot Snapshot) error {
+		var readErr error
+		schema, readErr = tx.backend.objectSnapshotSchema(ctx, snapshot, false)
+		return readErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return schema, nil
 }
 
 func (tx *objectTransaction) SetSchema(schema *arrow.Schema) error {
@@ -101,12 +132,13 @@ func (tx *objectTransaction) SetSchema(schema *arrow.Schema) error {
 }
 
 type schemaObjectReader struct {
-	ctx      context.Context
-	client   objectstore.RangeClient
-	snapshot Snapshot
+	ctx       context.Context
+	client    objectstore.RangeClient
+	snapshot  Snapshot
+	protected bool
 }
 
-func (r *schemaObjectReader) ReadAt(p []byte, offset int64) (int, error) {
+func (r *schemaObjectReader) ReadAt(p []byte, offset int64) (n int, resultErr error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
@@ -118,14 +150,28 @@ func (r *schemaObjectReader) ReadAt(p []byte, offset int64) (int, error) {
 		return 0, io.ErrUnexpectedEOF
 	}
 	body, info, err := r.client.GetRange(r.ctx, r.snapshot.ObjectKey, r.snapshot.ObjectVersion, offset, length)
+	if r.protected && !nilReaderDependency(body) {
+		defer func() {
+			finishProtectedRead(body, &resultErr)
+			if resultErr != nil {
+				n = 0
+			}
+		}()
+	}
 	if err != nil {
 		return 0, err
 	}
-	defer body.Close()
+	if r.protected {
+		if nilReaderDependency(body) {
+			return 0, ErrCorrupt
+		}
+	} else {
+		defer body.Close()
+	}
 	if err = validateSnapshotObject(r.snapshot, info); err != nil {
 		return 0, err
 	}
-	n, err := io.ReadFull(body, p)
+	n, err = io.ReadFull(body, p)
 	if err != nil {
 		return n, err
 	}

@@ -65,7 +65,9 @@ type Outcome struct {
 type Executor struct {
 	// Bound definitions are private; exported Config is a detached inspection
 	// copy and cannot retarget queries or copied export executors after binding.
-	catalogBinding    *boundCatalog
+	catalogBinding *boundCatalog
+	// ObjectRuntime is parent-only and shared by copies, including exports.
+	ObjectRuntime     *acceleration.ObjectRuntime
 	Containment       *containment.Manager
 	ContainmentBudget containment.Budget
 	Tracing           *tracing.Recorder
@@ -204,6 +206,9 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	if err := access.ValidateRequest(ctx, e.Config, r); err != nil {
 		return stats, err
 	}
+	if err := e.ValidateObjectRuntime(); err != nil {
+		return stats, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, e.Limits.Timeout)
 	defer cancel()
 
@@ -252,17 +257,30 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	defer releaseQuota()
 	ctx = quotaCtx
 	phases.enter(telemetry.PhasePrepare)
-	sources, versions, release, err := acceleration.Resolve(ctx, e.Config, r)
+	resolution, err := acceleration.ResolveWithRuntime(ctx, e.Config, r, e.ObjectRuntime)
 	if err != nil {
 		return stats, err
 	}
-	defer release()
+	defer func() {
+		cleanup, cancelCleanup := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelCleanup()
+		if err := resolution.Close(cleanup); err != nil {
+			resultErr = errors.Join(resultErr, query.NewError("DATASET_UNAVAILABLE", "Snapshot ownership or cleanup did not complete"))
+		}
+	}()
+	ctx = resolution.Context()
+	sources, versions := resolution.Sources, resolution.Versions
 	cfg := catalog.Config{Sources: sources, ExtensionDirectory: e.Config.ExtensionDirectory}
 	if err := access.ValidateResolvedRequest(ctx, cfg, r); err != nil {
 		return stats, err
 	}
+	snapshotScratch, err := resolution.HoldConsumer()
+	if err != nil {
+		return stats, err
+	}
 	workspace, err := newScratchWorkspace(e.ScratchRoot)
 	if err != nil {
+		snapshotScratch() // No child or snapshot data was admitted to this workspace.
 		return stats, query.NewError("RESOURCE_EXHAUSTED", "Worker scratch workspace is unavailable")
 	}
 	dir := workspace.path
@@ -270,7 +288,12 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	if e.Containment != nil {
 		releaseScratch, err = custody.Hold()
 		if err != nil {
-			_ = workspace.cleanup()
+			if cleanupErr := workspace.cleanup(); cleanupErr == nil {
+				snapshotScratch()
+			} else {
+				e.Containment.QuarantineOperation()
+				reportScratchCleanupFailure(cleanupErr)
+			}
 			return stats, err
 		}
 	}
@@ -286,6 +309,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 			return // Retain scratch custody while owned files remain uncertain.
 		}
 		releaseScratch()
+		snapshotScratch()
 	}()
 	input := Input{Config: cfg, Limits: e.Limits, Request: r}
 	if e.Metrics != nil {
@@ -350,9 +374,18 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		if prepErr != nil {
 			return stats, prepErr
 		}
-		processJob, prepErr = e.Containment.Prepare(processLimits, token)
+		snapshotProcess, prepErr := resolution.HoldConsumer()
 		if prepErr != nil {
 			token()
+			return stats, prepErr
+		}
+		processJob, prepErr = e.Containment.Prepare(processLimits, func() {
+			token()
+			snapshotProcess()
+		})
+		if prepErr != nil {
+			token()
+			snapshotProcess() // Prepare never admits a child when it returns an error.
 			return stats, query.NewError("RESOURCE_EXHAUSTED", "Worker process containment is unavailable")
 		}
 		defer func() {
@@ -421,6 +454,21 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	resultErr = workerResultError(parent, executionCtx, ctx, readErr, waitErr, decodeErr, cleanupErr, outcome.Error)
 	recordSourceHealth(e.SourceHealth, r, outcome.Error, resultErr, decodeErr == nil)
 	return stats, resultErr
+}
+
+// ValidateObjectRuntime rejects an uncontained or retargeted protected catalog
+// before snapshot I/O. Standalone callers must supply the same node resources.
+func (e *Executor) ValidateObjectRuntime() error {
+	if !acceleration.ProtectedObjects(e.Config) {
+		return nil
+	}
+	if e.ObjectRuntime == nil || e.Containment == nil || e.SandboxPath == "" || e.ScratchRoot == nil {
+		return query.NewError("CONFIGURATION_ERROR", "Protected snapshots require a contained node with managed scratch and an object runtime")
+	}
+	if err := e.ObjectRuntime.Match(e.Config); err != nil {
+		return query.NewError("CONFIGURATION_ERROR", "Protected snapshot runtime does not match the worker catalog")
+	}
+	return nil
 }
 
 // Decide success only after the subprocess and its descendants are cleaned up.

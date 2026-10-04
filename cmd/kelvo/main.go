@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	duckengine "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
@@ -111,6 +112,9 @@ func run(args []string) error {
 	c, e := catalog.Load(*config)
 	if e != nil {
 		return query.NewError("CONFIGURATION_ERROR", e.Error())
+	}
+	if acceleration.ProtectedObjects(c) {
+		return query.NewError("CONFIGURATION_ERROR", "Protected object snapshots require the contained cluster node entrypoint")
 	}
 	exec, e := worker.New(c, limits)
 	if e != nil {

@@ -63,6 +63,9 @@ func NewExportRuntime(cfg NodeConfig, store ExportStore, executor *worker.Execut
 	if err != nil {
 		return nil, err
 	}
+	if err := executor.ValidateObjectRuntime(); err != nil {
+		return nil, err
+	}
 	if err := validateNodeExports(cfg); err != nil {
 		return nil, err
 	}

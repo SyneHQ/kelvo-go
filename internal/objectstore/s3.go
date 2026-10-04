@@ -26,6 +26,7 @@ type s3Client struct {
 	location    catalog.ObjectLocation
 	origin      *url.URL
 	http        *http.Client
+	closeIdle   func()
 	credentials aws.Credentials
 	signer      *v4.Signer
 }
@@ -34,6 +35,10 @@ var digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 var generationPattern = regexp.MustCompile(`^[1-9][0-9]{0,30}$`)
 
 func newS3(location catalog.ObjectLocation, credentials catalog.ObjectCredentials) (Client, error) {
+	return newS3WithHTTP(location, credentials, nil)
+}
+
+func newS3WithHTTP(location catalog.ObjectLocation, credentials catalog.ObjectCredentials, client *http.Client) (Client, error) {
 	id, secret, token := os.Getenv(credentials.AccessKeyIDEnv), os.Getenv(credentials.SecretAccessKeyEnv), os.Getenv(credentials.SessionTokenEnv)
 	if id == "" || secret == "" || (credentials.SessionTokenEnv != "" && token == "") || len(id) > 1024 || len(secret) > 4096 || len(token) > 16384 || strings.ContainsAny(id+secret+token, "\r\n\x00") {
 		return nil, errors.New("object storage credentials are unavailable")
@@ -42,19 +47,29 @@ func newS3(location catalog.ObjectLocation, credentials catalog.ObjectCredential
 	if err != nil {
 		return nil, errors.New("object storage endpoint is invalid")
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	transport.DisableCompression = true
-	transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-	transport.TLSHandshakeTimeout = 10 * time.Second
-	transport.ResponseHeaderTimeout = 30 * time.Second
-	transport.MaxConnsPerHost = 4
-	transport.MaxResponseHeaderBytes = 64 << 10
-	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	return &s3Client{location: location, origin: origin, http: client, credentials: aws.Credentials{AccessKeyID: id, SecretAccessKey: secret, SessionToken: token}, signer: v4.NewSigner()}, nil
+	closeIdle := func() {}
+	if client == nil {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = nil
+		transport.DisableCompression = true
+		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		transport.TLSHandshakeTimeout = 10 * time.Second
+		transport.ResponseHeaderTimeout = 30 * time.Second
+		transport.MaxConnsPerHost = 4
+		transport.MaxResponseHeaderBytes = 64 << 10
+		client = &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		closeIdle = client.CloseIdleConnections
+	}
+	return &s3Client{location: location, origin: origin, http: client, closeIdle: closeIdle, credentials: aws.Credentials{AccessKeyID: id, SecretAccessKey: secret, SessionToken: token}, signer: v4.NewSigner()}, nil
 }
 
-func (c *s3Client) Close() { c.lifetime.close(c.http.CloseIdleConnections) }
+func (c *s3Client) Close() {
+	closeIdle := c.closeIdle
+	if closeIdle == nil {
+		closeIdle = c.http.CloseIdleConnections
+	}
+	c.lifetime.close(closeIdle)
+}
 
 func (c *s3Client) Get(ctx context.Context, key, version string) (io.ReadCloser, Info, error) {
 	op, err := c.lifetime.begin(ctx)

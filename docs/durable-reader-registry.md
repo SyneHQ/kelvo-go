@@ -1,10 +1,9 @@
-# Durable reader registry groundwork
+# Durable reader registry
 
-`internal/readerlease` is a tested internal foundation for durable remote
-snapshot reader pins. It is **not connected to snapshot publication or query
-execution yet**. It adds no configuration switch and does not enable remote
-deletion. [Issue 14](https://github.com/SYNEHQ/kelvo-go/issues/14) remains open
-for integration and acceptance.
+`internal/readerlease` provides durable remote snapshot reader pins.
+[Protected object snapshots](protected-object-readers.md) connect it to v5
+publication and contained queries. Remote deletion remains disabled;
+[issue 14](https://github.com/SYNEHQ/kelvo-go/issues/14) tracks the remaining gates.
 
 ## What the package provides
 
@@ -41,13 +40,13 @@ fails closed. Ambiguous writes can leave retained pins and never grant a reader
 permission to start.
 
 The [object-store adapter and immutable binding components](reader-objectstore.md)
-now have focused race/vet coverage. They remain unwired; the integration gates
-below still apply.
+have focused race/vet coverage. The node reuses one immutable runtime, with
+dedicated registry credentials and separate data/registry transports.
 
 The [acquisition and custody lifetime API](reader-custody.md) also has focused
 race/vet coverage. It separates request cancellation from confirmed-pin renewal
 and exposes local quiescence without claiming consumer cleanup or remote release.
-Production owner/guard wiring remains an integration gate.
+The [owner/guard](reader-owner.md) retains that custody through query cleanup.
 
 ## A pin does not authorize access
 
@@ -61,12 +60,9 @@ Immutable authorization provenance in a binding does not grant current access.
 
 | Reviewable slice | Required behavior and acceptance |
 | --- | --- |
-| Credentials and provider adapter | Dedicated parent-only registry rights; data readers stay read-only. Reuse a bounded Registry/provider owner across queries. Validate exact-key CAS, time, cancellation and rotation against each supported object provider. |
-| Manifest lifecycle | A new manifest version retains incarnation and complete binding in current/history entries. Stage before upload, seal verified immutable metadata before publication, and preserve exact identity across ambiguous replies and restore. |
-| Acquisition order | Acquire before descriptor, footer, payload or capability access. The current remote `Acquire` path resolves a descriptor before returning its no-op lease; that ordering must change. |
-| Query lifetime | Propagate a guard through Resolve, range requests, the subprocess and final success check. Stop/drain ranges and verify child/descendant cleanup before releasing pins; uncertain cleanup must retain custody and report failure. |
-| Maintenance readers | Apply the same guard to descriptor-resolving status, verification, inventory, historical restore and backup. Loss after the final copied byte must still prevent successful publication. |
-| Legacy cutover | Upgrade every reader/writer before publishing the new format. Protected mode must refuse missing/legacy bindings. Legacy namespaces remain non-collecting until an explicit, fenced cutover. |
+| Live providers | Validate exact-key CAS, service time, cancellation and credential rotation against each supported object provider. |
+| Maintenance readers | Status and previous-schema reads use guards. [Verification and inventory (#119)](https://github.com/SYNEHQ/kelvo-go/issues/119), historical restore and migration backup refuse protected namespaces until integrated. |
+| Legacy cutover | Protected mode requires a fresh namespace and v5 bindings. Legacy namespaces remain non-collecting until an explicit, fenced cutover. |
 
 Remote garbage collection needs a separate reviewed retirement protocol that
 prevents new readers and handles writer races, incomplete catalogs and uncertain
@@ -74,6 +70,8 @@ node/process cleanup. An empty or expired registry does not prove that a native
 child stopped reading. No absence, timeout or restart authorizes deletion.
 
 ## Validation evidence
+
+[Runtime integration](evidence/protected-object-readers.json) passed all ten Linux stages on `c8bae34`: protected publication, contained queries, late lease loss and independently verified cleanup. This local TLS fixture does not cover cloud IAM or the full gateway/export lifecycle. Earlier failed trials remain recorded.
 
 [The receipt](evidence/durable-reader-registry.json) records source commit
 `50fd0ce86e284441b1a90da7d26194724904cc1f`, the exact nine-file package/module

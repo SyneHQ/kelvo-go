@@ -17,6 +17,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/objectstore"
+	"github.com/SYNEHQ/kelvo-go/internal/readerlease"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -30,6 +31,7 @@ var (
 // manifest is both the committed pointer and the writer fence; no shared local
 // directory, distributed reader lock, object listing, or remote deletion is used.
 type objectBackend struct {
+	runtime       *ObjectRuntime
 	config        catalog.AccelerationConfig
 	reader        objectstore.Client
 	writeClient   func() (objectstore.Client, bool, error)
@@ -52,6 +54,7 @@ type objectManifest struct {
 }
 
 type objectCommitted struct {
+	ReaderBinding *readerlease.Binding `yaml:"reader_binding,omitempty"`
 	Descriptor    *objectDescriptorRef `yaml:"descriptor,omitempty"`
 	SchemaHash    string               `yaml:"schema_hash,omitempty"`
 	Generation    string               `yaml:"generation"`
@@ -64,8 +67,9 @@ type objectCommitted struct {
 }
 
 type objectWriterLease struct {
-	Owner     string    `yaml:"owner"`
-	ExpiresAt time.Time `yaml:"expires_at"`
+	ReaderReference *readerlease.Reference `yaml:"reader_reference,omitempty"`
+	Owner           string                 `yaml:"owner"`
+	ExpiresAt       time.Time              `yaml:"expires_at"`
 }
 
 type objectState struct {
@@ -139,9 +143,12 @@ func (backend *objectBackend) key(dataset, filename string) string {
 	return strings.Join(parts, "/")
 }
 
-func (backend *objectBackend) readState(ctx context.Context, dataset string, client objectstore.Client) (objectState, error) {
-	state := objectState{manifest: objectManifest{Version: 4, Dataset: dataset}}
+func (backend *objectBackend) readState(ctx context.Context, dataset string, client objectstore.Client) (state objectState, resultErr error) {
+	state = objectState{manifest: objectManifest{Version: backend.manifestVersion(), Dataset: dataset}}
 	body, info, err := client.Get(ctx, backend.key(dataset, storeManifestName), "")
+	if backend.protected() && !nilReaderDependency(body) {
+		defer finishProtectedRead(body, &resultErr)
+	}
 	state.info, state.receivedAt = info, time.Now()
 	if errors.Is(err, objectstore.ErrNotFound) {
 		state.info.Version = ""
@@ -150,7 +157,16 @@ func (backend *objectBackend) readState(ctx context.Context, dataset string, cli
 	if err != nil {
 		return state, err
 	}
-	defer body.Close()
+	if backend.protected() {
+		if nilReaderDependency(body) {
+			return state, ErrCorrupt
+		}
+	} else {
+		defer body.Close()
+	}
+	if backend.protected() && info.ServerTime.IsZero() {
+		return state, readerlease.ErrClock
+	}
 	if !validObjectVersion(info.Version) || info.Size > storeManifestLimit {
 		return state, fmt.Errorf("%w: invalid remote manifest metadata", ErrCorrupt)
 	}
@@ -163,6 +179,11 @@ func (backend *objectBackend) readState(ctx context.Context, dataset string, cli
 	}
 	if info.SHA256 != "" && info.SHA256 != objectSHA256(data) {
 		return state, fmt.Errorf("%w: remote manifest checksum mismatch", ErrCorrupt)
+	}
+	if backend.protected() {
+		if err := validateProtectedYAML(data); err != nil {
+			return state, err
+		}
 	}
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
@@ -178,11 +199,14 @@ func (backend *objectBackend) readState(ctx context.Context, dataset string, cli
 	if err := validateObjectManifest(state.manifest, dataset); err != nil {
 		return state, err
 	}
+	if (state.manifest.Version == protectedManifestVersion) != backend.protected() {
+		return state, ErrProtectionRequired
+	}
 	return state, nil
 }
 
 func validateObjectManifest(manifest objectManifest, dataset string) error {
-	if (manifest.Version != 2 && manifest.Version != 3 && manifest.Version != 4) || manifest.Dataset != dataset {
+	if (manifest.Version != 2 && manifest.Version != 3 && manifest.Version != 4 && manifest.Version != protectedManifestVersion) || manifest.Dataset != dataset {
 		return fmt.Errorf("%w: remote manifest identity mismatch", ErrCorrupt)
 	}
 	if manifest.Version == 2 && (len(manifest.History) != 0 || manifest.HistoryTruncated) {
@@ -218,7 +242,7 @@ func validateObjectManifest(manifest objectManifest, dataset string) error {
 	if writer := manifest.Writer; writer != nil && (!storeGenerationID.MatchString(writer.Owner) || writer.ExpiresAt.IsZero()) {
 		return fmt.Errorf("%w: invalid remote writer lease", ErrCorrupt)
 	}
-	return nil
+	return validateManifestProtection(manifest)
 }
 
 func validObjectVersion(version string) bool {
@@ -226,7 +250,10 @@ func validObjectVersion(version string) bool {
 }
 
 func (backend *objectBackend) writeState(ctx context.Context, client objectstore.Client, state objectState, manifest objectManifest) (objectState, error) {
-	manifest.Version = 4
+	manifest.Version = backend.manifestVersion()
+	if err := validateObjectManifest(manifest, manifest.Dataset); err != nil {
+		return state, err
+	}
 	data, err := yaml.Marshal(manifest)
 	if err != nil {
 		return state, err
@@ -246,6 +273,9 @@ func (backend *objectBackend) writeState(ctx context.Context, client objectstore
 		return state, fmt.Errorf("%w: storage returned no manifest version", ErrCorrupt)
 	}
 	if info.ServerTime.IsZero() {
+		if backend.protected() {
+			return state, readerlease.ErrClock
+		}
 		info.ServerTime = state.now()
 	}
 	return objectState{manifest: manifest, info: info, receivedAt: time.Now()}, nil
@@ -280,6 +310,9 @@ func (backend *objectBackend) status(ctx context.Context, dataset string) (Snaps
 // currentSnapshot selects the manifest once. Query policy is checked before
 // generation access; Status still resolves and validates snapshots of any age.
 func (backend *objectBackend) currentSnapshot(ctx context.Context, dataset, fingerprint string, maxAge time.Duration, checkPolicy bool) (Snapshot, error) {
+	if backend.protected() {
+		return backend.protectedCurrentSnapshot(ctx, dataset, fingerprint, maxAge, checkPolicy)
+	}
 	if err := backend.check(ctx, dataset); err != nil {
 		return Snapshot{}, err
 	}
@@ -346,6 +379,9 @@ func (backend *objectBackend) Status(ctx context.Context, dataset string) (Snaps
 }
 
 func (backend *objectBackend) Acquire(ctx context.Context, dataset, fingerprint string, maxAge time.Duration) (*Lease, error) {
+	if backend.protected() {
+		return nil, ErrProtectionRequired
+	}
 	if maxAge < 0 {
 		return nil, errors.New("acceleration maximum age cannot be negative")
 	}
@@ -359,6 +395,9 @@ func (backend *objectBackend) Acquire(ctx context.Context, dataset, fingerprint 
 }
 
 func (backend *objectBackend) Verify(ctx context.Context, dataset string) (Snapshot, error) {
+	if backend.protected() {
+		return Snapshot{}, ErrRecoveryUnsupported
+	}
 	// Full verification includes bounded footer/schema reads for every layout.
 	// A checksum-only client must not claim that persisted row/schema metadata
 	// was verified merely because the object's bytes match its digest.
@@ -422,28 +461,32 @@ func (backend *objectBackend) Prune(ctx context.Context, dataset string, keep in
 }
 
 type objectTransaction struct {
-	schemaHash  string
-	finishMu    sync.Mutex
-	stateMu     sync.Mutex
-	backend     *objectBackend
-	client      objectstore.Client
-	closeClient bool
-	local       *Transaction
-	ctx         context.Context
-	cancel      context.CancelCauseFunc
-	dataset     string
-	owner       string
-	state       objectState
-	owned       bool
-	done        bool
-	stopRenew   context.CancelFunc
-	renewDone   chan struct{}
-	stopping    atomic.Bool
+	readerReference *readerlease.Reference
+	schemaHash      string
+	finishMu        sync.Mutex
+	stateMu         sync.Mutex
+	backend         *objectBackend
+	client          objectstore.Client
+	closeClient     bool
+	local           *Transaction
+	ctx             context.Context
+	cancel          context.CancelCauseFunc
+	dataset         string
+	owner           string
+	state           objectState
+	owned           bool
+	done            bool
+	stopRenew       context.CancelFunc
+	renewDone       chan struct{}
+	stopping        atomic.Bool
 }
 
 func (backend *objectBackend) Begin(ctx context.Context, dataset string) (RefreshWriter, error) {
 	if err := backend.check(ctx, dataset); err != nil {
 		return nil, err
+	}
+	if backend.protected() && (backend.runtime == nil || backend.runtime.registry == nil) {
+		return nil, ErrProtectionRequired
 	}
 	tx, err := backend.reserveWriter(ctx, dataset)
 	if err != nil {
@@ -481,6 +524,13 @@ func (backend *objectBackend) Begin(ctx context.Context, dataset string) (Refres
 		return nil, err
 	}
 	tx.owner = tx.local.generation
+	if backend.protected() {
+		ref, err := readerlease.NewReference(backend.config.TenantID, dataset, tx.owner)
+		if err != nil {
+			return nil, err
+		}
+		tx.readerReference = &ref
+	}
 	for {
 		if err := context.Cause(tx.ctx); err != nil {
 			return nil, err
@@ -504,7 +554,7 @@ func (backend *objectBackend) Begin(ctx context.Context, dataset string) (Refres
 			continue
 		}
 		manifest := state.manifest
-		manifest.Writer = &objectWriterLease{Owner: tx.owner, ExpiresAt: state.now().Add(backend.leaseDuration)}
+		manifest.Writer = tx.writerLease(state.now().Add(backend.leaseDuration))
 		// A transport failure might still have acquired the lease. Cleanup checks
 		// this owner before clearing anything, including an ambiguous first claim.
 		tx.owned = true
@@ -524,6 +574,11 @@ func (backend *objectBackend) Begin(ctx context.Context, dataset string) (Refres
 	renewCtx, stop := context.WithCancel(tx.ctx)
 	tx.stopRenew, tx.renewDone = stop, make(chan struct{})
 	go tx.renewLoop(renewCtx)
+	if tx.readerReference != nil {
+		if err := backend.runtime.registry.Stage(tx.ctx, *tx.readerReference, tx.owner); err != nil {
+			return nil, err
+		}
+	}
 	if err := backend.writerOpeningError(tx.ctx); err != nil {
 		return nil, err
 	}
@@ -538,7 +593,7 @@ func (tx *objectTransaction) renew(ctx context.Context) error {
 	tx.stateMu.Lock()
 	defer tx.stateMu.Unlock()
 	manifest := tx.state.manifest
-	manifest.Writer = &objectWriterLease{Owner: tx.owner, ExpiresAt: tx.state.now().Add(tx.backend.leaseDuration)}
+	manifest.Writer = tx.writerLease(tx.state.now().Add(tx.backend.leaseDuration))
 	state, err := tx.backend.writeState(ctx, tx.client, tx.state, manifest)
 	if err != nil {
 		return fmt.Errorf("%w: renew remote writer: %w", ErrLeaseLost, err)
@@ -601,6 +656,19 @@ func (tx *objectTransaction) Commit(fingerprint string, rows int64) (snapshot Sn
 	if info.Size() <= 0 || info.Size() > objectstore.MaxUploadBytes {
 		return Snapshot{}, errors.New("object snapshot exceeds the supported single-upload limit or is empty")
 	}
+	if tx.readerReference != nil {
+		var actualRows int64
+		schema, err := readParquetSchema(file, info.Size(), &actualRows)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		if actualRows != rows || !storeDigest.MatchString(tx.schemaHash) {
+			return Snapshot{}, fmt.Errorf("%w: protected snapshot requires exact rows and schema", ErrCorrupt)
+		}
+		if err := verifySchemaHash(schema, tx.schemaHash); err != nil {
+			return Snapshot{}, err
+		}
+	}
 	if err := file.Chmod(0400); err != nil {
 		return Snapshot{}, err
 	}
@@ -639,6 +707,11 @@ func (tx *objectTransaction) Commit(fingerprint string, rows int64) (snapshot Sn
 // publishCommitted joins renewal and fences one root CAS. Caller holds finishMu,
 // owns cleanup, and has already confirmed every immutable object being exposed.
 func (tx *objectTransaction) publishCommitted(committed *objectCommitted, prepared *Snapshot) (Snapshot, error) {
+	if tx.readerReference != nil {
+		if err := tx.sealProtectedCommit(committed); err != nil {
+			return Snapshot{}, err
+		}
+	}
 	snapshotAt := func(reference time.Time) (Snapshot, error) {
 		if prepared != nil {
 			snapshot := *prepared
@@ -658,10 +731,12 @@ func (tx *objectTransaction) publishCommitted(committed *objectCommitted, prepar
 	if err != nil {
 		return Snapshot{}, err
 	}
-	if state.manifest.Writer == nil || state.manifest.Writer.Owner != tx.owner || !state.manifest.Writer.ExpiresAt.After(state.now()) {
+	if !tx.ownsWriter(state) {
 		return Snapshot{}, ErrLeaseLost
 	}
-	committed.RefreshedAt = state.now()
+	if tx.readerReference == nil {
+		committed.RefreshedAt = state.now()
+	}
 	manifest, err := nextObjectManifest(state.manifest, committed)
 	if err != nil {
 		return Snapshot{}, err
@@ -689,7 +764,8 @@ func (tx *objectTransaction) publishCommitted(committed *objectCommitted, prepar
 func sameObjectCommit(left, right *objectCommitted) bool {
 	return left != nil && right != nil && left.Generation == right.Generation && left.Fingerprint == right.Fingerprint &&
 		left.SchemaHash == right.SchemaHash && left.SHA256 == right.SHA256 && left.Rows == right.Rows && left.Bytes == right.Bytes &&
-		left.RefreshedAt.Equal(right.RefreshedAt) && left.ObjectVersion == right.ObjectVersion && sameObjectDescriptor(left.Descriptor, right.Descriptor)
+		left.RefreshedAt.Equal(right.RefreshedAt) && left.ObjectVersion == right.ObjectVersion && sameObjectDescriptor(left.Descriptor, right.Descriptor) &&
+		sameReaderBinding(left.ReaderBinding, right.ReaderBinding)
 }
 
 func (tx *objectTransaction) Abort() error {
@@ -710,7 +786,8 @@ func (tx *objectTransaction) cleanup() (err error) {
 		// Release is a CAS on the same manifest and can only remove our lease.
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		state, err := tx.backend.readState(ctx, tx.dataset, tx.client)
-		if err == nil && state.manifest.Writer != nil && state.manifest.Writer.Owner == tx.owner {
+		if err == nil && state.manifest.Writer != nil && state.manifest.Writer.Owner == tx.owner &&
+			sameReaderReference(state.manifest.Writer.ReaderReference, tx.readerReference) {
 			manifest := state.manifest
 			manifest.Writer = nil
 			_, err = tx.backend.writeState(ctx, tx.client, state, manifest)

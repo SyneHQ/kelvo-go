@@ -8,6 +8,44 @@ import (
 	"testing"
 )
 
+func TestReaderOwnerAdoptsLatePartialConstructionAfterClose(t *testing.T) {
+	budget := newReaderBudget()
+	owner, err := budget.newOwner(ownerTestSpec(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerTestAttach(t, budget, ownerTestSpec(t), newOwnerTestResources())
+	started, returned, release := make(chan struct{}), make(chan error, 1), make(chan struct{})
+	resources := newOwnerTestResources()
+	var once sync.Once
+	defer once.Do(func() { close(release) })
+	failure := errors.New("late construction failed")
+	go func() {
+		returned <- owner.open(func(ctx context.Context) (readerResources, error) {
+			close(started)
+			<-release // Deliberately ignore cancellation; the Opening slot must remain owned.
+			return resources, failure
+		})
+	}()
+	ownerTestWait(t, started, "constructor entry")
+	ownerTestTimeout(t, owner.Close)
+	if _, err := budget.newOwner(ownerTestSpec(t)); !errors.Is(err, errReaderCapacity) {
+		t.Fatal("unfinished opening released its rotation slot", err)
+	}
+	ownerTestPending(t, owner.Quiesced(), "late construction")
+	if resources.closes.Load() != 0 {
+		t.Fatal("unreturned resource closed prematurely")
+	}
+	once.Do(func() { close(release) })
+	if err := <-returned; !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+	ownerTestWait(t, owner.Quiesced(), "late partial resource cleanup")
+	if resources.closes.Load() != 1 || budget.snapshot() != (readerCounts{owners: 1}) {
+		t.Fatal("late resource was discarded or capacity returned before cleanup")
+	}
+}
+
 func TestReaderBudgetSharedAcrossOwnerRotations(t *testing.T) {
 	budget, spec := newReaderBudget(), ownerTestSpec(t)
 	firstResources, secondResources := newOwnerTestResources(), newOwnerTestResources()

@@ -1,13 +1,14 @@
 # Bounded reader owners and guards
 
-Kelvo's tested **private reader state machine** retains custody during
-cancellation and uncertain cleanup. Resource attachment uses fixtures.
-Production consumers remain unwired; there is no YAML switch or remote garbage
-collection.
+Kelvo's private reader state machine retains custody during cancellation and
+uncertain cleanup. [Protected object snapshots](protected-object-readers.md)
+connect it to contained queries, ranges, process trees and scratch cleanup.
+Remote garbage collection remains disabled.
 
 ## Ownership and bounds
 
-One node budget spans overlapping owner replacements. Owners copy immutable
+The private budget supports two overlapping owners. The current node runtime
+uses one immutable owner and requires a restart for replacement. Owners copy
 storage and dataset policy with credential references; their configuration
 retains neither mutable catalogs nor request contexts.
 
@@ -19,9 +20,10 @@ retains neither mutable catalogs nor request contexts.
 | Bindings reserved together per guard | 1–64 |
 | Consumer registrations over one guard's entire lifetime | 4 |
 
-Reservations precede acquisition and cancellation callbacks. Owner replacement
-does not reset them; partial failure and stalled cleanup keep the entire guard
-reservation charged. These are component bounds, not production sizing.
+Reservations precede acquisition and cancellation callbacks. Partial failure
+and stalled cleanup keep the entire guard reservation charged. The component's
+replacement path shares that budget; node hot replacement is unsupported.
+These are component bounds, not production sizing.
 
 ## Cancellation, cleanup and results
 
@@ -36,7 +38,8 @@ after provider recovery. Owner drain also prevents success at final publication.
 Bounded `Close` returns uncertainty on timeout, retaining clients and capacity.
 Repeated calls create no new cleanup work. `Quiesced` reports joined local work
 and returned capacity; it does not erase failure or prove remote release or
-native-process exit. Production callers must supply real consumer cleanup proof.
+native-process exit. The protected node supplies separate completion tokens for
+preparation, range handlers, the verified-empty process tree and scratch cleanup.
 
 ## Validation and remaining work
 
@@ -45,9 +48,11 @@ native-process exit. Production callers must supply real consumer cleanup proof.
 **290 pass events including subtests**, no failures or skips, passing race
 detection and `go vet`. Inputs stayed unchanged and service cleanup passed.
 
-[Issue 14](https://github.com/SYNEHQ/kelvo-go/issues/14) still requires production
-resource construction, dedicated registry credentials, guarded resolution and
-ranges, subprocess/scratch cleanup transfer, versioned manifests and maintenance
-readers. Retirement and deletion require a separate reviewed protocol.
+That receipt covers the owner component before runtime integration.
+[Protected runtime acceptance](evidence/protected-object-readers.json) passed on
+`c8bae34`, including late lease loss and contained query cleanup.
+[Issue 14](https://github.com/SYNEHQ/kelvo-go/issues/14) retains
+maintenance readers, legacy cutover and provider acceptance. Retirement and
+deletion require a separate reviewed protocol.
 
 [Custody API](reader-custody.md) · [Reader registry gates](durable-reader-registry.md#integration-gates-still-open) · [Production roadmap](production-roadmap.md)

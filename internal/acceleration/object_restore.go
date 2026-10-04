@@ -35,6 +35,9 @@ func validateObjectCommit(snapshot *objectCommitted) error {
 }
 func nextObjectManifest(previous objectManifest, next *objectCommitted) (objectManifest, error) {
 	manifest := objectManifest{Version: 4, Dataset: previous.Dataset, Committed: next, HistoryTruncated: previous.HistoryTruncated}
+	if previous.Version == protectedManifestVersion {
+		manifest.Version = protectedManifestVersion
+	}
 	if err := validateObjectCommit(next); err != nil {
 		return manifest, err
 	}
@@ -50,8 +53,7 @@ func nextObjectManifest(previous objectManifest, next *objectCommitted) (objectM
 			manifest.HistoryTruncated = true
 			continue
 		}
-		copied := *candidate
-		manifest.History = append(manifest.History, &copied)
+		manifest.History = append(manifest.History, cloneObjectCommit(candidate))
 	}
 	for {
 		encoded, err := yaml.Marshal(manifest)
@@ -84,6 +86,9 @@ func (backend *objectBackend) verifyObjectGeneration(ctx context.Context, datase
 // Inventory describes only current and retained manifest entries. It never lists
 // storage. Legacy untracked generations and dropped entries remain undiscovered.
 func (backend *objectBackend) Inventory(ctx context.Context, dataset string) ([]Generation, error) {
+	if backend.protected() {
+		return nil, ErrRecoveryUnsupported
+	}
 	if _, ok := backend.reader.(objectstore.RangeClient); !ok {
 		return nil, ErrRecoveryUnsupported
 	}
@@ -120,6 +125,9 @@ func (backend *objectBackend) Inventory(ctx context.Context, dataset string) ([]
 // only the current pointer and retained catalog. All data checks use the exact
 // immutable object versions, with bounded streaming checksum and range reads.
 func (backend *objectBackend) Restore(ctx context.Context, request RestoreRequest) (snapshot Snapshot, err error) {
+	if backend.protected() {
+		return Snapshot{}, ErrRecoveryUnsupported
+	}
 	if _, ok := backend.reader.(objectstore.RangeClient); !ok {
 		return Snapshot{}, ErrRecoveryUnsupported
 	}
