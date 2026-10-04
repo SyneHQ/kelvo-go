@@ -4,20 +4,12 @@ This measures one Kelvo **worker** on the micro VM. The Azure gateway, NATS,
 source database and every SSH tunnel are outside its accounting. It does not
 establish that a whole cluster or standalone deployment fits on the micro VM.
 
-## Latest revalidation
+The Oracle E2.1.Micro has a **1/8 OCPU baseline** with bursting. Its guest reported
+**951 MiB RAM** and two AMD EPYC vCPUs; those are not two dedicated cores.
 
-The [`b1a0ea5` attempt](evidence/node-capacity-b1a0ea5-preflight-refusal.json)
-stopped at its required preflight: all three queries returned HTTP 503
-`QUERY_FAILED`, with no result bytes. No measured pairs ran. Worker resource
-checks passed, but failed queries cannot establish capacity. The source fixture's
-`readonly=1` policy rejected the requested HTTP cancellation setting with ClickHouse
-`READONLY` error 164. Independent checks verified both-host cleanup and unchanged
-source identity, limits and table row metadata. The successful results below
-belong to the earlier binary.
+## Latest pinned campaign
 
-## Last successful pinned campaign
-
-The [final-runtime campaign](evidence/node-capacity-d144a43-r2.json) passed
+The [fresh `b1a0ea5` campaign](evidence/node-capacity-b1a0ea5-r2.json) passed
 **130/130 workload queries** across five metrics-disabled/enabled pairs, plus a
 separate **3/3 preflight**. Each profile ran three serial queries and ten
 simultaneous queued submissions through **one execution slot**. Exact Arrow
@@ -29,13 +21,13 @@ wider rows and different compression change memory and transfer costs.
 
 | Full-delivery workload | Metrics disabled median / p95 | Metrics enabled median / p95 |
 | --- | ---: | ---: |
-| Native million-row projection | 5.885 / 6.124 s | 6.098 / 6.541 s |
-| Federated million-row projection | 8.790 / 9.820 s | 9.200 / 10.146 s |
-| Federated CTE/zone join, eight result rows | 7.223 / 7.438 s | 7.524 / 7.645 s |
-| Queued million-row operation, including assignment wait | 38.341 / 71.406 s | 38.718 / 73.109 s |
+| Native million-row projection | 6.143 / 6.761 s | 6.399 / 6.913 s |
+| Federated million-row projection | 9.292 / 9.782 s | 9.432 / 10.008 s |
+| Federated CTE/zone join, eight result rows | 7.210 / 7.433 s | 7.338 / 7.928 s |
+| Queued million-row operation, including assignment wait | 40.584 / 75.975 s | 42.322 / 75.679 s |
 
-Median full-delivery rates were about **170k / 164k rows/s native**
-and **114k / 109k rows/s federated**, for disabled/enabled metrics.
+Median full-delivery rates were about **163k / 156k rows/s native**
+and **108k / 106k rows/s federated**, for disabled/enabled metrics.
 
 The first three rows contain five samples per mode; queued operations contain
 50 per mode. p95 is empirical nearest rank, not a confidence bound. Timings include
@@ -43,36 +35,39 @@ SQL, queueing, dispatch, TLS and SSH transport; Arrow decoding is outside that
 interval. Native SQL runs on Azure; federation runs on Oracle. This is not a
 direct analytical-library comparison.
 
-Median per-profile peaks were **230.7 / 230.5 MiB** for combined node/worker RSS
-and **122.0 / 123.5 MiB** for charged cgroup memory, for disabled/enabled metrics. The
+Median per-profile peaks were **209.3 / 211.3 MiB** for combined node/worker RSS
+and **123.2 / 124.3 MiB** for charged cgroup memory, for disabled/enabled metrics. The
 **640 MiB** worker cap includes the observer, with no swap and one execution
 permit. Every profile had zero OOMs and complete process/scratch/containment
-cleanup. Maximum active/shutdown sampling gap was **0.292 seconds**, within the
-unchanged two-second gate. Post-run hashing is outside this interval; startup
-setup remains in whole-cgroup counters. Executables used verified hardlinks; warm
-shared file-cache pages may be charged outside a later profile's cgroup, while
-combined RSS can count shared pages twice. The changed observer ordering also
-changes the sampling boundary. Lower charged peaks than older trials do not
-establish application-memory savings or a new minimum RAM requirement.
+cleanup. Maximum active/shutdown sampling gap was **0.290 seconds**,
+within the unchanged two-second gate. Post-run hashing is outside this interval;
+startup setup remains in whole-cgroup counters. Combined RSS can count shared
+pages twice; warm file-cache pages may be charged outside a later profile's
+cgroup. These figures do not establish a minimum production RAM requirement.
 
-The [916-file source manifest](evidence/node-capacity-d144a43-source.json) pins
-runtime `d144a437b824fef1cd908303fa220d1bdd581401`; the separately reviewed observer
-is `9cad90497daa23b23543a8dbbea622449e313ecf`. Full binary/harness checksums and all
-profile receipts are in the campaign evidence. No earlier run was pooled into it.
+The [1037-file source manifest](evidence/node-capacity-b1a0ea5-source.json) pins
+runtime `b1a0ea520d65ac931ccdac3ea6f42531139a5399`; the separate worker observer
+is `fbb9ae8099d12ac88acd6f3357779c7b0af49771`. The receipt retains full
+binary/harness checksums, all profiles and independent reconciliation.
+
+The [first attempt](evidence/node-capacity-b1a0ea5-preflight-refusal.json) failed
+before delivering rows because its source account rejected a query setting.
+This fresh fixture kept SELECT-only access and fixed `readonly=1`, with bounded
+query-setting exceptions. All **24 live source-policy checks** passed before
+forwarding access opened. The runtime and source server configuration were unchanged.
 
 The temporary Azure control fixture was capped at **1 CPU / 1 GiB**; the preserved
-ClickHouse source kept its separate **1.5 CPU / 4 GiB** cap. Independent checks
-verified source-account/key removal, stopped gateway/brokers/tunnels and absent
-worker cgroups, with source tables intact. Controller cleanup finished at
-**18:19:11 UTC**; subsequent independent checks completed before the unchanged
-**18:43:57 UTC** expiry. The fixture's explicit SIGTERM exit
-143 is retained, followed by proof that its stopped unit was unloaded.
+ClickHouse source kept its separate **1.5 CPU / 4 GiB** cap. Independent cleanup
+verified removed source access, stopped gateway/brokers/tunnels and absent worker
+services/cgroups. Source container identity, allocation and table row metadata
+matched the pre-run snapshot; this is not a full source-content checksum.
 
+Each profile used a fresh worker. Reference queries ran before preflight; source
+and OS caches were not flushed, and no acceleration snapshot was used.
 Coordinated Azure builds/tests were held during measurements; read-only staging
-or hashing could occur. Caches were warm and uncontrolled, and Oracle CPU burst
-availability and host steal varied. These results do not prove causal metrics
-savings, minimum production RAM, whole-cluster fit, an SLA or later-runtime
-readiness.
+or hashing could occur. Oracle fractional CPU burst availability and host steal
+varied. These results do not prove causal metrics savings, whole-cluster fit,
+an SLA or readiness of later runtimes.
 
 ## Earlier attempts
 
@@ -82,6 +77,7 @@ readiness.
 | `b09f2da`, bounded campaign | Three complete pairs plus one profile; 91/91 queries; deadline guard stopped further launch | [Partial campaign](evidence/node-capacity-b09f2da.json) |
 | `b09f2da`, two fresh preflights | 3/3 queries each; sampling gaps 2.635/2.986 s failed the two-second gate; no pairs launched | [Observer refusals](evidence/node-capacity-observer-gap-refusals.json) |
 | `d144a43`, first corrected-observer trial | Two pairs; 52/52 queries; local ENOSPC stopped the next lease observation before launch; both hosts cleaned independently | [Controller refusal](evidence/node-capacity-d144a43-enospc.json) |
+| `d144a43-r2`, prior successful campaign | Five pairs; 130/130 queries and separate 3/3 preflight | [Previous result](evidence/node-capacity-d144a43-r2.json) |
 | `b1a0ea5`, fresh runtime revalidation | Three preflight queries failed with HTTP 503 `QUERY_FAILED`; zero result bytes; no measured pairs launched | [Preflight refusal](evidence/node-capacity-b1a0ea5-preflight-refusal.json) |
 
 For historical context, the original `6749369` baseline produced these full-delivery
