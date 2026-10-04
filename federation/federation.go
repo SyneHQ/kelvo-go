@@ -46,7 +46,10 @@ type ScanPlan struct {
 
 // Filter is a typed predicate, never SQL. Kinds are comparison, is_null,
 // is_not_null, and, or. Comparisons use eq/ne/lt/le/gt/ge and canonical lexical
-// values with type int8/int16/int32/int64/uint8/uint16/uint32/uint64/bool.
+// values with type int8/int16/int32/int64/uint8/uint16/uint32/uint64/bool/date32.
+// Date32 is a signed Int32 count of days since 1970-01-01, including DuckDB's
+// infinity encodings (2147483647 and -2147483647). Built-in support is selected
+// per executor; advisory capability v1 does not advertise Date32 to adapters.
 type Filter struct {
 	Kind     string   `json:"kind"`
 	Column   string   `json:"column,omitempty"`

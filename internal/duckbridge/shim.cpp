@@ -15,6 +15,7 @@
 #include "duckdb/planner/filter/optional_filter.hpp"
 #include <cstring>
 #include <new>
+#include <string>
 
 using namespace duckdb;
 
@@ -39,6 +40,7 @@ LogicalType PredicateType(uint8_t type) {
 	case KELVO_PREDICATE_UINT16: return LogicalType::USMALLINT;
 	case KELVO_PREDICATE_UINT32: return LogicalType::UINTEGER;
 	case KELVO_PREDICATE_UINT64: return LogicalType::UBIGINT;
+	case KELVO_PREDICATE_DATE32: return LogicalType::DATE;
 	default: return LogicalType::INVALID;
 	}
 }
@@ -81,8 +83,20 @@ string ConstantType(const Value &value) {
 	case LogicalTypeId::USMALLINT: return "uint16";
 	case LogicalTypeId::UINTEGER: return "uint32";
 	case LogicalTypeId::UBIGINT: return "uint64";
+	case LogicalTypeId::DATE: return "date32";
 	default: return Unsupported();
 	}
+}
+
+string ConstantValue(const Value &value) {
+	if (value.IsNull()) { return Unsupported(); }
+	if (value.type().id() == LogicalTypeId::DATE) {
+		// DATE comparisons and Arrow Date32 use the same signed day count.
+		// Preserve infinity sentinels too; calendar text or Unix seconds would
+		// change the domain and can clamp at a source's supported date range.
+		return std::to_string(DateValue::Get(value).days);
+	}
+	return value.ToString();
 }
 
 string FilterJSON(const TableFilter &filter, const string &column, idx_t depth) {
@@ -108,7 +122,7 @@ string FilterJSON(const TableFilter &filter, const string &column, idx_t depth) 
 		default: return Unsupported();
 		}
 		return "{\"kind\":\"comparison\",\"column\":" + JsonString(column) + ",\"op\":" + JsonString(op) +
-		       ",\"type\":" + JsonString(ConstantType(comparison.constant)) + ",\"value\":" + JsonString(comparison.constant.ToString()) + "}";
+		       ",\"type\":" + JsonString(ConstantType(comparison.constant)) + ",\"value\":" + JsonString(ConstantValue(comparison.constant)) + "}";
 	}
 	case TableFilterType::CONJUNCTION_AND:
 	case TableFilterType::CONJUNCTION_OR: {

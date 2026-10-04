@@ -104,6 +104,8 @@ func nativePredicateType(id arrow.Type) C.uint8_t {
 		return C.KELVO_PREDICATE_INT16
 	case arrow.INT32:
 		return C.KELVO_PREDICATE_INT32
+	case arrow.DATE32:
+		return C.KELVO_PREDICATE_DATE32
 	case arrow.INT64:
 		return C.KELVO_PREDICATE_INT64
 	case arrow.UINT8:
