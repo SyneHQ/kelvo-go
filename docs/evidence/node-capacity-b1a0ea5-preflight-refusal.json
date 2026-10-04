@@ -1,0 +1,551 @@
+{
+  "schema": 1,
+  "passed": false,
+  "title": "b1a0ea5 worker-capacity revalidation refused at required preflight",
+  "scope": "Failed preflight only. No measured pairs or successful throughput result. Worker resource acceptance does not certify failed query execution.",
+  "attempt": {
+    "id": "a44de60f8b27",
+    "date": "2026-10-04",
+    "failure": "CLIENT_PROFILE_FAILED",
+    "absolute_expiry_epoch": 1791102806,
+    "replayed": false
+  },
+  "build": {
+    "revision": "b1a0ea520d65ac931ccdac3ea6f42531139a5399",
+    "binary_sha256": "2911d90c22ec074d0dffab4a43660601cf0cc8ff67035c242a6d49b2c53414b9",
+    "launcher_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+    "source_sha256": "08d006eedade9026928111e0150049611258efefc42b41d01c87ed740f607103",
+    "source_file_count": 1037,
+    "source_manifest": "node-capacity-b1a0ea5-source.json",
+    "source_manifest_file_sha256": "22bfc29ba33be2d5997c8206ee5a717eb12ae025638c872c9eb2999d7e2ddba4",
+    "source_unchanged_during_build": true,
+    "build_receipt_sha256": "ac71541fe10b052a995e06165f4fd0432ed51fb5d8b0c3dc2234cb1ebcea747b",
+    "nats": {
+      "version": "2.15.0",
+      "archive_sha256": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92"
+    }
+  },
+  "observer": {
+    "revision": "fbb9ae8099d12ac88acd6f3357779c7b0af49771",
+    "worker_sha256": "145dff95f7e415dbbdfc4ce4c9ae35d969c8fcd604e76462e9c1da470b9cf940",
+    "client_sha256": "282f35ca439379b6209dc9e078a5e9458d9cc0ee73d7c5f2f000d0458b2bf03a",
+    "protocol_reader_sha256": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639",
+    "separate_from_compiled_runtime": true
+  },
+  "orchestration": {
+    "files": {
+      "host.py": "7cea29ad0789745fb8958a6d2af468df08f7a78f9c8c9f38182704c3daa16a1e",
+      "control.py": "14acf44156cba7bb4c52efb01a4121d81365a69139ca71fd590dd7e16ec6fccc",
+      "stage.py": "7b5b8426e103e2168e9ad1b6387f6267d928fde686ad5075c17c3c9055c84ccf",
+      "campaign.py": "1be5ee4572359711b962a58dd8e4cc2644f8f6795c5c8ebd63bb92714d2459d6",
+      "test_host.py": "256af3e4b08740679bd9fbbeb91daab4d4c8e06b43c6757cb3cf308f38ae8887",
+      "test_campaign.py": "f9c06d58e3ce85ba0a6d1b76bccc708147c93bd109ce466941f1b6eb3508ffa9"
+    },
+    "observer_controls": {
+      "passed": true,
+      "serialization_passed": true,
+      "early_launch_claimed": true,
+      "missing_inputs_blocked_execution": true,
+      "closed_intent_retained": true,
+      "owned_service_removed": true,
+      "owned_cgroup_removed": true,
+      "worker_sha256": "145dff95f7e415dbbdfc4ce4c9ae35d969c8fcd604e76462e9c1da470b9cf940",
+      "tests_sha256": "fb6c4a710359d64d6629088d9f73191137a7946de0646118122186b0a94a5d33",
+      "controls_passed": 32,
+      "docs_sha256": "f50c8c810a81e5712f01b6b9c102599f1f3b14918273459b19f653b4a73857d4"
+    },
+    "source_controls": {
+      "expired_admission_denied_before_client": true,
+      "multiquery_error_aborts_followups": true
+    },
+    "controller_controls_log_sha256": "ed2fc4fe1a875093bb1fb3d0be839a3209eb398a716d8a2812145f55f512a7e2"
+  },
+  "preflight": {
+    "outcome": {
+      "profile": "preflight-disabled",
+      "passed": false,
+      "metrics": "disabled",
+      "queued_operations": 0,
+      "failure": "CLIENT_PROFILE_FAILED"
+    },
+    "worker": {
+      "schema": 1,
+      "metrics_enabled": false,
+      "resource_budget": {
+        "memory_bytes": 671088640,
+        "swap_bytes": 0,
+        "tasks": 128,
+        "cpu_weight": 20
+      },
+      "launch_intent_sha256": "8aca46da57eb774ca5014f9e51c8f0eb4deef6725f58ba35f163bafcf8539742",
+      "service_exit_code": 0,
+      "interrupted": false,
+      "forced_node_kill": false,
+      "config_unchanged": true,
+      "binary_unchanged": true,
+      "inputs_unchanged": true,
+      "normalized_config_sha256": "313c3097422ad5641f6b0dd30d3374c8a1dbff30639049da3990be5eaace004c",
+      "inputs": {
+        "files": {
+          "catalog.yml": "02bd7cb57c0decac5c89655bf90f669f595e6470ec3f7fadbc38e51e069777f9",
+          "node-template.yml": "0e322f81d1bbff6580613232485164dbab8c0bab136b5f8a0228924a5d5e403b",
+          "node-environment.json": "4dbb9a688fc925a37df9b4532521858b7807cfee9a6094d09dd7ff6ab58976c2",
+          "bin/kelvo": "2911d90c22ec074d0dffab4a43660601cf0cc8ff67035c242a6d49b2c53414b9",
+          "bin/kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+          "scripts/acceleration_acceptance.py": "15e3b7299b0103c6ef9c0b1a25f855683a15d08ec9f14f96708d49c30cd9d0b3",
+          "scripts/acceleration_benchmark.py": "ac81c0090b496726cbcc3e6934868b1754b2eee84a2c58b21d343d4502307867",
+          "scripts/acceptance.py": "059b04077b1b01790bebf5eb439c6e189765f4f27ff3c8e8aa4300f51b1b1bc8",
+          "scripts/adapter_acceptance.py": "ec4610c098bd721df2be0e5b1bc58d4c61f4072faa9ba0538b7344536ec8c3ff",
+          "scripts/analytics_library_baseline.py": "e0e388117de5cd25642996d1f5a917b36338cba10f7ddf22277eaa333ef8870c",
+          "scripts/analytics_native_references.py": "af8bdb83b5cd7a7ec9838c693946cdc3611b39e6645329f302144afacfdd914e",
+          "scripts/analytics_workflow_benchmark.py": "10d0c7892872bdae95fb6552041c0e81b17f4387186a3c7a1e674ee55af0f07f",
+          "scripts/audit_cluster_acceptance.py": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+          "scripts/backup_acceptance.py": "053810143642a94ab40025a322af9077726b9ef4281e206b0c753f35175c1383",
+          "scripts/benchmark_clickhouse.py": "40810724a86cf70de3fcbe6d243996fb1b8da9897d766d0eb2618f77eee6cc54",
+          "scripts/build_nats_compatibility.py": "3ba909a8af331beb9c740fd032fe1bdd86cd33f0bfe6197bf5065f6a53ad34ca",
+          "scripts/cleanup_coordinator.py": "adf154596decefe8926e7658e77bcb353f3bbf2579555999041c3d86eebf4a7e",
+          "scripts/cluster_acceptance.py": "630c4dd3c883c79c155d044e7758257cc383082b0bc110b784df172c946bfc78",
+          "scripts/cluster_fixture.py": "e60495da2807690c6177f40a87c9c12fcc0793fd0a7e06510b795b83ce245f60",
+          "scripts/config_refusal_acceptance.py": "48441190798b56aad1e544b4b9016c855332fa3f65e766ad062f143a51ee0a84",
+          "scripts/container_acceptance.py": "a16025a50a11e6bb1120955bdf169929411b47bc070bac90172af352c44a222b",
+          "scripts/container_network_acceptance.py": "caca5b6a0f912515a786426455bb4936b99f5c589d2234a8769f97332183928d",
+          "scripts/containment_acceptance.py": "432d42d5b6f557ab7abb0ca775c335968031169d6826baa24c523cb86037d724",
+          "scripts/csv_memory_acceptance.py": "9c090f76034bdc15f09485e2503b9492207991f4ad50c32a449fdee56190f05c",
+          "scripts/dynamodb_acceptance.py": "d6edc8085fe2c960f4c6fca914271f46ae9487819b9bc9c81906670db93aac07",
+          "scripts/elasticsearch_acceptance.py": "460537dc8737fae55d54106cbb45e449ebe20d79fdffdc9ab2a764e5ba21cfb2",
+          "scripts/export_broker_acceptance.py": "07a77fde4c475493f284c852cadb87719a3e645120709c16e15581a111859770",
+          "scripts/export_diagnostics.py": "bbc0d769be037e91d0618dabf5e69f6f7fdaaf45c77436e60fb3e89e7e7b1e1e",
+          "scripts/federation_acceptance.py": "01b86421354ae2590271110e6d3d43dc7b462483ed9b0e7d6f115da10ed2b342",
+          "scripts/federation_capacity.py": "cd7e542c62151fecfaf38b5918a6c99238b34e62ab11e29576fdb66f0a196396",
+          "scripts/federation_capacity_cluster.py": "21c692dad3720b8dd01b70baf58b90fd59517cbc34f7b27073a025fa28ac0ccc",
+          "scripts/federation_cluster_load.py": "b9dea3392f686ed394fa56809482c63441922248f3eb832f43a84325a5d03041",
+          "scripts/federation_micro_benchmark.py": "82a8e82e952263633c1ebfa8ab21d68db8dcfbb9e767b64e88142c8ce60f9fb0",
+          "scripts/federation_micro_http.py": "5affaf34b24f1ac297375e9b08b75e229fe194090e9735f57d99680673e370c0",
+          "scripts/federation_micro_parallel.py": "40a4c69816c9179114faf549120eb258eb5ba18a7887a1a8c99e78c83095abb3",
+          "scripts/federation_micro_server.py": "8ae31cd85a1acb085a9c38696b12aff3aa10f8a18d55134007690d63f6c8989f",
+          "scripts/federation_relational_acceptance.py": "397e9482b02b695c71a47eb848d5334e82ea20c8dc3c84bdacea21a263d40ee4",
+          "scripts/federation_sql_acceptance.py": "e0ca587677394d3d40e125b62d86d51317de8215bda411a0ef6d6deb27cb13fb",
+          "scripts/federation_wan_client.py": "ab23cfb9bfd713374da6b1d5d4e6e682eb28400c0aa7fe5261190c88c15c0613",
+          "scripts/gateway_key_rotation_acceptance.py": "9081bfa4d419bb9062d5ccdb0db1774b677f61851911d96f749a15af40d10562",
+          "scripts/ignite_acceptance.py": "a5bb56e6928d86def3639a1865ccd54e4f33006748e91da2fbafdf5147a72125",
+          "scripts/lease_supervision.py": "e3fe1e889b2d4e8e694f33efee890dc5d223ca4542ccccd9eecc0080e230d4b3",
+          "scripts/mongodb_acceptance.py": "404e9615f2a03bf8a9818a4169074f0bb384f801336c587cf378919f75a841aa",
+          "scripts/multipart_acceptance.py": "18b6b14cd30ef5d8078030aa0046941535d83961bc2a5f6b211b190abc2c369f",
+          "scripts/nats_compatibility_acceptance.py": "51d8527a249155f41422cc97a6848c3d9a5a3308294309e12f68cb2d93b74065",
+          "scripts/nats_export_permissions.py": "e06cd503f92eb0d6b41f63548b2a2e1eb4cea11a4036e5739d5109f18d2e6a1d",
+          "scripts/node_capacity_client.py": "282f35ca439379b6209dc9e078a5e9458d9cc0ee73d7c5f2f000d0458b2bf03a",
+          "scripts/node_capacity_worker.py": "145dff95f7e415dbbdfc4ce4c9ae35d969c8fcd604e76462e9c1da470b9cf940",
+          "scripts/notebook_acceptance.py": "2644ccdf4cbff4a9f1e6a9bb75d40f452adce27b283be432adcc4aed195347bc",
+          "scripts/object_acceleration_acceptance.py": "1b08217a615299a6626c132dd53ea45311994a17120fbc358718c1bf15702eec",
+          "scripts/object_migration_acceptance.py": "1e6c7fa43b07812e83225052cf4ff46d4545d662df9073fd80d9c51cef75882a",
+          "scripts/object_multipart_acceptance.py": "1b9fa4f2c5e7382152ce19d2a416f377c9af09bf38b50c3ba6f2e13568d28569",
+          "scripts/operational_acceptance.py": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639",
+          "scripts/prepare_analytics_dataset.py": "3784e4168bfbf5e59031d98499f869d4d4670405d341f6fcbe0b978d639a772d",
+          "scripts/prepare_analytics_manifests.py": "a987c93245613c4b68b484d9ce516c5a812f8dcdce3c96c4a8f367b045930f34",
+          "scripts/prepare_tracing_fixture.py": "343643e48c9f670da2a1bfdfc0938a4cadedbb4f75f6181e5e183c69a978eb0d",
+          "scripts/process_loss_acceptance.py": "8ce67ca9f2f5972de28be2b655b4764f96bb0a65c8f68e4ef29860af5c9c8df8",
+          "scripts/provision_duckbridge.py": "aa56b44f9f80f223fe528112c74bf6af5566ed5ed7f8f0cbb85c970291ebc508",
+          "scripts/provision_extensions.py": "b124f9a98c17a46e366f5f46fd4d8de6de9ef492f009d3e085a27c539206a59b",
+          "scripts/relational_acceptance.py": "5c5cc0d699acdb599ef35f2417a5d360ab8c844f2286fe4af616a89151c7a246",
+          "scripts/release_upgrade_acceptance.py": "8d220dfa441e0108eceadf60ea3f6d6bac26dcb6abd1db9c6306882cffde431b",
+          "scripts/render_architecture.py": "241edee6d0fc1a6bad35d85b108c0d15daa7c3b1e4eaeee36ecb9a7a5f6e532a",
+          "scripts/render_brand.py": "37d7824950bfbae0b3f7ded1e00ce1860f410b71ed2ee659cc4dcbfc744774e3",
+          "scripts/rolling_upgrade_acceptance.py": "196d804d7a3393ec8d7b31cf9d6ab3f1242ff7f38536ead776a588305810f21e",
+          "scripts/schema_evolution_acceptance.py": "e60ddb42b650e273a9ef55cac8e23acfac1b98a13f58c3c33a8cb64119e5d1c3",
+          "scripts/spill_acceptance.py": "3a4fdfab0c40876213fcd1857fc20d5342669be05a9826d745841555d50fcf07",
+          "scripts/storage_conformance.py": "9269c41242378f32422e84d8987885abed77592769404068a9b18251f44c6685",
+          "scripts/summarize_analytics_workflows.py": "8dae8da2499b0436d489b52fc0634e195e419ea2536fd8a24e8754ec508f9b3c",
+          "scripts/summarize_node_capacity.py": "58a3e1020b0021ff8ea58c662588a6bc6d067d3ce728007fcd15a00cc979eb2e",
+          "scripts/sustained_acceptance.py": "1c92b88d6f8a6443fbcd76f6a202a32b300835a02b03336c7bc3c38f65b1a24a",
+          "scripts/test_analytics_evidence.py": "85538c66eef0a90d4c09bc9e525d52f555c75fe3345f14b9ca1adaed03166749",
+          "scripts/test_backup_acceptance.py": "1a925f561ddf92728354674734f73c98d34c5e01b2aec176a501bd29ab7a51d0",
+          "scripts/test_build_nats_compatibility.py": "2d85531bde44d3eaf2bdc9f276b455e44c8985a068391f3d580ff65ea992f553",
+          "scripts/test_cleanup_coordinator.py": "80f599f69aab8486e8860b035d16bf3bc15923d0c7f43bb3e302d6db50325ddd",
+          "scripts/test_cluster_fixture.py": "bcbe19cd45ce5c058714d36660c2e259329fff5feb2623c6d6328a6787432c3f",
+          "scripts/test_config_refusal_acceptance.py": "9c815cb0d8ff2d7bf5ffec365745d47bc88b09aafaeb487cc4731412a306ce73",
+          "scripts/test_containment_acceptance.py": "e1f450844ec7f22aff0ac67e3ee4ebb08823dff690d19500162654735cdfdcbd",
+          "scripts/test_csv_memory_acceptance.py": "98c2fe3040a11d3d793fb4a505d8e70c88544e97bb70d24aafa47e52ac09ed23",
+          "scripts/test_export_diagnostics.py": "092a089ed0b52277858af7991aa6959f4ee6e66130cf3c866ae7e5524240793b",
+          "scripts/test_federation_adapter_example.py": "7ef9dc2b5c22b94fd994df3cbd87f8a126a7e03dc9f43199a15e469bc7505ba4",
+          "scripts/test_gateway_key_rotation_acceptance.py": "a67f93ac95453bbd8d2c2b3cffb7731b66a01e7b78d051c449309571e7f2c665",
+          "scripts/test_kelvo_notebooks.py": "596d1cf0885ffc85968167ece9c0150774dbb5fd87383a304480b28740a79df1",
+          "scripts/test_lease_supervision.py": "872b82260af480449480193d80a7465174e1a039825bd9db878c80db3cbca9e8",
+          "scripts/test_nats_compatibility_acceptance.py": "dca612184a4ae00b8bcfff5aac8bc7b08705423c6c2b151d935c41b54a2f3350",
+          "scripts/test_nats_export_permissions.py": "226a487abbc1c4f456d62857ad25eac89f5f6cc5a4e2f26257677bfac4fae54d",
+          "scripts/test_node_capacity_client.py": "04efdf5a64a2df071897a4885403ad3526695f5f6038d617624d3c69445d13cd",
+          "scripts/test_node_capacity_worker.py": "fb6c4a710359d64d6629088d9f73191137a7946de0646118122186b0a94a5d33",
+          "scripts/test_notebook_acceptance.py": "f36ddb16647f692f5192363f03a463fc9a0a019d62d75156f21fc4f9d52197c2",
+          "scripts/test_operational_acceptance.py": "9f43ecac316cb13735a8cc2b83bcc8803defc6b6ae5f4a92e6303a09e625532b",
+          "scripts/test_process_loss_acceptance.py": "8bea2e775ed985975b327dfe9532ea74f49cb2a28177fb57cd25a22ef8c58177",
+          "scripts/test_provision_duckbridge.py": "251d940f0886f9c81827a2e680287b3e564320e3e5830212cf8609b5e2ba08e7",
+          "scripts/test_relational_acceptance.py": "f25991a53b5635693a2562f3804d2dd33482fdceb81d0ca4e48d3bfd7de9de80",
+          "scripts/test_release_upgrade_acceptance.py": "98725c1bb4baf27156eecc033dbd309aec03fabcd1f3a61f772b7a759a257826",
+          "scripts/test_rolling_upgrade_acceptance.py": "ce795a2786db1cb8163e284196b686b17bf9e63092971df9b9501bb2222208e7",
+          "scripts/test_storage_conformance.py": "dc4c29f7d6dea00f075d963271acdca1aeef26dbcea56c0f2317445d3aef42c2",
+          "scripts/test_summarize_node_capacity.py": "f17d58ef2a669c842a0f20810bf42f7e2f318bd735bbdfb3cd8c292e7d10fdcf",
+          "scripts/test_sustained_acceptance.py": "09bd6c69856cf85cc0826b8bf12b462d864f44091ec26864b6cbf768dc882180",
+          "scripts/tracing_cluster_acceptance.py": "8546104debf124ec8969a0045127b807844cabff4bf0a24cbabd4b4423774279",
+          "scripts/validate_analytics_workflows.py": "c09ef1ae30b0823a377a05a5a78bb9c1c3ffe709b8899c2f6f8eec85bbd34b30"
+        },
+        "sha256": "55c133015819723a9b56061e151df444a43c35a20ce050ca7319ac8df970171f"
+      },
+      "config_sha256": "421203ba99a61b0a255c293293c0b727b078f88b667af4959093f3ca3ffa8654",
+      "binary_sha256": "2911d90c22ec074d0dffab4a43660601cf0cc8ff67035c242a6d49b2c53414b9",
+      "stop_file_observed": true,
+      "elapsed_seconds": 19.20590135495877,
+      "node_exit_code": 0,
+      "resources": {
+        "samples": 206,
+        "read_errors": [],
+        "disappeared": 0,
+        "rss_node_peak_bytes": 70873088,
+        "rss_workers_peak_bytes": 92925952,
+        "rss_combined_peak_bytes": 163606528,
+        "max_workers": 1,
+        "memory_current_peak_bytes": 66719744,
+        "memory_peak_bytes": 66736128,
+        "scratch_peak_bytes": 57,
+        "minimum_host_available_bytes": 643026944,
+        "maximum_sample_gap_seconds": 0.13621387700550258,
+        "memory_events": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0,
+          "sock_throttled": 0
+        },
+        "cpu_stat": {
+          "usage_usec": 1970103,
+          "user_usec": 1362566,
+          "system_usec": 607536,
+          "nice_usec": 0,
+          "core_sched.force_idle_usec": 0,
+          "nr_periods": 0,
+          "nr_throttled": 0,
+          "throttled_usec": 0,
+          "nr_bursts": 0,
+          "burst_usec": 0
+        },
+        "pids_events": {
+          "max": 0
+        },
+        "host_steal_fraction": 0.04515209125475285,
+        "observed_worker_identities": 5,
+        "live_owned_processes_after_shutdown": 0,
+        "sampling_scope": "RSS: observed node and worker processes across delegated descendants. Cgroup: node, disposable children and Python observer; excludes source, gateway, NATS and SSH. Shared RSS pages can be counted twice; sampling can miss short peaks."
+      },
+      "scratch_directories_remaining": 0,
+      "containment_records_remaining": 0,
+      "owned_service_removed": true,
+      "owned_cgroup_removed": true,
+      "launch_closed": true,
+      "passed": true
+    },
+    "client": {
+      "schema": 1,
+      "metrics_enabled": false,
+      "passed": false,
+      "inputs": {
+        "client_script": "282f35ca439379b6209dc9e078a5e9458d9cc0ee73d7c5f2f000d0458b2bf03a",
+        "protocol_reader": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639",
+        "private_control": "b08411f0e3da307647c36c2196def122e4d27bc0016235bf5229d7f8cf2debe2",
+        "projection_reference": "0f437cc2926fd2f27a5e8f45aff4a6b0de33ae2be48a53f55624e6ead8aa9d78",
+        "join_reference": "dd2b8bf1226b406d7d70f01505a281de9dadee45b4c1872a51806e4d70dd21fe"
+      },
+      "queued_operations_requested": 0,
+      "metrics_route_verified": true,
+      "inputs_unchanged": true,
+      "timing_scope": "Submission through complete Arrow response at the Azure client; SQL, dispatch, verified TLS and Oracle-Azure SSH transport included. Value decoding is outside timing. Source/gateway/NATS/SSH resources excluded from separate Oracle node cgroup.",
+      "cases": [
+        {
+          "name": "native_million",
+          "passed": false,
+          "submission_seconds": 0.005167721014004201,
+          "assignment_wait_seconds": 0.6265469819772989,
+          "failure": "HTTPError",
+          "failed_after_seconds": 3.542652748990804,
+          "partial_encoded_bytes": 0,
+          "http_status": 503,
+          "terminal_state_observed": "failed",
+          "query_error_code": "QUERY_FAILED"
+        },
+        {
+          "name": "federated_million",
+          "passed": false,
+          "submission_seconds": 0.00523055499070324,
+          "assignment_wait_seconds": 0.627969741995912,
+          "failure": "HTTPError",
+          "failed_after_seconds": 3.00323044200195,
+          "partial_encoded_bytes": 0,
+          "http_status": 503,
+          "terminal_state_observed": "failed",
+          "query_error_code": "QUERY_FAILED"
+        },
+        {
+          "name": "federated_cte_join",
+          "passed": false,
+          "submission_seconds": 0.005106591997900978,
+          "assignment_wait_seconds": 0.8328674109943677,
+          "failure": "HTTPError",
+          "failed_after_seconds": 3.2739143089856952,
+          "partial_encoded_bytes": 0,
+          "http_status": 503,
+          "terminal_state_observed": "failed",
+          "query_error_code": "QUERY_FAILED"
+        }
+      ]
+    }
+  },
+  "completed_workload_queries": 0,
+  "failed_preflight_queries": 3,
+  "measured_pairs": 0,
+  "partial_result_bytes": 0,
+  "reconciliation": {
+    "attempted": false,
+    "reason": "No measured profiles; required preflight failed."
+  },
+  "cleanup": {
+    "controller": {
+      "oracle": {
+        "cleanup_attempted": true,
+        "cleanup_verified": true,
+        "timer_stop_attempted": true,
+        "timer_stopped": true,
+        "persistence_attempted": true,
+        "persisted": true,
+        "cleanup_exit_code": 0,
+        "cleanup_report": {
+          "owned_workers_removed": true,
+          "owned_tunnels_removed": true,
+          "owned_tunnel_cgroups_removed": true,
+          "private_key_removed": true,
+          "failures": []
+        },
+        "timer_stop_exit_code": 0
+      },
+      "azure": {
+        "cleanup_attempted": true,
+        "cleanup_verified": true,
+        "timer_stop_attempted": true,
+        "timer_stopped": true,
+        "persistence_attempted": true,
+        "persisted": true,
+        "cleanup_exit_code": 0,
+        "cleanup_report": {
+          "source_user_removed": true,
+          "forwarding_key_removed": true,
+          "source_data_preserved": true,
+          "brokers_stopped": true,
+          "gateway_stopped": true,
+          "failures": []
+        },
+        "timer_stop_exit_code": 0
+      }
+    },
+    "independent_review": {
+      "schema": 1,
+      "fixture": "a44de60f8b27",
+      "reviewed_at": "2026-10-04T06:59:01.803206+00:00",
+      "read_only": true,
+      "independent_cleanup_verified": true,
+      "campaign_passed": false,
+      "measured_pairs": 0,
+      "performance_evidence": false,
+      "gate_8": "open",
+      "verification_script_sha256": "24260969bdb8e0d7112bee9f4a1eb6b4d5dae96d62aee9e39404c03b41c8b5e4",
+      "campaign_sha256": "dac704ad356dbef82de1b983ff30b9f74b57b30d0d67cebe54ed7ec94f46efc6",
+      "hosts": {
+        "azure": {
+          "host": "azure",
+          "fixture": "a44de60f8b27",
+          "read_only": true,
+          "observed_at": "2026-10-04T06:58:27.118237+00:00",
+          "failures": [],
+          "fixture_closed": true,
+          "units": [
+            {
+              "ControlGroup": "",
+              "LoadState": "not-found",
+              "ActiveState": "inactive",
+              "SubState": "dead",
+              "cgroup_exists": false,
+              "name": "kelvo-capacity-control-a44de60f8b27",
+              "closure_valid": true
+            }
+          ],
+          "workers": [],
+          "expiry": {
+            "service": {
+              "ControlGroup": "",
+              "LoadState": "not-found",
+              "ActiveState": "inactive",
+              "SubState": "dead",
+              "cgroup_exists": false
+            },
+            "timer": {
+              "LoadState": "not-found",
+              "ActiveState": "inactive",
+              "SubState": "dead",
+              "cgroup_exists": false
+            }
+          },
+          "ports": {
+            "checked": [
+              54222,
+              54223,
+              54224,
+              56222,
+              56223,
+              56224,
+              58222,
+              58223,
+              58224,
+              54440,
+              54443
+            ],
+            "occupied": []
+          },
+          "fixture_cgroups": [],
+          "authorization": {
+            "exact_line_absent": true,
+            "fixture_marker_absent": true,
+            "owned_pending_absent": true,
+            "authorized_keys_mode": "0o600"
+          },
+          "source": {
+            "matches_before": true,
+            "running": true,
+            "identity_allocation_table_metadata": {
+              "Id": "9a9ea32ff228a36ae615acb6c41c45e829384e62dd1b1e00e64e4a7efc6a9f2c",
+              "Image": "sha256:77475011e36a9cbc6f107c59b7a925f0e810d9d7416df35083b5c9382466ff2d",
+              "StartedAt": "2026-10-01T14:11:43.329533843Z",
+              "Memory": 4294967296,
+              "NanoCpus": 1500000000,
+              "tables": [
+                {
+                  "database": "kelvo_bench",
+                  "name": "fact_events",
+                  "total_rows": 100000000
+                },
+                {
+                  "database": "kelvo_capacity_104a5b278487",
+                  "name": "taxi_sample",
+                  "total_rows": 1000000
+                },
+                {
+                  "database": "kelvo_capacity_104a5b278487",
+                  "name": "trips",
+                  "total_rows": 22612607
+                },
+                {
+                  "database": "kelvo_capacity_104a5b278487",
+                  "name": "zones",
+                  "total_rows": 265
+                }
+              ]
+            },
+            "scope": "Container identity, image, start time, CPU/RAM allocation and table row metadata; not a full content checksum."
+          },
+          "source_user_absent": true,
+          "source_queries_absent": true,
+          "passed": true
+        },
+        "oracle": {
+          "host": "oracle",
+          "fixture": "a44de60f8b27",
+          "read_only": true,
+          "observed_at": "2026-10-04T06:58:38.103202+00:00",
+          "failures": [],
+          "fixture_closed": true,
+          "units": [
+            {
+              "LoadState": "not-found",
+              "ActiveState": "inactive",
+              "SubState": "dead",
+              "ControlGroup": "",
+              "cgroup_exists": false,
+              "name": "kelvo-capacity-observer-a44de60f8b27-preflight-disabled",
+              "closure_valid": true
+            },
+            {
+              "LoadState": "not-found",
+              "ActiveState": "inactive",
+              "SubState": "dead",
+              "ControlGroup": "",
+              "cgroup_exists": false,
+              "name": "kelvo-capacity-tunnels-a44de60f8b27",
+              "closure_valid": true
+            }
+          ],
+          "workers": [
+            {
+              "LoadState": "not-found",
+              "ActiveState": "inactive",
+              "SubState": "dead",
+              "ControlGroup": "",
+              "cgroup_exists": false,
+              "name": "kelvo-micro-node-5660db860ff6",
+              "profile": "preflight-disabled",
+              "closure_valid": true
+            }
+          ],
+          "expiry": {
+            "service": {
+              "LoadState": "not-found",
+              "ActiveState": "inactive",
+              "SubState": "dead",
+              "ControlGroup": "",
+              "cgroup_exists": false
+            },
+            "timer": {
+              "LoadState": "not-found",
+              "ActiveState": "inactive",
+              "SubState": "dead",
+              "cgroup_exists": false
+            }
+          },
+          "ports": {
+            "checked": [
+              54222,
+              54223,
+              54224,
+              18123,
+              14443
+            ],
+            "occupied": []
+          },
+          "fixture_cgroups": [],
+          "private_key_absent": true,
+          "passed": true
+        }
+      },
+      "evidence_sha256": {
+        "azure": "c94ef9dc9455a46a96abee740e7c3c53fbe0844ace69efb7a2038c87e4ecef3e",
+        "oracle": "533aac1fffe419f952fd4f83ac4a3ffdda740e6d1da46ade2d491874a046ff4f"
+      },
+      "conclusion": "Both hosts have closed fixture intents, absent owned services and cgroups, stopped/absent expiry timers and no fixture listeners. Oracle private forwarding key is absent. Azure forwarding authorization and source user are absent; no owned source queries remain. The ClickHouse container and source table row metadata match the pre-run snapshot. Failed preflight provides no performance measurement.",
+      "limits": [
+        "Source preservation verifies container identity, image, start time, CPU/RAM allocations and recorded table row metadata; not a full data checksum.",
+        "Read-only inspection did not start or replay the fixture and did not alter source accounts or services."
+      ]
+    }
+  },
+  "diagnosis": {
+    "status": "source_fixture_setting_rejection",
+    "source_error": "READONLY",
+    "source_error_code": 164,
+    "setting": "cancel_http_readonly_queries_on_client_close",
+    "fixture_readonly": 1,
+    "summary": "The fixture source account forbade setting changes. ClickHouse rejected the requested HTTP query cancellation setting before returning data.",
+    "evidence_sha256": "f4c3fe144199ee9ea8fd5179a2b44eb20466b1555efc37936a2b218f59c31d93",
+    "evidence_scope": "Source error inspection named READONLY and the cancellation setting; system.errors counts are cumulative, not this campaign query counts."
+  },
+  "earlier_success": "node-capacity-d144a43-r2.json",
+  "limitations": [
+    "Failed request timings are not full-delivery throughput measurements.",
+    "Resource peaks from a short failed preflight are not comparable to complete successful profiles.",
+    "This refusal does not replace, pool with or invalidate the earlier pinned successful campaign."
+  ]
+}

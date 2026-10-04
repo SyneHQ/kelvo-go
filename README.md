@@ -110,7 +110,7 @@ Oracle used a burstable Always Free E2.1.Micro (951 MiB RAM, 1/8 OCPU entitlemen
 
 - **Local native export:** 1.18–1.48 million returned rows/s for one 10-million-row ClickHouse workload, including file persistence. [Scope](docs/validation.md)
 - **Oracle micro VM:** 30/30 native LZ4 exports, ten at a time, returned 120 million verified rows at 443,000 aggregate rows/s. The source ran on Azure; transport used SSH tunnels. Ten concurrent federated sorts exhausted the same memory cap. [Report](docs/oracle-micro-capacity.md)
-- **Latest pinned worker-only trial:** Five metrics on/off pairs and 130 exact workload queries through one execution slot; gateway, NATS, source and SSH memory are excluded. [Measured scope and results](docs/node-capacity.md)
+- **Last successful worker-only trial (`d144a43`):** Five metrics on/off pairs and 130 exact workload queries through one execution slot; gateway, NATS, source and SSH memory are excluded. The `b1a0ea5` revalidation stopped at preflight. [Results and failed attempt](docs/node-capacity.md)
 
 These are measurements of recorded binaries and workloads, not throughput guarantees. Result caching, CDC, a Flight SQL server and production HA certification remain open work.
 

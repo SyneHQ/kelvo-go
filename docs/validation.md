@@ -8,6 +8,8 @@ The [telemetry comparison](telemetry-overhead.md#recorded-full-comparison) passe
 
 The [pinned worker-capacity gate](node-capacity.md) also passed on `d144a43` with observer `9cad904`: five matched metrics on/off pairs, 130/130 workload queries and a separate 3/3 preflight. Its warm-cache, worker-only scope excludes the Azure gateway, NATS, source database and SSH tunnels; broader sustained and deployment capacity remain separate.
 
+The [fresh `b1a0ea5` revalidation](evidence/node-capacity-b1a0ea5-preflight-refusal.json) stopped after all three preflight queries returned HTTP 503 `QUERY_FAILED`, with no result bytes. No measured pairs ran; the earlier capacity result does not validate this runtime.
+
 ## Expanded federation and public adapter SDK
 
 The optional Go/C++ bridge supports ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery and Databricks. See the [adapter guide](federation-adapters.md) for namespaces, types and the public `github.com/SYNEHQ/kelvo-go/federation` interface.
