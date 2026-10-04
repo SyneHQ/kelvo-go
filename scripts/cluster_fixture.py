@@ -16,6 +16,7 @@ import shutil
 import signal
 import subprocess
 import tarfile
+import tempfile
 import time
 import urllib.request
 
@@ -31,9 +32,15 @@ BROKER_NAMES = {f"nats-{i}": f"kelvo-test-{i}" for i in range(3)}
 READINESS_TIMEOUT = 30.0
 MONITOR_TIMEOUT = 1.0
 MONITOR_MAX_BYTES = 65536
+BROKER_TERM_TIMEOUT = 3.0
+BROKER_KILL_TIMEOUT = 2.0
 
 
 class FixtureReadinessError(RuntimeError):
+    pass
+
+
+class FixtureCleanupError(RuntimeError):
     pass
 
 
@@ -211,6 +218,63 @@ def write(path, data):
     path.chmod(0o600)
 
 
+def publish_pid_records(items):
+    """Keep the last complete private ownership record if publication fails."""
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=DIR, prefix=".pids-", delete=False) as stream:
+            temporary = Path(stream.name)
+            os.fchmod(stream.fileno(), 0o600)
+            json.dump(items, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, DIR / "pids.json")
+        descriptor = os.open(DIR, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def reap_started_brokers(processes):
+    """Reap only retained direct children, even when no PID file was written.
+
+    This main-thread fixture is the sole reaper of these exact Popen children;
+    an unreaped child keeps its PID reserved. Never reconstruct a cleanup target
+    from a PID file, discover processes, or signal a process group.
+    Both grace periods are shared across the whole owned set.
+    """
+    for process in processes:
+        try:
+            process.terminate()
+        except OSError:
+            pass  # Still attempt wait and bounded kill below.
+    pending = []
+    deadline = time.monotonic() + BROKER_TERM_TIMEOUT
+    for process in processes:
+        try:
+            process.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except (OSError, subprocess.TimeoutExpired):
+            pending.append(process)
+    for process in pending:
+        try:
+            process.kill()
+        except OSError:
+            pass
+    failed = 0
+    deadline = time.monotonic() + BROKER_KILL_TIMEOUT
+    for process in pending:
+        try:
+            process.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except (OSError, subprocess.TimeoutExpired):
+            failed += 1
+    if failed:
+        raise FixtureCleanupError(f"failed to reap {failed} owned fixture broker(s)")
+
+
 def yaml(value, level=0):
     """Small emitter for fixture mappings, lists and scalar values."""
     pad = "  " * level
@@ -259,7 +323,7 @@ def provision(nats_archive=None, server_version=VERSION):
         raise SystemExit("Unsupported NATS fixture version")
     DIR.mkdir(parents=True, exist_ok=True)
     DIR.chmod(0o700)
-    if (DIR / "manifest.json").exists():
+    if (DIR / "manifest.json").exists() or (DIR / "pids.json").exists():
         raise SystemExit("Fixture exists; stop it and use its existing configuration or a clean checkout")
     os.umask(0o077)
     archive = DIR / "nats.tar.gz"
@@ -350,24 +414,28 @@ def provision(nats_archive=None, server_version=VERSION):
         tc["nats"]["username"] = name
         tc["nats"]["password_env"] = "KELVO_NATS_" + name.upper()
     write(DIR / "init.yml", yaml(base))
-    pids = []
-    for i in range(3):
-        routes = [f"nats-route://127.0.0.1:{16222+j}" for j in range(3) if j != i]
-        cfg = {"server_name": f"kelvo-test-{i}", "listen": f"127.0.0.1:{14222+i}", "http": f"127.0.0.1:{18222+i}", "max_payload": 2 << 20, "tls": dict(broker, min_version="1.3"), "jetstream": {"store_dir": str(DIR / f"state-{i}"), "max_file_store": 536870912, "max_memory_store": 67108864}, "accounts": accounts, "cluster": {"name": "kelvo-test", "listen": f"127.0.0.1:{16222+i}", "routes": routes, "tls": dict(broker, verify=True, min_version="1.3")}}
-        cfgpath = DIR / f"nats-{i}.conf"
-        write(cfgpath, json.dumps(cfg, indent=2))
-        log = open(DIR / f"nats-{i}.log", "wb")
-        process = subprocess.Popen([str(DIR / "nats-server"), "-c", str(cfgpath)], stdout=log, stderr=log, start_new_session=True)
-        pids.append({"name": f"nats-{i}", "pid": process.pid})
-    write(DIR / "pids.json", json.dumps(pids))
-    write(DIR / "environment.json", json.dumps(env))
-    write(DIR / "manifest.json", json.dumps({"nats_version": server_version, "sha256": RELEASES[server_version], "nodes": nodes}))
-    # Keep the process records and private state if readiness fails: the CI
-    # always-stop step must still be able to clean up these exact processes.
+    pids, started = [], []
     try:
+        for i in range(3):
+            routes = [f"nats-route://127.0.0.1:{16222+j}" for j in range(3) if j != i]
+            cfg = {"server_name": f"kelvo-test-{i}", "listen": f"127.0.0.1:{14222+i}", "http": f"127.0.0.1:{18222+i}", "max_payload": 2 << 20, "tls": dict(broker, min_version="1.3"), "jetstream": {"store_dir": str(DIR / f"state-{i}"), "max_file_store": 536870912, "max_memory_store": 67108864}, "accounts": accounts, "cluster": {"name": "kelvo-test", "listen": f"127.0.0.1:{16222+i}", "routes": routes, "tls": dict(broker, verify=True, min_version="1.3")}}
+            cfgpath = DIR / f"nats-{i}.conf"
+            write(cfgpath, json.dumps(cfg, indent=2))
+            with open(DIR / f"nats-{i}.log", "wb") as log:
+                process = subprocess.Popen([str(DIR / "nats-server"), "-c", str(cfgpath)], stdout=log, stderr=log, start_new_session=True)
+                started.append(process)
+            pids.append({"name": f"nats-{i}", "pid": process.pid})
+            publish_pid_records(pids)
+        write(DIR / "environment.json", json.dumps(env))
+        write(DIR / "manifest.json", json.dumps({"nats_version": server_version, "sha256": RELEASES[server_version], "nodes": nodes}))
         wait_for_brokers(pids, expected_versions=dict.fromkeys(BROKER_NAMES.values(), server_version))
-    except FixtureReadinessError as error:
-        raise SystemExit(str(error)) from None
+    except BaseException as error:
+        # Keep durable records for diagnostics; in-memory ownership also covers
+        # failures before (or during) the first PID publication.
+        reap_started_brokers(started)
+        if isinstance(error, FixtureReadinessError):
+            raise SystemExit(str(error)) from None
+        raise
     print("Loopback fixture provisioned; private state is under artifacts/cluster-private")
 
 

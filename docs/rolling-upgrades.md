@@ -64,6 +64,11 @@ private fixture directory, generated keys, configuration or logs. Publish the
 sanitized JSON report with the exact build manifest, including failures before
 any successful rerun.
 
+Caught provisioning failures trigger bounded termination and reaping of started
+broker children, even if PID publication failed. Unreaped children remain a
+cleanup error; private PID records stay available for diagnostics.
+Service-manager containment still handles controller crashes and descendants.
+
 The [2026-10-03 acceptance](evidence/rolling-upgrades.json) passed all 16 gates in
 88.45 seconds: 11 transition waves, eight stale-startup probes, key rotation,
 ambiguous gateway loss and cleanup. Six evidence/protocol controls also passed. A [stricter evidence check](evidence/rolling-upgrades-controls.json) rejects missing transition details and non-integer counters; it revalidated this retained runtime report without rerunning the cluster.

@@ -1,13 +1,302 @@
 #!/usr/bin/env python3
-"""Deterministic fixture readiness regressions; no brokers, downloads or Go."""
+"""Fixture regressions; mocked brokers and bounded Python children, no downloads or Go."""
+import builtins
+import contextlib
 import copy
+import hashlib
+import io
 import json
+import os
 from pathlib import Path
+import signal
+import subprocess
+import sys
+import tarfile
 import tempfile
+import time
 import unittest
 from unittest import mock
 
 import cluster_fixture as fixture
+
+REAL_POPEN = subprocess.Popen
+
+
+class OwnedChild:
+    """Direct-child model for failures before any real broker can be started."""
+    def __init__(self, pid, stubborn=False, clock=None):
+        self.pid = pid
+        self.returncode = None
+        self.stubborn = stubborn
+        self.clock = clock
+        self.reaped = False
+        self.signals = []
+
+    def terminate(self):
+        self.signals.append(signal.SIGTERM)
+        if not self.stubborn:
+            self.returncode = -signal.SIGTERM
+
+    def kill(self):
+        self.signals.append(signal.SIGKILL)
+        self.returncode = -signal.SIGKILL
+
+    def wait(self, timeout):
+        if self.returncode is None:
+            if self.clock is not None:
+                self.clock[0] += timeout
+            raise subprocess.TimeoutExpired("owned-test-child", timeout)
+        self.reaped = True
+        return self.returncode
+
+
+class ProvisionOwnershipTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="kelvo-provision-test-")
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name) / "fixture"
+        self.archive = Path(temporary.name) / "cached.tar"
+        with tarfile.open(self.archive, "w") as archive:
+            content = b"test-only broker placeholder; never executed"
+            member = tarfile.TarInfo(f"nats-server-v{fixture.VERSION}-linux-amd64/nats-server")
+            member.size = len(content)
+            archive.addfile(member, io.BytesIO(content))
+        self.children, self.logs = [], []
+        stack = contextlib.ExitStack()
+        self.addCleanup(stack.close)
+        stack.enter_context(mock.patch.object(fixture, "DIR", self.directory))
+        stack.enter_context(mock.patch.dict(fixture.RELEASES, {
+            fixture.VERSION: hashlib.sha256(self.archive.read_bytes()).hexdigest()}))
+        stack.enter_context(mock.patch.object(fixture, "cert", return_value={"cert_file": "fixture-only"}))
+        stack.enter_context(mock.patch.object(fixture.subprocess, "run"))
+        self.popen = stack.enter_context(mock.patch.object(fixture.subprocess, "Popen", side_effect=self.spawn))
+        self.ready = stack.enter_context(mock.patch.object(fixture, "wait_for_brokers"))
+        self.open_log = stack.enter_context(mock.patch.object(fixture, "open", side_effect=self.log, create=True))
+        stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+
+    def spawn(self, *args, **kwargs):
+        child = OwnedChild(90000 + len(self.children))
+        self.children.append(child)
+        return child
+
+    def log(self, *args, **kwargs):
+        stream = builtins.open(*args, **kwargs)
+        self.logs.append(stream)
+        self.addCleanup(stream.close)
+        return stream
+
+    def provision(self):
+        fixture.provision(self.archive)
+
+    def assert_reaped(self, count):
+        self.assertEqual(len(self.children), count)
+        for child in self.children:
+            self.assertTrue(child.reaped, "owned broker was not reaped after provisioning failed")
+            self.assertEqual(child.signals, [signal.SIGTERM])
+        self.assertTrue(all(stream.closed for stream in self.logs), "spawn log descriptor left open")
+
+    def fail_write(self, name):
+        original = fixture.write
+        def write(path, data):
+            if path.name == name:
+                raise OSError("injected publication failure")
+            return original(path, data)
+        return mock.patch.object(fixture, "write", side_effect=write)
+
+    def test_later_config_failure_reaps_previously_started_child(self):
+        with self.fail_write("nats-1.conf"), self.assertRaisesRegex(OSError, "injected"):
+            self.provision()
+        self.assert_reaped(1)
+
+    def test_later_log_open_failure_reaps_previously_started_child(self):
+        def opening(path, *args, **kwargs):
+            if path.name == "nats-1.log":
+                raise OSError("injected log failure")
+            return self.log(path, *args, **kwargs)
+        self.open_log.side_effect = opening
+        with self.assertRaisesRegex(OSError, "injected log failure"):
+            self.provision()
+        self.assert_reaped(1)
+
+    def test_later_spawn_failure_reaps_previously_started_child_and_closes_logs(self):
+        def spawning(*args, **kwargs):
+            if self.children:
+                raise OSError("injected spawn failure")
+            return self.spawn(*args, **kwargs)
+        self.popen.side_effect = spawning
+        with self.assertRaisesRegex(OSError, "injected spawn failure"):
+            self.provision()
+        self.assert_reaped(1)
+        self.assertEqual(len(self.logs), 2)
+
+    def test_log_close_failure_reaps_child_before_pid_publication(self):
+        owner = self
+        class FailingClose:
+            def __init__(self, *args, **kwargs):
+                self.stream = owner.log(*args, **kwargs)
+
+            def __enter__(self):
+                return self.stream
+
+            def __exit__(self, *args):
+                self.stream.close()
+                raise OSError("injected log close failure")
+        self.open_log.side_effect = FailingClose
+        with mock.patch.object(fixture, "publish_pid_records") as publish:
+            with self.assertRaisesRegex(OSError, "injected log close failure"):
+                self.provision()
+        self.assert_reaped(1)
+        publish.assert_not_called()
+
+    def test_first_pid_publication_failure_still_reaps_child(self):
+        with mock.patch.object(fixture, "publish_pid_records", side_effect=OSError("injected PID failure")):
+            with self.assertRaisesRegex(OSError, "injected PID failure"):
+                self.provision()
+        self.assert_reaped(1)
+
+    def test_later_pid_publication_failure_reaps_all_and_keeps_previous_snapshot(self):
+        original = fixture.publish_pid_records
+        def publish(items):
+            if len(items) == 2:
+                raise OSError("injected PID failure")
+            original(items)
+        with mock.patch.object(fixture, "publish_pid_records", side_effect=publish):
+            with self.assertRaisesRegex(OSError, "injected PID failure"):
+                self.provision()
+        self.assert_reaped(2)
+        self.assertEqual(json.loads((self.directory / "pids.json").read_text()),
+                         [{"name": "nats-0", "pid": self.children[0].pid}])
+
+    def test_environment_write_failure_reaps_all_started_children(self):
+        with self.fail_write("environment.json"), self.assertRaisesRegex(OSError, "injected"):
+            self.provision()
+        self.assert_reaped(3)
+
+    def test_manifest_write_failure_reaps_all_started_children(self):
+        with self.fail_write("manifest.json"), self.assertRaisesRegex(OSError, "injected"):
+            self.provision()
+        self.assert_reaped(3)
+
+    def test_readiness_failure_reaps_children_and_retains_private_pid_evidence(self):
+        self.ready.side_effect = fixture.FixtureReadinessError("injected readiness failure")
+        with self.assertRaisesRegex(SystemExit, "injected readiness failure"):
+            self.provision()
+        self.assert_reaped(3)
+        records = self.directory / "pids.json"
+        self.assertEqual(json.loads(records.read_text()),
+                         [{"name": f"nats-{i}", "pid": child.pid} for i, child in enumerate(self.children)])
+        self.assertEqual(records.stat().st_mode & 0o777, 0o600)
+        self.assertTrue((self.directory / "manifest.json").is_file())
+
+    def test_interruption_reaps_children_before_propagating(self):
+        self.ready.side_effect = KeyboardInterrupt()
+        with self.assertRaises(KeyboardInterrupt):
+            self.provision()
+        self.assert_reaped(3)
+
+    def test_cleanup_failure_retains_original_exception_and_checks_other_children(self):
+        def spawning(*args, **kwargs):
+            child = self.spawn(*args, **kwargs)
+            if len(self.children) == 1:
+                child.stubborn = True
+                child.kill = mock.Mock(side_effect=OSError("injected kill failure"))
+            return child
+        self.popen.side_effect = spawning
+        with self.fail_write("environment.json"):
+            with self.assertRaises(fixture.FixtureCleanupError) as raised:
+                self.provision()
+        self.assertIsInstance(raised.exception.__context__, OSError)
+        self.assertEqual(str(raised.exception.__context__), "injected publication failure")
+        self.assertFalse(self.children[0].reaped)
+        self.children[0].kill.assert_called_once()
+        self.assertTrue(all(child.reaped for child in self.children[1:]))
+        self.assertTrue(all(stream.closed for stream in self.logs))
+
+    def test_success_transfers_live_children_with_all_pid_records_and_closed_logs(self):
+        self.provision()
+        records = [{"name": f"nats-{i}", "pid": child.pid} for i, child in enumerate(self.children)]
+        self.assertEqual(json.loads((self.directory / "pids.json").read_text()), records)
+        self.ready.assert_called_once_with(records, expected_versions=dict.fromkeys(fixture.BROKER_NAMES.values(), fixture.VERSION))
+        self.assertTrue(all(not child.reaped and not child.signals for child in self.children))
+        self.assertTrue(all(stream.closed for stream in self.logs))
+
+    def test_existing_pid_inventory_is_not_overwritten_or_used_as_cleanup_targets(self):
+        self.directory.mkdir()
+        records = self.directory / "pids.json"
+        records.write_text('[{"name":"prior-owned-broker","pid":123}]')
+        before = records.read_bytes()
+        with self.assertRaisesRegex(SystemExit, "Fixture exists"):
+            self.provision()
+        self.assertEqual(records.read_bytes(), before)
+        self.popen.assert_not_called()
+        self.assertEqual(list(self.directory.iterdir()), [records])
+
+    @unittest.skipUnless(sys.platform == "linux", "bounded Linux direct-child cleanup regression")
+    def test_real_partial_spawn_failure_reaps_owned_child_and_preserves_unrelated(self):
+        ready_path = self.directory.parent / "child-ready"
+        failure_time = []
+        child_code = ("import pathlib,signal,sys,time; "
+                      "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                      "pathlib.Path(sys.argv[1]).write_text('ready'); time.sleep(30)")
+        unrelated = REAL_POPEN([sys.executable, "-c", "import time; time.sleep(30)"],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               start_new_session=True)
+        def finish(process):
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=2)
+        self.addCleanup(finish, unrelated)
+
+        def spawning(*args, **kwargs):
+            if self.children:
+                failure_time.append(time.monotonic())
+                raise OSError("injected later spawn failure")
+            process = REAL_POPEN([sys.executable, "-c", child_code, str(ready_path)], **kwargs)
+            self.children.append(process)
+            self.addCleanup(finish, process)
+            deadline = time.monotonic() + 2
+            while not ready_path.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(ready_path.exists(), "owned child did not become ready")
+            return process
+
+        self.popen.side_effect = spawning
+        with mock.patch.object(fixture, "BROKER_TERM_TIMEOUT", 0.1, create=True), \
+                mock.patch.object(fixture, "BROKER_KILL_TIMEOUT", 0.5, create=True):
+            with self.assertRaisesRegex(OSError, "injected later spawn failure"):
+                self.provision()
+            elapsed = time.monotonic() - failure_time[0]
+        self.assertEqual(self.children[0].returncode, -signal.SIGKILL,
+                         "owned child was not reaped after partial provisioning")
+        with self.assertRaises(ChildProcessError):
+            os.waitpid(self.children[0].pid, os.WNOHANG)
+        self.assertIsNone(unrelated.poll(), "unrelated child was signalled")
+        self.assertLess(elapsed, 3, "partial provision cleanup exceeded its bounds")
+        self.assertTrue(all(stream.closed for stream in self.logs))
+
+
+class PIDPublicationAndReapingTests(unittest.TestCase):
+    def test_failed_atomic_replace_preserves_the_last_complete_inventory(self):
+        with tempfile.TemporaryDirectory(prefix="kelvo-pid-record-test-") as directory:
+            root = Path(directory)
+            before = [{"name": "nats-0", "pid": 10}]
+            with mock.patch.object(fixture, "DIR", root):
+                fixture.publish_pid_records(before)
+                with mock.patch.object(fixture.os, "replace", side_effect=OSError("injected replace failure")):
+                    with self.assertRaisesRegex(OSError, "injected replace failure"):
+                        fixture.publish_pid_records(before + [{"name": "nats-1", "pid": 11}])
+            self.assertEqual(json.loads((root / "pids.json").read_text()), before)
+            self.assertEqual((root / "pids.json").stat().st_mode & 0o777, 0o600)
+            self.assertEqual(list(root.iterdir()), [root / "pids.json"])
+
+    def test_wait_budgets_are_shared_and_all_pending_children_are_killed_and_reaped(self):
+        clock = [0.0]
+        children = [OwnedChild(i, stubborn=True, clock=clock) for i in range(3)]
+        with mock.patch.object(fixture.time, "monotonic", side_effect=lambda: clock[0]):
+            fixture.reap_started_brokers(children)
+        self.assertEqual(clock[0], fixture.BROKER_TERM_TIMEOUT)
+        self.assertTrue(all(child.signals == [signal.SIGTERM, signal.SIGKILL] for child in children))
+        self.assertTrue(all(child.reaped for child in children))
 
 
 def healthy_reports():
