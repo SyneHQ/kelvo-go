@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "runtime_commit": "eec91a1d64f5520675c0d491c0018582ca211d70",
+  "fixture_commit": "fcd4d4d469a5c9cb399b1d8f4bb8ded7b3e9fe5d",
+  "scope": "Focused runtime race tests, vet, full binary build, supervisor negative controls, and one real contained broker-loss gate. This is not multi-hour capacity certification or a guarantee for every broker leader placement.",
+  "platform": "Linux x86_64; non-root private network and delegated cgroups",
+  "runtime": {
+    "passed": true,
+    "source_unchanged": true,
+    "source_files": {
+      "internal/cluster/node.go": "06d2491cfbcce8646c18b497d0b40d29d309100f2c78db995c9d2920ce2a5172",
+      "internal/cluster/node_lease_failure_test.go": "1ab6a7b7e0b1c3d4ad8a28f8a1feb13c41167859d62c7b5962153807d0b0fac9",
+      "cmd/kelvo/cluster.go": "515ef308ffda28e537977263fc2c16dcf00cd729f15a57e14767cab34a9b3596",
+      "cmd/kelvo/node_lease_failure_test.go": "7a670d9cba89d3ee343a248c83e795b160a5ae7bbf7b7cc37d4924ac86116805"
+    },
+    "stages": {
+      "focused-race": {
+        "exit_code": 0,
+        "seconds": 28.322,
+        "log_sha256": "0cf822e2607b4aa92bb67f9fac0c4bb6e6db180a5508c540994046263f46a1aa"
+      },
+      "vet": {
+        "exit_code": 0,
+        "seconds": 14.094,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "build": {
+        "exit_code": 0,
+        "seconds": 6.325,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "binaries": {
+      "kelvo": "a0b3b8e5d22301ed1ba93c5b9b5a65f83ed3f185e173de54e52224b6a18b2a96",
+      "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+    },
+    "failures": [],
+    "skips": []
+  },
+  "supervisor_controls": {
+    "passed": true,
+    "exit_code": 0,
+    "seconds": 0.264,
+    "source_unchanged": true,
+    "source_files": {
+      "scripts/lease_supervision.py": "e3fe1e889b2d4e8e694f33efee890dc5d223ca4542ccccd9eecc0080e230d4b3",
+      "scripts/test_lease_supervision.py": "872b82260af480449480193d80a7465174e1a039825bd9db878c80db3cbca9e8",
+      "scripts/process_loss_acceptance.py": "8ce67ca9f2f5972de28be2b655b4764f96bb0a65c8f68e4ef29860af5c9c8df8",
+      "scripts/test_process_loss_acceptance.py": "8bea2e775ed985975b327dfe9532ea74f49cb2a28177fb57cd25a22ef8c58177",
+      "scripts/sustained_acceptance.py": "ae49f8195fb123972d2c948d2c0efe463a11c7c2ec9031ef467df9b2da504bc6",
+      "scripts/test_sustained_acceptance.py": "d8ebf49469aa06b20caa9a3cdc0967fe4319a5098229b3ac766df65d5631f1d6"
+    },
+    "log_sha256": "2cd5112741c5f9f115009df92f6249dcd302ab9f0cca1e98f3b346bfb06d74e8",
+    "test_status_lines": [
+      "Ran 47 tests in 0.138s",
+      "OK"
+    ]
+  },
+  "broker_gate": {
+    "passed": true,
+    "broker_gate_passed": true,
+    "fenced_recovery_covered": true,
+    "elapsed_seconds": 21.883895,
+    "source_scripts_unchanged": true,
+    "script_sha256": "a5a60574fc5a7b3bdba620b61e54b441b4af840634faf383766371499ebbc9f7",
+    "source_scripts": {
+      "lease_supervision.py": "e3fe1e889b2d4e8e694f33efee890dc5d223ca4542ccccd9eecc0080e230d4b3",
+      "sustained_acceptance.py": "ae49f8195fb123972d2c948d2c0efe463a11c7c2ec9031ef467df9b2da504bc6",
+      "process_loss_acceptance.py": "8ce67ca9f2f5972de28be2b655b4764f96bb0a65c8f68e4ef29860af5c9c8df8",
+      "operational_acceptance.py": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639",
+      "cluster_fixture.py": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1"
+    },
+    "binary_sha256": "a0b3b8e5d22301ed1ba93c5b9b5a65f83ed3f185e173de54e52224b6a18b2a96",
+    "sandbox_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+    "resource_budget": {
+      "cpu_percent": 200,
+      "memory_bytes": 6442450944,
+      "tasks": 512,
+      "swap_bytes": 0
+    },
+    "broker_supervision": {
+      "schema": 1,
+      "deadline_seconds": 25.0,
+      "expiry_basis": "observed_exact_parent_exit_plus_configured_lease_upper_bound",
+      "original_query_deadlines_unchanged": true,
+      "query_resubmissions": 0,
+      "errors": [],
+      "nodes": [
+        {
+          "node": "a1",
+          "fenced_exit_observed": false,
+          "restart_attempts": 0,
+          "lease_seconds": 5.0,
+          "final_running_verified": true,
+          "attempts": []
+        },
+        {
+          "node": "b1",
+          "fenced_exit_observed": true,
+          "restart_attempts": 1,
+          "lease_seconds": 5.0,
+          "final_running_verified": true,
+          "attempts": [
+            {
+              "number": 1,
+              "started_seconds": 9.929815
+            }
+          ],
+          "exit_observed_seconds": 4.909407,
+          "lease_expiry_upper_bound_seconds": 9.909407,
+          "old_children_gone_seconds": 9.929815,
+          "restart_started_seconds": 9.929815,
+          "replacement_ready_seconds": 10.17346,
+          "same_configuration_verified": true,
+          "fresh_owner_claimed": true
+        }
+      ]
+    },
+    "control_response_counts": {
+      "cancel_http_200": 2,
+      "status_http_200": 2,
+      "queued_status_http_200": 173
+    },
+    "checks": [
+      {
+        "test": "startup",
+        "passed": true,
+        "seconds": 7.694
+      },
+      {
+        "test": "broker_loss",
+        "passed": true,
+        "seconds": 11.548,
+        "running_before_fault": 2,
+        "queued_before_fault": 2,
+        "surviving_tenant_exact_result": true,
+        "failed_attempt_result_rejected": true,
+        "queued_handles_preserved": true,
+        "post_rejoin_queries_correct": true
+      },
+      {
+        "test": "cleanup",
+        "passed": true,
+        "seconds": 2.64,
+        "forced_application_kills": 0,
+        "observed_live_descendants": 0,
+        "worker_scratch_directories": 0,
+        "remaining_containment_records": 0,
+        "all_owned_brokers_stopped": true,
+        "original_configurations_verified": true
+      }
+    ]
+  },
+  "artifact_sha256": {
+    "runtime_validation": "dcb5e3a726c13a5486859ef71cdffe7e8f32014d38f48903e6758da98e6b4cef",
+    "supervisor_controls": "1d0ab8a8064e871bac05228eedb69fe51aea3f563f932e5cd70340f521d78b44",
+    "broker_gate": "aabcc8a4c1773c799aaed8ff34143b3c2b620989430e821cd3481989c312dcf7"
+  },
+  "owned_units": [
+    {
+      "role": "runtime_validation",
+      "inactive": true,
+      "result": "success",
+      "tasks_unset": true,
+      "cgroup_absent": true
+    },
+    {
+      "role": "supervisor_controls",
+      "inactive": true,
+      "result": "success",
+      "tasks_unset": true,
+      "cgroup_absent": true
+    },
+    {
+      "role": "broker_gate",
+      "inactive": true,
+      "result": "success",
+      "tasks_unset": true,
+      "cgroup_absent": true
+    }
+  ]
+}

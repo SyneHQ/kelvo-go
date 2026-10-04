@@ -38,7 +38,7 @@ Assigned work is never silently replayed. Worker loss or delivery failure ends t
 | Single-consumer results | `GET /v1/queries/{id}/results` |
 | Cancel | `POST /v1/queries/{id}/cancel` |
 
-Every operation authenticates a tenant token; headers cannot override its tenant. Limits fail explicitly instead of returning successful truncation.
+Every operation authenticates a tenant token; headers cannot override its tenant. Optional [principal keys](principal-access.md) also restrict sources and handle ownership. [Callback row/column policies](row-column-access.md) filter registered tables before SQL operations. Limits fail explicitly instead of returning successful truncation.
 
 Queued result requests wait until assignment, job expiry or client disconnect without claiming the handle. Two separate pools each allow `max_http_requests`: active requests and parked result waiters. Assigned waiters reacquire an active permit before claiming. HTTP 429 occurs before claim consumption; back off and retry the same handle. The pools prevent waiter starvation of active operations, but promise no scheduling fairness.
 
@@ -60,7 +60,9 @@ The header alone, a partial body or status 404 never proves success. After certi
 4. Use optional [gateway key rotation](gateway-key-rotation.md) for overlapping service keys and per-replica revocation.
 5. Share [accelerated snapshots](acceleration.md) through tenant POSIX storage or the [object backend](object-storage.md). Refresh dispatch is separate; object staging stays node-local. Snapshots do not make query handles replayable.
 
-Policies remain static; there is no tenant-enrollment API, per-user row policy, durable query-result catalog or single-query distribution. Retain tenant container limits. The pinned DuckDB Go path materializes execution before Arrow delivery. Landlock ABI 3 or newer is required; unsupported hosts fail closed. Check [production status](production-status.md) for the accepted containment scope.
+Policies remain static; changes require the drained account cutover described in [principal access](principal-access.md). There is no tenant-enrollment API, durable query-result catalog or single-query distribution. Optional [local audit](durable-audit.md) records protected operations and fails closed when durable recording is uncertain. Retain tenant container limits. The pinned DuckDB Go path materializes execution before Arrow delivery. Landlock ABI 3 or newer is required; unsupported hosts fail closed. Check [production status](production-status.md) for the accepted containment scope.
+
+Opt-in [durable exports](exports.md) use a separate retained queue and worker-local result catalog. They keep principal authorization, have independent admission, and support repeat downloads without replaying SQL. Interactive query handles keep their existing single-consumer lifecycle.
 
 ## Reproduce acceptance
 

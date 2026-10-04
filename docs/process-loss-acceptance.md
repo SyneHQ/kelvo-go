@@ -8,10 +8,12 @@ This campaign kills owned gateways, worker nodes and one of three NATS brokers o
 | --- | --- |
 | Gateway loss | Active attempt fails/cancels and rejects replay; second gateway serves original queued handles; replacement starts |
 | Worker loss | Tenant A attempt terminates without reassignment; queued handle survives; tenant B succeeds; same worker ID restarts after ownership expiry |
-| Broker loss | Queued results succeed while one broker is absent; rejoin restores three current metadata replicas |
+| Broker loss | Original queued handles succeed; fenced workers exit and restart under supervision when needed; rejoin restores three current metadata replicas |
 | Cleanup | No unexpected forced cleanup, observed live descendants or scratch; original configurations unchanged; brokers healthy |
 
 Previously running handles must remain failed/cancelled and reject results with HTTP 409 after recovery. This checks no automatic result replay, not exactly-once database execution or remote cancellation. DuckDB still materializes execution before Arrow delivery.
+
+The fixture restarts only a worker observed exiting with the fixed lease-loss diagnostic. It verifies old descendants are gone, waits a conservative lease-expiry bound, and reuses the exact configuration with a fresh owner. Original 10-second cancellation and 25-second queued-recovery deadlines remain unchanged. A broker trial where neither worker fences does not exercise this restart path; the report records which workers actually exited.
 
 Use `--managed-scratch` for [ownership-based recovery](worker-scratch.md). The runner verifies the sandbox inherited a lease before injecting the fault. SIGKILL leftovers must be reclaimed before verdict; the harness does not delete them to manufacture a pass. Omitting the flag tests legacy temp behavior.
 

@@ -76,6 +76,8 @@ Use [local storage](docs/acceleration.md) or opt into [S3, R2, GCS or Azure Blob
 
 Configure [admission, source quotas and drain](docs/operations.md), then validate your workload. DuckDB completes execution before Arrow delivery; output limits and compression do not cap process memory. [Deploy workers](deploy/README.md) · [Cluster lifecycle](docs/cluster.md)
 
+[Durable exports](docs/exports.md) keep complete Arrow results on worker storage for repeat downloads. They use separate admission and recheck principal access on every request. Enable them explicitly; worker storage is not automatically replicated.
+
 ## Real analytics, measured
 
 Four workflows query **22,612,607 NYC Taxi trips** with CTEs, joins and windows. All **84 measured runs** passed exact-result checks, after 28 preflights.
@@ -108,8 +110,9 @@ Oracle used a burstable Always Free E2.1.Micro (951 MiB RAM, 1/8 OCPU entitlemen
 
 - **Local native export:** 1.18–1.48 million returned rows/s for one 10-million-row ClickHouse workload, including file persistence. [Scope](docs/validation.md)
 - **Oracle micro VM:** 30/30 native LZ4 exports, ten at a time, returned 120 million verified rows at 443,000 aggregate rows/s. The source ran on Azure; transport used SSH tunnels. Ten concurrent federated sorts exhausted the same memory cap. [Report](docs/oracle-micro-capacity.md)
+- **Latest pinned worker-only trial:** Five metrics on/off pairs and 130 exact workload queries through one execution slot; gateway, NATS, source and SSH memory are excluded. [Measured scope and results](docs/node-capacity.md)
 
-These are measurements of recorded binaries and workloads, not throughput guarantees. Durable export APIs, CDC, a Flight SQL server and production HA certification remain open work.
+These are measurements of recorded binaries and workloads, not throughput guarantees. Result caching, CDC, a Flight SQL server and production HA certification remain open work.
 
 ## Documentation
 

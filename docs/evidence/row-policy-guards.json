@@ -1,0 +1,101 @@
+{
+  "recorded_at": "2026-10-03T10:45:03.880689+00:00",
+  "base_commit": "c7ecbf1a8f8391b13cd1bc96a4ae847d5c8b052c",
+  "contract_commit": "44516f7b6ffe6092e7a42e22edb80f6e86b8fad8",
+  "source_worktree": "/private/tmp/kelvo-row-column-policies",
+  "branch": "feature/row-column-policies",
+  "validation_host": "syenuser@20.84.60.82",
+  "validation_tree": "/home/syenuser/kelvo-row-policies.FaqQQH",
+  "source_hashes_match_validation_tree": true,
+  "source_sha256": {
+    "internal/access/policy.go": "90ca3bcfeb810b33f6b0a0fbe1bd7435d47572b171e4174e4db9b18a8010ad73",
+    "internal/access/policy_test.go": "3ffda6da85933f52c54f826d3caa2c5888c9064ef49a4c3310bdf6e19d1ce0b1",
+    "internal/access/predicate.go": "73264be48fec64fb6277a98d9e1d7ad93ed548962589aac15b3e63cdcbaf6170",
+    "internal/access/relation.go": "0341ea89f5ee433f38eb71cb7ba30318bdde6e24aef3009d2d04789ba77c1739",
+    "internal/access/relation_test.go": "e977ebddad85a0af859478243d2f5aec832dbcc98f2ac4e9cf2350108451fb7f",
+    "internal/access/README.md": "25adbaf6fa7ce0595f826ee5274eb5f524b8c19a86031e54e47298f6c8bdc248",
+    "internal/federation/table.go": "53be058e11fd48a20bbfdb18dac2ef349d70d030ec28b8b02e72f2aca238a5a6",
+    "internal/federation/access_budget_test.go": "dac26fc5d8c84c3fecc320d9fdd7c5e2042345d49c555ec6a00c3e4a2837fc07",
+    "internal/engine/duckdb/engine.go": "1a6c013557bbaf4e495afad43cebd10801174628567486f124d1dcd15ff5f946",
+    "internal/engine/duckdb/federation.go": "3b0a018aaa509eec52c8533220b76b51de2bca7cfb98156cac4834417254cb86",
+    "internal/engine/duckdb/access_test.go": "841e8e3224db9b05ae503ac67d2074671e8acaf8ec9c7d03637444e3cf910d50"
+  },
+  "toolchain": "go version go1.26.8 linux/amd64",
+  "environment": {
+    "GOMAXPROCS": "1",
+    "GOPROXY": "off",
+    "GOTOOLCHAIN": "local"
+  },
+  "bridge_build": {
+    "duckdb": "v1.5.6",
+    "driver": "v2.10506.0",
+    "source_sha256": "1fadcbe9e69e1470f9093b6bcde08daf477d729c449e59a807f45c346622099b",
+    "module_sum": "h1:mcZjUQ/kSNeZdtGCqyj5/JEDUdj7/kvILfIOUTzQIu0=",
+    "driver_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+    "headers": "/home/syenuser/kelvo-federation/artifacts/duckbridge/headers",
+    "header_count": 1364,
+    "modfile": "/home/syenuser/kelvo-federation/artifacts/duckbridge/duckbridge.mod",
+    "tags": "duckdb_arrow,duckbridge",
+    "CGO_CXXFLAGS": "-I/home/syenuser/kelvo-federation/artifacts/duckbridge/headers"
+  },
+  "driver_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "header_sha256": "01f1ac7ec523668f6ccbe91d73390e165d5261a191ae7ecc47a64113cef45aed",
+  "overlay_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+  "checks": [
+    {
+      "command": "go test -race -p 1 -count=1 ./internal/access ./internal/federation",
+      "log": "policy-final-unit.log",
+      "status": "passed"
+    },
+    {
+      "command": "go test -race -p 1 -count=20 -run '^(TestGuardConcurrentRescansAndCancellation|TestGuardReleaseCancelsBlockedProducer|TestGuardObservesCancellationWhileFiltering|TestGuardIPCContainsNoExcludedRowsColumnsOrMetadata|TestRawSourceBudgetPrecedesPolicyFiltering)$' ./internal/access ./internal/federation",
+      "log": "policy-repeat.log",
+      "status": "passed"
+    },
+    {
+      "command": "go vet -p 1 ./internal/access ./internal/federation",
+      "log": "policy-vet.log",
+      "status": "passed"
+    },
+    {
+      "command": "CGO_CXXFLAGS=-I/home/syenuser/kelvo-federation/artifacts/duckbridge/headers go test -race -p 1 -count=1 -modfile=row-policy.mod -tags duckdb_arrow,duckbridge ./internal/engine/duckdb ./internal/duckbridge",
+      "log": "policy-final-engine.log",
+      "status": "passed"
+    },
+    {
+      "command": "CGO_CXXFLAGS=-I/home/syenuser/kelvo-federation/artifacts/duckbridge/headers go vet -p 1 -modfile=row-policy.mod -tags duckdb_arrow,duckbridge ./internal/engine/duckdb",
+      "log": "policy-engine-vet.log",
+      "status": "passed"
+    }
+  ],
+  "log_sha256": {
+    "policy-contract.log": "bd71f029da553aa4bd73ec92f7c0e23272a8b893bcd07279f7b22b716fe1d944",
+    "policy-initial.log": "f31282a3cb43348a424f96e0866d135d12d06a2b193ff3b326a6195a245cbe24",
+    "policy-unit.log": "9fd0b82ec3bfada5d5fd53d6f042ac473fa34c57b110c529e7e1b47183218fa2",
+    "policy-engine.log": "4a17006192c708e765688ca0b75ba315675ed3042d50694ce0cfd0bf24ebb120",
+    "policy-final-unit.log": "8844f5e4c00a37f4f3328dba0a1722b8fbfec17f07aec676f20affcf9d2740be",
+    "policy-repeat.log": "cc7939d5ef818e528b0129b44dcad6069a642ca0bd0794370cbac232ce96aadb",
+    "policy-vet.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "policy-final-engine.log": "1140d8e1922d650e5c0dba8e540742fbb51aecb5a38fa56228c867e7e7fbe752",
+    "policy-engine-vet.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "coverage": [
+    "Exact signed/unsigned primitive, Boolean, NULL and byte-string predicates; decimal projection unchanged.",
+    "IPC serialization contains none of three unique excluded-row, hidden-column or metadata sentinels.",
+    "Cumulative raw source row/byte overflow rejected before any policy handoff, including all-rejected policy.",
+    "Cancellation during filtering and Release of blocked producer, repeated concurrent rescans, retained output batch ownership.",
+    "Real pinned DuckDB counts, joins, self-joins, CTEs, windows and hidden-row expression ordering; no hidden table discovery, column access, metadata or raw statistics."
+  ],
+  "limits": [
+    "The new source acceptance tests use in-process adapter/protocol fixtures, not live tenant databases.",
+    "Restricted scans deliberately disable source predicate pushdown and enforce both mandatory and optimizer predicates locally; no throughput claim.",
+    "Restricted native SQL, snapshots, raw ATTACH, files and object ranges are unsupported and fail closed.",
+    "Nested, dictionary and extension projections plus unsupported predicate types fail closed.",
+    "Root-owned authenticated principal and worker envelope integration is outside this isolated source tree and requires combined acceptance.",
+    "Timing, source activity and resource exhaustion are not a noninterference guarantee.",
+    "Validation used a single-core build budget on a shared authorized test VM, without exclusive-capacity claims."
+  ],
+  "git_diff_check": 0,
+  "guard_commit": "3c794b9e74dc20137595031021178f78c6761ed7",
+  "worktree_clean": true
+}

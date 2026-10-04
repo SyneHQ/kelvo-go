@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	federationapi "github.com/SYNEHQ/kelvo-go/federation"
+	"github.com/SYNEHQ/kelvo-go/internal/access"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/duckbridge"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
@@ -24,6 +25,8 @@ type executorFactory func(catalog.Config, query.Limits) (execution, error)
 // Table describes one operator-selected relation. Every concurrent scan owns
 // its native executor, source connection, cancellation and one Arrow batch handoff.
 type Table struct {
+	snapshot                    *snapshotTable
+	guard                       *access.Relation
 	ctx                         context.Context
 	cancel                      context.CancelFunc
 	schema                      *arrow.Schema
@@ -60,14 +63,32 @@ type Stats struct {
 }
 
 func New(ctx context.Context, source catalog.Source, table catalog.FederationTable, limits query.Limits) (*Table, error) {
+	policy, restricted, allowed := access.Lookup(ctx, source.ID, table.Name)
+	if !allowed {
+		return nil, query.NewError("PERMISSION_DENIED", "Query access denied")
+	}
+	var result *Table
 	dialect, err := dialectFor(source.Type)
 	if err != nil {
 		if driver, ok := federationapi.Lookup(source.Type); ok {
-			return newCustomTable(ctx, source, table, limits, driver)
+			result, err = newCustomTable(ctx, source, table, limits, driver)
+		} else {
+			return nil, err
 		}
+	} else {
+		result, err = newTable(ctx, source, table, limits, dialect.executor)
+	}
+	if err != nil {
 		return nil, err
 	}
-	return newTable(ctx, source, table, limits, dialect.executor)
+	if restricted {
+		result.guard, err = access.NewRelation(result.schema, policy, result.scan)
+		if err != nil {
+			_ = result.Close()
+			return nil, err
+		}
+	}
+	return result, nil
 }
 func newTable(ctx context.Context, source catalog.Source, table catalog.FederationTable, limits query.Limits, factory executorFactory) (*Table, error) {
 	if err := limits.Validate(); err != nil {
@@ -140,15 +161,28 @@ func newTable(ctx context.Context, source catalog.Source, table catalog.Federati
 	}
 	return t, nil
 }
-func (t *Table) Schema() *arrow.Schema { return t.schema }
+func (t *Table) Schema() *arrow.Schema {
+	if t.guard != nil {
+		return t.guard.Schema()
+	}
+	return t.schema
+}
 func (t *Table) Stats() Stats {
 	return Stats{Rows: t.rows.Load(), Bytes: t.bytes.Load(), Batches: t.batches.Load(), Scans: t.scans.Load(), SourceWireBytes: t.sourceWireBytes.Load()}
 }
 func (t *Table) Scan(ctx context.Context, plan duckbridge.ScanPlan) (array.RecordReader, error) {
+	if t.guard != nil {
+		return t.guard.Scan(ctx, plan)
+	}
+	return t.scan(ctx, plan)
+}
+func (t *Table) scan(ctx context.Context, plan duckbridge.ScanPlan) (array.RecordReader, error) {
 	var sql string
 	var schema *arrow.Schema
 	var err error
-	if t.customDriver != nil {
+	if t.snapshot != nil {
+		plan, schema, err = t.snapshot.prepare(plan)
+	} else if t.customDriver != nil {
 		plan, schema, err = t.prepareCustomScan(plan)
 	} else {
 		sql, schema, err = t.compileScan(plan)
@@ -168,7 +202,9 @@ func (t *Table) Scan(ctx context.Context, plan duckbridge.ScanPlan) (array.Recor
 		return nil, query.NewError("RESOURCE_EXHAUSTED", "Federation concurrent scan budget is full")
 	}
 	var executor execution
-	if t.customDriver != nil {
+	if t.snapshot != nil {
+		executor = &snapshotExecution{table: t.snapshot, plan: plan, schema: schema}
+	} else if t.customDriver != nil {
 		executor = &customExecution{driver: t.customDriver, source: publicSource(t.config.Sources[0]), table: publicTable(t.selected), limits: publicLimits(t.limits), plan: plan, schema: t.schema}
 	} else {
 		executor, err = t.factory(t.config, t.limits)

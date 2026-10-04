@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "passed": false,
+  "checked_at": "2026-10-03T10:59:42Z",
+  "phase": "runner_control_prerequisites",
+  "category": "PYARROW_NOT_INSTALLED_IN_SELECTED_INTERPRETER",
+  "controls_run": 5,
+  "control_errors": 1,
+  "cluster_provisioned": false,
+  "application_workloads_started": false,
+  "packages_installed": false,
+  "resolution": "Selected an existing qualified Python virtual environment containing PyArrow 25.0.1 and PyYAML; reran all six final controls and the full rolling campaign.",
+  "follow_up_evidence": "rolling-upgrades.json"
+}

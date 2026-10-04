@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "passed": false,
+  "runtime_source_revision": "b47ce87517a5db5ea33facb4c190196fe1a3f0c3",
+  "ci_run": 37150306039,
+  "ci_url": "https://github.com/SyneHQ/kelvo-go/actions/runs/37150306039",
+  "lane": "validate",
+  "job": 111282610569,
+  "failed_step": "go test -tags duckdb_arrow ./...",
+  "failed_test": "TestTLSIdentityOneReaderRejectsLateResultAndCloses",
+  "test_elapsed_seconds": 2.18,
+  "assertion": {
+    "file": "internal/cluster/tls_rotation_test.go",
+    "line": 399,
+    "message": "late reader renewed expired authority"
+  },
+  "private_log_sha256": "a6ddc899fae69716dc536a49df6b1874129cff3d6464dd68695d6180efb01036",
+  "other_lane": {
+    "name": "federation",
+    "conclusion": "success"
+  },
+  "source_analysis": {
+    "old_snapshot_expiry_does_not_prove_pending_read_timeout": true,
+    "pending_read_acceptance_is_measured_from_its_own_start": true,
+    "historical_read_start_and_completion_timestamps": "not_recorded",
+    "underlying_runtime_late_acceptance_established": false,
+    "tls_files_unchanged_since": "5e8e51f2f3432aa5203894bb96ecf402ae595147"
+  },
+  "selected_source_sha256": {
+    "internal/cluster/tls_rotation.go": "aedb716af665f9a9e35b41991a11a249c33c64d198ccbdb6fd0f5772089781db",
+    "internal/cluster/tls_rotation_test.go": "01951dab32c89f034d80d7d5b4fe027348b74d742b4b2c3dcc0dd66a404b98d4",
+    "internal/cluster/tls_trust.go": "2bb28b64f22a7ea75ce1f843edbe45985c84089f21fc2a1da0a6b57098650c21",
+    "internal/cluster/tls_trust_test.go": "ef1dd7567db2f5c3078d769a16c2b6eb8f9da95fdf25c0e92eb9b10f2d7b5c1e"
+  },
+  "scope": "Retained failing hosted CI result and source-based diagnosis. A later passing run does not erase this failure or establish its unrecorded timing."
+}

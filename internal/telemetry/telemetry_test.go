@@ -83,8 +83,9 @@ func TestPrometheusResponse(t *testing.T) {
 			t.Errorf("missing %q", want)
 		}
 	}
-	if len(w.Body.Bytes()) > 65536 {
-		t.Fatal("unexpected export size")
+	t.Logf("metrics export size: %d bytes", w.Body.Len())
+	if w.Body.Len() > 65536 {
+		t.Fatalf("unexpected export size: %d bytes exceeds 65536", w.Body.Len())
 	}
 	for _, method := range []string{http.MethodHead, http.MethodPost} {
 		w := httptest.NewRecorder()

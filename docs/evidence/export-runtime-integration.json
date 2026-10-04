@@ -1,0 +1,1924 @@
+{
+  "version": 1,
+  "scope": "Initial integrated export runtime; matched real binary, sandbox, TLS NATS, NewNode and NewGateway with controlled local snapshots.",
+  "acceptance_complete": false,
+  "remaining": [
+    "Separate least-privilege broker roles",
+    "Real slow-client cancellation fix and regression",
+    "Final combined revision checks"
+  ],
+  "resource_limits": {
+    "cpu": 1,
+    "memory_bytes": 3221225472,
+    "swap_bytes": 0,
+    "watchdog_seconds": 1800,
+    "private_network": true
+  },
+  "trials": [
+    {
+      "passed": false,
+      "revision": "52c958431f46dd47c2f5d3e927063468865325a8",
+      "source_manifest_sha256": "56354fc901298cfc024f79983df9b6f75f82ff6b779d2855c753d3b4ec8ce575",
+      "source_file_count": 895,
+      "scope": "Durable export lifecycle through real TLS NATS, gateway, worker and sandboxed DuckDB. Controlled snapshot data and principal metadata; no live-provider, distributed-storage or throughput certification.",
+      "umask": "0022",
+      "compiler_lanes": 1,
+      "build_tags": [
+        "duckdb_arrow",
+        "duckbridge"
+      ],
+      "stages": {
+        "binary-build": {
+          "exit_code": 0,
+          "seconds": 21.028,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "counts": {
+            "pass": 0,
+            "fail": 0,
+            "skip": 0
+          },
+          "package_events": [],
+          "missing_required_tests": []
+        },
+        "launcher-build": {
+          "exit_code": 0,
+          "seconds": 0.715,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "counts": {
+            "pass": 0,
+            "fail": 0,
+            "skip": 0
+          },
+          "package_events": [],
+          "missing_required_tests": []
+        },
+        "export-focused-race": {
+          "exit_code": 0,
+          "seconds": 23.129,
+          "log_sha256": "0dfa4b205bbb76c91707fe6a80289718357abd1c4fb886779767dba981583cd7",
+          "counts": {
+            "pass": 147,
+            "fail": 0,
+            "skip": 5
+          },
+          "package_events": [
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/exports",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/audit",
+              "outcome": "pass"
+            }
+          ],
+          "missing_required_tests": []
+        },
+        "explicit-real-export-worker": {
+          "exit_code": 0,
+          "seconds": 3.574,
+          "log_sha256": "bfe55fad0d90b246bd74d8992d6eca289222b7b317d17bf499b8efc978c4d515",
+          "counts": {
+            "pass": 2,
+            "fail": 0,
+            "skip": 0
+          },
+          "package_events": [
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+              "outcome": "pass"
+            }
+          ],
+          "missing_required_tests": []
+        },
+        "explicit-real-export-cluster": {
+          "exit_code": 1,
+          "seconds": 10.939,
+          "log_sha256": "4d6797e2cac6e9cad614edde5ae650fe3d029efb7707163db2ce439a0e873d7a",
+          "counts": {
+            "pass": 5,
+            "fail": 1,
+            "skip": 0
+          },
+          "package_events": [
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+              "outcome": "fail"
+            }
+          ],
+          "missing_required_tests": [
+            "TestExportClusterActualWorkerLifecycle"
+          ]
+        }
+      },
+      "failures": [
+        {
+          "stage": "explicit-real-export-cluster",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "fail",
+          "test": "TestExportClusterActualWorkerLifecycle"
+        },
+        {
+          "stage": "explicit-real-export-cluster",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "fail"
+        }
+      ],
+      "skips": [
+        {
+          "stage": "export-focused-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportClusterActualWorkerLifecycle"
+        },
+        {
+          "stage": "export-focused-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSExportRetainedLifecycleAndProvisioning"
+        },
+        {
+          "stage": "export-focused-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportWorkerUsesSandboxAndExternalCustody"
+        },
+        {
+          "stage": "export-focused-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportWorkerCancellationReapsSandboxAndReservations"
+        },
+        {
+          "stage": "export-focused-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerRefreshCustody"
+        }
+      ],
+      "source_verified_before": true,
+      "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+      "binary_sha256": "81ff086f36dfce44ab49e44e66456618f0b46d6b7fae8b77919f7d988b54aec3",
+      "launcher_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+      "broker_cleanup": {
+        "broker-e2e": {
+          "stopped": true,
+          "binary_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341"
+        }
+      },
+      "error": "explicit-real-export-cluster",
+      "source_verified_after": true,
+      "receipt_sha256": "4f797a800613a93f73f51f50b6e95323077771da006c52de9c15418216bf8063",
+      "independent_cleanup": {
+        "unit_unloaded": true,
+        "inactive": true,
+        "cgroup_absent": true
+      },
+      "fixture_authority": "Initial real-broker fixture used one synthetic identity for initialization and runtime. Distinct-role acceptance follows separately.",
+      "failure_diagnosis": "All five lifecycle subtests passed; final test assertion mistook the permanent .kelvo-scratch.lock for leaked job scratch. Corrected assertion also requires no reclaimable job ownership."
+    },
+    {
+      "passed": true,
+      "revision": "ff6a77cebd207ccabbfefb00b92e7a4792e65b3d",
+      "source_manifest_sha256": "3d70fece196c07a49f649fe7b71a03fede5998613bcac1312b4896ab3a5962df",
+      "source_file_count": 896,
+      "scope": "Durable export lifecycle through real TLS NATS, gateway, worker and sandboxed DuckDB. Controlled snapshot data and principal metadata; no live-provider, distributed-storage or throughput certification.",
+      "umask": "0022",
+      "compiler_lanes": 1,
+      "build_tags": [
+        "duckdb_arrow",
+        "duckbridge"
+      ],
+      "stages": {
+        "binary-build": {
+          "exit_code": 0,
+          "seconds": 20.217,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "counts": {
+            "pass": 0,
+            "fail": 0,
+            "skip": 0
+          },
+          "package_events": [],
+          "missing_required_tests": []
+        },
+        "launcher-build": {
+          "exit_code": 0,
+          "seconds": 0.164,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "counts": {
+            "pass": 0,
+            "fail": 0,
+            "skip": 0
+          },
+          "package_events": [],
+          "missing_required_tests": []
+        },
+        "export-focused-race": {
+          "exit_code": 0,
+          "seconds": 24.322,
+          "log_sha256": "a54ca457e5911a79c6ad16c362bdd84cc45e46e970cad4af39f3d52254aefc24",
+          "counts": {
+            "pass": 148,
+            "fail": 0,
+            "skip": 5
+          },
+          "package_events": [
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/exports",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/audit",
+              "outcome": "pass"
+            }
+          ],
+          "missing_required_tests": []
+        },
+        "explicit-real-export-worker": {
+          "exit_code": 0,
+          "seconds": 3.671,
+          "log_sha256": "fe3786bf4496ecd970e13a3ce888b8f62ca422ffc0a737bf25941c855ff3cd8e",
+          "counts": {
+            "pass": 2,
+            "fail": 0,
+            "skip": 0
+          },
+          "package_events": [
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+              "outcome": "pass"
+            }
+          ],
+          "missing_required_tests": []
+        },
+        "explicit-real-export-cluster": {
+          "exit_code": 0,
+          "seconds": 12.037,
+          "log_sha256": "c05b8bf549720cae7fb25c9af5167c81c03e321ff2f8ca8fb38aeace654b0d9e",
+          "counts": {
+            "pass": 6,
+            "fail": 0,
+            "skip": 0
+          },
+          "package_events": [
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+              "outcome": "pass"
+            }
+          ],
+          "missing_required_tests": []
+        },
+        "explicit-real-export-store": {
+          "exit_code": 0,
+          "seconds": 3.171,
+          "log_sha256": "8d15a2ba71b7a772808d2d3bd890f71044ee15fd009979c06b228478eeb6e4ee",
+          "counts": {
+            "pass": 1,
+            "fail": 0,
+            "skip": 0
+          },
+          "package_events": [
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+              "outcome": "pass"
+            }
+          ],
+          "missing_required_tests": []
+        },
+        "ordinary-full": {
+          "exit_code": 0,
+          "seconds": 183.433,
+          "log_sha256": "476fa76f54ee502d1850f9a6a7669d68c240ac25df0fe923f92f2c54d34d0f9b",
+          "counts": {
+            "pass": 3373,
+            "fail": 0,
+            "skip": 74
+          },
+          "package_events": [
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/cmd/kelvo",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/federation",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/access",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/admission",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/arrowipc",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/audit",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/catalog",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/duckbridge",
+              "outcome": "skip"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/exports",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/federation",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/objectstore",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/query",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/secrets",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/athena",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/awsapi",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/bigquery",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/clickhouse",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/cloudapi",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/cosmosdb",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/d1",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/databricks",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dbapi",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/elasticsearch",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/exasol",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/flightsql",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/mongodb",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/mysql",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/native",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/oracle",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/postgres",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/rowarrow",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/snowflake",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/spanner",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/sqlguard",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/sqlnative",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/sqlserver",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/trino",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/telemetry",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/tracing",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/transport/httpapi",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+              "outcome": "pass"
+            }
+          ],
+          "missing_required_tests": []
+        },
+        "bridge-full": {
+          "exit_code": 0,
+          "seconds": 172.536,
+          "log_sha256": "197f6eb96de3b2431d62df9cf63d3ebf0964a0b208a625b5108f988db60add55",
+          "counts": {
+            "pass": 3431,
+            "fail": 0,
+            "skip": 75
+          },
+          "package_events": [
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/cmd/kelvo",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/federation",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/access",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/admission",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/arrowipc",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/audit",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/catalog",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/duckbridge",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/exports",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/federation",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/objectstore",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/query",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/secrets",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/athena",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/awsapi",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/bigquery",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/clickhouse",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/cloudapi",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/cosmosdb",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/d1",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/databricks",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dbapi",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/elasticsearch",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/exasol",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/flightsql",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/mongodb",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/mysql",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/native",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/oracle",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/postgres",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/rowarrow",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/snowflake",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/spanner",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/sqlguard",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/sqlnative",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/sqlserver",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/sources/trino",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/telemetry",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/tracing",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/transport/httpapi",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+              "outcome": "pass"
+            }
+          ],
+          "missing_required_tests": []
+        },
+        "affected-race": {
+          "exit_code": 0,
+          "seconds": 189.27,
+          "log_sha256": "4dde6d3ade6ec5e7dda0aea0833bf711bcb5e0b278502442df7f199ec4275376",
+          "counts": {
+            "pass": 902,
+            "fail": 0,
+            "skip": 36
+          },
+          "package_events": [
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/exports",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/internal/audit",
+              "outcome": "pass"
+            },
+            {
+              "package": "github.com/SYNEHQ/kelvo-go/cmd/kelvo",
+              "outcome": "pass"
+            }
+          ],
+          "missing_required_tests": []
+        },
+        "vet": {
+          "exit_code": 0,
+          "seconds": 5.78,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "counts": {
+            "pass": 0,
+            "fail": 0,
+            "skip": 0
+          },
+          "package_events": [],
+          "missing_required_tests": []
+        }
+      },
+      "failures": [],
+      "skips": [
+        {
+          "stage": "export-focused-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportClusterActualWorkerLifecycle"
+        },
+        {
+          "stage": "export-focused-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSExportRetainedLifecycleAndProvisioning"
+        },
+        {
+          "stage": "export-focused-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportWorkerUsesSandboxAndExternalCustody"
+        },
+        {
+          "stage": "export-focused-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportWorkerCancellationReapsSandboxAndReservations"
+        },
+        {
+          "stage": "export-focused-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerRefreshCustody"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/cmd/kelvo",
+          "outcome": "skip",
+          "test": "TestContainedNodeStartupPlacement"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+          "outcome": "skip",
+          "test": "TestStoreProcessHelper"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+          "outcome": "skip",
+          "test": "TestMongoPipelineLiveAcceleration"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+          "outcome": "skip",
+          "test": "TestMultipartDatasetLargerThanFourGiB"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+          "outcome": "skip",
+          "test": "TestObjectMultipartDatasetLargerThanFourGiB"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/audit",
+          "outcome": "skip",
+          "test": "TestAuditActualDiskFull"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSRefreshStatusDurabilityResetAndBudget"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSRefreshQueueProvisionDedupRetry"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportClusterActualWorkerLifecycle"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSExportRetainedLifecycleAndProvisioning"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportWorkerUsesSandboxAndExternalCustody"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportWorkerCancellationReapsSandboxAndReservations"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/single"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/multipart"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreAdmissionCASAndReuse"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreQueueAndWorkerLease"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreRejectsMetadataMismatch"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreReconcileFailsStaleAssigned"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreCorruptJobFailsClosed"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSAccountIsolation"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelPrestartMembershipAndControls"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelNativeMemoryOOM"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelCPUQuota"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelPIDsLimit"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelDetachedDescendantCleanup"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelFailedCleanupQuarantinesCustody"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelRestartRecoversOwnedProcess"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelRestartRecoversIncompleteIntent"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelHierarchyOwnershipLock"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelStaleRootIdentityRejected"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelSandboxRuntime"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelMissingControllersFailsClosed"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/duckbridge",
+          "outcome": "skip"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+          "outcome": "skip",
+          "test": "TestExecuteRealPostgresMySQLFederation"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+          "outcome": "skip",
+          "test": "TestRealConnectionMetadataDoesNotExposeDSNs"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+          "outcome": "skip",
+          "test": "TestExecuteSQLiteFixture"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+          "outcome": "skip",
+          "test": "TestPinnedMultipartObjectRangeQuery"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+          "outcome": "skip",
+          "test": "TestPinnedObjectRangesUseRangesAndExactAllowlist"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+          "outcome": "skip",
+          "test": "TestLiveDynamoDBTaggedTypesAndExactNumbers"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+          "outcome": "skip",
+          "test": "TestLiveDynamoDBPagination"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+          "outcome": "skip",
+          "test": "TestLiveDynamoDBEmptyFilteredPages"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+          "outcome": "skip",
+          "test": "TestLiveDynamoDBRestrictionsAndLimits"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+          "outcome": "skip",
+          "test": "TestLiveDynamoDBRequiresVerifiedTLS"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/elasticsearch",
+          "outcome": "skip",
+          "test": "TestLiveElasticsearchPaginationAndTypes"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/elasticsearch",
+          "outcome": "skip",
+          "test": "TestLiveElasticsearchBoundParameters"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/elasticsearch",
+          "outcome": "skip",
+          "test": "TestLiveElasticsearchLimitsAndPermissions"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+          "outcome": "skip",
+          "test": "TestLiveIgnitePagination"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+          "outcome": "skip",
+          "test": "TestLiveIgniteExactTypes"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+          "outcome": "skip",
+          "test": "TestLiveIgniteUUIDMetadataRefusal"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+          "outcome": "skip",
+          "test": "TestLiveIgniteEmptyResult"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+          "outcome": "skip",
+          "test": "TestLiveIgniteFailureCleanup"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/mongodb",
+          "outcome": "skip",
+          "test": "TestMongoLiveReadOnlyAggregation"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/mongodb",
+          "outcome": "skip",
+          "test": "TestMongoLiveSQLSemantics"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/sqlnative",
+          "outcome": "skip",
+          "test": "TestPostgresLiveNativeTLS"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/sqlnative",
+          "outcome": "skip",
+          "test": "TestMySQLLiveNativeTLS"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerSuccessAndCancellation"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerRefreshCustody"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerStartFailureCleansOwnership"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerRealDuckDBCTE"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-1"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-2"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsRawAccessAndReplay"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/rows"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/schema"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/digest"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/version"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-rows"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-bytes"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildCancellationDrainsResources/source-range"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildCancellationDrainsResources/result-delivery"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotPreviousChildRefusesNewEnvelope"
+        },
+        {
+          "stage": "ordinary-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestSnapshotWorkerSandboxPoliciesCancellationAndPinnedGeneration"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/cmd/kelvo",
+          "outcome": "skip",
+          "test": "TestContainedNodeStartupPlacement"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+          "outcome": "skip",
+          "test": "TestStoreProcessHelper"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+          "outcome": "skip",
+          "test": "TestMongoPipelineLiveAcceleration"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+          "outcome": "skip",
+          "test": "TestMultipartDatasetLargerThanFourGiB"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/acceleration",
+          "outcome": "skip",
+          "test": "TestObjectMultipartDatasetLargerThanFourGiB"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/audit",
+          "outcome": "skip",
+          "test": "TestAuditActualDiskFull"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSRefreshStatusDurabilityResetAndBudget"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSRefreshQueueProvisionDedupRetry"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportClusterActualWorkerLifecycle"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSExportRetainedLifecycleAndProvisioning"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportWorkerUsesSandboxAndExternalCustody"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportWorkerCancellationReapsSandboxAndReservations"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/single"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/multipart"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreAdmissionCASAndReuse"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreQueueAndWorkerLease"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreRejectsMetadataMismatch"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreReconcileFailsStaleAssigned"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreCorruptJobFailsClosed"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSAccountIsolation"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelPrestartMembershipAndControls"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelNativeMemoryOOM"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelCPUQuota"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelPIDsLimit"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelDetachedDescendantCleanup"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelFailedCleanupQuarantinesCustody"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelRestartRecoversOwnedProcess"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelRestartRecoversIncompleteIntent"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelHierarchyOwnershipLock"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelStaleRootIdentityRejected"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelSandboxRuntime"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "outcome": "skip",
+          "test": "TestKernelMissingControllersFailsClosed"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+          "outcome": "skip",
+          "test": "TestExecuteRealPostgresMySQLFederation"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+          "outcome": "skip",
+          "test": "TestRealConnectionMetadataDoesNotExposeDSNs"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+          "outcome": "skip",
+          "test": "TestExecuteSQLiteFixture"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+          "outcome": "skip",
+          "test": "TestCustomFederationNeedsExplicitBridgeBuild"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+          "outcome": "skip",
+          "test": "TestPinnedMultipartObjectRangeQuery"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb",
+          "outcome": "skip",
+          "test": "TestPinnedObjectRangesUseRangesAndExactAllowlist"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+          "outcome": "skip",
+          "test": "TestLiveDynamoDBTaggedTypesAndExactNumbers"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+          "outcome": "skip",
+          "test": "TestLiveDynamoDBPagination"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+          "outcome": "skip",
+          "test": "TestLiveDynamoDBEmptyFilteredPages"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+          "outcome": "skip",
+          "test": "TestLiveDynamoDBRestrictionsAndLimits"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/dynamodb",
+          "outcome": "skip",
+          "test": "TestLiveDynamoDBRequiresVerifiedTLS"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/elasticsearch",
+          "outcome": "skip",
+          "test": "TestLiveElasticsearchPaginationAndTypes"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/elasticsearch",
+          "outcome": "skip",
+          "test": "TestLiveElasticsearchBoundParameters"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/elasticsearch",
+          "outcome": "skip",
+          "test": "TestLiveElasticsearchLimitsAndPermissions"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+          "outcome": "skip",
+          "test": "TestLiveIgnitePagination"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+          "outcome": "skip",
+          "test": "TestLiveIgniteExactTypes"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+          "outcome": "skip",
+          "test": "TestLiveIgniteUUIDMetadataRefusal"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+          "outcome": "skip",
+          "test": "TestLiveIgniteEmptyResult"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/ignite",
+          "outcome": "skip",
+          "test": "TestLiveIgniteFailureCleanup"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/mongodb",
+          "outcome": "skip",
+          "test": "TestMongoLiveReadOnlyAggregation"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/mongodb",
+          "outcome": "skip",
+          "test": "TestMongoLiveSQLSemantics"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/sqlnative",
+          "outcome": "skip",
+          "test": "TestPostgresLiveNativeTLS"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/sources/sqlnative",
+          "outcome": "skip",
+          "test": "TestMySQLLiveNativeTLS"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerSuccessAndCancellation"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerRefreshCustody"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerStartFailureCleansOwnership"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerRealDuckDBCTE"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-1"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-2"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsRawAccessAndReplay"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/rows"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/schema"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/digest"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/version"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-rows"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-bytes"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildCancellationDrainsResources/source-range"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildCancellationDrainsResources/result-delivery"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotPreviousChildRefusesNewEnvelope"
+        },
+        {
+          "stage": "bridge-full",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestSnapshotWorkerSandboxPoliciesCancellationAndPinnedGeneration"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSRefreshStatusDurabilityResetAndBudget"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSRefreshQueueProvisionDedupRetry"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportClusterActualWorkerLifecycle"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSExportRetainedLifecycleAndProvisioning"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportWorkerUsesSandboxAndExternalCustody"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestExportWorkerCancellationReapsSandboxAndReservations"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/single"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/multipart"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreAdmissionCASAndReuse"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreQueueAndWorkerLease"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreRejectsMetadataMismatch"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreReconcileFailsStaleAssigned"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSStoreCorruptJobFailsClosed"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestNATSAccountIsolation"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+          "outcome": "skip",
+          "test": "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerSuccessAndCancellation"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerRefreshCustody"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerStartFailureCleansOwnership"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestContainedWorkerRealDuckDBCTE"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-1"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-2"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsRawAccessAndReplay"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/rows"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/schema"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/digest"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/version"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-rows"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-bytes"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildCancellationDrainsResources/source-range"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotWorkerActualChildCancellationDrainsResources/result-delivery"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestObjectSnapshotPreviousChildRefusesNewEnvelope"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "outcome": "skip",
+          "test": "TestSnapshotWorkerSandboxPoliciesCancellationAndPinnedGeneration"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/internal/audit",
+          "outcome": "skip",
+          "test": "TestAuditActualDiskFull"
+        },
+        {
+          "stage": "affected-race",
+          "package": "github.com/SYNEHQ/kelvo-go/cmd/kelvo",
+          "outcome": "skip",
+          "test": "TestContainedNodeStartupPlacement"
+        }
+      ],
+      "source_verified_before": true,
+      "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+      "binary_sha256": "abd62e27449aa4e5771ea055a66d970dc7d4e285456bb802050e2bc1e16b8fd4",
+      "launcher_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+      "broker_cleanup": {
+        "broker-e2e": {
+          "stopped": true,
+          "binary_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341"
+        },
+        "broker-store": {
+          "stopped": true,
+          "binary_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341"
+        }
+      },
+      "source_verified_after": true,
+      "receipt_sha256": "01e3207134453288efe66e501d102a9060b6a7b7d89c2e1961d8543bb4d8c73a",
+      "independent_cleanup": {
+        "unit_unloaded": true,
+        "inactive": true,
+        "cgroup_absent": true
+      },
+      "fixture_authority": "Initial real-broker fixture used one synthetic identity for initialization and runtime. Distinct-role acceptance follows separately."
+    }
+  ]
+}

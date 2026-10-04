@@ -1,6 +1,12 @@
-# Validation — 2026-10-02
+# Validation — 2026-10-03 UTC evidence
 
 This is recorded developer-preview evidence, tied to specific binaries and fixtures. Use [production status](production-status.md) for current release gates; these results do not certify arbitrary multi-tenant deployments.
+
+Latest: [durable export validation](export-validation.md) covers the combined worker, broker, transport and crash checks on `d144a43`; [export CI diagnostics](export-ci-diagnostics.md) retains a later unresolved failure and a separate passing isolated reproduction.
+
+The [telemetry comparison](telemetry-overhead.md#recorded-full-comparison) passed all 48 epochs on `93339e7`, with 96 warmups and 96 measured queries. Paired metrics/tracing ratios describe one local million-row fixture; they do not establish deployment capacity or separate source/compute time. Both smoke attempts and full cleanup evidence are retained.
+
+The [pinned worker-capacity gate](node-capacity.md) also passed on `d144a43` with observer `9cad904`: five matched metrics on/off pairs, 130/130 workload queries and a separate 3/3 preflight. Its warm-cache, worker-only scope excludes the Azure gateway, NATS, source database and SSH tunnels; broader sustained and deployment capacity remain separate.
 
 ## Expanded federation and public adapter SDK
 
@@ -210,6 +216,10 @@ RSS samples every 20ms can miss peaks. Separate process peaks exclude source/cli
 | [512 MiB attempt](evidence/clickhouse-transfer-initial-failure.json) | Source error 241 after ~69 MB/HTTP 200 was initially misclassified as Arrow allocation; [recheck](evidence/clickhouse-transfer-512-recheck.json) reports source memory correctly. Successful trials used 1 GiB |
 | [Timestamp assertion](evidence/benchmark-harness-initial-failure.json) | Export succeeded but harness expected Arrow timestamp; ClickHouse DateTime was UInt32 Unix seconds. Corrected exact mapping preceded successful trials; see [cast/mapping guide](../internal/sources/clickhouse/README.md) |
 
+## Runtime recovery
+
+[Focused recovery checks](runtime-recovery.md) cover heartbeat/result handoff, startup request budgets and bounded scratch lease cleanup. The combined candidate passed race/vet and isolated broker checks. The pinned worker WAN-capacity gate above passed; multi-hour and deployment-specific capacity remain separate.
+
 ## Remaining acceptance work
 
-Track current work in [production status](production-status.md): deployment review, multi-zone recovery, provider acceptance and representative sustained/memory capacity remain separate gates. Per-user row/column policy, management APIs, durable query-result storage, CDC, Flight SQL server and cross-node execution of one SQL plan remain absent. The pinned DuckDB path materializes execution before Arrow delivery.
+Track current work in [production status](production-status.md): deployment review, multi-zone recovery, provider acceptance and deployment-specific sustained capacity remain separate gates. Callback federation and guarded local/object snapshots have per-user row/column policies; native SQL and coordinated policy lifecycle remain open. Durable federated export jobs/downloads have [combined acceptance evidence](export-validation.md); sustained export capacity and deployment acceptance remain separate. Result caching, CDC, a Flight SQL server and cross-node execution of one SQL plan remain absent. The pinned DuckDB path materializes execution before Arrow delivery.

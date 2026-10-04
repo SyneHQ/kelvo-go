@@ -1,0 +1,180 @@
+{
+  "revision": "210331831b013e4c79a16794ceb7d1eaf463d0b7",
+  "checked_at": "2026-10-03T13:52:13.085576+00:00",
+  "requested_seconds": 600.0,
+  "elapsed_seconds": 477.935,
+  "mode": "smoke",
+  "passed": false,
+  "binary_sha256": {
+    "kelvo": "cef8220459d316abecf7b842ceb57cf835a2cb07d46bb77a76534e67f524b853",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "scope": "Dedicated service on a shared test VM; synthetic Parquet correctness/lifecycle, not source-provider, WAN or multi-host capacity",
+  "resource_budget": {
+    "cpu_percent": 200,
+    "memory_bytes": 6442450944,
+    "swap_bytes": 0,
+    "tasks": 512
+  },
+  "workload": {
+    "queries": {
+      "a": 595,
+      "b": 595
+    },
+    "slow_readers": {
+      "a": 8,
+      "b": 7
+    },
+    "cancellations": {
+      "a": 8,
+      "b": 7
+    },
+    "refreshes": {
+      "a": 30,
+      "b": 30
+    }
+  },
+  "service_exit_code": 1,
+  "source_unchanged": true,
+  "owned_service_removed": true,
+  "owned_cgroup_removed": true,
+  "source_manifest_sha256": "ef8207e20cd5f811866fe83d48852b26890a694fa667c56c3502890dad80f2c4",
+  "full_private_report_sha256": "b6f2d3dd979411f609d8fd8e9dfda5c13d444706dcc8e0281ad69e02232a3950",
+  "checks": [
+    {
+      "test": "startup",
+      "passed": true,
+      "seconds": 7.788,
+      "workers": 2,
+      "tenants": 2,
+      "broker_replicas": 3,
+      "source_rows_per_tenant": 1000000,
+      "dataset": "Deterministic synthetic Parquet with nullable integers and tenant markers",
+      "gateways": 2,
+      "max_http_requests_per_gateway": 8,
+      "fault_signals": "SIGKILL of exact owned identities",
+      "original_configuration_count": 12,
+      "managed_scratch": true,
+      "query_memory_mb": 128,
+      "native_tree_memory_mb": 192,
+      "parent_arrow_allowance_mb": 160,
+      "service_cpu_percent": 200,
+      "service_memory_bytes": 6442450944,
+      "per_node_scratch_bytes": 536870912,
+      "containment_enabled": true,
+      "ports_exclusive_to_campaign": true
+    },
+    {
+      "test": "tenant_isolation",
+      "passed": true,
+      "seconds": 0.206,
+      "foreign_status_results_cancel_rejected": true,
+      "owner_exact_result": true
+    },
+    {
+      "test": "saturation",
+      "passed": true,
+      "seconds": 1.449,
+      "admitted_handles": 8,
+      "rejected_http": 429,
+      "surviving_tenant_exact_result": true,
+      "cancel_recovered": true
+    },
+    {
+      "test": "gateway_loss",
+      "passed": true,
+      "seconds": 1.474,
+      "running_before_fault": 2,
+      "queued_before_fault": 2,
+      "surviving_tenant_exact_result": true,
+      "failed_attempt_result_rejected": true,
+      "queued_handles_preserved": true,
+      "replay_scope": "Original failed handles remain terminal and reject result requests before and after recovery; no exactly-once source execution claim",
+      "replacement_gateway_ready": true,
+      "surviving_gateway": 2
+    },
+    {
+      "test": "worker_loss",
+      "passed": true,
+      "seconds": 5.022,
+      "running_before_fault": 2,
+      "queued_before_fault": 2,
+      "surviving_tenant_exact_result": true,
+      "failed_attempt_result_rejected": true,
+      "queued_handles_preserved": true,
+      "replay_scope": "Original failed handles remain terminal and reject result requests before and after recovery; no exactly-once source execution claim",
+      "same_worker_identity_recovered": true,
+      "running_crash_children": 0,
+      "scratch_directories_after_crash": 1,
+      "inherited_sandbox_lease_children": 1,
+      "scratch_reclamation_checked_at_cleanup": true
+    },
+    {
+      "test": "broker_loss",
+      "passed": false,
+      "category": "QUERY_STATUS_FAILED",
+      "seconds": 7.534
+    },
+    {
+      "test": "mixed_load",
+      "passed": false,
+      "category": "FAULT_GATE_FAILED",
+      "seconds": 457.671
+    },
+    {
+      "test": "slow_readers",
+      "passed": true,
+      "seconds": 0.0,
+      "counts": {
+        "a": 8,
+        "b": 7
+      }
+    },
+    {
+      "test": "cancellations",
+      "passed": true,
+      "seconds": 0.0,
+      "counts": {
+        "a": 8,
+        "b": 7
+      }
+    },
+    {
+      "test": "cleanup",
+      "passed": true,
+      "seconds": 8.612,
+      "forced_application_kills": 0,
+      "observed_live_descendants": 0,
+      "worker_scratch_directories": 0,
+      "original_configurations_untouched": true,
+      "original_configurations_verified": true,
+      "all_owned_brokers_healthy": true,
+      "intentional_fault_kills": 3,
+      "remaining_containment_records": 0,
+      "all_owned_brokers_stopped": true
+    }
+  ],
+  "resources": {
+    "samples": 450,
+    "counter_errors": [],
+    "resource_violations": [],
+    "peak_scratch_bytes": 228,
+    "peak_cgroup_bytes": 805130240,
+    "cgroup_memory_events_delta": {
+      "low": 0,
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0
+    },
+    "query_refresh_overlap_samples": 12,
+    "final_cgroup_sample_after_shutdown": true
+  },
+  "diagnosis": "Queued-handle status GET returned one HTTP 503 UNAVAILABLE during broker loss. The harness aborted without a later same-handle observation, so permanence is unproven. No scratch quarantine, OOM or cleanup leak occurred. Corrected runner polls only that status within a strict deadline; it does not replay submission or results.",
+  "new_controls": {
+    "tests_passed": 22,
+    "seconds": 0.106,
+    "log_sha256": "6944ddf2763cf72ac8f96eb69dc61ecd104855dabb37508c6e462e4caf8e0f42"
+  }
+}

@@ -34,7 +34,13 @@ type Condition struct {
 }
 
 // Client implements only exact-key operations. Put must honor its precondition
-// atomically or fail; no operation lists or deletes snapshots.
+// atomically or fail. It borrows the upload reader until returning, including
+// all transport body reads and closure, and never closes the caller's reader.
+// Close stops admission, cancels requests, and joins admitted method calls and
+// returned body reads/Close callbacks. Callers must close Get/GetRange bodies,
+// even after EOF. A non-cooperative reader or transport can keep Close waiting.
+// This does not promise that every internal HTTP transport goroutine has exited.
+// No operation lists or deletes snapshots.
 type Client interface {
 	Get(context.Context, string, string) (io.ReadCloser, Info, error)
 	Head(context.Context, string, string) (Info, error)

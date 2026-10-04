@@ -10,15 +10,17 @@ Kelvo remains a developer preview. The board tracks owners, dependencies and acc
 | --- | --- |
 | Query/refresh admission, source quotas, diagnostics, readiness and drain | [Operations](operations.md) |
 | Key, TLS identity and TLS trust rotation | [API keys](gateway-key-rotation.md) · [TLS identity](tls-identity-rotation.md) · [Trust/revocation](tls-trust-rotation.md) |
+| Principal keys and callback/local/object-snapshot policies | [Authority](principal-access.md) · [Table restrictions](row-column-access.md) · [Snapshots](guarded-snapshots.md); native row policies and cache remain open |
+| Parent-only cloud secrets and bounded local audit | [Cloud secrets](cloud-secrets.md) · [Audit contract and measured cost](durable-audit.md) |
 | Managed Linux worker scratch | [Ownership and recovery](worker-scratch.md) |
 | Opt-in Linux process-tree memory, CPU and PID limits | [Containment](process-containment.md) · [18-gate evidence](evidence/process-containment-publication.json) |
 | Strict schemas, optional widening, multipart snapshots and verified restore | [Acceleration](acceleration.md) · [Schema policy](schema-evolution.md) · [Multipart](multipart-acceleration.md) |
 | Local backup and remote-to-local migration | [Recovery](snapshot-backup.md) |
 | Passive source observations and local lifecycle telemetry | [Source health](source-health.md) · [Tracing](tracing.md) |
-| Durable Arrow export storage primitive | [Contributor API](export-storage.md); no export jobs or download API yet |
-| Repeatable release gates | [Process loss](process-loss-acceptance.md) · [Snapshot upgrades](release-upgrades.md) · [Storage](storage-conformance.md) |
+| Opt-in federated exports and authorized repeat downloads | [Setup and API](exports.md) · [Storage contract](export-storage.md); [acceptance status](production-status.md) |
+| Repeatable release gates | [Process loss](process-loss-acceptance.md) · [Snapshot upgrades](release-upgrades.md) · [Rolling matrix](rolling-upgrades.md) · [Broker/client matrix](nats-compatibility.md) · [Storage](storage-conformance.md) |
 
-Implemented controls are not deployment certification. Live-provider gates, rolling cluster upgrades and sustained fault/load campaigns remain open. Existing measurements belong to their recorded binaries.
+Implemented controls are not deployment certification. Live-provider gates and sustained fault/load campaigns remain open. The [rolling matrix](rolling-upgrades.md) covers one application pair; the [broker/client matrix](nats-compatibility.md) adds the declared NATS versions and security-configuration refusal checks. Deployment-specific combinations still need validation. Existing measurements belong to their recorded binaries.
 
 ## Review scope
 
@@ -70,7 +72,7 @@ Multipart full refresh is available. Next: partition replacement, part reuse, in
 
 ## Durable exports and result caching are different features
 
-The local export store exists; jobs, dispatch and authorized repeat downloads are pending. Publish only complete, verified parts, with tenant/owner/authorization binding and expiry. Reserve storage before execution.
+[Durable exports](exports.md) provide opt-in federated jobs and authorized repeat downloads. They reserve storage before SQL and publish only complete, verified parts bound to the principal and policy. Finish the [acceptance gates](production-status.md) before claiming deployment readiness.
 
 Start caching with immutable accelerated generations. Keys must include SQL, typed parameters, tenant, effective authorization, generations and relevant versions. Fence fills against refresh/revocation; bound entries, bytes and concurrent fills.
 
@@ -91,7 +93,7 @@ Start PostgreSQL/MySQL CDC after storage maintenance and recovery. Define keys, 
 
 **Gate:** every data/checkpoint/ACK crash boundary, duplicates, key changes, failover and expired source history. An unavailable cursor must require explicit bootstrap.
 
-Enterprise shared deployments also need per-user/service policy, audit retention, enrollment and rollout contracts. Current tenant isolation does not provide per-user row/column policy. Secret-manager credentials must remain in the trusted parent.
+Principal source/handle grants, callback and local/object-snapshot row/column policies, and bounded local audit are implemented. Enterprise deployments still need policy support for other execution paths, enrollment, coordinated revocation, audit archival and tested rollout contracts. Secret-manager credentials remain in the trusted parent.
 
 ## Release gates and delivery order
 

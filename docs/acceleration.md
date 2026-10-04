@@ -109,13 +109,13 @@ Object reads cannot share a query with legacy PostgreSQL/MySQL DuckDB extensions
 
 Local storage normally retains current plus one previous generation. Leases, staging and replacement data need extra space; per-refresh limits are not volume quotas. A post-publication fsync failure reports uncertain durability.
 
-Acquisition checks identity, policy, permissions and size. Full hashing belongs to `verify`. Keep directories and writers trusted and private.
+Acquisition checks identity, policy, permissions and size. Unrestricted reads use `verify` for full hashing. [Guarded snapshot reads](guarded-snapshots.md) additionally hash parts during relation discovery and before each scan. Keep directories and writers trusted and private.
 
 ## Tenant and cluster operation
 
 Catalog and worker tenant IDs must match. Callers cannot choose refresh SQL, paths or tenant identity. Dataset-only children receive no original-source secrets.
 
-**Revoke access explicitly:** update `authorization_version`, propagate the catalog and refresh. Retired copies need an operator retention policy; database revocations do not automatically revoke snapshots. Tenant grants are not per-user row policies.
+**Revoke access explicitly:** update `authorization_version`, propagate the catalog and refresh. Retired copies need an operator retention policy; database revocations do not automatically revoke snapshots. Tenant grants are not per-user row policies; configure a separate [principal snapshot policy](guarded-snapshots.md) for restricted readers.
 
 Cluster refresh adds two streams. Allow at least **5 streams per tenant account**, or **6 with source quotas**, then rerun `cluster-init` with provisioner credentials. Add these worker publish permissions alongside existing stream-info, inbox and ACK permissions:
 

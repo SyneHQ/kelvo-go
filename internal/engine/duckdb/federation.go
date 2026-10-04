@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql/driver"
 
+	"github.com/SYNEHQ/kelvo-go/internal/access"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/duckbridge"
 	"github.com/SYNEHQ/kelvo-go/internal/federation"
@@ -43,8 +44,15 @@ func (b *federationBindings) attach(ctx context.Context, raw any, sources []cata
 	// or making any source request; per-source limits alone are insufficient.
 	tables := 0
 	for _, source := range sources {
+		if access.GuardedSnapshot(ctx, source) {
+			tables++
+		}
 		if source.Federation != nil {
-			tables += len(source.Federation.Tables)
+			for _, table := range source.Federation.Tables {
+				if _, _, allowed := access.Lookup(ctx, source.ID, table.Name); allowed {
+					tables++
+				}
+			}
 		}
 	}
 	if tables > 32 {
@@ -56,6 +64,19 @@ func (b *federationBindings) attach(ctx context.Context, raw any, sources []cata
 		return query.NewError("CONFIGURATION_ERROR", "DuckDB native connection is unavailable")
 	}
 	for _, source := range sources {
+		if access.GuardedSnapshot(ctx, source) {
+			if !duckbridge.Available() {
+				return query.NewError("UNSUPPORTED", "Snapshot policies require the pinned DuckDB bridge build")
+			}
+			table, err := federation.NewSnapshot(ctx, source, limits)
+			if err != nil {
+				return err
+			}
+			if err := b.register(ctx, conn, table, source.ID, source.ID, "main"); err != nil {
+				return err
+			}
+			continue
+		}
 		if source.Federation == nil {
 			continue
 		}
@@ -73,23 +94,31 @@ func (b *federationBindings) attach(ctx context.Context, raw any, sources []cata
 			return err
 		}
 		for _, selected := range source.Federation.Tables {
+			if _, _, allowed := access.Lookup(ctx, source.ID, selected.Name); !allowed {
+				continue
+			}
 			table, err := federation.New(ctx, source, selected, limits)
 			if err != nil {
 				return err
 			}
-			b.tables = append(b.tables, table)
-			b.identities = append(b.identities, [2]string{source.ID, selected.Name})
-			factory, err := duckbridge.New(ctx, table.Schema(), table.Scan)
-			if err != nil {
-				return err
-			}
-			b.factories = append(b.factories, factory)
-			if err := factory.Register(conn, source.ID, selected.Name); err != nil {
+			if err := b.register(ctx, conn, table, source.ID, selected.Name, source.ID); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// Ownership is recorded before native registration, including partial failures.
+func (b *federationBindings) register(ctx context.Context, conn driver.Conn, table *federation.Table, source, name, schema string) error {
+	b.tables = append(b.tables, table)
+	b.identities = append(b.identities, [2]string{source, name})
+	factory, err := duckbridge.New(ctx, table.Schema(), table.Scan)
+	if err != nil {
+		return err
+	}
+	b.factories = append(b.factories, factory)
+	return factory.Register(conn, schema, name)
 }
 
 func (b *federationBindings) stats() []query.FederationScan {

@@ -460,6 +460,107 @@ func TestObjectRangesCancellationAndReleaseWaitForUpstreamCleanup(t *testing.T) 
 	}
 }
 
+type delayedRangeCloseBody struct {
+	ctx          context.Context
+	readEntered  chan struct{}
+	closeEntered chan struct{}
+	closeAllowed chan struct{}
+	readOnce     sync.Once
+	closeOnce    sync.Once
+	closes       atomic.Int32
+}
+
+func (body *delayedRangeCloseBody) Read([]byte) (int, error) {
+	body.readOnce.Do(func() { close(body.readEntered) })
+	<-body.ctx.Done()
+	return 0, body.ctx.Err()
+}
+func (body *delayedRangeCloseBody) Close() error {
+	body.closes.Add(1)
+	body.closeOnce.Do(func() { close(body.closeEntered) })
+	<-body.closeAllowed
+	return nil
+}
+
+type delayedRangeCloseClient struct {
+	*rangeFixtureClient
+	body *delayedRangeCloseBody
+}
+
+func (client *delayedRangeCloseClient) GetRange(ctx context.Context, _, _ string, _, _ int64) (io.ReadCloser, objectstore.Info, error) {
+	client.body.ctx = ctx
+	return client.body, objectstore.Info{Size: client.snapshot.Bytes, Version: client.snapshot.ObjectVersion, SHA256: client.snapshot.SHA256}, nil
+}
+
+func TestObjectRangesReleaseJoinsDelayedBodyClose(t *testing.T) {
+	storage, snapshot := rangeFixture()
+	parent, cancel := context.WithCancel(context.Background())
+	body := &delayedRangeCloseBody{readEntered: make(chan struct{}), closeEntered: make(chan struct{}), closeAllowed: make(chan struct{})}
+	client := &delayedRangeCloseClient{rangeFixtureClient: &rangeFixtureClient{snapshot: snapshot}, body: body}
+	sources, release, err := openObjectRanges(parent, storage, []Snapshot{snapshot}, client)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(body.closeAllowed) }) }
+	var joins []<-chan struct{}
+	t.Cleanup(func() {
+		unblock()
+		cancel()
+		release()
+		for _, done := range joins {
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				t.Error("range fixture cleanup did not join its work")
+			}
+		}
+	})
+	httpClient := rangeHTTPClient(t)
+	requested, released := make(chan struct{}), make(chan struct{})
+	joins = append(joins, requested)
+	go func() {
+		defer close(requested)
+		response, data, err := rangeRequest(t, httpClient, http.MethodGet, sources[snapshot.Dataset].Path, "bytes=0-65535")
+		if err == nil && response.StatusCode == http.StatusPartialContent && len(data) == 65536 {
+			t.Error("canceled range appeared complete")
+		}
+	}()
+	select {
+	case <-body.readEntered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("range body read did not begin")
+	}
+	cancel()
+	select {
+	case <-body.closeEntered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("range cancellation did not begin body Close")
+	}
+	joins = append(joins, released)
+	go func() { release(); close(released) }()
+	select {
+	case <-released:
+		t.Fatal("range release returned before body Close completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+	if client.closed.Load() != 0 {
+		t.Fatal("range client closed before its body cleanup completed")
+	}
+	unblock()
+	for _, done := range joins {
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatal("range cleanup did not finish")
+		}
+	}
+	if body.closes.Load() != 1 || client.closed.Load() != 1 {
+		t.Fatal("range cleanup was not once-only")
+	}
+}
+
 func TestObjectRangesRejectSnapshotKeyConfusionBeforeServing(t *testing.T) {
 	for _, mode := range []string{"prefix", "tenant", "dataset", "generation", "uri", "version", "size", "digest", "duplicate", "mixed-tenant"} {
 		t.Run(mode, func(t *testing.T) {

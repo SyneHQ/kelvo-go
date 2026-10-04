@@ -1,20 +1,23 @@
 # Production delivery checklist
 
-Status reviewed 3 October 2026. This is a capability checklist, not production certification. Owners and acceptance criteria live on the [board](https://github.com/orgs/SyneHQ/projects/3) and [tracker #32](https://github.com/SyneHQ/kelvo-go/issues/32).
+Status reviewed 4 October 2026. This is a capability checklist, not production certification. Owners and acceptance criteria live on the [board](https://github.com/orgs/SyneHQ/projects/3) and [tracker #32](https://github.com/SyneHQ/kelvo-go/issues/32).
 
 ## Operational foundation
 
 | Available | Still needed |
 | --- | --- |
-| Shared query/refresh budgets, interactive reserves and source quotas | Export dispatch integration and sustained capacity gates |
+| Shared query/export/refresh budgets, interactive reserves and source quotas | Sustained mixed-workload capacity gates |
+| [Two-hour two-tenant campaign](sustained-acceptance.md#recorded-two-hour-run) on `0544d5f`: all ten gates, exact source/binary checks and independent cleanup passed | Revalidation of later runtime changes; joins/exports, WAN, live providers and deployment capacity remain separate |
+| [Pinned worker-capacity gate (#8)](node-capacity.md): five metrics on/off pairs and 130 exact workload queries on `d144a43` | Revalidate after runtime changes; worker-only warm-cache evidence does not establish sustained or deployment-wide capacity |
 | Opt-in Linux process-tree memory, CPU and PID limits | Deployment-specific headroom, restart recovery and sustained fault/load validation |
-| Independent probes, dataset readiness and phased drain | Rolling cluster upgrades and multi-hour fault/load campaigns |
-| Metrics, bounded history, local tracing and passive source observations | Distributed attribution, durable audit and instrumentation-cost measurements |
-| Selected-secret forwarding, credential files, API-key and TLS rotation | Live-provider coverage, external secret providers and coordinated enrollment/revocation |
+| Independent probes, dataset readiness, phased drain and [application](rolling-upgrades.md) and [broker/client](nats-compatibility.md) upgrade matrices | Deployment-specific rollout and multi-hour fault/load campaigns |
+| Metrics opt-out, bounded history, [authorized trace continuity](tracing.md), [real OTLP acceptance](tracing-acceptance.md#recorded-result), [child stage metrics](child-timings.md), source observations and [local audit](durable-audit.md) | Full distributed attribution, audit archival and broader workload-cost measurements |
+| [Paired telemetry cost](telemetry-overhead.md#recorded-full-comparison) on `93339e7`: 48 epochs, 96 measured queries and exact results | Deployment-specific cost; broker queue and separate source/compute attribution remain unknown |
+| Selected-secret forwarding, files, opt-in cloud secrets, API-key and TLS rotation | Live-provider IAM/rotation coverage and coordinated enrollment/revocation |
 | Managed Linux scratch with inherited leases | Deployment-specific disk capacity and recovery validation |
 | CI, 15 executed notebooks, process-loss and snapshot-upgrade gates | Recurring real-provider tests on each release candidate |
 
-See [operations](operations.md), [process containment](process-containment.md), [process-loss acceptance](process-loss-acceptance.md), [release upgrades](release-upgrades.md) and [worker scratch](worker-scratch.md).
+See [operations](operations.md), [process containment](process-containment.md), [process-loss acceptance](process-loss-acceptance.md), [snapshot upgrades](release-upgrades.md), [rolling applications](rolling-upgrades.md), [broker/client compatibility](nats-compatibility.md), [worker scratch](worker-scratch.md) and [runtime recovery](runtime-recovery.md).
 
 Admission reserves budgets; optional containment enforces native process-tree limits. Parent allocations still need host/container limits and measured headroom. DuckDB materializes before Arrow delivery.
 
@@ -22,26 +25,28 @@ Admission reserves budgets; optional containment enforces native process-tree li
 
 | Available | Still needed |
 | --- | --- |
-| Immutable local/remote full refresh, fenced publication and pinned readers | Live acceleration acceptance for each intended provider |
+| Immutable local/remote full refresh, fenced publication and local reader pins | Durable remote reader integration and live acceleration acceptance for each intended provider |
 | Strict schemas, optional nullable additions and conservative widening | Separate proof for any broader evolution policy |
 | Multipart snapshots and over-4-GiB development gates | Selective replacement, part reuse and incremental checkpoints |
 | Verified inventory/restore, local backup and remote-to-local migration | Remote-destination recovery, cross-host cutover and measured RTO/RPO |
 | Local pruning with reader protection | Durable remote reader protection, orphan accounting, GC and compaction |
 
-Remote pruning intentionally deletes nothing. Protect current, retained, pinned, staging and orphan data before adding GC. Remote v4 writes require coordinated reader/writer upgrades. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
+[Object writer shutdown](object-writer-shutdown.md) joins pending factories, transactions and owned client cleanup; 45 focused race tests and vet passed on `997157e`. Reader activation and remote deletion remain separate.
+
+The [durable reader registry](durable-reader-registry.md), [object-store adapter and immutable binding](reader-objectstore.md) passed isolated race tests and vet; runtime integration and live-provider acceptance remain open. Remote pruning intentionally deletes nothing. Protect current, retained, pinned, staging and orphan data before adding GC. Remote v4 writes require coordinated reader/writer upgrades. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
 
 ## Results and interoperability
 
 | Capability | Status |
 | --- | --- |
 | Arrow delivery and optional LZ4 | Available; decoded limits remain unchanged |
-| Durable exports | [Internal store](export-storage.md) tested; jobs, API and downloads pending |
+| Durable exports | [Opt-in federated jobs and repeat downloads](exports.md); [earlier combined gates passed](export-validation.md). A [later CI failure remains unresolved despite a passing isolated reproduction](export-ci-diagnostics.md). Sustained capacity and deployment acceptance remain separate |
 | Result cache | Pending authorization/generation keys, bounded fills and revocation fencing |
 | Eight federation adapters | Available; live Oracle/warehouse gates remain open |
 | Automatic remote joins/aggregates | Pending bound-plan integration and parity checks |
 | Flight SQL | Client available; read-only server pending |
 | PostgreSQL/MySQL CDC | Pending checkpoint/publication and replay contracts |
-| Per-user row/column policy | Pending; tenant isolation is a separate boundary |
+| Principal access | [Keys and handle ownership](principal-access.md), [callback](row-column-access.md), [local/object snapshot policies](guarded-snapshots.md) and [federated exports](exports.md); native row policies, cache and coordinated revocation remain open |
 | Single-query distribution | Outside this design; workers distribute independent queries |
 
 ## Gates that can run on the dedicated test hosts
@@ -55,6 +60,8 @@ Remote pruning intentionally deletes nothing. Protect current, retained, pinned,
 Use the designated Linux build hosts per [AGENTS.md](../AGENTS.md). Entry points: [CI](../.github/workflows/ci.yml), [operational acceptance](operational-acceptance.md), [worker failures](worker-failures.md), [benchmarks](analytics-workflow-benchmarks.md).
 
 ## Gates requiring real provider access or deployment decisions
+
+No dedicated live-provider fixtures are available. Tickets [#9](https://github.com/SyneHQ/kelvo-go/issues/9), [#10](https://github.com/SyneHQ/kelvo-go/issues/10) and [#11](https://github.com/SyneHQ/kelvo-go/issues/11) remain blocked.
 
 - Oracle TCPS, Snowflake, BigQuery and Databricks: real grants, TLS, types, cancellation and rotation.
 - S3, R2, Azure Blob and GCS: dedicated namespaces and scoped fixture identities.

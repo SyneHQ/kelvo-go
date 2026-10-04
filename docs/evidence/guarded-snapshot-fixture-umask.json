@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "scope": "Fixture-only correction and focused Linux SnapshotReader regression; runtime snapshot permission checks remain unchanged",
+  "passed": true,
+  "ci_failure": "https://github.com/SYNEHQ/kelvo-go/actions/runs/37131507861",
+  "pull_request": "https://github.com/SYNEHQ/kelvo-go/pull/66",
+  "base_revision": "95dba6cfbc12743554c5cef7fe7830f94d3b7ed4",
+  "fixed_revision": "4b657ad9ae745e1e252e516301ce5e4e41c72f45",
+  "cause": "testing.TempDir creates its final directory with permissions affected by the caller umask. Under 0022 the snapshot fixture parent was 0755, so the production private-parent check correctly rejected it. Earlier VM runs used 0077.",
+  "change": "Explicitly chmod valid fixture parents 0700, including unsupported-schema fixtures; retain explicit 0755 rejection coverage.",
+  "source_unchanged": true,
+  "original_report_sha256": "826b67564f90324d623839210d543c878bcfb4be1b7ae67eb6d0e895b2f70f93",
+  "test_file_sha256": "a339d5c938cf9227e52909e8ed404566ef9e309d5cdd8e4570e162729e59f8b3",
+  "stages": [
+    {
+      "name": "before-0022",
+      "umask": "0022",
+      "exit_code": 1,
+      "expected_exit_code": 1,
+      "seconds": 6.29,
+      "log_sha256": "6cf9da0d073a3a30e7304d048fa7774c82cbb8fee044e4f6f293841460fbc33b",
+      "test_events": {
+        "pass": 19,
+        "fail": 12,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fixed-0022-default",
+      "umask": "0022",
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "seconds": 6.275,
+      "log_sha256": "31ee270643f48198e208122b1d9f1ee5bd3ccf76b38fac40ce137a766005a870",
+      "test_events": {
+        "pass": 31,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fixed-0022-bridge-race",
+      "umask": "0022",
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "seconds": 13.738,
+      "log_sha256": "41eff1b5d9fc29003b3d06c807998eff5c3097bd3d7cf92579368e3172823e85",
+      "test_events": {
+        "pass": 31,
+        "fail": 0,
+        "skip": 0
+      }
+    },
+    {
+      "name": "fixed-0077-bridge-race",
+      "umask": "0077",
+      "exit_code": 0,
+      "expected_exit_code": 0,
+      "seconds": 3.92,
+      "log_sha256": "17327795d61a972c2dcef580407939beb30ee62d7524333341b82ff44f5811a9",
+      "test_events": {
+        "pass": 31,
+        "fail": 0,
+        "skip": 0
+      }
+    }
+  ],
+  "resource_budget": {
+    "cpu_percent": 100,
+    "memory_bytes": 3221225472,
+    "swap_bytes": 0,
+    "tasks": 512
+  },
+  "owned_service": {
+    "result": "success",
+    "active": false,
+    "tasks_unset": true,
+    "cgroup_absent": true,
+    "runtime_seconds": 30.342
+  },
+  "limits": [
+    "Focused package validation, not the entire GitHub workflow or production capacity acceptance",
+    "Pass/fail counts are test events including parent tests and subtests"
+  ]
+}

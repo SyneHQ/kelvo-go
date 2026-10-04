@@ -9,11 +9,14 @@ import unittest
 from unittest import mock
 
 import process_loss_acceptance as fixture
+from test_lease_supervision import recovered_evidence, unfenced_evidence
 
 
 def valid_report():
     checks = [{"test": name, "passed": True} for name in fixture.REQUIRED]
     for check in checks:
+        if check['test'] == fixture.REQUIRED[3]:
+            check['lease_supervision'] = unfenced_evidence()
         if check["test"] in fixture.REQUIRED[1:-1]:
             check.update(running_before_fault=2, queued_before_fault=2,
                          surviving_tenant_exact_result=True, failed_attempt_result_rejected=True,
@@ -44,6 +47,35 @@ class EvidenceTests(unittest.TestCase):
             report = valid_report()
             report["interrupted"] = value
             self.assertFalse(fixture.reconcile(report))
+
+    def test_broker_recovery_requires_complete_supervision_evidence(self):
+        for evidence in (None, {}, recovered_evidence()):
+            report = valid_report()
+            report['checks'][3]['lease_supervision'] = evidence
+            self.assertEqual(fixture.reconcile(report), evidence == recovered_evidence())
+        evidence = recovered_evidence()
+        evidence['nodes'][0]['replacement_ready_seconds'] = None
+        report['checks'][3]['lease_supervision'] = evidence
+        self.assertFalse(fixture.reconcile(report))
+
+    def test_broker_restoration_survives_supervisor_shutdown_failure(self):
+        acceptance = fixture.LossAcceptance.__new__(fixture.LossAcceptance)
+        acceptance.prepare_load = mock.Mock(return_value={})
+        acceptance.brokers = [{'name': 'nats-2', 'pid': 17}]
+        acceptance.broker_alive = mock.Mock(return_value=True)
+        acceptance.wait = mock.Mock(side_effect=fixture.ops.AcceptanceError('TEST_GATE_FAILURE'))
+        acceptance.restart_broker = mock.Mock()
+        acceptance.intentional_kills = 0
+        supervisor = mock.Mock()
+        supervisor.stop.side_effect = fixture.ops.AcceptanceError('SUPERVISOR_DID_NOT_STOP')
+        supervisor.evidence.return_value = {'errors': ['SUPERVISOR_DID_NOT_STOP']}
+        with mock.patch.object(fixture.lease_supervision, 'LeaseSupervisor', return_value=supervisor), \
+             mock.patch.object(fixture.ops, 'proc_identity', return_value=(17, 'owned')), \
+             mock.patch.object(fixture.ops, 'signal_owned'):
+            with self.assertRaisesRegex(fixture.ops.AcceptanceError, 'SUPERVISOR_DID_NOT_STOP'):
+                acceptance.broker_loss()
+        acceptance.restart_broker.assert_called_once_with(acceptance.brokers[0])
+        self.assertEqual(acceptance.broker_supervision, supervisor.evidence.return_value)
 
     def test_real_prefault_states_exact_values_and_non_replay_are_required(self):
         for index in (1, 2, 3):

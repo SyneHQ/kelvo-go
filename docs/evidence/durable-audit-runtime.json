@@ -1,0 +1,184 @@
+{
+  "scope": "Durable local audit runtime integration: real journal, IPC relay and immutable snapshot fixtures; external service fixtures remain separate",
+  "date": "2026-10-03",
+  "revision": "8e20176c591f0518302e08637a611a74e65412b9",
+  "commits": {
+    "package": "abcd000",
+    "cluster": "cea84c1",
+    "cli": "8e20176"
+  },
+  "environment": {
+    "provider": "Azure dedicated test VM",
+    "go": "1.26.8",
+    "os": "Linux 6.12.95+deb12-cloud-amd64",
+    "arch": "amd64",
+    "gomaxprocs": 2,
+    "package_parallelism": 1,
+    "downloads_disabled": true,
+    "build_tags": [
+      "duckdb_arrow"
+    ]
+  },
+  "race": {
+    "command": "go test -race -tags duckdb_arrow -p 1 -count=1 -timeout=180s -json ./internal/audit ./internal/cluster ./cmd/kelvo",
+    "package_results": [
+      {
+        "package": "github.com/SYNEHQ/kelvo-go/internal/audit",
+        "outcome": "pass",
+        "seconds": 3.09
+      },
+      {
+        "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+        "outcome": "pass",
+        "seconds": 44.87
+      },
+      {
+        "package": "github.com/SYNEHQ/kelvo-go/cmd/kelvo",
+        "outcome": "pass",
+        "seconds": 1.409
+      }
+    ],
+    "test_and_subtest_results": {
+      "pass": 407,
+      "skip": 12
+    },
+    "skips": [
+      {
+        "test": "TestAuditActualDiskFull",
+        "reason": [
+          "faults_linux_test.go:422: bounded disposable full-filesystem fixture required",
+          "--- SKIP: TestAuditActualDiskFull (0.00s)"
+        ]
+      },
+      {
+        "test": "TestNATSRefreshStatusDurabilityResetAndBudget",
+        "reason": [
+          "acceleration_status_integration_test.go:22: set KELVO_TEST_NATS_URL and KELVO_TEST_NATS_CA_FILE to run JetStream integration tests",
+          "--- SKIP: TestNATSRefreshStatusDurabilityResetAndBudget (0.00s)"
+        ]
+      },
+      {
+        "test": "TestNATSRefreshQueueProvisionDedupRetry",
+        "reason": [
+          "acceleration_test.go:317: set KELVO_TEST_NATS_URL and KELVO_TEST_NATS_CA_FILE to run JetStream integration tests",
+          "--- SKIP: TestNATSRefreshQueueProvisionDedupRetry (0.00s)"
+        ]
+      },
+      {
+        "test": "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+        "reason": [
+          "source_quota_test.go:294: set KELVO_TEST_NATS_URL and KELVO_TEST_NATS_CA_FILE to run JetStream integration tests",
+          "--- SKIP: TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry (0.00s)"
+        ]
+      },
+      {
+        "test": "TestNATSStoreAdmissionCASAndReuse",
+        "reason": [
+          "store_test.go:123: set KELVO_TEST_NATS_URL and KELVO_TEST_NATS_CA_FILE to run JetStream integration tests",
+          "--- SKIP: TestNATSStoreAdmissionCASAndReuse (0.00s)"
+        ]
+      },
+      {
+        "test": "TestNATSStoreQueueAndWorkerLease",
+        "reason": [
+          "store_test.go:238: set KELVO_TEST_NATS_URL and KELVO_TEST_NATS_CA_FILE to run JetStream integration tests",
+          "--- SKIP: TestNATSStoreQueueAndWorkerLease (0.00s)"
+        ]
+      },
+      {
+        "test": "TestNATSStoreRejectsMetadataMismatch",
+        "reason": [
+          "store_test.go:302: set KELVO_TEST_NATS_URL and KELVO_TEST_NATS_CA_FILE to run JetStream integration tests",
+          "--- SKIP: TestNATSStoreRejectsMetadataMismatch (0.00s)"
+        ]
+      },
+      {
+        "test": "TestNATSStoreReconcileFailsStaleAssigned",
+        "reason": [
+          "store_test.go:317: set KELVO_TEST_NATS_URL and KELVO_TEST_NATS_CA_FILE to run JetStream integration tests",
+          "--- SKIP: TestNATSStoreReconcileFailsStaleAssigned (0.00s)"
+        ]
+      },
+      {
+        "test": "TestNATSStoreCorruptJobFailsClosed",
+        "reason": [
+          "store_test.go:355: set KELVO_TEST_NATS_URL and KELVO_TEST_NATS_CA_FILE to run JetStream integration tests",
+          "--- SKIP: TestNATSStoreCorruptJobFailsClosed (0.00s)"
+        ]
+      },
+      {
+        "test": "TestNATSAccountIsolation",
+        "reason": [
+          "store_test.go:419: account-isolation fixture credentials are not configured",
+          "--- SKIP: TestNATSAccountIsolation (0.00s)"
+        ]
+      },
+      {
+        "test": "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+        "reason": [
+          "worker_failure_integration_test.go:111: set both KELVO_TEST_WORKER_BINARY and KELVO_TEST_SANDBOX_BINARY for sandboxed resource acceptance",
+          "--- SKIP: TestSandboxedWorkerFailurePreservesSnapshotAndAdmission (0.00s)"
+        ]
+      },
+      {
+        "test": "TestContainedNodeStartupPlacement",
+        "reason": [
+          "containment_linux_test.go:19: explicit disposable delegation and built binary required",
+          "--- SKIP: TestContainedNodeStartupPlacement (0.00s)"
+        ]
+      }
+    ]
+  },
+  "vet": {
+    "command": "go vet -tags duckdb_arrow -p 1 ./internal/audit ./internal/cluster ./cmd/kelvo",
+    "passed": true
+  },
+  "focused_runtime_race": {
+    "command": "go test -race -tags duckdb_arrow -p 1 -run TestAudit -count=10 -timeout=180s ./internal/cluster ./cmd/kelvo",
+    "passed": true,
+    "cluster_seconds": 10.17,
+    "cli_seconds": 1.401
+  },
+  "covered": [
+    "authenticated principal and policy binding",
+    "spoofed headers and payload excluded",
+    "full retention rejects new effects",
+    "submission and cancellation acknowledgement suppressed after storage damage",
+    "gateway and worker CAS/EOS fenced by audit completion",
+    "canceled context uses bounded fresh terminal context",
+    "conflicting explicit completion rejected",
+    "typed cancellation outcome classification",
+    "direct worker cancellation attributed to verified gateway role",
+    "audit opens before startup probe",
+    "shared lifecycle ownership",
+    "immutable published refresh generation preserved after audit failure",
+    "refresh audit error classified permanent",
+    "offline bounded operator CLI read"
+  ],
+  "limits": [
+    "no cross-service job correlation",
+    "local filesystem durability only",
+    "no power-loss simulation",
+    "NATS and sandbox service fixture skips are not provider passes",
+    "disposable real ENOSPC evidence is recorded separately in durable-audit-journal.json",
+    "real audited gateway/worker/NATS and scheduled refresh acceptance is recorded separately in durable-audit-service.json; its ClickHouse endpoint is a protocol fixture"
+  ],
+  "source_sha256": {
+    "internal/cluster/audit.go": "8ee8d39ec97c15d15eef5fc823d81190f28250115c9401f57ea5f8312f709476",
+    "internal/cluster/audit_linux_test.go": "619a37787f4a87a2679331fafc9124067de876b1e2e15b613a29e0e1d40c04ea",
+    "internal/cluster/config.go": "ae2399a3bdbc6207e127e55ac8f51bc2239fa40a9311756036e7108a1717c754",
+    "internal/cluster/gateway.go": "16ebeb8c915e549ca7db754a57ea2400d44576d80fc65a329c8a8fcb5b889f59",
+    "internal/cluster/node.go": "9090f97ba6ce0323c613828a7eda9202d4c64c9c12f59612eab2d74e2aa19f2f",
+    "internal/cluster/types.go": "d889f768651de6c9f07b8140fd4a90dbe53f62010228e95c252f2d23f1a90ddb",
+    "cmd/kelvo/audit.go": "fe1a55e15864b587c85668695e3ff7b4888775ef7ad4412e04dea3358ad14ff8",
+    "cmd/kelvo/audit_linux_test.go": "b2d6eea7b777972924efbf74ad604b55f62738b39c498308762306399cbf0aca",
+    "cmd/kelvo/main.go": "600221a4bb910dbcf02cf5908cb862de95b50e1d91d84fc662194b728aa368a1",
+    "cmd/kelvo/cluster.go": "1adf85a7714c29c08598d872094a54385be66999840285d24d0b0cd09999be27",
+    "cmd/kelvo/acceleration.go": "cdcbd9947844add5266bcd481184647633e51a4fceb5b12f8b00c8a30f74dc55"
+  },
+  "validation_log_sha256": {
+    "audit-full-tests.jsonl": "b9c36b4f5470384f79b3aa3fd067a9a7832e37972caccb419130f26f54a32aa9",
+    "audit-vet.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "audit-runtime-race-repeat.log": "96cda72f6e78cc17a9cb246c8c28e1696ba749f39643e71287cc2f55e383c658"
+  }
+}

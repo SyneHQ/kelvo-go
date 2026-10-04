@@ -1,0 +1,81 @@
+{
+  "source_base": "2a1ccb14cb005cfab0ec384e822451c3ba5bbb1c",
+  "source_files": [
+    {
+      "path": "internal/containment/cleanup_diagnostic_linux_test.go",
+      "sha256": "53d92a133de18c9daa443db3575cd4bb44f869fee1cf645fadd508921d73ac19",
+      "matches_tested_source": true
+    },
+    {
+      "path": "internal/worker/scratch_diagnostic_linux_test.go",
+      "sha256": "601cb25d1643dd3094c6767d4cfb5eacd3cf4fd531146d6759ce7fc3988dbf41",
+      "matches_tested_source": true
+    },
+    {
+      "path": "internal/worker/scratch_exec_linux_test.go",
+      "sha256": "9bb79bbbed541528c9a287ff8ed4a3faa399b724c507cc50e6078f9c5fad73b0",
+      "matches_tested_source": true
+    },
+    {
+      "path": "internal/worker/scratch_lease_wait_linux_test.go",
+      "sha256": "340c50bd214798203dc36d6cb10237734e85af9003318561706de28b9ff3109f",
+      "matches_tested_source": true
+    },
+    {
+      "path": "internal/containment/manager_linux.go",
+      "sha256": "20eadfc06e76aed61a94e3eb3f49a0e037b6e1fcc542de9677d65162ea9281a0",
+      "matches_tested_source": true
+    },
+    {
+      "path": "internal/worker/scratch.go",
+      "sha256": "a5f8d886bab9b56fd856d891af662f4642daf1c9b6cfa6aaac316226c8b8ab09",
+      "matches_tested_source": true
+    },
+    {
+      "path": "internal/worker/scratch_linux.go",
+      "sha256": "d40fc2f685ab44a797558561864e7c37ae23126a932eed7d0a149196a3d6aea2",
+      "matches_tested_source": true
+    },
+    {
+      "path": "internal/worker/worker.go",
+      "sha256": "dd3e33d114e0625c6d49e1017a6d1292c0efbf0af30a2386a0bc7f8dc5a7d7eb",
+      "matches_tested_source": true
+    }
+  ],
+  "race_tests": {
+    "lease-fix-tests.jsonl": {
+      "passed_test_events": 42,
+      "package_results": [
+        {
+          "Time": "2026-10-03T11:33:49.757150404Z",
+          "Action": "pass",
+          "Package": "github.com/SYNEHQ/kelvo-go/internal/containment",
+          "Elapsed": 1.224
+        },
+        {
+          "Time": "2026-10-03T11:34:15.796079088Z",
+          "Action": "pass",
+          "Package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "Elapsed": 23.297
+        }
+      ]
+    },
+    "lease-grace-repeat.jsonl": {
+      "passed_test_events": 120,
+      "package_results": [
+        {
+          "Time": "2026-10-03T11:34:46.595197719Z",
+          "Action": "pass",
+          "Package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+          "Elapsed": 29.182
+        }
+      ]
+    }
+  },
+  "source_unchanged": true,
+  "vet_passed": true,
+  "systemd_unit": "kelvo-scratch-fix-tests-02-20261003.service",
+  "systemd_exit_code": 0,
+  "committed_revision": "34e83cfe7722093354809afbf45e8d6493dbce15",
+  "limitation": "Focused Linux regression evidence only; smoke and sustained acceptance pending on combined candidate."
+}

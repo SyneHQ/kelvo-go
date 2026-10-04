@@ -1,0 +1,484 @@
+{
+  "passed": true,
+  "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+  "mode": "smoke",
+  "unit": "kelvo-telemetry-overhead-cee2ffd01416",
+  "staging_json_sha256": "c703923f5af4cc4186fedf1c6e00cde6cdeb7bcf09a91f03efa96334ca7540d7",
+  "runner_receipt_sha256": "966446a5f3f86635fd0a00048d18c5670d5a3a86ad4f0f3eca20040b8c61a647",
+  "runner_failure": {},
+  "inner_receipt_sha256": "a1ac1719d79fb4e84a7151a4c3664ab6350cc590d72bc97718c6a8fa1dc84499",
+  "inner_failure": {},
+  "failed_epoch_categories": [],
+  "helpers_reconciled": true,
+  "prerequisites_reconciled": true,
+  "controls": {
+    "passed": true,
+    "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+    "unit": "kelvo-telemetry-controls-cee2ffd01416",
+    "systemd_run_exit_code": 0,
+    "staging_json_sha256": "c703923f5af4cc4186fedf1c6e00cde6cdeb7bcf09a91f03efa96334ca7540d7",
+    "cleanup": {
+      "unit": "kelvo-telemetry-controls-cee2ffd01416",
+      "fields": {
+        "MainPID": "0",
+        "Result": "success",
+        "LoadState": "not-found",
+        "ActiveState": "inactive",
+        "SubState": "dead"
+      },
+      "owned_service_removed": true,
+      "owned_cgroup_removed": true,
+      "passed": true
+    },
+    "controls_sha256": "5b0317f56c4ace546bc2e5522be31c841a3756f4568b3d027cdaf45e5dee0112",
+    "pure_tests": {
+      "syntax_checked": true,
+      "required_and_executed_test_ids": [
+        "controls.OuterReceiptTests.test_exact_control_receipt",
+        "controls.OuterReceiptTests.test_failure_metadata_never_exports_raw_errors",
+        "controls.OuterReceiptTests.test_modes_are_explicit_and_bounded",
+        "controls.OuterReceiptTests.test_prior_receipt_names_exact_normalized_unit",
+        "test_harness.ReceiptTests.test_campaign_guard_ignores_service_descriptions",
+        "test_harness.ReceiptTests.test_campaign_guard_rejects_actual_performance_units",
+        "test_harness.ReceiptTests.test_campaign_guard_requires_exact_owned_telemetry_unit",
+        "test_harness.ReceiptTests.test_exact_smoke_counts_without_comparison",
+        "test_harness.ReceiptTests.test_full_prerequisite_requires_matching_inputs_and_cleanup",
+        "test_harness.ReceiptTests.test_full_summary_keeps_exact_48_epoch_contract",
+        "test_harness.ReceiptTests.test_full_summary_rechecks_answers_configuration_and_cleanup",
+        "test_harness.ReceiptTests.test_smoke_receipt_hash_and_size_are_checked_before_use",
+        "test_harness.ReceiptTests.test_smoke_rejects_partial_duplicate_failed_or_invalid_result"
+      ],
+      "total_tests_run": 13,
+      "harness_receipt_tests": 9,
+      "external_outer_receipt_tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "source_sha256": {
+        "controls.py": "ff626893a32b1aea0dc8a240041df295f8d9043dc108472fe4f49de200f3c8fa",
+        "test_harness.py": "54baa28986ac73f61982d8bc614300cefa090e99d191b7b8d305c1be05ccc5d9",
+        "harness.py": "af659bdae318f8747a7541a1a83209dd3fafae507ac73a8777e55c4c9bd050f9",
+        "workloads.py": "ded20a802229b09997e2314ab3257ab4277bc446f2528a94adee2b4ebe73a761"
+      },
+      "log_sha256": "37713df65e99b4aa9c11c4a4d21aa3ff34f0c1f7d898a0e2ad613dcc5095d51c"
+    }
+  },
+  "controls_reconciled": true,
+  "python_identity": {
+    "executable_sha256": "6d972cf21be56fe3c947ab6ba257ff8d08c342dd2714442986791bd9a6dfabfe",
+    "version": "3.11.2 (main, May 12 2026, 05:17:27) [GCC 12.2.0]",
+    "packages": {
+      "pyarrow": {
+        "version": "25.0.1",
+        "metadata_sha256": "12ed8d0988a6f7153fec923ee47b7fc1d6134463a86b1b89fa36f24c250163ff",
+        "record_sha256": "d7c46765c1d341c21fa138fe84044e1021c5bfcdd7eee0b9cea68a8f55f5c8d6"
+      },
+      "PyYAML": {
+        "version": "6.0.3",
+        "metadata_sha256": "03c3b415ed38d09faedc49360e930769b40c58f68585e6de00e2e4916a858d34",
+        "record_sha256": "c6767b180f59be8feab615e58837508a1e923ff856582989688248d0f4a5951f"
+      }
+    }
+  },
+  "python_reconciled": true,
+  "enforced_isolation": {
+    "memory_bytes": 6442450944,
+    "swap_bytes": 0,
+    "tasks": 512,
+    "cpu_quota": 200000,
+    "cpu_period": 100000,
+    "non_root": true,
+    "private_network": true,
+    "read_only_input_mounts": true,
+    "zero_capabilities": true,
+    "no_new_privileges": true
+  },
+  "isolation_reconciled": true,
+  "runtime": {
+    "source": {
+      "base_revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+      "file_count": 1016,
+      "sha256": "72575584df0b17a9ab522af8ee150b91e739bfd26ed4e73979a40ccd5fa8ce3a",
+      "verified": true
+    },
+    "binary_sha256": {
+      "kelvo": "af29afdc04b18275de1a3d5906ba474cb27e81a113cfac2ec4139834f4fb41fd",
+      "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+      "collector": "9520e8165e3a7160422c227cead54eff30a401d29e4d2502da005b05d8f3cb77"
+    },
+    "effective_module_files": {
+      "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+      "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+    },
+    "shared_inputs": {
+      "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+      "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+      "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+    },
+    "otlp_public_receipt_sha256": "dd1c47f5f12c0c023c0044b51a3da31e2fa68e5cb8e902ed7ae4c4da201f7791",
+    "original_validation_sha256": "d2b60279ca2ce5bb9eeb9c939f8587efbaf5d7645dbf658041e204ea07262122",
+    "nats_sha256": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92"
+  },
+  "runner_sha256": "966446a5f3f86635fd0a00048d18c5670d5a3a86ad4f0f3eca20040b8c61a647",
+  "runner_passed": true,
+  "harness_log_reconciled": true,
+  "inner_receipt": {
+    "schema_version": 1,
+    "mode": "smoke",
+    "unit": "kelvo-telemetry-overhead-cee2ffd01416",
+    "passed": true,
+    "binary_sha256": "af29afdc04b18275de1a3d5906ba474cb27e81a113cfac2ec4139834f4fb41fd",
+    "sandbox_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+    "collector_sha256": "9520e8165e3a7160422c227cead54eff30a401d29e4d2502da005b05d8f3cb77",
+    "helper_sha256": {
+      "harness.py": "af659bdae318f8747a7541a1a83209dd3fafae507ac73a8777e55c4c9bd050f9",
+      "workloads.py": "ded20a802229b09997e2314ab3257ab4277bc446f2528a94adee2b4ebe73a761"
+    },
+    "workload_sha256": "d9b7c96b2382128a137ee54143b9ff9928bddcf13c2ee2635ec078ffdf3d9646",
+    "prior_receipt_sha256": "4b26346a27a4df6660eb1b9948e5e65d625f63e08217d1c1dded86ec030ed831",
+    "data_sha256": "7a1d3b8b034702520f31570563da996a0904a1075496f00f1642efb9886d1477",
+    "rows": 1000000,
+    "pairs": 1,
+    "operation_budget_seconds": 600,
+    "hard_watchdog_seconds": 900,
+    "kernel": "6.12.95+deb12-cloud-amd64",
+    "machine": "x86_64",
+    "clock_ticks_per_second": 100,
+    "scope": "Fixture correctness smoke only; raw durations are diagnostics, not benchmark or overhead evidence.",
+    "smoke_checks": {
+      "passed": true,
+      "epochs": 2,
+      "warmup_queries": 4,
+      "measured_queries": 4,
+      "source_rows": 1000000,
+      "workloads_per_epoch": [
+        "aggregate",
+        "transfer"
+      ],
+      "verified_result_rows": {
+        "aggregate": 40,
+        "transfer": 4000000
+      },
+      "collector_present_each_epoch": true,
+      "tracing_absent_no_exports": true,
+      "evidence_kind": "fixture_correctness_only"
+    },
+    "brokers_exited": true,
+    "source_unchanged": true,
+    "data_unchanged": true,
+    "binary_unchanged": true,
+    "sandbox_unchanged": true,
+    "collector_unchanged": true,
+    "helpers_unchanged": true,
+    "workload_unchanged": true,
+    "independent_service_cleanup_required": true,
+    "source_manifest_sha256": "72575584df0b17a9ab522af8ee150b91e739bfd26ed4e73979a40ccd5fa8ce3a",
+    "epochs": [
+      {
+        "contrast": 0,
+        "pair": 0,
+        "position": 0,
+        "variant": "metrics_off",
+        "metrics": false,
+        "tracing_ratio": null,
+        "passed": true,
+        "cleanup_failures": [],
+        "observed_live_descendants_after_cleanup": 0,
+        "collector": {
+          "requests": 0,
+          "received_bytes": 0,
+          "accepted_spans": 0,
+          "observed_submission_spans": 0,
+          "observed_query_spans": 0,
+          "observed_independent_startup_query_spans": 0,
+          "duplicate_span_ids": 0,
+          "observed_missing_parent_links": 0,
+          "sdk_offered_spans": null,
+          "sdk_lost_spans": null,
+          "loss_scope": "Offered denominator unavailable; fractional sampling and absent parents are not proof of exporter loss.",
+          "summary_sha256": "b30ea93f0cd9f8d37516d19decf0aa6bdbaef41b548a216f078d65d8240f73b5",
+          "ledger_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "warmups": [
+          {
+            "workload": "aggregate",
+            "answer": {
+              "rows": 10,
+              "batches": 1,
+              "wire_bytes": 904,
+              "exact_values": true,
+              "exact_types": true,
+              "explicit_eos": true,
+              "no_trailing_bytes": true
+            }
+          },
+          {
+            "workload": "transfer",
+            "answer": {
+              "rows": 1000000,
+              "batches": 489,
+              "wire_bytes": 32266128,
+              "exact_values": true,
+              "exact_types": true,
+              "explicit_eos": true,
+              "no_trailing_bytes": true
+            }
+          }
+        ],
+        "measured": [
+          {
+            "workload": "aggregate",
+            "answer": {
+              "rows": 10,
+              "batches": 1,
+              "wire_bytes": 904,
+              "exact_values": true,
+              "exact_types": true,
+              "explicit_eos": true,
+              "no_trailing_bytes": true
+            }
+          },
+          {
+            "workload": "transfer",
+            "answer": {
+              "rows": 1000000,
+              "batches": 489,
+              "wire_bytes": 32266128,
+              "exact_values": true,
+              "exact_types": true,
+              "explicit_eos": true,
+              "no_trailing_bytes": true
+            }
+          }
+        ]
+      },
+      {
+        "contrast": 0,
+        "pair": 0,
+        "position": 1,
+        "variant": "metrics_on",
+        "metrics": true,
+        "tracing_ratio": null,
+        "passed": true,
+        "cleanup_failures": [],
+        "observed_live_descendants_after_cleanup": 0,
+        "collector": {
+          "requests": 0,
+          "received_bytes": 0,
+          "accepted_spans": 0,
+          "observed_submission_spans": 0,
+          "observed_query_spans": 0,
+          "observed_independent_startup_query_spans": 0,
+          "duplicate_span_ids": 0,
+          "observed_missing_parent_links": 0,
+          "sdk_offered_spans": null,
+          "sdk_lost_spans": null,
+          "loss_scope": "Offered denominator unavailable; fractional sampling and absent parents are not proof of exporter loss.",
+          "summary_sha256": "b30ea93f0cd9f8d37516d19decf0aa6bdbaef41b548a216f078d65d8240f73b5",
+          "ledger_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "warmups": [
+          {
+            "workload": "aggregate",
+            "answer": {
+              "rows": 10,
+              "batches": 1,
+              "wire_bytes": 904,
+              "exact_values": true,
+              "exact_types": true,
+              "explicit_eos": true,
+              "no_trailing_bytes": true
+            }
+          },
+          {
+            "workload": "transfer",
+            "answer": {
+              "rows": 1000000,
+              "batches": 489,
+              "wire_bytes": 32266128,
+              "exact_values": true,
+              "exact_types": true,
+              "explicit_eos": true,
+              "no_trailing_bytes": true
+            }
+          }
+        ],
+        "measured": [
+          {
+            "workload": "aggregate",
+            "answer": {
+              "rows": 10,
+              "batches": 1,
+              "wire_bytes": 904,
+              "exact_values": true,
+              "exact_types": true,
+              "explicit_eos": true,
+              "no_trailing_bytes": true
+            }
+          },
+          {
+            "workload": "transfer",
+            "answer": {
+              "rows": 1000000,
+              "batches": 489,
+              "wire_bytes": 32266128,
+              "exact_values": true,
+              "exact_types": true,
+              "explicit_eos": true,
+              "no_trailing_bytes": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "reconciled": true,
+  "inner_reconciled": true,
+  "trust_preparation": {
+    "system_bundle_before_sha256": "4e3df1b7cefec516bc6dcc615565455a6658f6ae9da64989b8959827e87161dc",
+    "prepared_bundle_sha256": "6d3ad931ac3cd36f14426c355e06eb4dbfd3f998f0feb9f5b772b54b58e2115d",
+    "collector_certificate_sha256": "61a4998618f22015e1a881c3cb374f77736fe0464a63769af790f159c23b4001"
+  },
+  "host_trust_unchanged": true,
+  "prepared_trust_reconciled": true,
+  "service_exit": {
+    "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+    "mode": "smoke",
+    "unit": "kelvo-telemetry-overhead-cee2ffd01416",
+    "systemd_run_exit_code": 0
+  },
+  "service_exit_sha256": "22604762a5037e87379d94ba593b0ae8fd3a600d54a26862a22373ac48d42205",
+  "service_exit_reconciled": true,
+  "cleanup": {
+    "unit": "kelvo-telemetry-overhead-cee2ffd01416",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true
+  },
+  "local_launch": {
+    "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+    "mode": "smoke",
+    "unit": "kelvo-telemetry-overhead-cee2ffd01416",
+    "ssh_exit_code": 0
+  },
+  "collection_ssh_exit_code": 0,
+  "local_launch_reconciled": true,
+  "local_stage_reconciled": true,
+  "local_trust_reconciled": true,
+  "schema_version": 1,
+  "kind": "telemetry_overhead_smoke",
+  "attempt": 2,
+  "scope": "Fixture correctness only. Smoke durations are diagnostic and establish no telemetry overhead, throughput or deployment capacity claim.",
+  "original_receipt_sha256": "d3b557ab373aa8936fd29ff55723580989c7998b88d772ba35d1a1ef82c438e6",
+  "external_helpers": {
+    "scope": "Frozen measurement and receipt helpers are external to the runtime source inventory.",
+    "manifest_sha256": "b9df8cd2a9f18a3af1cbcd9dd58163c3a53cd8c1dd3d9de70dd68935658dc9d5",
+    "file_count": 18,
+    "file_sha256": {
+      "README.md": "0bdaed21386d7531ffcb0393ddf01905583eb170d53125e10ac78336f0523eef",
+      "collect.py": "256de1ae87f0f2a419fb31459dbaf711adf1cfa3b906ca19e6bb85e2037ad671",
+      "common.py": "29ba65778695d81277838939878a81d6c82ae056f92c126456c87d43cd3c2a09",
+      "controls.py": "ff626893a32b1aea0dc8a240041df295f8d9043dc108472fe4f49de200f3c8fa",
+      "expected-source.json": "a4148fe73fba348f95213bf77356e73b21fdc85bbd21a0b49187918408e00fb8",
+      "freeze.py": "6b4f10ae047fb5d58d94da77dd56ca94b047306108808f653d6f13a4a193df87",
+      "harness.py": "af659bdae318f8747a7541a1a83209dd3fafae507ac73a8777e55c4c9bd050f9",
+      "launch.py": "e920c8e69824cfea82909c923717093b53f762a6f7ef049451b033fee571acfc",
+      "otlp-public-receipt.json": "dd1c47f5f12c0c023c0044b51a3da31e2fa68e5cb8e902ed7ae4c4da201f7791",
+      "prepare.py": "840e439bed72911331b835f9745f8b98f4e54b0041965f368d0d7683593784e1",
+      "preserve.py": "81e55dfbff0552e81e20243eb2f7e5ac57fe5b8297a371849c108fc830993545",
+      "run.py": "1f1c60b7d4b45976c5a6047ffa089e3443c6d0b1aa8c7aee6f31354bee58c7ec",
+      "runtime-inputs.json": "f372eefb049424d94cc00f4418877102f78d83e192038b3fab27875befde3152",
+      "stage.py": "de8f6e92b9a1693fbec7b0e59a1b48e0673047af5aefc6aa15b0ed495bc553a6",
+      "test_harness.py": "54baa28986ac73f61982d8bc614300cefa090e99d191b7b8d305c1be05ccc5d9",
+      "validate_controls.py": "b2ecef97cb23db818e85a4e606f000587f599fc8d0d61baf40e7e4d89d467f84",
+      "verify_cleanup.py": "6d79a1e02f0845e20c4f7e44d52e240c50c78dfc70bb134a40de6b7d4b1a58b6",
+      "workloads.py": "ded20a802229b09997e2314ab3257ab4277bc446f2528a94adee2b4ebe73a761"
+    }
+  },
+  "watchdog": {
+    "runtime_seconds": 900,
+    "operation_budget_seconds": 600,
+    "stop_timeout_seconds": 20,
+    "kill_mode": "control-group",
+    "send_sigkill": true,
+    "verification_basis": "Frozen guard validates exact watchdog properties before the campaign check."
+  },
+  "integrity": {
+    "helpers_unchanged": true,
+    "runtime_unchanged": true,
+    "python_unchanged": true,
+    "prepared_trust_unchanged": true
+  },
+  "harness_exit_code": 0,
+  "independent_cleanup": {
+    "unit": "kelvo-telemetry-overhead-cee2ffd01416",
+    "passed": true,
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "host_trust_unchanged": true,
+    "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+    "mode": "smoke"
+  },
+  "evidence_sha256": {
+    "public-receipt.json": "d3b557ab373aa8936fd29ff55723580989c7998b88d772ba35d1a1ef82c438e6",
+    "helper-manifest.json": "b9df8cd2a9f18a3af1cbcd9dd58163c3a53cd8c1dd3d9de70dd68935658dc9d5",
+    "expected-source.json": "a4148fe73fba348f95213bf77356e73b21fdc85bbd21a0b49187918408e00fb8",
+    "staging.json": "c703923f5af4cc4186fedf1c6e00cde6cdeb7bcf09a91f03efa96334ca7540d7",
+    "launch-result.json": "a21be8255b55d8aa849b5ac06b1797325cad9bc960b8c188efcbf53cf0037070",
+    "controls-preparation.json": "3bf09f9d13db406e89943e2df82e96a4a7adf94ef42d960e899d9fbac4f3d37c",
+    "controls-launch.json": "a405bc1c79c739ef30ec9b67458c84c5659b8fc7defe95040775a242d3b20f17",
+    "cleanup-independent.json": "ff1330642d431894ee2ecd0a377b036969a2585b5f24f06ec23c2f8181ecc711",
+    "ca-preparation.json": "b0617caa3a2056487cabcf6def09c218e53a581b10eaa7a21d0fdcfc0cc28e0f",
+    "python-identity.json": "1aa2c601876a8c9abf5d0462e9df48340047d7675c55de787df36d78a6f55835",
+    "runtime-inputs.json": "f372eefb049424d94cc00f4418877102f78d83e192038b3fab27875befde3152",
+    "prior-campaign.json": "4b26346a27a4df6660eb1b9948e5e65d625f63e08217d1c1dded86ec030ed831",
+    "private-archive.json": "7a83618d031f28ca37e3acf221655ff782d469872f8cd3c37befe5e890723613",
+    "runner_receipt": "966446a5f3f86635fd0a00048d18c5670d5a3a86ad4f0f3eca20040b8c61a647",
+    "harness_log": "fcd5d4e10f37d495afbe4dcde28f3e8f9f38d0b357a0cfe9ac1283a301d4c685",
+    "service_exit_receipt": "22604762a5037e87379d94ba593b0ae8fd3a600d54a26862a22373ac48d42205",
+    "inner-receipt.json": "a1ac1719d79fb4e84a7151a4c3664ab6350cc590d72bc97718c6a8fa1dc84499"
+  },
+  "preserved_private_evidence": {
+    "passed": true,
+    "archive_sha256": "403bc9cb561ea28dba7b1eb9200ec3214e9c08d54be91f929fb6f4b5f7093185",
+    "archive_bytes": 30914560,
+    "file_count": 334,
+    "file_manifest_sha256": "9e54a7c7a346e1368dce97ca9770a0f5f279d0594e2dd7a58b6a03142573f800",
+    "review_archive_sha256": "deba7292766803c9b90def1cdf19735522be88afd0f42c69e5dca3b55b53cce9",
+    "source_bundle_sha256": "54e99f7d8e07e59d1cfb245254542506de6c1b6ad36da6ddb25662d59079c08f",
+    "preservation_receipt_sha256": "7a83618d031f28ca37e3acf221655ff782d469872f8cd3c37befe5e890723613",
+    "all_archive_file_hashes_reconciled": true,
+    "review_archive_matches_frozen_helpers": true,
+    "scope": "Archive contents remain private; only hashes and counts are published."
+  },
+  "publication_projection": {
+    "source_manifests_flattened_to_hash_and_count": true,
+    "private_paths_ips_credentials_trace_ids_omitted": true,
+    "timings_omitted": true,
+    "scope": "Read-only hash, type and data reconciliation of preserved evidence; no rerun or new measurement."
+  },
+  "prior_failed_attempt": {
+    "original_receipt_sha256": "950892a7c7c9773028c83cd0be57a6c72e07a8ffa1008c9b7db7f4c83cdfb908",
+    "harness_failure_category": "OTHER_PERFORMANCE_CAMPAIGN_RUNNING",
+    "only_changed_helper_files": [
+      "harness.py",
+      "test_harness.py"
+    ],
+    "runtime_source_binary_and_workload_unchanged": true,
+    "correction": "Inspect only the UNIT column using fullmatch; preserve rejection of actual competing campaigns and extra or missing owned telemetry units."
+  }
+}

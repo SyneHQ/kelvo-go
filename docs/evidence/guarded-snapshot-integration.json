@@ -1,0 +1,157 @@
+{
+  "revision": "74891d751faf38d4870f767163395f1d07aa3d90",
+  "source_manifest_sha256": "fbc6ec6ec5ad74ee9e79a79fdf3097b313e2815fca7709670dae3d2fe52ba78b",
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "compiler_lanes": 1,
+  "umask": "0077",
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "binaries": {
+    "kelvo": "2b6af48bd1f9adcd5d57ba7845f1baa91ac3e06c48f102bc8cbd55c4113d8912",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "passed": true,
+  "schema": 1,
+  "scope": "Local snapshot policy integration on the dedicated Azure Linux host; real Landlock child and authenticated gateway relay with controlled in-memory metadata CAS",
+  "validation_receipt_sha256": "eaff039449a2b53c47e4506e6031aad004d187d69ff120a599b90c08b3380f84",
+  "stages": {
+    "focused-race": {
+      "exit_code": 0,
+      "seconds": 49.301,
+      "log_sha256": "a9e57ec5f73342338916c2b627d342cfa26fb4aab07d256b4de223092df0824d",
+      "pass_events": 265,
+      "skip_events": 5
+    },
+    "race": {
+      "exit_code": 0,
+      "seconds": 147.912,
+      "log_sha256": "f94bbd59fff96329d16b09902052ad75abacf8ad625015f86b3b4ec437360d15",
+      "pass_events": 1655,
+      "skip_events": 26
+    },
+    "vet": {
+      "exit_code": 0,
+      "seconds": 14.489,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "pass_events": 0,
+      "skip_events": 0
+    },
+    "build": {
+      "exit_code": 0,
+      "seconds": 8.129,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "pass_events": 0,
+      "skip_events": 0
+    },
+    "launcher": {
+      "exit_code": 0,
+      "seconds": 0.114,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "pass_events": 0,
+      "skip_events": 0
+    },
+    "real-snapshot-worker": {
+      "exit_code": 0,
+      "seconds": 5.923,
+      "log_sha256": "4e46073f931923468286bb2aafa2d0a591e386bb605df94a65671b543f37ff04",
+      "pass_events": 6,
+      "skip_events": 0
+    }
+  },
+  "packages": [
+    "catalog",
+    "access",
+    "federation",
+    "engine/duckdb",
+    "worker",
+    "acceleration",
+    "cluster"
+  ],
+  "real_worker_gates": [
+    {
+      "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+      "test": "TestSnapshotWorkerSandboxPoliciesCancellationAndPinnedGeneration",
+      "outcome": "pass"
+    },
+    {
+      "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+      "test": "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS/success",
+      "outcome": "pass"
+    },
+    {
+      "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+      "test": "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS/active-key-revocation",
+      "outcome": "pass"
+    },
+    {
+      "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+      "test": "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS/commit-key-revocation",
+      "outcome": "pass"
+    },
+    {
+      "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+      "test": "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS/commit-document-expiry",
+      "outcome": "pass"
+    },
+    {
+      "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+      "test": "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS",
+      "outcome": "pass"
+    }
+  ],
+  "ordinary_suite_skips": [
+    "github.com/SYNEHQ/kelvo-go/internal/acceleration/TestMongoPipelineLiveAcceleration",
+    "github.com/SYNEHQ/kelvo-go/internal/acceleration/TestMultipartDatasetLargerThanFourGiB",
+    "github.com/SYNEHQ/kelvo-go/internal/acceleration/TestObjectMultipartDatasetLargerThanFourGiB",
+    "github.com/SYNEHQ/kelvo-go/internal/acceleration/TestStoreProcessHelper",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSAccountIsolation",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshQueueProvisionDedupRetry",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSRefreshStatusDurabilityResetAndBudget",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreAdmissionCASAndReuse",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreCorruptJobFailsClosed",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreQueueAndWorkerLease",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreReconcileFailsStaleAssigned",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestNATSStoreRejectsMetadataMismatch",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster/TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestCustomFederationNeedsExplicitBridgeBuild",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestExecuteRealPostgresMySQLFederation",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestExecuteSQLiteFixture",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestPinnedMultipartObjectRangeQuery",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestPinnedObjectRangesUseRangesAndExactAllowlist",
+    "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb/TestRealConnectionMetadataDoesNotExposeDSNs",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerRealDuckDBCTE",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerRefreshCustody",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerStartFailureCleansOwnership",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestContainedWorkerSuccessAndCancellation",
+    "github.com/SYNEHQ/kelvo-go/internal/worker/TestSnapshotWorkerSandboxPoliciesCancellationAndPinnedGeneration"
+  ],
+  "earlier_trials": [
+    {
+      "revision": "d488b83569c9eb4eb983359c528da627bac60307",
+      "source_manifest_sha256": "edd976f2c3fb2a0c5bc92d1f61663d14c6ff4b8b94ba9b101ea38173187e0648",
+      "result": "failed tagged acceleration test build",
+      "finding": "Internal large-object fixture imported the engine, creating a test import cycle after the new snapshot reader dependency",
+      "fix": "Move only the engine wiring to the external test package; preserve internal storage assertions"
+    },
+    {
+      "revision": "0dd83ef12a095797ce2e0c6efdf8234f902ee96e",
+      "source_manifest_sha256": "c51a14d5f71abcdce3e8d90f2c4055a15d6ccd3481bc2108da418e44fdea6ebe",
+      "result": "failed TestStoreRejectsInvalidNamespaces under umask0077",
+      "finding": "Mkdir0755 produced a private0700 fixture under restrictive umask",
+      "fix": "Explicitly chmod the intentionally unsafe fixture; storage checks unchanged"
+    }
+  ],
+  "limits": [
+    "Linux local single/multipart snapshots with original Arrow schema only",
+    "Raw scan limits and decoder accounting do not guarantee process RSS or bound DuckDB materialization",
+    "Principal EOS tests use the real worker and gateway but controlled metadata CAS; broker failover and distributed revocation are separate",
+    "Ordinary external/provider and large-dataset skips remain listed; explicit real snapshot worker/principal gates had zero skips",
+    "Wide-data capacity and later runtime revisions require separate measurements"
+  ]
+}

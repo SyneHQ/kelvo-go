@@ -15,20 +15,29 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/audit"
+	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
 type reservation struct {
-	ctx     context.Context
-	cancel  context.CancelFunc
-	done    chan struct{}
-	once    sync.Once
-	started bool // guarded by Node.mu; a permit remains held until Execute exits
+	ctx           context.Context
+	cancel        context.CancelFunc
+	done          chan struct{}
+	once          sync.Once
+	started       bool          // guarded by Node.mu; a permit remains held until Execute exits
+	leaseMutation chan struct{} // initialized under Node.mu; renewal and ResultReady only
 }
 
 type Node struct {
+	exports        *ExportRuntime
+	audit          *ServiceAudit
+	ownAudit       bool
+	closeErr       error
 	cfg            NodeConfig
 	store          Store
 	executor       query.Executor
@@ -38,6 +47,7 @@ type Node struct {
 	dispatchCtx    context.Context
 	dispatchCancel context.CancelFunc
 	dispatchDone   chan struct{}
+	leaseFailure   chan struct{}
 	draining       bool // guarded by mu
 	permits        chan struct{}
 	mu             sync.Mutex
@@ -64,11 +74,20 @@ func NewNode(cfg NodeConfig, store Store, executor *worker.Executor) (*Node, err
 	if executor.Config.Acceleration != nil && executor.Config.Acceleration.TenantID != cfg.Policy.TenantID {
 		return nil, errors.New("acceleration tenant must match worker tenant")
 	}
+	if err := ValidateExportCatalog(cfg, executor.Config); err != nil {
+		return nil, err
+	}
 	return newNode(cfg, store, executor)
 }
 
 func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error) {
+	if err := validateNodeAudit(cfg); err != nil {
+		return nil, err
+	}
 	if err := ValidatePolicy(cfg.Policy); err != nil {
+		return nil, err
+	}
+	if err := validateNodeExports(cfg); err != nil {
 		return nil, err
 	}
 	if store == nil || executor == nil || !reflect.DeepEqual(store.Policy(), cfg.Policy) || cfg.Policy.Workers[cfg.WorkerID] < 1 {
@@ -79,12 +98,42 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	n := &Node{cfg: cfg, store: store, executor: executor, owner: owner, ctx: ctx, cancel: cancel, permits: make(chan struct{}, cfg.Policy.Workers[cfg.WorkerID]), jobs: map[string]*reservation{}}
+	n := &Node{cfg: cfg, store: store, executor: executor, owner: owner, ctx: ctx, cancel: cancel, permits: make(chan struct{}, cfg.Policy.Workers[cfg.WorkerID]), jobs: map[string]*reservation{}, leaseFailure: make(chan struct{})}
+
+	if cfg.RuntimeAudit != nil {
+		if !cfg.RuntimeAudit.matches(cfg.Audit, "worker", []string{cfg.Policy.TenantID}) {
+			cancel()
+			return nil, audit.ErrInvalid
+		}
+		n.audit = cfg.RuntimeAudit
+	} else {
+		n.audit, err = OpenServiceAudit(cfg.Audit, "worker", []string{cfg.Policy.TenantID})
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		n.ownAudit = true
+	}
+	started := false
+	defer func() {
+		if !started && n.ownAudit {
+			_ = n.audit.CloseBounded()
+		}
+	}()
 	n.dispatchCtx, n.dispatchCancel = context.WithCancel(ctx)
 	n.dispatchDone = make(chan struct{})
 	probe, stop := context.WithTimeout(ctx, 10*time.Second)
 	defer stop()
-	if _, err = executor.Execute(probe, query.Request{Mode: "federated", SQL: "SELECT 1"}, discardSink{}); err != nil {
+
+	probeAudit, err := n.audit.beginService(probe, cfg.Policy, audit.QueryExecution)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	defer probeAudit.abort(probe)
+	_, err = executor.Execute(probe, query.Request{Mode: "federated", SQL: "SELECT 1"}, discardSink{})
+	err = errors.Join(err, probeAudit.complete(err))
+	if err != nil {
 		cancel()
 		return nil, errors.New("sandboxed worker startup probe failed")
 	}
@@ -92,9 +141,38 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 		cancel()
 		return nil, errors.New("worker identity is already active or its store is unavailable")
 	}
+	if cfg.Exports != nil {
+		jobs := cfg.RuntimeExportStore
+		if jobs == nil {
+			base, ok := store.(*NATSStore)
+			if !ok {
+				cancel()
+				return nil, errors.New("exports require a retained tenant job store")
+			}
+			jobs, err = OpenExportStore(probe, base, false)
+			if err != nil {
+				cancel()
+				return nil, err
+			}
+		}
+		native, ok := executor.(*worker.Executor)
+		if !ok {
+			cancel()
+			return nil, errors.New("exports require the sandboxed worker executor")
+		}
+		exportConfig := cfg
+		exportConfig.RuntimeAudit = n.audit
+		n.exports, err = NewExportRuntime(exportConfig, jobs, native, owner)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		context.AfterFunc(n.ctx, n.exports.Stop)
+	}
 	n.wg.Add(2)
 	go n.dispatch()
 	go n.heartbeat()
+	started = true
 	return n, nil
 }
 
@@ -107,6 +185,14 @@ func (n *Node) dispatch() {
 	defer n.wg.Done()
 	defer close(n.dispatchDone)
 	for {
+		if !n.audit.Ready() {
+			select {
+			case <-n.dispatchCtx.Done():
+				return
+			case <-time.After(200 * time.Millisecond):
+				continue
+			}
+		}
 		select {
 		case <-n.dispatchCtx.Done():
 			return
@@ -127,6 +213,11 @@ func (n *Node) dispatch() {
 			}
 			continue
 		}
+		if !n.audit.Ready() {
+			_ = d.Retry(n.ctx)
+			<-n.permits
+			continue
+		}
 		s, err := n.store.Get(n.ctx, d.ID())
 		if err != nil || s.Job.State != Queued || !time.Now().Before(s.Job.ExpiresAt) {
 			if errors.Is(err, ErrNotFound) || err == nil {
@@ -137,11 +228,24 @@ func (n *Node) dispatch() {
 			<-n.permits
 			continue
 		}
+		if err := validateJobAuthority(n.cfg.Policy, s.Job.Authority, s.Job.Request); err != nil {
+			next := s.Job
+			next.State, next.Error = Failed, query.PublicError(err)
+			if _, updateErr := n.store.CompareAndSwap(n.ctx, s, next); updateErr == nil || errors.Is(updateErr, ErrConflict) {
+				_ = d.Ack(n.ctx)
+			} else {
+				_ = d.Retry(n.ctx)
+			}
+			<-n.permits
+			continue
+		}
+		span := n.cfg.RuntimeTracing.Start(jobTrace(s.Job.Trace), tracing.ClusterDispatch)
 		ctx, cancel := context.WithDeadline(n.ctx, s.Job.ExpiresAt)
 		r := &reservation{ctx: ctx, cancel: cancel, done: make(chan struct{})}
 		n.mu.Lock()
 		if n.draining {
 			n.mu.Unlock()
+			span.End(telemetry.OutcomeCanceled)
 			cancel()
 			_ = d.Retry(n.ctx)
 			<-n.permits
@@ -155,6 +259,8 @@ func (n *Node) dispatch() {
 		j.Owner = n.owner
 		j.HeartbeatAt = time.Now().UTC()
 		if _, err = n.store.CompareAndSwap(n.ctx, s, j); err != nil {
+			outcome := telemetry.OutcomeError
+			finishClusterTrace(span, n.ctx, &outcome)
 			n.release(s.Job.ID, r)
 			if errors.Is(err, ErrConflict) {
 				_ = d.Ack(n.ctx)
@@ -163,6 +269,7 @@ func (n *Node) dispatch() {
 			}
 			continue
 		}
+		span.End(telemetry.OutcomeSuccess)
 		// An ACK failure may redeliver the envelope. Its durable state is already
 		// ASSIGNED, so another node must acknowledge it without another execution.
 		_ = d.Ack(n.ctx)
@@ -213,20 +320,95 @@ func (n *Node) watch(id string, r *reservation) {
 			return
 		case <-tick.C:
 			ctx, stop := context.WithTimeout(n.ctx, n.cfg.Policy.LeaseDuration/3)
-			err := n.mutate(ctx, id, func(j *Job) error {
-				if j.Terminal() {
-					return ErrConflict
-				}
-				j.HeartbeatAt = time.Now().UTC()
-				return nil
-			})
+			err := n.renewLease(ctx, id)
 			stop()
 			if err != nil {
+				// A completed handler may release its reservation while this
+				// renewal is still returning. Its durable result remains for the
+				// gateway to commit; do not turn that handoff into worker loss.
+				select {
+				case <-r.done:
+					return
+				default:
+				}
 				n.finish(id, Failed, query.Stats{}, query.NewError("WORKER_LOST", "Worker lease could not be renewed"))
 				n.stopReservation(id, r)
 				return
 			}
 		}
+	}
+}
+
+var errLeaseCurrent = errors.New("worker lease does not need renewal")
+
+// Poll durable cancellation at the existing cadence, but do not rewrite a fresh
+// lease. Claim and completion transitions also renew HeartbeatAt atomically.
+func (n *Node) renewLease(ctx context.Context, id string) error {
+	unlock, err := n.lockLeaseMutation(ctx, id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	err = n.mutate(ctx, id, func(j *Job) error {
+		if j.Terminal() {
+			return ErrConflict
+		}
+		now := time.Now().UTC()
+		age := now.Sub(j.HeartbeatAt)
+		if age >= 0 && age < n.cfg.Policy.LeaseDuration/3 {
+			return errLeaseCurrent
+		}
+		j.HeartbeatAt = now
+		return nil
+	})
+	if errors.Is(err, errLeaseCurrent) {
+		return nil
+	}
+	return err
+}
+
+// The local renewal loop must not race its own final result publication. This
+// gate intentionally excludes cancellation and failure, which retain authority
+// to fence either operation through the durable CAS and terminal-state checks.
+func (n *Node) lockLeaseMutation(ctx context.Context, id string) (func(), error) {
+	n.mu.Lock()
+	r := n.jobs[id]
+	if r == nil {
+		n.mu.Unlock()
+		return nil, ErrConflict
+	}
+	if r.leaseMutation == nil {
+		r.leaseMutation = make(chan struct{}, 1)
+	}
+	gate := r.leaseMutation
+	n.mu.Unlock()
+	select {
+	case gate <- struct{}{}:
+		unlock := func() { <-gate }
+		if err := ctx.Err(); err != nil {
+			unlock()
+			return nil, err
+		}
+		n.mu.Lock()
+		current := n.jobs[id] == r
+		n.mu.Unlock()
+		if !current {
+			unlock()
+			return nil, ErrConflict
+		}
+		select {
+		case <-r.done:
+			unlock()
+			return nil, ErrConflict
+		default:
+		}
+		if r.ctx != nil && r.ctx.Err() != nil {
+			unlock()
+			return nil, r.ctx.Err()
+		}
+		return unlock, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }
 
@@ -243,12 +425,25 @@ func (n *Node) heartbeat() {
 			err := n.store.HeartbeatWorker(ctx, n.cfg.WorkerID, n.owner)
 			stop()
 			if err != nil {
-				n.cancel()
+				n.mu.Lock()
+				// Close cancels the same context under mu. A renewal interrupted
+				// by ordinary shutdown must not become a permanent lease fault.
+				if n.ctx.Err() == nil {
+					n.cancel()
+					close(n.leaseFailure)
+				}
+				n.mu.Unlock()
 				return
 			}
 		}
 	}
 }
+
+// LeaseFailure closes after the first failed worker-identity renewal permanently
+// fences this owner. A closed channel preserves a failure that occurs before a
+// supervisor subscribes. Normal drain/Close never signals it. The node cannot
+// reactivate itself; its supervisor must start a new owner after safe shutdown.
+func (n *Node) LeaseFailure() <-chan struct{} { return n.leaseFailure }
 
 func (n *Node) mutate(ctx context.Context, id string, fn func(*Job) error) error {
 	for range 8 {
@@ -274,6 +469,13 @@ func (n *Node) mutate(ctx context.Context, id string, fn func(*Job) error) error
 func (n *Node) finish(id, state string, stats query.Stats, result error) error {
 	ctx, stop := context.WithTimeout(context.Background(), 3*time.Second)
 	defer stop()
+	if state == ResultReady {
+		unlock, err := n.lockLeaseMutation(ctx, id)
+		if err != nil {
+			return err
+		}
+		defer unlock()
+	}
 	return n.mutate(ctx, id, func(j *Job) error {
 		if j.Terminal() {
 			return ErrConflict
@@ -294,6 +496,9 @@ func (n *Node) BeginDrain() {
 	n.draining = true
 	n.dispatchCancel()
 	n.mu.Unlock()
+	if n.exports != nil {
+		n.exports.BeginDrain()
+	}
 }
 
 // Drain waits for reservations, including unclaimed results, to finish. The
@@ -304,6 +509,11 @@ func (n *Node) Drain(ctx context.Context) error {
 	case <-n.dispatchDone:
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+	if n.exports != nil {
+		if err := n.exports.Drain(ctx); err != nil {
+			return err
+		}
 	}
 	tick := time.NewTicker(20 * time.Millisecond)
 	defer tick.Stop()
@@ -330,13 +540,20 @@ func (n *Node) Close() error {
 		n.mu.Unlock()
 		n.wg.Wait()
 		n.streams.Wait()
+		if n.exports != nil {
+			n.closeErr = n.exports.Close()
+		}
+		if n.ownAudit {
+			n.closeErr = errors.Join(n.closeErr, n.audit.CloseBounded())
+		}
 		_ = n.store.Close()
 	})
-	return nil
+	return n.closeErr
 }
 
 func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || len(r.TLS.PeerCertificates) == 0 || r.TLS.PeerCertificates[0] == nil || !hasURI(r.TLS.PeerCertificates[0], GatewayIdentity) {
+		n.audit.authenticationDenied()
 		http.Error(w, "mutual TLS gateway identity required", http.StatusUnauthorized)
 		return
 	}
@@ -386,8 +603,11 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/ready" {
 		n.mu.Lock()
-		ready := !n.draining && n.ctx.Err() == nil
+		ready := !n.draining && n.ctx.Err() == nil && n.audit.Ready()
 		n.mu.Unlock()
+		if ready && n.exports != nil {
+			ready = n.exports.Ready()
+		}
 		if ready && !n.cfg.RuntimeDatasets.hasRequired(n.cfg.RequiredDatasets) {
 			ready = false
 		}
@@ -399,6 +619,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			_, _ = w.Write([]byte("ready\n"))
 		}
+		return
+	}
+	if n.exports != nil && n.exports.ServeHTTP(w, r) {
 		return
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
@@ -415,8 +638,22 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if parts[3] == "cancel" && r.Method == http.MethodPost {
-		_ = n.finish(id, Cancelled, query.Stats{}, query.NewError("CANCELLED", "Query cancelled"))
+		op, err := n.audit.beginGateway(r.Context(), n.cfg.Policy, audit.QueryCancel)
+		if err != nil {
+			http.Error(w, "audit storage unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		defer op.abort(r.Context())
+		err = n.finish(id, Cancelled, query.Stats{}, query.NewError("CANCELLED", "Query cancelled"))
 		reserved.cancel()
+		if auditErr := op.complete(err); auditErr != nil {
+			http.Error(w, "audit storage unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if err != nil {
+			http.Error(w, "query cancellation state unavailable", http.StatusConflict)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -437,9 +674,14 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer n.release(id, reserved)
 	claim := r.Header.Get("X-Kelvo-Claim")
 	var request query.Request
+	var authority *JobAuthority
+	var carrier tracing.Carrier
 	err := n.mutate(r.Context(), id, func(j *Job) error {
 		if j.State != Claimed || len(claim) != 32 || subtle.ConstantTimeCompare([]byte(j.Claim), []byte(claim)) != 1 {
 			return ErrConflict
+		}
+		if err := validateJobAuthority(n.cfg.Policy, j.Authority, j.Request); err != nil {
+			return err
 		}
 		if err := query.ValidateRequest(j.Request); err != nil {
 			return err
@@ -447,6 +689,8 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		j.State = Running
 		j.HeartbeatAt = time.Now().UTC()
 		request = j.Request
+		authority = j.Authority
+		carrier = jobTrace(j.Trace)
 		return nil
 	})
 	if err != nil {
@@ -455,36 +699,52 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(reserved.ctx, n.cfg.Policy.Limits.Timeout)
+	ctx = tracing.WithCarrier(ctx, carrier)
+	if authority != nil {
+		ctx = context.WithValue(ctx, jobAuthorityKey{}, *authority)
+	}
 	stopClient := context.AfterFunc(r.Context(), cancel)
 	defer func() { stopClient(); cancel() }()
-	controller := http.NewResponseController(w)
+	op, auditErr := n.audit.begin(ctx, n.cfg.Policy.TenantID, authority, audit.QueryExecution)
+	if auditErr != nil {
+		_ = n.finish(id, Failed, query.Stats{}, query.NewError("UNAVAILABLE", "Audit storage unavailable"))
+		http.Error(w, "audit storage unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	defer op.abort(ctx)
 	deadline, _ := ctx.Deadline()
-	_ = controller.SetWriteDeadline(deadline)
-	done := make(chan struct{})
-	stopWrite := make(chan struct{})
-	go func() {
-		defer close(done)
-		select {
-		case <-ctx.Done():
-			_ = controller.SetWriteDeadline(time.Now())
-		case <-stopWrite:
-		}
-	}()
-	defer func() { close(stopWrite); <-done; _ = controller.SetWriteDeadline(time.Time{}) }()
-	sink := &nodeSink{w: w, sink: worker.NewIPCSink(w, n.cfg.Policy.Limits)}
+	stopWrites := httpstream.WatchWriteDeadline(ctx, w, deadline)
+	defer stopWrites()
+	tail := &arrowEOSTail{w: w}
+	sink := &nodeSink{w: w, sink: worker.NewIPCSink(tail, n.cfg.Policy.Limits)}
 	defer sink.sink.Abort()
 	executionStarted := time.Now()
-	stats, err := n.executor.Execute(ctx, request, sink)
+	var stats query.Stats
+	executionCtx, err := executionAuthorityContext(ctx, n.cfg.Policy, authority, request)
+	if err == nil {
+		stats, err = n.executor.Execute(executionCtx, request, sink)
+	}
 	if err == nil {
 		err = sink.sink.Finish()
+	}
+	if err == nil && !tail.validEOS() {
+		err = query.NewError("QUERY_FAILED", "Incomplete Arrow stream")
 	}
 	stats.WireBytes = sink.sink.EncodedBytes()
 	if err == nil {
 		err = ctx.Err()
 	}
+	err = errors.Join(err, op.complete(err))
 	if err == nil {
 		err = n.finish(id, ResultReady, stats, nil)
-	} else {
+	}
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err == nil {
+		err = tail.FlushEOS()
+	}
+	if err != nil {
 		_ = n.finish(id, Failed, stats, err)
 	}
 	recordNodeHistory(n.cfg.RuntimeHistory, id, executionStarted, err)

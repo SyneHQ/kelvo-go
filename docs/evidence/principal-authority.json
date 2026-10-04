@@ -1,0 +1,40 @@
+{
+  "base_revision": "8f4b64ba3cf76b9aa676ef7eec459065190ea85e",
+  "source_files": 739,
+  "source_manifest_sha256": "ac1b1ae9dc7c8913786f83a5d38e643a6f7cdfe8195c67303dcaec00f5c9891e",
+  "source_verified_before": true,
+  "stages": {
+    "cluster-race": {
+      "exit_code": 0,
+      "seconds": 47.121,
+      "log_sha256": "ab0620ad8f32ecaf8bc3e5e11cce34056bc969762cb23779748b063751d32eb0"
+    },
+    "cluster-cli-vet": {
+      "exit_code": 0,
+      "seconds": 1.599,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "failed": [],
+  "skipped": [
+    "TestNATSRefreshStatusDurabilityResetAndBudget",
+    "TestNATSRefreshQueueProvisionDedupRetry",
+    "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+    "TestNATSStoreAdmissionCASAndReuse",
+    "TestNATSStoreQueueAndWorkerLease",
+    "TestNATSStoreRejectsMetadataMismatch",
+    "TestNATSStoreReconcileFailsStaleAssigned",
+    "TestNATSStoreCorruptJobFailsClosed",
+    "TestNATSAccountIsolation",
+    "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission"
+  ],
+  "scope": "Package and TLS relay fixtures, not live cloud or production rollout acceptance",
+  "source_verified_after": true,
+  "passed": true,
+  "review": {
+    "retired_token_rebinding": "fixed; bounded lifetime history",
+    "completion_revocation": "direct membership and expiry fence; CAS-triggered test without cancellation callback",
+    "focused_race_repetitions": 30,
+    "status": "independent review findings resolved"
+  }
+}

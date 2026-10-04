@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"net/url"
@@ -18,6 +19,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -105,49 +107,9 @@ func OpenStore(parent context.Context, c NATSConfig, p Policy, initialize bool) 
 	if err != nil {
 		return fail(errors.New("JetStream unavailable"))
 	}
-	raw, _ := json.Marshal(p)
-	meta, err := js.KeyValue(ctx, metaBucket)
+	meta, err := openClusterMetadata(ctx, js, p, initialize)
 	if err != nil {
-		if !initialize {
-			return fail(errors.New("cluster metadata is missing"))
-		}
-		meta, err = js.CreateKeyValue(ctx, jetstream.KeyValueConfig{Bucket: metaBucket, History: 1, MaxBytes: 1 << 20, Replicas: p.Replicas})
-		if err != nil {
-			return fail(errors.New("cluster metadata unavailable"))
-		}
-	}
-	// A non-initializer must reject direct KV reads before it can read metadata.
-	// The initializer verifies existing metadata first, then is the only caller
-	// allowed to make the compatible direct-access hardening update.
-	if !initialize {
-		if err := configureKVDirect(ctx, js, metaBucket, false); err != nil {
-			return fail(err)
-		}
-	}
-	entry, err := meta.Get(ctx, metadataKey)
-	missingMetadata := errors.Is(err, jetstream.ErrKeyNotFound)
-	if err != nil && !missingMetadata {
-		return fail(errors.New("cluster metadata unavailable"))
-	}
-	if !missingMetadata && string(entry.Value()) != string(raw) {
-		return fail(errors.New("cluster metadata mismatch"))
-	}
-	if missingMetadata && !initialize {
-		return fail(errors.New("cluster metadata is missing"))
-	}
-	if initialize {
-		if err := configureKVDirect(ctx, js, metaBucket, true); err != nil {
-			return fail(err)
-		}
-		meta, err = js.KeyValue(ctx, metaBucket) // refresh cached direct-read behavior
-		if err != nil {
-			return fail(errors.New("cluster metadata unavailable"))
-		}
-		if missingMetadata {
-			if _, err = meta.Create(ctx, metadataKey, raw); err != nil {
-				return fail(errors.New("cluster metadata unavailable"))
-			}
-		}
+		return fail(err)
 	}
 	kv, err := js.KeyValue(ctx, jobsBucket)
 	if err != nil {
@@ -211,8 +173,10 @@ func configureKVDirect(ctx context.Context, js jetstream.JetStream, bucket strin
 	if err != nil {
 		return errors.New("KV store configuration unavailable")
 	}
-	info, err := stream.Info(ctx)
-	if err != nil {
+	// Stream just fetched its metadata. Do not issue the same request twice;
+	// this object is local to this validation and is never reused across opens.
+	info := stream.CachedInfo()
+	if info == nil {
 		return errors.New("KV store configuration unavailable")
 	}
 	if !info.Config.AllowDirect {
@@ -230,20 +194,52 @@ func configureKVDirect(ctx context.Context, js jetstream.JetStream, bucket strin
 }
 
 func validateResources(ctx context.Context, js jetstream.JetStream, meta, jobs jetstream.KeyValue, stream jetstream.Stream, consumer jetstream.Consumer, p Policy) error {
+	// These four read-only checks are independent. Keep startup within the
+	// existing deadline over WAN without skipping any immutable-policy checks.
+	checks := [...]func() error{
+		func() error { return validateMetadataResource(ctx, js, meta, p) },
+		func() error { return validateJobsResource(ctx, js, jobs, p) },
+		func() error { return validateDispatchStream(ctx, stream, p) },
+		func() error { return validateDispatchConsumer(ctx, consumer, p) },
+	}
+	var results [len(checks)]error
+	var pending sync.WaitGroup
+	for i, check := range checks {
+		pending.Go(func() { results[i] = check() })
+	}
+	pending.Wait()
+	// Deterministic error precedence, after every bounded request has returned.
+	for _, err := range results {
+		if err != nil {
+			return err
+		}
+	}
+	return ctx.Err()
+}
+
+func validateMetadataResource(ctx context.Context, js jetstream.JetStream, meta jetstream.KeyValue, p Policy) error {
 	if err := configureKVDirect(ctx, js, metaBucket, false); err != nil {
 		return errors.New("metadata store configuration mismatch")
-	}
-	if err := configureKVDirect(ctx, js, jobsBucket, false); err != nil {
-		return errors.New("job store configuration mismatch")
 	}
 	metaStatus, err := meta.Status(ctx)
 	if err != nil || metaStatus.Config().TTL != 0 || metaStatus.Config().History != 1 || metaStatus.Config().Replicas != p.Replicas {
 		return errors.New("metadata store configuration mismatch")
 	}
+	return nil
+}
+
+func validateJobsResource(ctx context.Context, js jetstream.JetStream, jobs jetstream.KeyValue, p Policy) error {
+	if err := configureKVDirect(ctx, js, jobsBucket, false); err != nil {
+		return errors.New("job store configuration mismatch")
+	}
 	jobStatus, err := jobs.Status(ctx)
 	if err != nil || jobStatus.Config().TTL != 2*p.JobTTL || jobStatus.Config().History != 1 || jobStatus.Config().Replicas != p.Replicas || jobStatus.Config().MaxValueSize != jobValueLimit || jobStatus.Config().MaxBytes != jobStoreBytes(p) {
 		return errors.New("job store configuration mismatch")
 	}
+	return nil
+}
+
+func validateDispatchStream(ctx context.Context, stream jetstream.Stream, p Policy) error {
 	info, err := stream.Info(ctx)
 	if err != nil {
 		return errors.New("dispatch stream configuration unavailable")
@@ -252,6 +248,10 @@ func validateResources(ctx context.Context, js jetstream.JetStream, meta, jobs j
 	if cfg.Retention != jetstream.WorkQueuePolicy || cfg.MaxMsgs != int64(p.MaxQueries) || cfg.MaxMsgSize != 1024 || cfg.MaxAge != p.JobTTL+time.Minute || cfg.Replicas != p.Replicas || cfg.AllowDirect || len(cfg.Subjects) != 1 || cfg.Subjects[0] != queueSubject {
 		return errors.New("dispatch stream configuration mismatch")
 	}
+	return nil
+}
+
+func validateDispatchConsumer(ctx context.Context, consumer jetstream.Consumer, p Policy) error {
 	ci, err := consumer.Info(ctx)
 	if err != nil {
 		return errors.New("dispatch consumer configuration unavailable")
@@ -288,10 +288,24 @@ func newID(n int) (string, error) {
 	}
 	return fmt.Sprintf("%x-%s", n, hex.EncodeToString(b)), nil
 }
-func enc(v any) []byte          { b, _ := json.Marshal(v); return b }
-func dec(b []byte) (Job, error) { var j Job; e := json.Unmarshal(b, &j); return j, e }
-func encodeJob(j Job) ([]byte, error) {
+func enc(v any) []byte { b, _ := json.Marshal(v); return b }
+func dec(b []byte) (Job, error) {
+	var j Job
+	err := json.Unmarshal(b, &j)
+	j.Trace = copyJobTrace(j.Trace)
+	return j, err
+}
+func encodeJob(j Job) ([]byte, error) { return encodePersistedJob(&j) }
+
+// Optional diagnostics never consume the space required for authoritative state.
+// Update the snapshot too, so callers see exactly what was persisted.
+func encodePersistedJob(j *Job) ([]byte, error) {
+	j.Trace = copyJobTrace(j.Trace)
 	b, err := json.Marshal(j)
+	if err == nil && len(b) > jobValueLimit && j.Trace != nil {
+		j.Trace = nil
+		b, err = json.Marshal(j)
+	}
 	if err != nil || len(b) > jobValueLimit {
 		return nil, errors.New("query state exceeds its size limit")
 	}
@@ -301,6 +315,10 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 	if err := query.ValidateRequest(r); err != nil {
 		return Snapshot{}, err
 	}
+	authority, err := submissionAuthority(ctx, s.policy, r)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	now := time.Now().UTC()
 	for n := 0; n < s.policy.MaxQueries; n++ {
 		key := fmt.Sprintf("slot.%x", n)
@@ -308,8 +326,8 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 		if err != nil {
 			return Snapshot{}, errors.New("query ID generation failed")
 		}
-		j := Job{ID: id, TenantID: s.policy.TenantID, State: Queued, Request: r, CreatedAt: now, ExpiresAt: now.Add(s.policy.JobTTL), HeartbeatAt: now}
-		b, err := encodeJob(j)
+		j := Job{Trace: copyJobTraceValue(tracing.CarrierFromContext(ctx)), Authority: authority, ID: id, TenantID: s.policy.TenantID, State: Queued, Request: r, CreatedAt: now, ExpiresAt: now.Add(s.policy.JobTTL), HeartbeatAt: now}
+		b, err := encodePersistedJob(&j)
 		if err != nil {
 			return Snapshot{}, err
 		}
@@ -403,7 +421,7 @@ func (s *NATSStore) CompareAndSwap(ctx context.Context, old Snapshot, next Job) 
 	if cur.Revision != old.Revision || cur.Job.Terminal() || !validTransition(cur.Job.State, next.State) ||
 		next.ID != cur.Job.ID || next.TenantID != cur.Job.TenantID ||
 		!next.CreatedAt.Equal(cur.Job.CreatedAt) || !next.ExpiresAt.Equal(cur.Job.ExpiresAt) ||
-		!reflect.DeepEqual(next.Request, cur.Job.Request) {
+		!reflect.DeepEqual(next.Request, cur.Job.Request) || !sameAuthority(next.Authority, cur.Job.Authority) {
 		return Snapshot{}, ErrConflict
 	}
 	if cur.Job.State == Queued {
@@ -438,8 +456,10 @@ func (s *NATSStore) CompareAndSwap(ctx context.Context, old Snapshot, next Job) 
 			return Snapshot{}, ErrConflict
 		}
 	}
+	// Re-read durable context, ignoring attempted replacement or pointer mutation.
+	next.Trace = copyJobTrace(cur.Job.Trace)
 	next.HeartbeatAt = time.Now().UTC()
-	b, err := encodeJob(next)
+	b, err := encodePersistedJob(&next)
 	if err != nil {
 		return Snapshot{}, ErrConflict
 	}

@@ -20,9 +20,11 @@ import (
 
 	duck "github.com/duckdb/duckdb-go/v2"
 
+	"github.com/SYNEHQ/kelvo-go/internal/access"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/federation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 )
 
 // Engine creates a fresh DuckDB database instance for every execution. It is a
@@ -49,6 +51,12 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		if err := source.ValidateParquetPaths(); err != nil {
 			return nil, query.NewError("CONFIGURATION_ERROR", "Invalid multipart parquet source")
 		}
+		if err := source.ValidateLocalSnapshot(); err != nil {
+			return nil, query.NewError("CONFIGURATION_ERROR", "Invalid local snapshot source")
+		}
+		if err := source.ValidateObjectSnapshot(); err != nil {
+			return nil, query.NewError("CONFIGURATION_ERROR", "Invalid object snapshot source")
+		}
 		if !catalog.ValidID(source.ID) {
 			return nil, query.NewError("INVALID_ARGUMENT", "Source ID is invalid")
 		}
@@ -63,6 +71,10 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 }
 
 func (e *Engine) Execute(parent context.Context, req query.Request, sink query.Sink) (stats query.Stats, err error) {
+	// Failed setup stays within the outer executor call. Only a completed setup
+	// leading into materialization is published as a finer child interval.
+	timings := telemetry.ChildRecorderFromContext(parent)
+	timings.Begin(telemetry.ChildEngineSetup)
 	stats.Backend = "duckdb"
 	stats.EngineStreaming = false // v2.10506.0 uses DuckDB's non-streaming pending result API.
 	started := time.Now()
@@ -80,6 +92,9 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	}
 	if req.Mode != "federated" {
 		return stats, query.NewError("INVALID_ARGUMENT", "DuckDB requires federated execution mode")
+	}
+	if err := access.ValidateResolvedRequest(parent, e.config, req); err != nil {
+		return stats, err
 	}
 	sources, selectErr := e.config.Select(req.Sources)
 	if selectErr != nil {
@@ -128,9 +143,11 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		// connection/database have both released their plans.
 		closeErr := errors.Join(conn.Close(), db.Close())
 		bindings.Close()
-		stats.Federation = bindings.stats()
-		for _, scan := range stats.Federation {
-			stats.SourceWireBytes += scan.SourceWireBytes
+		if !access.Restricted(parent) {
+			stats.Federation = bindings.stats()
+			for _, scan := range stats.Federation {
+				stats.SourceWireBytes += scan.SourceWireBytes
+			}
 		}
 		// Stream-release callbacks run during query/connection teardown. A
 		// contained callback failure must prevent a successful Arrow export.
@@ -219,7 +236,7 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 		if source.Adapter != "" {
 			return errors.New("source adapters are unavailable to DuckDB federation")
 		}
-		if source.Federation != nil {
+		if source.Federation != nil || access.GuardedSnapshot(ctx, source) {
 			continue
 		}
 		id := quoteIdentifier(source.ID)
@@ -313,6 +330,11 @@ func lockSourceAccess(ctx context.Context, raw any, sources []catalog.Source, te
 		}
 		if source.Adapter != "" {
 			return errors.New("source adapters are unavailable to DuckDB federation")
+		}
+		// Restricted snapshot files belong to the Go policy reader only. Native
+		// table functions must never gain the raw Parquet capability.
+		if access.GuardedSnapshot(ctx, source) {
+			continue
 		}
 		switch source.Type {
 		case "csv", "parquet", "duckdb", "sqlite":
@@ -486,11 +508,23 @@ func deliver(ctx context.Context, driverConn driver.Conn, sqlText string, values
 	if err != nil {
 		return err
 	}
+	timings := telemetry.ChildRecorderFromContext(ctx)
+	if timings != nil {
+		timings.End(telemetry.ChildEngineSetup)
+		timings.Begin(telemetry.ChildMaterialization)
+	}
+	// The pinned driver materializes here, before it returns an Arrow reader.
 	reader, err := arrowQuery.QueryContext(ctx, sqlText, values...)
+	timings.End(telemetry.ChildMaterialization)
 	if err != nil {
 		return err
 	}
 	defer reader.Release()
+	if timings != nil {
+		timings.Begin(telemetry.ChildArrowDrain)
+		// Register after Release so the drain ends before reader cleanup begins.
+		defer timings.End(telemetry.ChildArrowDrain)
+	}
 	if err := sink.Schema(reader.Schema()); err != nil {
 		return err
 	}

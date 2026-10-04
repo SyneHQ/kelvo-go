@@ -353,6 +353,11 @@ func TestStoreRejectsInvalidNamespaces(t *testing.T) {
 	if err := os.Mkdir(public, 0755); err != nil {
 		t.Fatal(err)
 	}
+	// Creation honors the caller's umask; make the intentionally unsafe mode
+	// explicit so this regression still tests a public directory under 0077.
+	if err := os.Chmod(public, 0755); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := OpenStore(public, "tenant"); err == nil {
 		t.Fatal("non-private directory accepted")
 	}

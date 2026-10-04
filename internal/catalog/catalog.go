@@ -20,7 +20,11 @@ func ValidID(s string) bool { return identifier.MatchString(s) }
 
 // Source holds public metadata and references to secret environment variables.
 type Source struct {
-	Ranges []ObjectRange `json:"object_ranges,omitempty" yaml:"-"`
+	// LocalSnapshot is supplied only by trusted generation resolution, never YAML.
+	LocalSnapshot *LocalSnapshotRead `json:"local_snapshot,omitempty" yaml:"-"`
+	// ObjectSnapshot binds parent-minted ranges to an acquired generation.
+	ObjectSnapshot *ObjectSnapshotRead `json:"object_snapshot,omitempty" yaml:"-"`
+	Ranges         []ObjectRange       `json:"object_ranges,omitempty" yaml:"-"`
 	// ParquetPaths is set only by trusted snapshot resolution, never YAML input.
 	ParquetPaths []string          `json:"parquet_paths,omitempty" yaml:"-"`
 	Federation   *FederationConfig `json:"federation,omitempty" yaml:"federation,omitempty"`
@@ -87,6 +91,9 @@ func Load(path string) (Config, error) {
 		}
 		seen[s.ID] = true
 		s.Type = CanonicalType(s.Type)
+		if err := s.ValidateObjectSnapshot(); err != nil {
+			return c, err
+		}
 		if err := s.ValidateFederation(); err != nil {
 			return c, err
 		}
@@ -180,6 +187,12 @@ func (c Config) Select(ids []string) ([]Source, error) {
 		found := false
 		for _, s := range c.Sources {
 			if s.ID == id {
+				if err := s.ValidateLocalSnapshot(); err != nil {
+					return nil, err
+				}
+				if err := s.ValidateObjectSnapshot(); err != nil {
+					return nil, err
+				}
 				if err := s.ValidateParquetPaths(); err != nil {
 					return nil, err
 				}

@@ -61,6 +61,6 @@ func recordExecutionPhases(metrics *telemetry.Registry, ctx context.Context, sta
 	duration := total - *admissionWait
 	metrics.Observe(kind, outcome, *admissionWait, duration)
 	if len(recorders) > 0 {
-		recorders[0].Record(tracing.Event{Kind: kind, Outcome: outcome, StartedAt: start, AdmissionWait: *admissionWait, Duration: duration, Phases: timings})
+		recorders[0].Record(tracing.Event{Parent: tracing.CarrierFromContext(ctx), Kind: kind, Outcome: outcome, StartedAt: start, AdmissionWait: *admissionWait, Duration: duration, Phases: timings})
 	}
 }

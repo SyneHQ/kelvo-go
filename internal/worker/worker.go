@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
+	"github.com/SYNEHQ/kelvo-go/internal/access"
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
@@ -29,13 +30,36 @@ import (
 )
 
 type Input struct {
+	Access  *access.Policy `json:"access,omitempty"`
 	Config  catalog.Config `json:"config"`
 	Limits  query.Limits   `json:"limits"`
 	Request query.Request  `json:"request"`
+	// Parent and child use the same executable. Older strict child decoders do
+	// not accept this field; it is not an independent rolling wire protocol.
+	TimingVersion uint8 `json:"timing_version,omitempty"`
 }
+
+// ExecutionContext validates the trusted envelope before any child engine is
+// opened. Parent checks are repeated because worker stdin is a separate boundary.
+func (in Input) ExecutionContext(ctx context.Context) (context.Context, error) {
+	if in.Access != nil {
+		var err error
+		ctx, err = access.WithPolicy(ctx, *in.Access)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := access.ValidateResolvedRequest(ctx, in.Config, in.Request); err != nil {
+		return nil, err
+	}
+	return ctx, nil
+}
+
 type Outcome struct {
-	Stats query.Stats  `json:"stats"`
-	Error *query.Error `json:"error,omitempty"`
+	Stats           query.Stats            `json:"stats"`
+	Error           *query.Error           `json:"error,omitempty"`
+	Timing          *telemetry.ChildTiming `json:"timing,omitempty"`
+	timingMalformed bool
 }
 type Executor struct {
 	Containment       *containment.Manager
@@ -101,6 +125,9 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	if err := query.ValidateRequest(r); err != nil {
 		return stats, err
 	}
+	if err := access.ValidateRequest(ctx, e.Config, r); err != nil {
+		return stats, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, e.Limits.Timeout)
 	defer cancel()
 
@@ -154,6 +181,10 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		return stats, err
 	}
 	defer release()
+	cfg := catalog.Config{Sources: sources, ExtensionDirectory: e.Config.ExtensionDirectory}
+	if err := access.ValidateResolvedRequest(ctx, cfg, r); err != nil {
+		return stats, err
+	}
 	workspace, err := newScratchWorkspace(e.ScratchRoot)
 	if err != nil {
 		return stats, query.NewError("RESOURCE_EXHAUSTED", "Worker scratch workspace is unavailable")
@@ -172,6 +203,7 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 			if e.Containment != nil {
 				e.Containment.QuarantineOperation()
 			}
+			reportScratchCleanupFailure(err)
 			if resultErr == nil {
 				resultErr = query.NewError("RESOURCE_EXHAUSTED", "Worker scratch cleanup failed")
 			}
@@ -179,8 +211,14 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		}
 		releaseScratch()
 	}()
-	cfg := catalog.Config{Sources: sources, ExtensionDirectory: e.Config.ExtensionDirectory}
-	payload, err := json.Marshal(Input{cfg, e.Limits, r})
+	input := Input{Config: cfg, Limits: e.Limits, Request: r}
+	if e.Metrics != nil {
+		input.TimingVersion = telemetry.ChildTimingVersion
+	}
+	if policy, restricted := access.PolicyFromContext(ctx); restricted {
+		input.Access = &policy
+	}
+	payload, err := json.Marshal(input)
 	if err != nil {
 		return stats, err
 	}
@@ -255,6 +293,10 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		return stats, err
 	}
 	phases.enter(telemetry.PhaseExecutionDelivery)
+	var childStarted time.Time
+	if e.Metrics != nil {
+		childStarted = time.Now()
+	}
 	if processJob != nil {
 		err = processJob.Start(cmd)
 	} else {
@@ -279,6 +321,10 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	// output pipe and would otherwise survive a successful leader exit.
 	cleanupErr := finishProcess(cmd, ctx.Err() != nil)
 	waitErr := cmd.Wait()
+	var childBound time.Duration
+	if e.Metrics != nil {
+		childBound = time.Since(childStarted)
+	}
 	if processJob != nil {
 		_, containedErr := processJob.Finish(context.Background())
 		processFinished = true
@@ -288,6 +334,10 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 	}
 	var outcome Outcome
 	decodeErr := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &outcome)
+	if e.Metrics != nil {
+		terminated := cmd.ProcessState != nil && cmd.ProcessState.ExitCode() == -1
+		recordChildTiming(e.Metrics, ctx, outcome, decodeErr, terminated, childBound)
+	}
 	stats = outcome.Stats
 	stats.Accelerations = versions
 	stats.Rows, stats.Bytes, stats.Batches, stats.WireBytes = observed.Rows, observed.Bytes, observed.Batches, observed.WireBytes
@@ -341,6 +391,9 @@ func workerResultError(parent, executionCtx, ctx context.Context, readErr, waitE
 // The parent retains cloud reader and writer credentials. Query children only
 // receive a range capability with no provider identity or upstream object URL.
 func sourceEnvironmentNames(source catalog.Source) ([]string, error) {
+	if err := source.ValidateObjectSnapshot(); err != nil {
+		return nil, query.NewError("CONFIGURATION_ERROR", "Invalid isolated object snapshot")
+	}
 	if err := source.ValidateObjectRanges(); err != nil {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Invalid isolated object range capabilities")
 	}

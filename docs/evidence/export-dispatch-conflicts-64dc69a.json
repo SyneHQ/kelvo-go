@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "scope": "Scoped export-dispatch conflict and delayed-redelivery validation; no historical lifecycle-failure attribution or production capacity certification",
+  "passed": true,
+  "source_revision": "64dc69a62ea83cf0811194c830452399d21fe3dc",
+  "source_file_count_per_variant": 950,
+  "source_snapshots": {
+    "fixed": {
+      "source": "746d16a0f35cfd7d31c265f9cdbd3d4230859c04aa9a29a44d391859d12c786e",
+      "archive": "df686c1e28ff7302ba04a87fc50221a6fe68d91249fb0e39d019679890de5cf2",
+      "manifest": "f493012b6921b4445f5caf8d48e32d0379e7926556f279fb9ebf4a5328ccae4d"
+    },
+    "negative": {
+      "source": "c8ddbc82a17a182ab4c1cbeb6cc7bab801c24c1f3b60941575c755ecb04ea140",
+      "archive": "b461081d84913e7acb178060428ae94ff3a535f349f4a2f15af4c0c197eed101",
+      "manifest": "5f5d05025e186047e2a596d649d58bd5aad64e5ac617d286312009c119c554cc"
+    }
+  },
+  "negative_control": {
+    "kind": "dispatch-logic-only control",
+    "restored_file": "internal/cluster/export_dispatch.go",
+    "restored_from_revision": "cbc3e25e91bc309bd0ab9c849a135e3d9abe3dab",
+    "only_one_file_differs": true,
+    "test": "TestExportDispatchRenewalConflictRetainsQueuedDelivery",
+    "race_enabled": true,
+    "exit_code": 1,
+    "seconds": 11.384,
+    "log_sha256": "d0d3b38a2b0177801a3cecb20104d7a919298907273c5a028006610f4132d256",
+    "compiled_and_ran": true,
+    "queued_renewal_confirmed": true,
+    "expected_ack_instead_of_retry": true,
+    "assertion_line": 243,
+    "runtime_failure_output_rejected": true,
+    "historical_ci_cause_proven": false,
+    "expected_assertion": "dispatch decision = ack, want retry",
+    "unrelated_failure_output_rejected": true
+  },
+  "fixed_race_tests": {
+    "exit_code": 0,
+    "seconds": 12.485,
+    "log_sha256": "3dff787415635ba28c8192e8defc960bf2edf90cb9a59bce3f22ec43d014cd7c",
+    "top_level_passed": [
+      "TestExportDeliveryRetryIsDelayedBoundedAndCancellationAware",
+      "TestExportDispatchAssignmentConflictAcknowledgesObservedAssignment",
+      "TestExportDispatchFailureCASRetriesUntilConfirmed",
+      "TestExportDispatchRenewalConflictRetainsQueuedDelivery"
+    ],
+    "race_enabled": true,
+    "subtests_passed": 2,
+    "failures": 0,
+    "skips": 0
+  },
+  "python_controls": {
+    "tests_run": 18,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "log_sha256": "90a2e5a37f57731295f7be01528781db02a91b547d639d4f9a2f902bb631a6f5"
+  },
+  "vet": {
+    "exit_code": 0,
+    "seconds": 4.873,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "broker": {
+    "version": "2.14.7",
+    "mode": "dispatch",
+    "race_enabled": true,
+    "scope": "single broker; queued renewal conflict, deduplicated republish and delayed redelivery; synthetic Arrow executor; separate restricted roles",
+    "tests": [
+      {
+        "name": "TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
+        "outcome": "pass"
+      }
+    ],
+    "passed": true,
+    "exit_code": 0,
+    "seconds": 4.571,
+    "log_sha256": "998d367c0ace241cf0f68b7fb89ed83fba2ad18eb34c749667271fd7ff391c51",
+    "broker_stopped": true,
+    "failures": [],
+    "skips": []
+  },
+  "identity": {
+    "inputs": {
+      "nats-server": "667bfa7d71ac190ab745e00bd1f9a037338b719b3293cda25bd44aef24b457fa",
+      "go": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34"
+    },
+    "native_bridge": {
+      "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+      "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+      "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+    },
+    "effective_module_files": {
+      "mod": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+      "sum": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+    },
+    "inputs_unchanged": true,
+    "native_bridge_unchanged": true,
+    "exact_test_source_inventory_verified_before_and_after": true,
+    "reference_source_verified_before": true,
+    "reference_source_verified_after": true
+  },
+  "isolation": {
+    "memory_max_bytes": 3221225472,
+    "swap_max_bytes": 0,
+    "cpu_max": "100000 100000",
+    "tasks_max": 256,
+    "non_root": true,
+    "private_network": true
+  },
+  "cleanup": {
+    "original_service": {
+      "Result": "success",
+      "ExecMainStatus": "0",
+      "MainPID": "0",
+      "InvocationID": "6b2220360dc84f5da466be269c0f66e0"
+    },
+    "final_service": {
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "MainPID": "0"
+    },
+    "cgroup_absent": true,
+    "verified": true
+  },
+  "receipt_sha256": "801cc94207b9ea41cbaf76c2ba32094d4b38993285bf968f7b44aa64c68f8efd",
+  "helper_hashes": {
+    "run.py": "531b15766474fcd49319756eb9ede2e4fbcebadb0c60e9b498f327f0d940d2e2",
+    "controller.py": "c27db0a442a7232422fdb023edcd6d7095e729c14f1a742c9462edbc86bdc956",
+    "collect.py": "4e45a85de5d72962c2308e3154ba72c2af5ae398fdd7076b2b10185911069315"
+  },
+  "helper_attempt": 1,
+  "total_helper_seconds": 34.327,
+  "limits": {
+    "historical_ci_cause_proven": false,
+    "historical_failure_evidence": "export-ci-37144625480-failure.json",
+    "sandboxed_runtime_binary_executed": false,
+    "broker_2_15_0_validated_in_this_run": false,
+    "sustained_capacity_or_ha_certified": false,
+    "raw_logs_published": false
+  }
+}

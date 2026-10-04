@@ -1,0 +1,8 @@
+{
+  "exit_code": 0,
+  "log_sha256": "d0a842a254b57fffca3674601fae36c34118396abd7f0bb00e7f089d25b05e75",
+  "archive_sha256": "188cd8cec21752f563858388cf3d6537a7a26a83e145a8d7fc1d2aad8ca1f95c",
+  "tests_passed": 102,
+  "seconds": 2.091,
+  "scope": "Integrated compatibility and sustained acceptance controls on Azure; no runtime campaign rerun"
+}

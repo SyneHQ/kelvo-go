@@ -2,7 +2,7 @@
 
 Interactive queries, exports and refreshes share one process budget for slots, memory and scratch. Export and refresh together leave reserved capacity for interactive queries.
 
-This is an internal prerequisite for [async exports](production-roadmap.md). Export dispatch, YAML settings and HTTP APIs are not connected yet. [Durable export storage](export-storage.md) accounts for retained results separately.
+Configure the runtime through [durable exports](exports.md). [Persistent storage](export-storage.md) accounts for retained results separately. This page covers the shared Go admission API.
 
 ## 1. Set the shared budget
 

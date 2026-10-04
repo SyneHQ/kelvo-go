@@ -27,6 +27,14 @@ func LoadGateway(path string) (GatewayConfig, error) {
 	if err != nil {
 		return c, err
 	}
+	if err := c.Audit.Validate(); err != nil {
+		return c, err
+	}
+	if c.Tracing != nil {
+		if err := c.Tracing.Validate(); err != nil {
+			return c, err
+		}
+	}
 	resolveTLS(base, &c.TLS)
 	resolveTLS(base, &c.WorkerTLS)
 	if c.TLS.Trust != nil {
@@ -77,6 +85,9 @@ func LoadGateway(path string) (GatewayConfig, error) {
 	if totalQueries > c.MaxQueries || totalConcurrent > c.MaxConcurrent {
 		return c, errors.New("tenant budgets exceed the configured cluster capacity")
 	}
+	if err := validateGatewayExports(c); err != nil {
+		return c, err
+	}
 	return c, nil
 }
 
@@ -84,6 +95,9 @@ func LoadNode(path string) (NodeConfig, error) {
 	var c NodeConfig
 	base, err := decodeConfig(path, &c)
 	if err != nil {
+		return c, err
+	}
+	if err := validateNodeAudit(c); err != nil {
 		return c, err
 	}
 	if c.ScratchDirectory != "" && (!filepath.IsAbs(c.ScratchDirectory) || filepath.Clean(c.ScratchDirectory) != c.ScratchDirectory || c.ScratchDirectory == string(filepath.Separator) || len(c.ScratchDirectory) > 4096) {
@@ -136,21 +150,30 @@ func LoadNode(path string) (NodeConfig, error) {
 		}
 	}
 	if c.Secrets != nil {
-		for key, path := range c.Secrets.Files {
+		for _, key := range c.Secrets.Keys() {
 			if err := catalog.ValidateEnvironment(key); err != nil {
 				return c, errors.New("invalid secret environment reference")
 			}
+		}
+		for key, path := range c.Secrets.Files {
 			c.Secrets.Files[key] = relativePath(base, path)
+		}
+		for name, provider := range c.Secrets.Providers {
+			provider.CredentialsFile = relativePath(base, provider.CredentialsFile)
+			c.Secrets.Providers[name] = provider
 		}
 		provider, err := secrets.New(*c.Secrets)
 		if err != nil {
-			return c, errors.New("invalid file secret provider configuration")
+			return c, errors.New("invalid source secret provider configuration")
 		}
 		_ = provider.Close()
 	}
 	c.CatalogFile = relativePath(base, c.CatalogFile)
 	c.SandboxPath = relativePath(base, c.SandboxPath)
 	if err = ValidatePolicy(c.Policy); err != nil {
+		return c, err
+	}
+	if err = validateNodeExports(c); err != nil {
 		return c, err
 	}
 	if c.Listen == "" || c.Policy.Workers[c.WorkerID] < 1 || c.CatalogFile == "" || c.SandboxPath == "" {
@@ -164,6 +187,9 @@ func LoadNode(path string) (NodeConfig, error) {
 }
 
 func ValidatePolicy(p Policy) error {
+	if err := validatePrincipalPolicy(p.Access); err != nil {
+		return err
+	}
 	if err := ValidateSourceQuotas(p.SourceQuotas); err != nil {
 		return err
 	}
@@ -179,7 +205,7 @@ func ValidatePolicy(p Policy) error {
 			return errors.New("invalid worker capacity")
 		}
 	}
-	return nil
+	return validateExportPolicy(p)
 }
 
 func validEndpoint(raw string) bool {

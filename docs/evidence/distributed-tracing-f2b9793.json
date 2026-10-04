@@ -1,0 +1,210 @@
+{
+  "passed": true,
+  "revision": "f2b9793c3407c29e6d4212b0cd0fcff6e5b3e29c",
+  "staging_json_sha256": "721d324f5000f81eae69255f2f79e97ed327ebd3cb19fb0af31982ab16c96aa6",
+  "source_manifest_sha256": "9ad7adecd917b520c5a63373c68316ea05fd85326b8500cd5fc9eeec870d099d",
+  "source_file_count": 998,
+  "scope": "Offline authorized cluster trace continuity, privacy and lifecycle tests. No distributed queue attribution, live-provider or throughput claim.",
+  "compiler_lanes": 1,
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "helpers_verified_before": true,
+  "helpers_verified_after": true,
+  "shared_bridge_unchanged": true,
+  "effective_modules_unchanged": true,
+  "capability_sets_zero": true,
+  "no_new_privileges": true,
+  "enforced_isolation": {
+    "non_root": true,
+    "private_network": true,
+    "memory_max_bytes": 3221225472,
+    "swap_max_bytes": 0,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "tasks_max": 256
+  },
+  "enforced_watchdog": {
+    "TimeoutStopUSec": "20s",
+    "RuntimeMaxUSec": "30min",
+    "KillMode": "control-group",
+    "SendSIGKILL": "yes"
+  },
+  "shared_inputs_before": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+  },
+  "effective_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "binary_sha256": "4476e4415c7286c4bd6af1ee643aaf8f9a8fb5b3854fd59a519690276bdc8028",
+  "raw_report_sha256": "75bf03a4fd909363401be00c0a828b4fbee0fd5b359d65c378228cf3491ef14d",
+  "reported_passed": true,
+  "source_current_match": true,
+  "helpers_current_match": true,
+  "shared_inputs_current_match": true,
+  "effective_modules_current_match": true,
+  "isolation_reconciled": true,
+  "stages": {
+    "cluster-race": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 19.916,
+      "log_sha256": "31c7220573dfdc4d1ab4c682e6f1660c831b00481d06a0a815f51f18bcb51752"
+    },
+    "external-modfile": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 0.007,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "focused-vet": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 17.961,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kelvo-build": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 6.632,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "tracing-race": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 2.869,
+      "log_sha256": "be842899ea16aa1e877ace6a149b43b716b8f8dd582d2cd545c019e3e9761dff"
+    },
+    "worker-race": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 5.926,
+      "log_sha256": "d699184f047811d79bdc7a3b8250a891d08668b5eb55cb55ed61cc64bc1d604e"
+    }
+  },
+  "stages_reconciled": true,
+  "positive_controls": {
+    "tracing": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/tracing",
+      "required_top_level_tests": [
+        "FuzzOptionalCarrierDecode",
+        "TestCarrierValidationAndCanonicalJSON",
+        "TestClusterLifecycleParentingAndFixedAttributes",
+        "TestCollectorRedirectNeverReceivesBearer",
+        "TestCollectorResponseLimits",
+        "TestExactPhaseSpansKeepMonotonicOffsetsAndPrivacy",
+        "TestExporterErrorsSanitized",
+        "TestFullExportQueueNeverBlocksRecording",
+        "TestHTTPSRejectsAmbientCertificateAndInsecureSettings",
+        "TestLifecycleNilInvalidAndConcurrentCompletion",
+        "TestLifecycleSamplingHonorsParentAndLocalCeiling",
+        "TestMalformedOptionalCarrierDoesNotInvalidateEnvelope",
+        "TestMalformedPhaseTimelineFallsBackToAggregate",
+        "TestOTLPHTTPSBearerAndWirePrivacy",
+        "TestPrivateCarrierContextIgnoresAmbientPropagation",
+        "TestQueuedSnapshotStripsBothTraceStates",
+        "TestSamplingStripsStateBeforeDelegateAndResult",
+        "TestTracePrivacyAndIntervals",
+        "TestTraceSamplingZeroAndInvalidEvents",
+        "TestTracingConfigurationAndCredentials"
+      ],
+      "log_sha256": "be842899ea16aa1e877ace6a149b43b716b8f8dd582d2cd545c019e3e9761dff",
+      "passed_top_level_count": 20,
+      "passed_events_including_subtests": 30,
+      "failures_or_skips": 0
+    },
+    "cluster": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/cluster",
+      "required_top_level_tests": [
+        "TestArrowEOSTailDoesNotEmitOnErrorOrCancel",
+        "TestArrowEOSTailWithholdsUntilDurableSuccess",
+        "TestClusterTraceDurableAdmissionAndImmutableCAS",
+        "TestClusterTraceGatewayBoundsStalledExporterShutdown",
+        "TestClusterTraceGatewayClosesRecorderAfterHandlers",
+        "TestClusterTraceGatewayConfigValidation",
+        "TestClusterTraceGatewayMintsPrivateContextAfterAuthentication",
+        "TestClusterTraceGatewayQueuedCancellationAndPrincipalIsolation",
+        "TestClusterTraceGatewayRelayPreservesDurableEOS",
+        "TestClusterTraceLegacyAndMalformedState",
+        "TestClusterTraceSizeBudgetPreservesSubmission",
+        "TestClusterTraceSizeBudgetPreservesTerminalState",
+        "TestClusterTraceWorkerRejectsUnauthorizedDispatch",
+        "TestClusterTraceWorkerUsesValidatedDurableCarrier",
+        "TestDurablePrincipalAdmissionAndImmutableCAS",
+        "TestGatewayDerivesTenantFromTokenNotHeader",
+        "TestGatewayMissingAuthentication",
+        "TestGatewayPrincipalOwnershipCoversStatusCancelAndResults",
+        "TestGatewayYAMLPolicies",
+        "TestNodeCancellationHoldsPermitUntilExecutorExits",
+        "TestNodeDuplicateDeliveryDoesNotExecuteOrReassign",
+        "TestNodeRequiresMatchingPolicyAndGatewayIdentity",
+        "TestPrincipalContextCannotBeCreatedByJSONOrHeaders",
+        "TestPrincipalFinalCheckObservesDocumentExpiryWithoutTimer",
+        "TestPrincipalGrantsAndPolicyVersionFailClosed",
+        "TestQueuedResultsWaitUntilJobExpiry",
+        "TestWorkerRejectsUnboundPrincipalJobBeforeAssignment"
+      ],
+      "log_sha256": "31c7220573dfdc4d1ab4c682e6f1660c831b00481d06a0a815f51f18bcb51752",
+      "passed_top_level_count": 27,
+      "passed_events_including_subtests": 61,
+      "failures_or_skips": 0
+    },
+    "worker": {
+      "passed": true,
+      "package": "github.com/SYNEHQ/kelvo-go/internal/worker",
+      "required_top_level_tests": [
+        "TestDisabledPhasesDoNotWrapSink",
+        "TestExecutionTelemetryOutcomes",
+        "TestExecutionTelemetryRejections",
+        "TestExecutorPhasesSuccessSinkErrorAndCancellation",
+        "TestPhaseClockPartitionsWorkerLifecycle",
+        "TestRejectedAdmissionStillRecordsReachedPhases"
+      ],
+      "log_sha256": "d699184f047811d79bdc7a3b8250a891d08668b5eb55cb55ed61cc64bc1d604e",
+      "passed_top_level_count": 6,
+      "passed_events_including_subtests": 15,
+      "failures_or_skips": 0
+    }
+  },
+  "positive_controls_reconciled": true,
+  "binary_reconciled": true,
+  "service_exit": {
+    "revision": "f2b9793c3407c29e6d4212b0cd0fcff6e5b3e29c",
+    "unit": "kelvo-distributed-tracing-f2b9793c34-f9fe92",
+    "systemd_run_exit_code": 0
+  },
+  "service_exit_receipt_sha256": "4a4427f5cd83e03f60c0dd38f75f23907f48047ee373ff2f81ce4b75951acff7",
+  "service_exit_reconciled": true,
+  "cleanup": {
+    "unit": "kelvo-distributed-tracing-f2b9793c34-f9fe92",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true
+  },
+  "local_launch": {
+    "ssh_exit_code": 0,
+    "revision": "f2b9793c3407c29e6d4212b0cd0fcff6e5b3e29c",
+    "unit": "kelvo-distributed-tracing-f2b9793c34-f9fe92"
+  },
+  "collection_ssh_exit_code": 0,
+  "local_launch_reconciled": true,
+  "local_stage_reconciled": true
+}

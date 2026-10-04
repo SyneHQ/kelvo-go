@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "scope": "Synthetic immutable object provider through the production parent range bridge, real DuckDB, and actual Linux Landlock child. This is correctness and lifecycle evidence, not cloud-provider, WAN, throughput, or whole-release certification.",
+  "resource_budget": {
+    "cpu_percent": 100,
+    "memory_bytes": 3221225472,
+    "swap_bytes": 0,
+    "tasks": 256,
+    "private_network": true,
+    "capabilities": [],
+    "no_new_privileges": true
+  },
+  "umask": "0022",
+  "source_identity_algorithm": "SHA256 over sorted relative path + NUL + raw SHA256(file bytes), for every regular file in the frozen source archive.",
+  "attempts": [
+    {
+      "revision": "48ce8a93b57b94d28f9b474ee708a9f04a7d075f",
+      "passed": false,
+      "service_exit_code": 1,
+      "raw_receipt_sha256": "7b605048b85f1b96262ca01ae4658f93891550672f1b17df39f701039ab9e630",
+      "source": {
+        "sha256": "d3a29472d818010f0dd0c54648df8bf301c0e6ed0f031b2e4fa4a0f278f166d5",
+        "file_count": 859
+      },
+      "source_unchanged_verified_after_run": true,
+      "binary_sha256": {
+        "kelvo": "0075063942c9be1f215d6704f4dcb6d66613e7920848bfb370123cd224dcd97f",
+        "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+      },
+      "stages": [
+        {
+          "name": "binary-build",
+          "exit_code": 0,
+          "seconds": 19.024,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "events": {
+            "pass": 0,
+            "fail": 0,
+            "skip": 0
+          }
+        },
+        {
+          "name": "launcher-build",
+          "exit_code": 0,
+          "seconds": 0.167,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "events": {
+            "pass": 0,
+            "fail": 0,
+            "skip": 0
+          }
+        },
+        {
+          "name": "engine-object-race",
+          "exit_code": 1,
+          "seconds": 14.2,
+          "log_sha256": "088b9ebbc79ce5a23eee57ed57d20ea3e8b0450d09b4aa31ae47504fc71950b6",
+          "events": {
+            "pass": 6,
+            "fail": 7,
+            "skip": 0
+          }
+        }
+      ],
+      "cleanup": {
+        "service_inactive": true,
+        "service_dead": true,
+        "owned_cgroup_absent": true
+      },
+      "not_run": [
+        "actual-child-object-race",
+        "boundary-vet"
+      ],
+      "findings": [
+        "Valid object scans failed at a local-only completion reference, fixed in 75a1feb45ac7d1d4b97829a6ebbeba4a2af165bb.",
+        "Canceled metadata reads lost cancellation status, fixed in b73aa7fd7e42e8e49793c86aeedc21b515c71200.",
+        "Three-relation join fixture needed three concurrent scan slots; fixed in 7e15d21. The service CPU limit remained one CPU."
+      ],
+      "cleanup_note": "The failed service was reset only after it was empty. Its original exit code and failed tests remain recorded above."
+    },
+    {
+      "revision": "13976e903ef8c26500c3797c49c115cdffdecc2d",
+      "passed": true,
+      "service_exit_code": 0,
+      "raw_receipt_sha256": "ac5a46798dbf692910bf8dc52c294a0f9b4be1c27156095b60324fa4b2483ce5",
+      "source": {
+        "sha256": "fb697cdc3416a7b3c166d1113c4274200f7e9c8e08c60b0705e8f426716f0574",
+        "file_count": 860
+      },
+      "source_unchanged_verified_after_run": true,
+      "binary_sha256": {
+        "kelvo": "5c362f3f9613cb58f233d911da986b448f547a2348689e1a35e4e2c65f0c4e16",
+        "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+      },
+      "stages": [
+        {
+          "name": "binary-build",
+          "exit_code": 0,
+          "seconds": 19.581,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "events": {
+            "pass": 0,
+            "fail": 0,
+            "skip": 0
+          }
+        },
+        {
+          "name": "launcher-build",
+          "exit_code": 0,
+          "seconds": 0.315,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "events": {
+            "pass": 0,
+            "fail": 0,
+            "skip": 0
+          }
+        },
+        {
+          "name": "engine-object-race",
+          "exit_code": 0,
+          "seconds": 15.912,
+          "log_sha256": "06de49a095036fe986193b4d318b2da6acbde1af2bba2036fdb5b020c1683955",
+          "events": {
+            "pass": 13,
+            "fail": 0,
+            "skip": 0
+          }
+        },
+        {
+          "name": "actual-child-object-race",
+          "exit_code": 0,
+          "seconds": 6.979,
+          "log_sha256": "a6496e6be5cb908ff27a34a9de1ac0d9320dfddfafbd5d840e892ae10c4f6928",
+          "events": {
+            "pass": 14,
+            "fail": 0,
+            "skip": 0
+          }
+        },
+        {
+          "name": "boundary-vet",
+          "exit_code": 0,
+          "seconds": 1.768,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "events": {
+            "pass": 0,
+            "fail": 0,
+            "skip": 0
+          }
+        }
+      ],
+      "cleanup": {
+        "service_inactive": true,
+        "service_dead": true,
+        "owned_cgroup_absent": true
+      }
+    }
+  ],
+  "passing_coverage": [
+    "Single and multipart object reads preserve UINT64 maximum, DECIMAL(30,4), microsecond timestamps, INT8, NULLs and hidden row predicates.",
+    "A CTE joins guarded object and local snapshots with a guarded callback relation.",
+    "Raw URL/file functions and HTTPFS setup are rejected without configuring HTTPFS.",
+    "Wrong payload digests, row counts, schema hashes and upstream versions fail before result delivery.",
+    "Raw row and byte limits remain enforced before policy filtering.",
+    "Replayed or expired capabilities fail. Source-range and result-delivery cancellation leave no child process, scratch lease or upstream body."
+  ],
+  "limits": [
+    "The initial failed attempt did not run the actual-child gate.",
+    "The successful mixed join used three native scan slots under the same one-CPU service cap.",
+    "No real cloud storage account or native source database participated."
+  ]
+}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -58,6 +59,12 @@ func TestMain(m *testing.M) {
 func testWorkerMain() int {
 	var in Input
 	if json.NewDecoder(os.Stdin).Decode(&in) != nil {
+		return 2
+	}
+	if (in.Request.SQL == "SELECT child_timing_enabled" && in.TimingVersion != telemetry.ChildTimingVersion) || (in.Request.SQL == "SELECT child_timing_disabled" && in.TimingVersion != 0) {
+		return 2
+	}
+	if in.Request.SQL == "SELECT access_policy" && !accessChildMatches(in) {
 		return 2
 	}
 	if in.Request.SQL == "SELECT file_secret_first" || in.Request.SQL == "SELECT file_secret_second" {
@@ -115,6 +122,9 @@ func testWorkerMain() int {
 	}
 	// Deliberately incorrect claimed counts: the parent must use observed data.
 	outcome := Outcome{Stats: query.Stats{Rows: 999, Batches: 999, Backend: "test"}}
+	if in.Request.SQL == "SELECT child_timing_enabled" {
+		outcome.Timing = childTimingTestFixture()
+	}
 	if json.NewEncoder(os.Stderr).Encode(outcome) != nil {
 		return 4
 	}

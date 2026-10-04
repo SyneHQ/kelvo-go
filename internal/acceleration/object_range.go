@@ -55,7 +55,17 @@ func OpenObjectRanges(ctx context.Context, storage catalog.ObjectStorage, snapsh
 		client.Close()
 		return nil, nil, errors.New("object storage does not support guarded range reads")
 	}
-	return openObjectRanges(ctx, storage, snapshots, ranges)
+	return OpenObjectRangesWithClient(ctx, storage, snapshots, ranges)
+}
+
+// OpenObjectRangesWithClient uses an explicit trusted provider client. Like
+// NewObjectBackend, it owns that client on success and failure. The caller must
+// supply already acquired immutable snapshots and retain their generation
+// leases until release has closed requests and the query child has exited.
+// RangeClient's exact version and response validation contract still applies;
+// this does not grant public callers authority to mint snapshot capabilities.
+func OpenObjectRangesWithClient(ctx context.Context, storage catalog.ObjectStorage, snapshots []Snapshot, client objectstore.RangeClient) (map[string]catalog.Source, func(), error) {
+	return openObjectRanges(ctx, storage, snapshots, client)
 }
 
 // The injected client is owned by this helper, including on failed setup.
@@ -298,8 +308,18 @@ func (bridge *objectRangeBridge) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	}
 	var closeOnce sync.Once
 	closeBody := func() { closeOnce.Do(func() { _ = body.Close() }) }
-	stopClose := context.AfterFunc(ctx, closeBody)
-	defer func() { stopClose(); closeBody() }()
+	callbackDone := make(chan struct{})
+	stopClose := context.AfterFunc(ctx, func() {
+		defer close(callbackDone)
+		closeBody()
+	})
+	defer func() {
+		stopped := stopClose()
+		closeBody()
+		if !stopped {
+			<-callbackDone
+		}
+	}()
 	if validateSnapshotObject(snapshot, info) != nil {
 		objectRangeError(w, http.StatusBadGateway)
 		return

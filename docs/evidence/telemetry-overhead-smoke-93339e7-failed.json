@@ -1,0 +1,278 @@
+{
+  "passed": false,
+  "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+  "mode": "smoke",
+  "unit": "kelvo-telemetry-overhead-88b7ceb8d1ac",
+  "staging_json_sha256": "47f0c68d273238ffd03886a912a4ba5c5160783fd637dd768af4393cc13cca4f",
+  "runner_receipt_sha256": "3b7ddccde1d6d588804a2767e753660f7db31b054b4174fed216ea7734118fbc",
+  "runner_failure": {
+    "failure_type": "RuntimeError",
+    "failure_category": "HARNESS_EXIT_OR_LOG_FAILURE"
+  },
+  "helpers_reconciled": true,
+  "prerequisites_reconciled": true,
+  "controls": {
+    "passed": true,
+    "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+    "unit": "kelvo-telemetry-controls-88b7ceb8d1ac",
+    "systemd_run_exit_code": 0,
+    "staging_json_sha256": "47f0c68d273238ffd03886a912a4ba5c5160783fd637dd768af4393cc13cca4f",
+    "cleanup": {
+      "unit": "kelvo-telemetry-controls-88b7ceb8d1ac",
+      "fields": {
+        "MainPID": "0",
+        "Result": "success",
+        "LoadState": "not-found",
+        "ActiveState": "inactive",
+        "SubState": "dead"
+      },
+      "owned_service_removed": true,
+      "owned_cgroup_removed": true,
+      "passed": true
+    },
+    "controls_sha256": "093df60dda9c3e61f536b180f705cef73e6e6d19a84d562493a2fde445e13a7d",
+    "pure_tests": {
+      "syntax_checked": true,
+      "required_and_executed_test_ids": [
+        "controls.OuterReceiptTests.test_exact_control_receipt",
+        "controls.OuterReceiptTests.test_failure_metadata_never_exports_raw_errors",
+        "controls.OuterReceiptTests.test_modes_are_explicit_and_bounded",
+        "controls.OuterReceiptTests.test_prior_receipt_names_exact_normalized_unit",
+        "test_harness.ReceiptTests.test_exact_smoke_counts_without_comparison",
+        "test_harness.ReceiptTests.test_full_prerequisite_requires_matching_inputs_and_cleanup",
+        "test_harness.ReceiptTests.test_full_summary_keeps_exact_48_epoch_contract",
+        "test_harness.ReceiptTests.test_full_summary_rechecks_answers_configuration_and_cleanup",
+        "test_harness.ReceiptTests.test_smoke_receipt_hash_and_size_are_checked_before_use",
+        "test_harness.ReceiptTests.test_smoke_rejects_partial_duplicate_failed_or_invalid_result"
+      ],
+      "total_tests_run": 10,
+      "harness_receipt_tests": 6,
+      "external_outer_receipt_tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "source_sha256": {
+        "controls.py": "ff626893a32b1aea0dc8a240041df295f8d9043dc108472fe4f49de200f3c8fa",
+        "test_harness.py": "85e51932aa14756883b29305fca4f2622f19530e09642d9d4a72e3e93c328f18",
+        "harness.py": "42c779384a2a3525ec86874e4ee73e9e5bd3552e4bcc0776061d7ee79a0152e4",
+        "workloads.py": "ded20a802229b09997e2314ab3257ab4277bc446f2528a94adee2b4ebe73a761"
+      },
+      "log_sha256": "5baa0c111828532ed13fc1760a6fada3f2ea8688f74b281a4f121a0d9adf90e7"
+    }
+  },
+  "controls_reconciled": true,
+  "python_identity": {
+    "executable_sha256": "6d972cf21be56fe3c947ab6ba257ff8d08c342dd2714442986791bd9a6dfabfe",
+    "version": "3.11.2 (main, May 12 2026, 05:17:27) [GCC 12.2.0]",
+    "packages": {
+      "pyarrow": {
+        "version": "25.0.1",
+        "metadata_sha256": "12ed8d0988a6f7153fec923ee47b7fc1d6134463a86b1b89fa36f24c250163ff",
+        "record_sha256": "d7c46765c1d341c21fa138fe84044e1021c5bfcdd7eee0b9cea68a8f55f5c8d6"
+      },
+      "PyYAML": {
+        "version": "6.0.3",
+        "metadata_sha256": "03c3b415ed38d09faedc49360e930769b40c58f68585e6de00e2e4916a858d34",
+        "record_sha256": "c6767b180f59be8feab615e58837508a1e923ff856582989688248d0f4a5951f"
+      }
+    }
+  },
+  "python_reconciled": true,
+  "enforced_isolation": {
+    "memory_bytes": 6442450944,
+    "swap_bytes": 0,
+    "tasks": 512,
+    "cpu_quota": 200000,
+    "cpu_period": 100000,
+    "non_root": true,
+    "private_network": true,
+    "read_only_input_mounts": true,
+    "zero_capabilities": true,
+    "no_new_privileges": true
+  },
+  "isolation_reconciled": true,
+  "runtime": {
+    "source": {
+      "base_revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+      "file_count": 1016,
+      "sha256": "72575584df0b17a9ab522af8ee150b91e739bfd26ed4e73979a40ccd5fa8ce3a",
+      "verified": true
+    },
+    "binary_sha256": {
+      "kelvo": "af29afdc04b18275de1a3d5906ba474cb27e81a113cfac2ec4139834f4fb41fd",
+      "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+      "collector": "9520e8165e3a7160422c227cead54eff30a401d29e4d2502da005b05d8f3cb77"
+    },
+    "effective_module_files": {
+      "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+      "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+    },
+    "shared_inputs": {
+      "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+      "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+      "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+    },
+    "otlp_public_receipt_sha256": "dd1c47f5f12c0c023c0044b51a3da31e2fa68e5cb8e902ed7ae4c4da201f7791",
+    "original_validation_sha256": "d2b60279ca2ce5bb9eeb9c939f8587efbaf5d7645dbf658041e204ea07262122",
+    "nats_sha256": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92"
+  },
+  "runner_sha256": "3b7ddccde1d6d588804a2767e753660f7db31b054b4174fed216ea7734118fbc",
+  "runner_passed": false,
+  "harness_log_reconciled": true,
+  "collection_failure_type": "RuntimeError",
+  "service_exit": {
+    "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+    "mode": "smoke",
+    "unit": "kelvo-telemetry-overhead-88b7ceb8d1ac",
+    "systemd_run_exit_code": 1
+  },
+  "service_exit_sha256": "c76b72babe65525a9da428a91afe614da20f3610f7f6e140f95f9316dc7dcf7f",
+  "trust_preparation": {
+    "system_bundle_before_sha256": "4e3df1b7cefec516bc6dcc615565455a6658f6ae9da64989b8959827e87161dc",
+    "prepared_bundle_sha256": "6084b29ac5c4bef2dae753abd5a6a9172c95837bf7ad837483984d05a63ae714",
+    "collector_certificate_sha256": "2cc149b19b578975669217e6235c29b9f5dc689d147d44c7fb8409032cc7f069"
+  },
+  "host_trust_unchanged": true,
+  "cleanup": {
+    "unit": "kelvo-telemetry-overhead-88b7ceb8d1ac",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true
+  },
+  "local_launch": {
+    "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+    "mode": "smoke",
+    "unit": "kelvo-telemetry-overhead-88b7ceb8d1ac",
+    "ssh_exit_code": 1
+  },
+  "collection_ssh_exit_code": 1,
+  "local_launch_reconciled": false,
+  "local_stage_reconciled": true,
+  "local_trust_reconciled": true,
+  "schema_version": 1,
+  "kind": "telemetry_overhead_smoke",
+  "attempt": 1,
+  "scope": "Fixture correctness only. Smoke durations are diagnostic and establish no telemetry overhead, throughput or deployment capacity claim.",
+  "original_receipt_sha256": "950892a7c7c9773028c83cd0be57a6c72e07a8ffa1008c9b7db7f4c83cdfb908",
+  "external_helpers": {
+    "scope": "Frozen measurement and receipt helpers are external to the runtime source inventory.",
+    "manifest_sha256": "6301c4c46e65fb1c24ed9cb5deb72fb03959f9ef101bc77ece8aa22693794ccc",
+    "file_count": 18,
+    "file_sha256": {
+      "README.md": "0bdaed21386d7531ffcb0393ddf01905583eb170d53125e10ac78336f0523eef",
+      "collect.py": "256de1ae87f0f2a419fb31459dbaf711adf1cfa3b906ca19e6bb85e2037ad671",
+      "common.py": "29ba65778695d81277838939878a81d6c82ae056f92c126456c87d43cd3c2a09",
+      "controls.py": "ff626893a32b1aea0dc8a240041df295f8d9043dc108472fe4f49de200f3c8fa",
+      "expected-source.json": "a4148fe73fba348f95213bf77356e73b21fdc85bbd21a0b49187918408e00fb8",
+      "freeze.py": "6b4f10ae047fb5d58d94da77dd56ca94b047306108808f653d6f13a4a193df87",
+      "harness.py": "42c779384a2a3525ec86874e4ee73e9e5bd3552e4bcc0776061d7ee79a0152e4",
+      "launch.py": "e920c8e69824cfea82909c923717093b53f762a6f7ef049451b033fee571acfc",
+      "otlp-public-receipt.json": "dd1c47f5f12c0c023c0044b51a3da31e2fa68e5cb8e902ed7ae4c4da201f7791",
+      "prepare.py": "840e439bed72911331b835f9745f8b98f4e54b0041965f368d0d7683593784e1",
+      "preserve.py": "81e55dfbff0552e81e20243eb2f7e5ac57fe5b8297a371849c108fc830993545",
+      "run.py": "1f1c60b7d4b45976c5a6047ffa089e3443c6d0b1aa8c7aee6f31354bee58c7ec",
+      "runtime-inputs.json": "f372eefb049424d94cc00f4418877102f78d83e192038b3fab27875befde3152",
+      "stage.py": "de8f6e92b9a1693fbec7b0e59a1b48e0673047af5aefc6aa15b0ed495bc553a6",
+      "test_harness.py": "85e51932aa14756883b29305fca4f2622f19530e09642d9d4a72e3e93c328f18",
+      "validate_controls.py": "b2ecef97cb23db818e85a4e606f000587f599fc8d0d61baf40e7e4d89d467f84",
+      "verify_cleanup.py": "6d79a1e02f0845e20c4f7e44d52e240c50c78dfc70bb134a40de6b7d4b1a58b6",
+      "workloads.py": "ded20a802229b09997e2314ab3257ab4277bc446f2528a94adee2b4ebe73a761"
+    }
+  },
+  "watchdog": {
+    "runtime_seconds": 900,
+    "operation_budget_seconds": 600,
+    "stop_timeout_seconds": 20,
+    "kill_mode": "control-group",
+    "send_sigkill": true,
+    "verification_basis": "Frozen guard validates exact watchdog properties before the campaign check."
+  },
+  "integrity": {
+    "helpers_unchanged": true,
+    "runtime_unchanged": true,
+    "python_unchanged": true,
+    "prepared_trust_unchanged": true
+  },
+  "harness_exit_code": 1,
+  "independent_cleanup": {
+    "unit": "kelvo-telemetry-overhead-88b7ceb8d1ac",
+    "passed": true,
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "host_trust_unchanged": true,
+    "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+    "mode": "smoke"
+  },
+  "evidence_sha256": {
+    "public-receipt.json": "950892a7c7c9773028c83cd0be57a6c72e07a8ffa1008c9b7db7f4c83cdfb908",
+    "helper-manifest.json": "6301c4c46e65fb1c24ed9cb5deb72fb03959f9ef101bc77ece8aa22693794ccc",
+    "expected-source.json": "a4148fe73fba348f95213bf77356e73b21fdc85bbd21a0b49187918408e00fb8",
+    "staging.json": "47f0c68d273238ffd03886a912a4ba5c5160783fd637dd768af4393cc13cca4f",
+    "launch-result.json": "9c3569b9be25a35b1b503569b4b2d628b22ca44a52f3eec0d95d3604833b09a8",
+    "controls-preparation.json": "792c1d52b360d2571e3ae80d69a79f2835ba42ea6bd71d1b177267b3634f62d4",
+    "controls-launch.json": "a71c540005abde45d4641ed7b158fd2bdd5552f11bcc1f58d546cdf0c1ae98de",
+    "cleanup-independent.json": "bc1a36463d9239622b038ab71f36de2fa18518d01e90ec5a01c47af832caa655",
+    "ca-preparation.json": "24713359d6d15d531285f07d0c8cc3e339b18fd54bb6aafabdd6ace6b3841bb0",
+    "python-identity.json": "1aa2c601876a8c9abf5d0462e9df48340047d7675c55de787df36d78a6f55835",
+    "runtime-inputs.json": "f372eefb049424d94cc00f4418877102f78d83e192038b3fab27875befde3152",
+    "prior-campaign.json": "4b26346a27a4df6660eb1b9948e5e65d625f63e08217d1c1dded86ec030ed831",
+    "private-archive.json": "69cf5d7a638c92d72d0508dc9e2729ad83b697b7def21cef3aa81f791bc581c3",
+    "runner_receipt": "3b7ddccde1d6d588804a2767e753660f7db31b054b4174fed216ea7734118fbc",
+    "harness_log": "44cf82127edbed8dd2c62819580c7c270610572bafcaf636c6744c31ba4edb6b",
+    "service_exit_receipt": "c76b72babe65525a9da428a91afe614da20f3610f7f6e140f95f9316dc7dcf7f"
+  },
+  "preserved_private_evidence": {
+    "passed": true,
+    "archive_sha256": "63c300f8c1fe5e22182a41bfc8ff838451756ee7332a6047a9b9042c568d7946",
+    "archive_bytes": 532480,
+    "file_count": 21,
+    "file_manifest_sha256": "1a9e5682c0c9bc0c53ed52a634049677aecbaeaf7b042a91cf7d6e652291e154",
+    "review_archive_sha256": "63865c97bc9792c0e84c92af31792cbe8778de5bc19ea25a27ff09d91d02887e",
+    "source_bundle_sha256": "95c07aa5221dfce3ee6817ecd06e20907df730e4bdf753b922626fc4c618d4f7",
+    "preservation_receipt_sha256": "69cf5d7a638c92d72d0508dc9e2729ad83b697b7def21cef3aa81f791bc581c3",
+    "all_archive_file_hashes_reconciled": true,
+    "review_archive_matches_frozen_helpers": true,
+    "scope": "Archive contents remain private; only hashes and counts are published."
+  },
+  "publication_projection": {
+    "source_manifests_flattened_to_hash_and_count": true,
+    "private_paths_ips_credentials_trace_ids_omitted": true,
+    "timings_omitted": true,
+    "scope": "Read-only hash, type and data reconciliation of preserved evidence; no rerun or new measurement."
+  },
+  "failure": {
+    "harness_failure_category": "OTHER_PERFORMANCE_CAMPAIGN_RUNNING",
+    "before_experiment_construction": true,
+    "fixture_queries_created": 0,
+    "epochs_started": 0,
+    "inner_receipt_created": false,
+    "archived_fixture_output_files": 0,
+    "evidence_basis": "The preserved traceback raises inside guard(args) before Experiment construction; the archive has no fixture output files."
+  },
+  "guard_diagnosis": {
+    "basis": "Code-derived diagnosis; the original systemctl unit-list output was not retained.",
+    "mechanism": "The old regular expression searched all columns, including DESCRIPTION. The launcher interpreter path contains a kelvo-analytics prefix that could match the campaign guard.",
+    "captured_offending_unit_row_available": false,
+    "correction": "Match complete unit names from the first UNIT column and request untruncated output with --full.",
+    "correction_scope": "Only the external harness and its receipt controls changed; the runtime binary, runtime source and workload helper are unchanged.",
+    "corrected_helper_sha256": {
+      "harness.py": "af659bdae318f8747a7541a1a83209dd3fafae507ac73a8777e55c4c9bd050f9",
+      "test_harness.py": "54baa28986ac73f61982d8bc614300cefa090e99d191b7b8d305c1be05ccc5d9"
+    },
+    "passing_rerun_original_receipt_sha256": "d3b557ab373aa8936fd29ff55723580989c7998b88d772ba35d1a1ef82c438e6"
+  }
+}

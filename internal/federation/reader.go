@@ -156,6 +156,11 @@ func (s *scanSink) Write(record arrow.RecordBatch) error {
 		return query.PublicError(cause)
 	}
 	size := arrowutil.TotalRecordSize(record)
+	if r.table.snapshot != nil {
+		if err := r.table.snapshot.charge(record.NumRows(), size); err != nil {
+			return err
+		}
+	}
 	if record.NumRows() > r.table.limits.MaxRows-s.rows || size > r.table.limits.MaxBytes-s.bytes {
 		return query.NewError("RESOURCE_EXHAUSTED", "Federation scan exceeds its row or byte limit")
 	}

@@ -1,0 +1,166 @@
+{
+  "schema": 1,
+  "passed": true,
+  "scope": "Focused reader registry object-store adapter and immutable object reader binding. No live provider, runtime pin integration, garbage collection or performance certification.",
+  "source_revision": "480faf83f4b44bb6f5028ed7d6f3c147bd1e16ed",
+  "source_manifest_sha256": "59d12aabca8020090667925e1a84bce9defb75a7c2e9b95c2b18e66737a4d146",
+  "source_file_count": 941,
+  "selected_component_and_module_files": {
+    "go.mod": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+    "go.sum": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb",
+    "internal/acceleration/object_reader_binding.go": "49b77ab1b6387e2c3f9919003569efc8cee8e99f7bb75d8d7485358d1b3cf5c9",
+    "internal/acceleration/object_reader_binding_test.go": "d7ae4b42334a82e5d5e32d5a9ed91e6d7e1c15f00238edb40e97beeb5a787369",
+    "internal/readerlease/codec.go": "8efa89400fd60fd4b1fc53daea37dbb97a92d96a53ee5fcf5c95d568d1c8fa41",
+    "internal/readerlease/doc.go": "aacb66ccea964e6c32b209ba692fe53ff944bec9c2dd071a921a68db9bb643c8",
+    "internal/readerlease/lease.go": "1b11cadad98e7a86d383cbb1ae33b2f78c2ce30a497fe87bd252a2bf83e0293c",
+    "internal/readerlease/lease_test.go": "722620b339971ab2c153ab8ac46fba0e3005543b6a6ee0a8c1b09132a88d7e34",
+    "internal/readerlease/objectstore.go": "9d8597761547628d4f38f38704b24195ced9a399e213e24ccffd75a2b0d9f66d",
+    "internal/readerlease/objectstore_test.go": "0c1988d1c6290bcf775e07e5814ed2269784478c7e9cec5e5e5a1302dc7f1db4",
+    "internal/readerlease/registry.go": "1a55e2f8cd3ea89bb80816599ad3027037ce94ee73547d1e7cc8983de7d36d63",
+    "internal/readerlease/registry_test.go": "a42d6c513e5295b4ac22988c53cbc0df84d8399cd27a9dceaabdc66fa0333e22",
+    "internal/readerlease/types.go": "ec763719a469c5174d632aed292e7396335d3c71c72e10afc6e1e711f3a7a2d0",
+    "scripts/duckbridge-driver.patch": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485"
+  },
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "offline": true,
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "compiler_lanes": 1,
+  "checks": {
+    "external-modfile": {
+      "exit_code": 0,
+      "seconds": 0.003,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "race-tests": {
+      "exit_code": 0,
+      "seconds": 20.552,
+      "log_sha256": "c2832a91c2e075c12d7048992b14ae9fe01ab42a1b9e693b793bb00b51e12b7b"
+    },
+    "vet": {
+      "exit_code": 0,
+      "seconds": 11.986,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "test_gate": {
+    "required_top_level_count": 36,
+    "passed_top_level_count": 36,
+    "passed_events_including_subtests": 213,
+    "failures_or_skips": 0,
+    "packages": {
+      "github.com/SYNEHQ/kelvo-go/internal/readerlease": {
+        "required_top_level_tests": [
+          "TestReaderLeaseAcquireLateCommitDoesNotGrantExpiredReader",
+          "TestReaderLeaseCheckAndRenewalPublicationAreSerialized",
+          "TestReaderLeaseCloseBoundsStuckReleaseAndDoesNotExposeErrorText",
+          "TestReaderLeaseParentCancellationAndDeadline",
+          "TestReaderLeaseRenewPreservesOtherReadersAndExtendsConservativeCutoff",
+          "TestReaderLeaseRenewalLossCancelsWithoutResurrection",
+          "TestReaderLeaseRestartCannotAdoptOrReleaseOldIncarnation",
+          "TestReaderLeaseWatchdogAndCloseBoundStuckRenewal",
+          "TestReaderObjectStoreCancellationAtGetAndCloseBoundariesCannotExposeBody",
+          "TestReaderObjectStoreCancellationJoinsReadAndCloseBeforeReturningCapacity",
+          "TestReaderObjectStoreCancelsReturnedMemoryBodyAndPreCancelledIO",
+          "TestReaderObjectStoreCloseFailureCannotConfirmAbsence",
+          "TestReaderObjectStoreCopiesWriteAndEnforcesExactPrecondition",
+          "TestReaderObjectStoreOnlyMapsDefiniteProviderOutcomes",
+          "TestReaderObjectStoreRegistryRoundTripAndAmbiguousPin",
+          "TestReaderObjectStoreRejectsForeignAndNonRegistryKeysBeforeIO",
+          "TestReaderObjectStoreRejectsInvalidWriteConfirmationWithoutRetry",
+          "TestReaderObjectStoreValidatesCompleteBodyBeforeExposure",
+          "TestReaderRegistryBlockedAcquireReservesCapacityBeforeProviderIO",
+          "TestReaderRegistryConcurrentCASAndCapacityPreservePins",
+          "TestReaderRegistryConstructorTimingAndScope",
+          "TestReaderRegistryEncodedByteCapacityCannotBeBypassed",
+          "TestReaderRegistryLocalCapacityCoversDifferentGenerations",
+          "TestReaderRegistryRawENOENTCannotCreateProtectionMetadata",
+          "TestReaderRegistryRejectsScalarCoercionAndNoncanonicalFences",
+          "TestReaderRegistrySealRaceCannotChangeContent",
+          "TestReaderRegistryStagesSealsAndFencesImmutableBinding",
+          "TestReaderRegistryStrictPayloadAndProviderIdentity",
+          "TestReaderRegistryUnknownAcquireOutcomeRetainsPinWithoutReader"
+        ],
+        "passed_top_level_count": 29,
+        "passed_events_including_subtests": 114,
+        "package_passed": true
+      },
+      "github.com/SYNEHQ/kelvo-go/internal/acceleration": {
+        "required_top_level_tests": [
+          "TestObjectReaderBindingAcceptedBoundaries",
+          "TestObjectReaderBindingCanonicalTimeAndNoMutation",
+          "TestObjectReaderBindingCanonicalVectors",
+          "TestObjectReaderBindingEveryIdentityField",
+          "TestObjectReaderBindingRejectsInvalidCommit",
+          "TestObjectReaderBindingRejectsInvalidReferenceAndLocation",
+          "TestObjectReaderBindingStringFraming"
+        ],
+        "passed_top_level_count": 7,
+        "passed_events_including_subtests": 99,
+        "package_passed": true
+      }
+    }
+  },
+  "native_bridge": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b",
+    "unchanged_after": true
+  },
+  "external_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb",
+    "unchanged_after": true,
+    "source_module_files_unchanged": true,
+    "replacement": "Only github.com/duckdb/duckdb-go/v2 was replaced with the pre-existing patched driver. No dependency downloads or source-module edits."
+  },
+  "enforced_isolation": {
+    "effective_uid": 1000,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "memory_max": 3221225472,
+    "swap_max": 0,
+    "tasks_max": 256,
+    "private_network": true,
+    "network_interface_source": "/proc/self/net/dev",
+    "network_interfaces": [
+      "lo"
+    ],
+    "non_root": true,
+    "zero_capabilities": true,
+    "no_new_privileges": true,
+    "runtime_max_seconds": 1200,
+    "stop_timeout_seconds": 20,
+    "kill_mode": "control-group",
+    "send_sigkill": true
+  },
+  "cleanup": {
+    "owned_service_unloaded": true,
+    "owned_service_inactive": true,
+    "owned_main_pid_zero": true,
+    "owned_cgroup_absent": true
+  },
+  "helper_sha256": {
+    "stage.py": "cdfcb47db1899a4e4508a882974038eaceca84456353bcc2301a026f119cc076",
+    "launch.py": "1115e8e6e03140fb16cabfb8152ad65b8a2fb9daf25a4e3aac30303fa6104d3f",
+    "validate.py": "d7df562eaec130303666ca2ae0d3e3331c1d2ddfae48bec98302327d001d22aa",
+    "collect.py": "1bed72e1a85dd9df0b472602274d40109c92a7a006ffd9bb8a3ef22807f15d68"
+  },
+  "validation_report_sha256": "8e85aace68e1e219e4958fd7149c083faa9108ea854b1a46baf4b930fee8371a",
+  "private_receipt_sha256": "c59f73f4c49ad18cea624729d595d2e5de6ebc17485fb41eef04d0aea75f186f",
+  "source_bundle_sha256": "4b33d23de0dcdd213b24ef7d502164d15595f0940681b6251a356b6a41ad0a85",
+  "prior_setup_attempt": {
+    "passed": false,
+    "stage": "Local transport setup before remote scratch creation or any Go command",
+    "failure_category": "LOCAL_SANDBOX_SSH_DENIED",
+    "engine_execution_started": false,
+    "remote_state_changed": false,
+    "cause": "Local sandbox denied SSH. The unchanged reviewed helpers were retried with authorized network access in fresh local and remote scratch.",
+    "receipt_sha256": "7257a7809a7af080fd267a410251d6dfcf69885c3a56237b8a2c9679b527decf"
+  }
+}

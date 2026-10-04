@@ -19,7 +19,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Configure full refresh | [Acceleration](acceleration.md) |
 | Store larger generations | [Multipart snapshots](multipart-acceleration.md) |
 | Allow schema changes | [Schema evolution](schema-evolution.md) |
-| Use S3, R2, GCS or Azure Blob | [Object storage](object-storage.md) |
+| Use S3, R2, GCS or Azure Blob | [Object storage](object-storage.md) · [Writer shutdown](object-writer-shutdown.md) |
 | Back up or migrate snapshots | [Backup and recovery](snapshot-backup.md) |
 | Restore or reset failed refreshes | [Generation restore](acceleration.md#schema-contracts-and-generation-recovery) · [Refresh recovery](operations.md#source-refresh-failures-and-recovery) |
 
@@ -30,10 +30,12 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Deploy tenant workers | [Deployment](../deploy/README.md) · [Cluster lifecycle](cluster.md) |
 | Enforce native process-tree limits | [Linux containment](process-containment.md) |
 | Configure budgets, probes, quotas and drain | [Operations](operations.md) |
-| Rotate credentials | [API keys](gateway-key-rotation.md) · [Source files](operations.md#file-based-source-credential-rotation) · [TLS identity](tls-identity-rotation.md) · [TLS trust](tls-trust-rotation.md) |
+| Restrict users and services | [Principal keys](principal-access.md) · [Row/column policies](row-column-access.md) · [Snapshot policies](guarded-snapshots.md) |
+| Rotate credentials | [API keys](gateway-key-rotation.md) · [Source files](operations.md#file-based-source-credential-rotation) · [Cloud source secrets](cloud-secrets.md) · [TLS identity](tls-identity-rotation.md) · [TLS trust](tls-trust-rotation.md) |
+| Retain security and execution receipts | [Durable local audit](durable-audit.md) |
 | Inspect query/refresh outcomes | [Tracing](tracing.md) · [Passive source health](source-health.md) · [Native errors](native-error-classification.md) |
 | Recover failed workers and scratch | [Worker failures](worker-failures.md) · [Managed scratch](worker-scratch.md) |
-| Understand internal export controls | [Storage API](export-storage.md) · [Workload admission](workload-admission.md) |
+| Run exports and repeat downloads | [Durable exports](exports.md) · [Storage API](export-storage.md) · [Admission](workload-admission.md) |
 
 ## Evaluate and reproduce results
 
@@ -41,10 +43,11 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | --- | --- |
 | Current implementation and test coverage | [Production checklist](production-status.md) · [Validation record](validation.md) |
 | CTEs, windows and analytical-library comparisons | [Analytics results](analytics-workflow-benchmarks.md) · [Workflow design](cte-workflow-plan.md) |
-| Multi-adapter joins and small VMs | [Federation capacity](federation-capacity.md) · [Oracle micro VM](oracle-micro-capacity.md) |
+| Multi-adapter joins and small VMs | [Federation capacity](federation-capacity.md) · [Oracle worker profile](node-capacity.md) · [Earlier standalone trials](oracle-micro-capacity.md) |
+| Telemetry cost and tracing correctness | [Paired measurements](telemetry-overhead.md) · [OTLP acceptance](tracing-acceptance.md) |
 | Native export benchmark | [ClickHouse runner](benchmarking.md) |
 | Mixed load and fault recovery | [Operational acceptance](operational-acceptance.md) · [Process loss](process-loss-acceptance.md) |
-| Storage and version compatibility | [Storage gates](storage-conformance.md) · [Release upgrades](release-upgrades.md) |
+| Storage and version compatibility | [Storage gates](storage-conformance.md) · [Snapshot upgrades](release-upgrades.md) · [Rolling applications](rolling-upgrades.md) |
 
 Reports link [raw evidence](evidence/), exact revisions, failures and reproduction commands.
 

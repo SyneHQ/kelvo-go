@@ -1,0 +1,134 @@
+{
+  "scope": "Child timing component gates overlapped the independent sustained campaign on source0544d5f. These gates do not extend that campaign to later runtime revisions.",
+  "campaign_revision": "0544d5f013eb72598a6da608331ec8b00711866f",
+  "component_runs": [
+    {
+      "revision": "1f48f9006a18a652bd983138eac4356978387370",
+      "passed": false,
+      "timing": {
+        "unit": "kelvo-child-timing-1f48f9006a-f102d9.service",
+        "source": "Exact-unit systemd PID1 journal entries; raw messages omitted.",
+        "events": [
+          {
+            "kind": "started",
+            "journal_realtime_microseconds": 1791072750973336,
+            "utc": "2026-10-04T00:12:30.973336Z"
+          },
+          {
+            "kind": "failed_exit_code",
+            "journal_realtime_microseconds": 1791072818390758,
+            "utc": "2026-10-04T00:13:38.390758Z"
+          }
+        ],
+        "journal_interval_seconds": 67.417422
+      },
+      "observation": {
+        "observed_utc": "2026-10-04T00:13:34.163786+00:00",
+        "units": {
+          "kelvo-sustained-c259ccfefa71.service": {
+            "RuntimeMaxUSec": "2h 5min",
+            "MainPID": "946833",
+            "CPUQuotaPerSecUSec": "2s",
+            "MemoryMax": "6442450944",
+            "MemorySwapMax": "0",
+            "TasksMax": "512",
+            "LoadState": "loaded",
+            "ActiveState": "active",
+            "SubState": "running"
+          },
+          "kelvo-child-timing-1f48f9006a-f102d9.service": {
+            "RuntimeMaxUSec": "30min",
+            "MainPID": "1018399",
+            "CPUQuotaPerSecUSec": "1s",
+            "MemoryMax": "3221225472",
+            "MemorySwapMax": "0",
+            "TasksMax": "256",
+            "LoadState": "loaded",
+            "ActiveState": "active",
+            "SubState": "running"
+          }
+        },
+        "both_observed_active": true
+      },
+      "independent_cleanup": {
+        "unit": "kelvo-child-timing-1f48f9006a-f102d9",
+        "fields": {
+          "MainPID": "0",
+          "Result": "success",
+          "LoadState": "not-found",
+          "ActiveState": "inactive",
+          "SubState": "dead"
+        },
+        "owned_service_removed": true,
+        "owned_cgroup_removed": true,
+        "passed": true,
+        "revision": "1f48f9006a18a652bd983138eac4356978387370"
+      },
+      "receipt_sha256": "e79b5a127d8872604cfeea90923664c3884a8845d81cd709dfabd04cfc86a90e"
+    },
+    {
+      "revision": "d1b7d0e0cd43740ac2570e5ecf23294d8d14900b",
+      "passed": true,
+      "timing": {
+        "unit": "kelvo-child-timing-d1b7d0e0cd-1a8dfd.service",
+        "source": "Exact-unit systemd PID1 journal entries; raw messages omitted.",
+        "events": [
+          {
+            "kind": "started",
+            "journal_realtime_microseconds": 1791073195369205,
+            "utc": "2026-10-04T00:19:55.369205Z"
+          },
+          {
+            "kind": "deactivated_successfully",
+            "journal_realtime_microseconds": 1791073294692178,
+            "utc": "2026-10-04T00:21:34.692178Z"
+          }
+        ],
+        "journal_interval_seconds": 99.322973
+      },
+      "observation": {
+        "observed_utc": "2026-10-04T00:20:10.459494+00:00",
+        "units": {
+          "kelvo-sustained-c259ccfefa71.service": {
+            "RuntimeMaxUSec": "2h 5min",
+            "MainPID": "946833",
+            "CPUQuotaPerSecUSec": "2s",
+            "MemoryMax": "6442450944",
+            "MemorySwapMax": "0",
+            "TasksMax": "512",
+            "LoadState": "loaded",
+            "ActiveState": "active",
+            "SubState": "running"
+          },
+          "kelvo-child-timing-d1b7d0e0cd-1a8dfd.service": {
+            "RuntimeMaxUSec": "30min",
+            "MainPID": "1029079",
+            "CPUQuotaPerSecUSec": "1s",
+            "MemoryMax": "3221225472",
+            "MemorySwapMax": "0",
+            "TasksMax": "256",
+            "LoadState": "loaded",
+            "ActiveState": "active",
+            "SubState": "running"
+          }
+        },
+        "both_observed_active": true
+      },
+      "independent_cleanup": {
+        "unit": "kelvo-child-timing-d1b7d0e0cd-1a8dfd",
+        "fields": {
+          "MainPID": "0",
+          "Result": "success",
+          "LoadState": "not-found",
+          "ActiveState": "inactive",
+          "SubState": "dead"
+        },
+        "owned_service_removed": true,
+        "owned_cgroup_removed": true,
+        "passed": true,
+        "revision": "d1b7d0e0cd43740ac2570e5ecf23294d8d14900b"
+      },
+      "receipt_sha256": "4aa41148a2dbe92c53e7ac065b10cc18745d6493b6ca6cee0520b00005843326"
+    }
+  ]
+}

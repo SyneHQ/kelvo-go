@@ -10,10 +10,17 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/secrets"
 )
 
+// Retired bindings stay fenced for this process lifetime. Exhaustion refuses
+// new identities; it never evicts an older ownership decision.
+const gatewayMaxBindings = 8192
+
+type keyFingerprint struct{}
+
 type gatewayAuthKey struct {
-	tenant string
-	ctx    context.Context
-	cancel context.CancelFunc
+	tenant    string
+	principal string
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 type gatewayAuthRead struct {
@@ -32,7 +39,7 @@ type gatewayAuthenticator struct {
 	config     GatewayAuthenticationConfig
 	tenants    map[string]bool
 	keys       map[[32]byte]*gatewayAuthKey
-	bindings   map[[32]byte]string // last accepted ownership survives fail-closed invalidation
+	bindings   map[[32]byte]string // bounded lifetime ownership survives removal and invalidation
 	validUntil time.Time
 	revision   uint64
 	digest     [32]byte
@@ -105,11 +112,19 @@ func (a *gatewayAuthenticator) apply(set gatewayKeySet, started time.Time) bool 
 	until := started.Add(a.config.ReloadInterval + gatewayKeyReadTimeout)
 	a.mu.Lock()
 	valid := !a.closed && time.Now().Before(until) && set.revision >= a.config.MinRevision && set.revision >= a.revision && (set.revision != a.revision || set.digest == a.digest)
-	// A currently configured token must never move to another tenant in place.
+	// A previously accepted token cannot move to another tenant or principal.
+	newBindings := 0
 	for hash, tenant := range set.keys {
-		if owner, exists := a.bindings[hash]; exists && owner != tenant {
-			valid = false
+		if owner, exists := a.bindings[hash]; exists {
+			if owner != tenant+"\x00"+set.principals[hash] {
+				valid = false
+			}
+		} else {
+			newBindings++
 		}
+	}
+	if len(a.bindings)+newBindings > gatewayMaxBindings {
+		valid = false
 	}
 	prior := a.keys
 	priorFresh := time.Now().Before(a.validUntil)
@@ -126,12 +141,16 @@ func (a *gatewayAuthenticator) apply(set gatewayKeySet, started time.Time) bool 
 			delete(prior, hash)
 		} else {
 			ctx, cancel := context.WithCancel(a.ctx)
-			next[hash] = &gatewayAuthKey{tenant: tenant, ctx: ctx, cancel: cancel}
+			ctx = context.WithValue(ctx, keyFingerprint{}, hash)
+			ctx = context.WithValue(ctx, keyPrincipalID{}, set.principals[hash])
+			next[hash] = &gatewayAuthKey{tenant: tenant, principal: set.principals[hash], ctx: ctx, cancel: cancel}
 		}
 	}
-	a.bindings = make(map[[32]byte]string, len(set.keys))
+	if a.bindings == nil {
+		a.bindings = make(map[[32]byte]string, len(set.keys))
+	}
 	for hash, tenant := range set.keys {
-		a.bindings[hash] = tenant
+		a.bindings[hash] = tenant + "\x00" + set.principals[hash]
 	}
 	a.keys, a.validUntil, a.revision, a.digest = next, until, set.revision, set.digest
 	a.mu.Unlock()

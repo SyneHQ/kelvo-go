@@ -1,0 +1,542 @@
+{
+  "schema": 1,
+  "runtime_commit": "40965ef36eeeecb608c6c9045e6c72b013bc527c",
+  "raw_report_sha256": "86d0ffe849ba527b6051228b16aa91cecaac74df1fdc21feb87091f1644bc07b",
+  "strict_reconciliation_passed": false,
+  "exact_source_and_binary_match": true,
+  "coordinator_reported_passed": false,
+  "coordinator_identity_matches": true,
+  "coordinator_passed": false,
+  "scope": "Synthetic Parquet lifecycle and correctness under a paced two-tenant workload in one isolated capped Linux service. This is separate from provider, WAN, multi-host, sizing and maximum-throughput claims.",
+  "source": {
+    "base_revision": "40965ef36eeeecb608c6c9045e6c72b013bc527c",
+    "sha256": "5de5bf717c0235c2e1932c246711bac8e30adccfa75055933810efc059968d62",
+    "file_count": 957,
+    "verified": true
+  },
+  "build_source_matches": true,
+  "binary_files_unchanged": true,
+  "acceptance_source_sha256": {
+    "sustained_acceptance.py": "bc258b5f8d78cad154650bde77c55246784d19397642fa185b58dd7bfe7122fe",
+    "test_sustained_acceptance.py": "ffe8efdb04af88c600c2583027717d82f250caa5fb0e84a45132eb709697dacd",
+    "process_loss_acceptance.py": "8ce67ca9f2f5972de28be2b655b4764f96bb0a65c8f68e4ef29860af5c9c8df8",
+    "lease_supervision.py": "e3fe1e889b2d4e8e694f33efee890dc5d223ca4542ccccd9eecc0080e230d4b3"
+  },
+  "passed": false,
+  "mode": "smoke",
+  "requested_seconds": 600.0,
+  "elapsed_seconds": 4.543,
+  "multi_hour_gate_passed": false,
+  "checked_at": "2026-10-03T19:40:36.902127+00:00",
+  "interrupted": false,
+  "source_unchanged": true,
+  "service_exit_code": 1,
+  "owned_service_removed": true,
+  "owned_cgroup_removed": true,
+  "reported_passed": false,
+  "binary_sha256": {
+    "kelvo": "4dd5f4347b63c54d168f4eed261f6dcdce2e5661151e558c72d3d5cb3dfd335d",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "resource_budget": {
+    "cpu_percent": 200,
+    "memory_bytes": 6442450944,
+    "swap_bytes": 0,
+    "tasks": 512
+  },
+  "workload": {
+    "queries": {
+      "a": 0,
+      "b": 0
+    },
+    "refreshes": {
+      "a": 0,
+      "b": 0
+    },
+    "slow_readers": {
+      "a": 0,
+      "b": 0
+    },
+    "cancellations": {
+      "a": 0,
+      "b": 0
+    }
+  },
+  "control_response_counts": {},
+  "checks": [
+    {
+      "test": "startup",
+      "passed": false,
+      "seconds": 0.538
+    },
+    {
+      "test": "slow_readers",
+      "passed": false,
+      "seconds": 0.0
+    },
+    {
+      "test": "cancellations",
+      "passed": false,
+      "seconds": 0.0
+    },
+    {
+      "test": "cleanup",
+      "passed": false,
+      "seconds": 0.006
+    },
+    {
+      "test": "tenant_isolation",
+      "passed": false
+    },
+    {
+      "test": "saturation",
+      "passed": false
+    },
+    {
+      "test": "gateway_loss",
+      "passed": false
+    },
+    {
+      "test": "worker_loss",
+      "passed": false
+    },
+    {
+      "test": "broker_loss",
+      "passed": false
+    },
+    {
+      "test": "mixed_load",
+      "passed": false
+    }
+  ],
+  "process_sampling": {
+    "interval_ms": 50,
+    "samples": 1,
+    "process_tree_rss_available": false,
+    "rss_source": "proc_pid_stat_field_24_pages",
+    "page_size_bytes": 4096,
+    "sampled_process_tree_rss_peak_bytes": null,
+    "disappeared_or_exited_process_or_thread_samples": 0,
+    "read_diagnostic_limit": 32,
+    "read_diagnostic_overflow_events": 0,
+    "read_errors": [],
+    "total_read_error_categories": 0,
+    "read_diagnostics": []
+  },
+  "resources": {
+    "samples": 0,
+    "peak_cgroup_bytes": 0,
+    "peak_cgroup_current_bytes": 0,
+    "peak_scratch_bytes": 0,
+    "peak_artifact_bytes": 0,
+    "query_refresh_overlap_samples": 0,
+    "cgroup_memory_events_delta": {},
+    "final_cpu_stat": {}
+  },
+  "resource_counter_error_count": 0,
+  "resource_violation_count": 0,
+  "workload_client_failure_count": 0,
+  "latencies": {
+    "query": {
+      "a": {
+        "count": 0,
+        "sum_seconds": 0.0,
+        "maximum_seconds": 0.0,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      },
+      "b": {
+        "count": 0,
+        "sum_seconds": 0.0,
+        "maximum_seconds": 0.0,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      }
+    },
+    "dispatch_observation": {
+      "a": {
+        "count": 0,
+        "sum_seconds": 0.0,
+        "maximum_seconds": 0.0,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      },
+      "b": {
+        "count": 0,
+        "sum_seconds": 0.0,
+        "maximum_seconds": 0.0,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      }
+    },
+    "first_byte": {
+      "a": {
+        "count": 0,
+        "sum_seconds": 0.0,
+        "maximum_seconds": 0.0,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      },
+      "b": {
+        "count": 0,
+        "sum_seconds": 0.0,
+        "maximum_seconds": 0.0,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      }
+    },
+    "slow_delivery": {
+      "a": {
+        "count": 0,
+        "sum_seconds": 0.0,
+        "maximum_seconds": 0.0,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      },
+      "b": {
+        "count": 0,
+        "sum_seconds": 0.0,
+        "maximum_seconds": 0.0,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      }
+    },
+    "cancel": {
+      "a": {
+        "count": 0,
+        "sum_seconds": 0.0,
+        "maximum_seconds": 0.0,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      },
+      "b": {
+        "count": 0,
+        "sum_seconds": 0.0,
+        "maximum_seconds": 0.0,
+        "buckets": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "bucket_upper_seconds": [
+          0.005,
+          0.01,
+          0.025,
+          0.05,
+          0.1,
+          0.25,
+          0.5,
+          1.0,
+          2.0,
+          5.0,
+          10.0,
+          20.0,
+          40.0,
+          80.0,
+          null
+        ]
+      }
+    }
+  },
+  "progress_windows": []
+}

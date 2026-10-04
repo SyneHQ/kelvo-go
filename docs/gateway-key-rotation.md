@@ -42,7 +42,7 @@ Symlinks, hardlinks, unsafe ancestors/modes, in-place changes, duplicate keys/fi
 3. Publish another higher revision removing the old key. Verify old-key `401`, new-key access and readiness on every replica; remove stale/unreachable replicas from service.
 4. Raise deployment `min_revision` before future restarts and retain the corresponding file.
 
-Changed bytes, including whitespace, require a higher revision. The highest observed revision is in memory; `min_revision` supplies the restart floor. Restarting with an old floor and old file can restore revoked keys. A higher revision can intentionally reintroduce a key.
+Changed bytes, including whitespace, require a higher revision. The highest observed revision is in memory; `min_revision` supplies the restart floor. Restarting with an old floor and old file can restore revoked keys. A higher revision can intentionally reintroduce a key for the same identity. Retired bindings remain fenced for the gateway process lifetime, up to 8,192 unique keys; the gateway rejects new bindings at that limit rather than evicting history. Never reuse keys for other identities, including across restarts.
 
 Propagation is operator-managed. A replica with its old valid file can continue accepting old keys; revocation is not globally atomic. An exact valid current file can recover a replica after I/O or permission failure.
 
@@ -59,9 +59,9 @@ Propagation is operator-managed. A replica with its old valid file can continue 
 
 Unchanged keys retain request contexts during overlap. Authentication requests do no filesystem I/O. A valid reload restores service.
 
-Revocation cannot recall delivered bytes, undo durable success or guarantee immediate remote database cancellation. Require normal complete HTTP/Arrow/EOS checks. Durable jobs remain tenant-owned: another current key can retrieve/cancel an unconsumed handle. Cancellation before a parked request claims results leaves the handle unclaimed.
+Revocation cannot recall delivered bytes, undo durable success or guarantee immediate remote database cancellation. Require normal complete HTTP/Arrow/EOS checks. With version-1 keys, durable jobs remain tenant-owned: another current tenant key can retrieve/cancel an unconsumed handle. [Version-2 principal keys](principal-access.md) restrict handles to their submitting principal. Cancellation before a parked request claims results leaves the handle unclaimed.
 
-This does not implement tenant creation, per-user/row policies, TLS rotation or distributed authorization epochs.
+Version 1 does not implement per-user access. Neither version implements row policies, tenant creation, TLS rotation or distributed authorization epochs.
 
 ## Run the two-gateway acceptance gate
 

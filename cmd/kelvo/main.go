@@ -21,6 +21,7 @@ import (
 	duckengine "github.com/SYNEHQ/kelvo-go/internal/engine/duckdb"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/native"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/transport/httpapi"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
@@ -46,6 +47,9 @@ func run(args []string) error {
 	}
 	if args[0] == "accelerate" {
 		return runAcceleration(args[1:])
+	}
+	if args[0] == "audit" {
+		return runAudit(args[1:], os.Stdout)
 	}
 	if args[0] == "cluster-init" || args[0] == "gateway" || args[0] == "node" {
 		return runCluster(args)
@@ -195,18 +199,34 @@ func resolveCLISandbox(path string) (string, error) {
 }
 
 func runWorker() error {
+	return runWorkerIO(context.Background(), os.Stdin, os.Stdout, os.Stderr, newWorkerExecutor)
+}
+
+// Dependencies are local to this invocation; no process-wide engine/test hooks.
+type workerExecutorFactory func(worker.Input) (query.Executor, io.Closer, error)
+
+func newWorkerExecutor(in worker.Input) (query.Executor, io.Closer, error) {
+	if in.Request.Mode == "native" {
+		executor, err := native.New(in.Config, in.Limits, in.Request)
+		if err != nil {
+			return nil, nil, err
+		}
+		return executor, executor, nil
+	}
+	executor, err := duckengine.New(in.Config, in.Limits)
+	return executor, nil, err
+}
+
+func runWorkerIO(parent context.Context, input io.Reader, stream, diagnostics io.Writer, factory workerExecutorFactory) error {
 	var in worker.Input
-	d := json.NewDecoder(io.LimitReader(os.Stdin, 2<<20))
+	d := json.NewDecoder(io.LimitReader(input, 2<<20))
 	d.DisallowUnknownFields()
 	var outcome worker.Outcome
 	emit := func(err error) error {
 		if err != nil {
 			outcome.Error = query.PublicError(err)
 		}
-		if e := json.NewEncoder(os.Stderr).Encode(outcome); e != nil {
-			return e
-		}
-		return nil
+		return worker.EncodeOutcome(diagnostics, outcome)
 	}
 	if e := d.Decode(&in); e != nil {
 		return emit(query.NewError("INVALID_ARGUMENT", "Invalid worker request"))
@@ -214,47 +234,103 @@ func runWorker() error {
 	if e := d.Decode(new(any)); e != io.EOF {
 		return emit(query.NewError("INVALID_ARGUMENT", "Worker request must contain one JSON object"))
 	}
-	if e := in.Limits.Validate(); e != nil {
-		return emit(e)
+	var timings *telemetry.ChildRecorder
+	if in.TimingVersion == telemetry.ChildTimingVersion {
+		timings = telemetry.NewChildRecorder()
+		timings.Begin(telemetry.ChildWorkerSetup)
+	}
+	var err error
+	outcome, err = runWorkerInput(parent, in, stream, timings, factory)
+	// The inner invocation has joined sink/native/context cleanup. Reporting
+	// before it returns would falsely certify completion while cleanup is held.
+	outcome.Timing = timings.Finish()
+	return emit(err)
+}
+
+func runWorkerInput(parent context.Context, in worker.Input, stream io.Writer, timings *telemetry.ChildRecorder, factory workerExecutorFactory) (outcome worker.Outcome, resultErr error) {
+	var sink *worker.IPCSink
+	var executorCloser io.Closer
+	outerStage, outerActive := telemetry.ChildWorkerSetup, timings != nil
+	cleanupStarted := false
+	beginCleanup := func() {
+		if timings == nil || cleanupStarted {
+			return
+		}
+		if outerActive {
+			timings.End(outerStage)
+		}
+		timings.Begin(telemetry.ChildWorkerCleanup)
+		cleanupStarted = true
+	}
+	defer func() {
+		// Early validation failures own no resources. Other returns reach this
+		// only after sink, native engine and context cleanup have all unwound.
+		beginCleanup()
+		timings.End(telemetry.ChildWorkerCleanup)
+	}()
+	if err := in.Limits.Validate(); err != nil {
+		return outcome, err
 	}
 	if in.Request.Mode == "" {
 		in.Request.Mode = "federated"
 	}
 	if err := query.ValidateRequest(in.Request); err != nil {
-		return emit(err)
+		return outcome, err
 	}
-	parent, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	parent, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithTimeout(parent, in.Limits.Timeout)
 	defer cancel()
+	defer func() {
+		beginCleanup()
+		// Preserve sink -> native -> cancel -> signal-stop order, including
+		// panic unwind. Native Close errors retain their original semantics.
+		if executorCloser != nil {
+			defer executorCloser.Close()
+		}
+		if sink != nil {
+			// Abort never substitutes a successful EOS.
+			defer sink.Abort()
+		}
+	}()
+	ctx, err := in.ExecutionContext(ctx)
+	if err != nil {
+		return outcome, err
+	}
+	ctx = telemetry.WithChildRecorder(ctx, timings)
 	var executor query.Executor
-	if in.Request.Mode == "native" {
-		e, err := native.New(in.Config, in.Limits, in.Request)
-		if err != nil {
-			return emit(err)
-		}
-		defer e.Close()
-		executor = e
-	} else {
-		e, err := duckengine.New(in.Config, in.Limits)
-		if err != nil {
-			return emit(err)
-		}
-		executor = e
+	executor, executorCloser, err = factory(in)
+	if err != nil {
+		return outcome, err
 	}
 	// The parent applies public result compression after validating this local
 	// pipe. Compressing both boundaries adds CPU work without saving network IO.
 	pipeLimits := in.Limits
 	pipeLimits.ResultCompression = ""
-	sink := worker.NewIPCSink(os.Stdout, pipeLimits)
-	defer sink.Abort()
-	stats, err := executor.Execute(ctx, in.Request, sink)
-	outcome.Stats = stats
+	sink = worker.NewIPCSink(stream, pipeLimits)
+	if timings != nil {
+		timings.End(telemetry.ChildWorkerSetup)
+		timings.Begin(telemetry.ChildExecutorCall)
+		outerStage = telemetry.ChildExecutorCall
+	}
+	outcome.Stats, err = executor.Execute(ctx, in.Request, sink)
+	if timings != nil {
+		timings.End(telemetry.ChildExecutorCall)
+		outerActive = false
+	}
 	if err == nil {
+		if timings != nil {
+			timings.Begin(telemetry.ChildIPCFinalize)
+			outerStage, outerActive = telemetry.ChildIPCFinalize, true
+		}
 		err = sink.Finish()
+		if timings != nil {
+			timings.End(telemetry.ChildIPCFinalize)
+			outerActive = false
+		}
 	}
 	outcome.Stats.WireBytes = sink.EncodedBytes()
-	return emit(err)
+	return outcome, err
 }
 
 func makeRequest(sql, mode, connection, sources, parameters, collection, pipeline string) (query.Request, error) {
@@ -283,5 +359,5 @@ func makeRequest(sql, mode, connection, sources, parameters, collection, pipelin
 	return r, query.ValidateRequest(r)
 }
 func usage() {
-	fmt.Println("Kelvo Go by SYNEHQ\n\nUsage: kelvo serve|query|accelerate|refresh-status|refresh-reset|cluster-init|gateway|node|version\nBuild: go build -tags duckdb_arrow ./cmd/kelvo\nUse kelvo <command> -h for flags.")
+	fmt.Println("Kelvo Go by SYNEHQ\n\nUsage: kelvo serve|query|accelerate|audit|refresh-status|refresh-reset|cluster-init|gateway|node|version\nBuild: go build -tags duckdb_arrow ./cmd/kelvo\nUse kelvo <command> -h for flags.")
 }

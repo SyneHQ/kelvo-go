@@ -73,4 +73,8 @@ GOMAXPROCS=2 go test -p 2 -tags duckdb_arrow ./cmd/kelvo
 
 Tests cover actual HTTPS/mTLS reuse, server/client replacement, invalidation and recovery; wrong SPIFFE/DNS/issuer, missing certificates and TLS 1.2; malformed/expired PEM, file safety, bounded reads and drain behavior.
 
+The [read-deadline follow-up](evidence/tls-reader-deadlines-2bc7dd7.json) validates test-only revision `2bc7dd7`. Expiry of a previous snapshot does not prove that a later-started read has exceeded its own 2s deadline. Both identity and trust blocked-reader tests now wait for that read's actual deadline before releasing its result. Direct age controls distinguish fresh recovery from stale-result rejection; production code and deadlines are unchanged.
+
+All **41 selected tests / 97 test events** passed with the race detector, with zero failures or skips; cluster vet passed. Source, module and bridge identities remained unchanged, the SSH/systemd wait command returned zero, and the owned service and cgroup were removed. The [original CI failure](evidence/tls-ci-37150306039-failure.json) remains recorded; its exact scheduling was not captured. This follow-up demonstrates the flawed test premise and corrected controls without claiming to reproduce that historical schedule.
+
 These are in-process Linux checks. [Trust acceptance](tls-trust-rotation.md#validation-scope) adds CA rollover and stale replicas. A certificate-manager deployment and coordinated revocation require separate [production validation](production-status.md).

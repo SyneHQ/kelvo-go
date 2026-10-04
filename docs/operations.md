@@ -27,6 +27,8 @@ Omitting `resources` retains slot-only admission. Reservations alone do not enfo
 
 For kernel-enforced native process-tree limits, enable [Linux containment](process-containment.md). It requires explicit cgroup delegation, managed scratch and extra parent/native headroom. Uncertain cleanup retains reservations and drains the node.
 
+A failed worker identity heartbeat permanently fences that process. Kelvo stops admission, cancels work, attempts bounded cleanup and exits nonzero with `Worker coordination lease lost`. Configure supervision to restart failed nodes with backoff; verify old descendants are gone and wait for the old lease to expire before replacement. Never clear leases or replay SQL to force recovery. See [worker recovery](node-lease-recovery.md).
+
 ## Diagnostics
 
 Worker `GET /metrics` and `GET /resources` require gateway mTLS. Metrics have fixed cardinality; resource responses expose aggregate capacity, usage, waits and drain state. Neither includes SQL, credentials, sources, query IDs or tenant IDs. Keep collection internal.
@@ -40,8 +42,9 @@ Worker `GET /metrics` and `GET /resources` require gateway mTLS. Metrics have fi
 | Query phases | Validation, node admission, source admission, preparation, execution/delivery, cleanup |
 | First batch | Executor entry to first decoded Arrow record; absent for empty streams |
 | Sink callbacks | Subset of execution/delivery, not an additional phase or pure network time |
+| [Child stages](child-timings.md) | Disjoint worker stages and nested DuckDB setup/materialization/Arrow drain; unknown stages are counted separately |
 
-The startup SELECT probe counts as execution. Metrics reset on restart; there is no durable history. Optional [tracing](tracing.md) exports bounded sampled spans. Neither measures JetStream dispatch, claim delay, gateway receipt or separate overlapping source/transfer time. See [phase definitions](tracing.md#what-is-recorded).
+The startup SELECT probe counts as execution. Metrics reset on restart; there is no durable history. Optional [tracing](tracing.md) links authorized gateway and worker activity with bounded sampled spans. Broker queue time, assignment-to-claim delay and separate source/compute/transfer time remain unknown. See [phase definitions](tracing.md#what-is-recorded).
 
 ## Passive source observations
 
@@ -142,14 +145,14 @@ Map existing environment references to private files in node YAML:
 secrets:
   ttl: 30s
   files:
-    KELVO_WAREHOUSE_PASSWORD: /run/kelvo-secrets/warehouse-password
+    KELVO_SOURCE_WAREHOUSE_PASSWORD: /run/kelvo-secrets/warehouse-password
 ```
 
 Only selected-source references are resolved into the selected child's environment; catalogs retain reference names. New queries/refreshes receive current values within cache TTL. Unmapped references use environment values; configured file failure never falls back.
 
 Use service-owned regular files in trusted directories and atomic replacement. Symlinks, hardlinks, unsafe modes, NULs and values over 16 KiB fail. Preserve exact bytes without unwanted newlines. Limits: 128 files, 2 MiB retained bytes, TTL ≤5m; zero TTL disables retention. Buffer wiping is best effort.
 
-This does not rotate existing query credentials, parent object clients, NATS, gateway tokens or TLS, and adds no cloud secret-manager integration.
+This does not rotate existing query credentials, parent object clients, NATS, gateway tokens or TLS, or provider master credentials. For explicit AWS, Azure and GCP mappings, use [cloud source secrets](cloud-secrets.md).
 
 ## Source refresh failures and recovery
 
@@ -187,6 +190,8 @@ Gateway-mTLS `GET /history` returns a process-local ring, at most 1,024 entries/
 
 A record follows node execution/transfer and result-ready update. Node success does not prove gateway durable success or client receipt. This is not an audit/replay catalog or queued-job history.
 
+For bounded durable cluster receipts, configure [local audit](durable-audit.md). Its journal is separate from history, requires private disk capacity and can stop admission when recording is uncertain.
+
 ## Dataset safety validation
 
 At `ad25a3c`, ordinary/bridge/race/strict-cgo checks and real NATS quota/retry/reset tests passed. [16 acceleration checks](evidence/dataset-safety-acceptance.json) cover typed data, schema drift, restore preconditions/freshness, scheduled refresh and isolation. Integration fixes increased CAS-header space and corrected a consumer timeout; corrected tests passed.
@@ -206,3 +211,9 @@ Regression fixes covered same-generation restore lease cleanup and tracing resou
 Azure ordinary/bridge/race/strict-cgo checks, vet/builds and [four sandboxed failure cases](evidence/worker-failure-acceptance.json) passed. The same binary passed [36 single-object](evidence/snapshot-verification-object-acceptance.json), [20 multipart TLS](evidence/snapshot-verification-multipart-acceptance.json) checks and the [12-case CSV experiment](evidence/csv-memory-acceptance.json). Temporary CAs/directories were removed.
 
 These use protocol storage and injected in-memory quota/retry failures. They add no live-cloud, broker-failover, WAN, sustained-capacity or Oracle micro-VM result.
+
+## Optional aggregate metrics
+
+Node metrics default to enabled. Set `metrics: {enabled: false}` in node YAML to skip aggregate lifecycle collection and disable `/metrics`. Resource admission and `/resources` remain active. Tracing, history, source-health observations and audit have separate controls; disabling metrics does not disable them.
+
+Measure off/on with the same binary, limits, data and query order before attributing a capacity change to instrumentation.

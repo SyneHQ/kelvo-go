@@ -1,0 +1,112 @@
+{
+  "passed": true,
+  "revision": "40965ef36eeeecb608c6c9045e6c72b013bc527c",
+  "source_manifest_sha256": "5de5bf717c0235c2e1932c246711bac8e30adccfa75055933810efc059968d62",
+  "source_file_count": 957,
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "shared_bridge_unchanged": true,
+  "effective_modules_unchanged": true,
+  "binary_sha256": {
+    "kelvo": "4dd5f4347b63c54d168f4eed261f6dcdce2e5661151e558c72d3d5cb3dfd335d",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "compiler_lanes": 1,
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "failure_type": null,
+  "failure_category": null,
+  "stages": {
+    "external-modfile": {
+      "exit_code": 0,
+      "seconds": 0.003,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "python-controls": {
+      "exit_code": 0,
+      "seconds": 0.414,
+      "log_sha256": "bb57b3239afc2399f81026430e5a3a9db3710a662a9232e19f014c3d57d57f31"
+    },
+    "binary-build": {
+      "exit_code": 0,
+      "seconds": 19.548,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "launcher-build": {
+      "exit_code": 0,
+      "seconds": 0.515,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "python_controls": {
+    "passed": true,
+    "tests_run": 56,
+    "selected_tests": 56,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "expected_failures": 0,
+    "unexpected_successes": 0,
+    "loader_errors": 0,
+    "required_controls": [
+      "test_sustained_acceptance.SustainedControls.test_diagnostics_are_bounded_without_hiding_failures_or_aliasing",
+      "test_sustained_acceptance.SustainedControls.test_malformed_proc_data_remains_a_hard_failure",
+      "test_sustained_acceptance.SustainedControls.test_non_utf8_stat_is_a_hard_failure_without_status_fallback",
+      "test_sustained_acceptance.SustainedControls.test_one_stat_read_binds_rss_to_identity_even_when_pid_is_reused",
+      "test_sustained_acceptance.SustainedControls.test_open_proc_descriptors_after_child_exit_report_esrch",
+      "test_sustained_acceptance.SustainedControls.test_owned_service_watchdog_bounds_controller_loss_without_shortening_workload",
+      "test_sustained_acceptance.SustainedControls.test_proc_exit_errno_and_permission_errors_at_each_operation",
+      "test_sustained_acceptance.SustainedControls.test_real_linux_zombie_retains_numeric_zero_rss_before_reaping",
+      "test_sustained_acceptance.SustainedControls.test_rss_identity_distinguishes_exit_and_missing_from_malformed_data",
+      "test_sustained_acceptance.SustainedControls.test_rss_tails_and_final_cgroup_sample_are_mandatory",
+      "test_sustained_acceptance.SustainedControls.test_stat_rss_pages_convert_using_cached_validated_page_size"
+    ],
+    "required_controls_present": true,
+    "seconds": 0.257,
+    "log_sha256": "ab5ce3dbdf9e223ce0d278586dc600b83ca2278f71e8ea834d0e9e0c1388173f"
+  },
+  "enforced_isolation": {
+    "non_root": true,
+    "private_network": true,
+    "memory_max_bytes": 3221225472,
+    "swap_max_bytes": 0,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "tasks_max": 256
+  },
+  "enforced_watchdog": {
+    "RuntimeMaxUSec": "30min",
+    "TimeoutStopUSec": "20s",
+    "KillMode": "control-group",
+    "SendSIGKILL": "yes"
+  },
+  "shared_inputs_before": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+  },
+  "effective_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "raw_build_report_sha256": "e63e96f2712239197e61e492b5b025cf05304ab5fa9c86292cc3eb52f468aff9",
+  "unit_state": {
+    "LoadState": "not-found",
+    "ActiveState": "inactive",
+    "SubState": "dead",
+    "Result": "success",
+    "MainPID": "0"
+  },
+  "owned_service_removed": true,
+  "owned_cgroup_removed": true,
+  "reported_passed": true,
+  "source_current_match": true,
+  "binary_files_match": true,
+  "helpers_unchanged": true,
+  "controls_reconciled": true
+}

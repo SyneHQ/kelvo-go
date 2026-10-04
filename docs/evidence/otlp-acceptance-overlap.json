@@ -1,0 +1,153 @@
+{
+  "scope": "Component gate timing during the separate sustained campaign; not a performance comparison.",
+  "sustained_revision": "0544d5f013eb72598a6da608331ec8b00711866f",
+  "sustained_unit": "kelvo-sustained-c259ccfefa71.service",
+  "component_profile": {
+    "cpu": 1,
+    "memory_gib": 3,
+    "swap_bytes": 0
+  },
+  "sustained_profile": {
+    "cpu": 2,
+    "memory_gib": 6,
+    "swap_bytes": 0
+  },
+  "dedicated_host": {
+    "cpu": 4,
+    "memory_gib": 32
+  },
+  "runs": [
+    {
+      "revision": "4b54b16d17ad1938a61a0752b47b8dd7ab3ee8d0",
+      "passed": false,
+      "failure": "INCOMPLETE_DURABLE_ARROW",
+      "service_timing": {
+        "unit": "kelvo-otlp-acceptance-4b54b16d17-b1b6d7.service",
+        "source": "Exact-unit systemd PID1 journal entries; raw messages kept privately.",
+        "events": [
+          {
+            "kind": "started",
+            "journal_realtime_microseconds": 1791074545845217,
+            "utc": "2026-10-04T00:42:25.845217Z"
+          },
+          {
+            "kind": "failed_exit_code",
+            "journal_realtime_microseconds": 1791074579964667,
+            "utc": "2026-10-04T00:42:59.964667Z"
+          }
+        ],
+        "journal_interval_seconds": 34.11945
+      },
+      "observation": {
+        "observed_utc": "2026-10-04T00:43:04.680306+00:00",
+        "units": {
+          "kelvo-sustained-c259ccfefa71.service": {
+            "RuntimeMaxUSec": "2h 5min",
+            "MainPID": "946833",
+            "CPUQuotaPerSecUSec": "2s",
+            "MemoryMax": "6442450944",
+            "MemorySwapMax": "0",
+            "TasksMax": "512",
+            "LoadState": "loaded",
+            "ActiveState": "active",
+            "SubState": "running"
+          },
+          "kelvo-otlp-acceptance-4b54b16d17-b1b6d7.service": {
+            "RuntimeMaxUSec": "infinity",
+            "MainPID": "0",
+            "CPUQuotaPerSecUSec": "infinity",
+            "MemoryMax": "infinity",
+            "MemorySwapMax": "infinity",
+            "TasksMax": "38463",
+            "LoadState": "not-found",
+            "ActiveState": "inactive",
+            "SubState": "dead"
+          }
+        },
+        "both_observed_active": false
+      },
+      "independent_cleanup": {
+        "unit": "kelvo-otlp-acceptance-4b54b16d17-b1b6d7",
+        "fields": {
+          "MainPID": "0",
+          "Result": "success",
+          "LoadState": "not-found",
+          "ActiveState": "inactive",
+          "SubState": "dead"
+        },
+        "owned_service_removed": true,
+        "owned_cgroup_removed": true,
+        "passed": true,
+        "revision": "4b54b16d17ad1938a61a0752b47b8dd7ab3ee8d0"
+      },
+      "preserved_archive_sha256": "a078ca25027cf6c2702c72421d390eeba6026038ca91d9d2242a038fe1e4a7d4",
+      "preserved_archive_verified": true
+    },
+    {
+      "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+      "passed": true,
+      "failure": null,
+      "service_timing": {
+        "unit": "kelvo-otlp-acceptance-93339e79ab-688362.service",
+        "source": "Exact-unit systemd PID1 journal entries; raw messages kept privately.",
+        "events": [
+          {
+            "kind": "started",
+            "journal_realtime_microseconds": 1791075041009187,
+            "utc": "2026-10-04T00:50:41.009187Z"
+          },
+          {
+            "kind": "deactivated_successfully",
+            "journal_realtime_microseconds": 1791075091975902,
+            "utc": "2026-10-04T00:51:31.975902Z"
+          }
+        ],
+        "journal_interval_seconds": 50.966715
+      },
+      "observation": {
+        "observed_utc": "2026-10-04T00:50:50.992426+00:00",
+        "units": {
+          "kelvo-sustained-c259ccfefa71.service": {
+            "RuntimeMaxUSec": "2h 5min",
+            "MainPID": "946833",
+            "CPUQuotaPerSecUSec": "2s",
+            "MemoryMax": "6442450944",
+            "MemorySwapMax": "0",
+            "TasksMax": "512",
+            "LoadState": "loaded",
+            "ActiveState": "active",
+            "SubState": "running"
+          },
+          "kelvo-otlp-acceptance-93339e79ab-688362.service": {
+            "RuntimeMaxUSec": "30min",
+            "MainPID": "1069503",
+            "CPUQuotaPerSecUSec": "1s",
+            "MemoryMax": "3221225472",
+            "MemorySwapMax": "0",
+            "TasksMax": "256",
+            "LoadState": "loaded",
+            "ActiveState": "active",
+            "SubState": "running"
+          }
+        },
+        "both_observed_active": true
+      },
+      "independent_cleanup": {
+        "unit": "kelvo-otlp-acceptance-93339e79ab-688362",
+        "fields": {
+          "MainPID": "0",
+          "Result": "success",
+          "LoadState": "not-found",
+          "ActiveState": "inactive",
+          "SubState": "dead"
+        },
+        "owned_service_removed": true,
+        "owned_cgroup_removed": true,
+        "passed": true,
+        "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d"
+      },
+      "preserved_archive_sha256": "2fb303c592bd4874ecfa9841f3bec164634d488a14ba29ad69eff8a404bc45ce",
+      "preserved_archive_verified": true
+    }
+  ]
+}

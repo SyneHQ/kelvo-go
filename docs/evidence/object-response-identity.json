@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "scope": "Synthetic S3/R2/GCS response identity controls; no provider credentials or accounts",
+  "implementation_revision": "f34e25d",
+  "validation_base_revision": "f114838f533a29c1b8daec08a22923e39ca1af2f",
+  "base_source_manifest_sha256": "c43bd8bb83150a1727883017f7d8e533bc022a7a6c7787f0701cf3f4392d4758",
+  "candidate_source_sha256": "c8e848209b2f35391156ff8249bc182c02102b6896552e7b282c3b43f99b15af",
+  "overlay_sha256": {
+    "s3.go": "c4f10206650c16034a9d5a98b3323dd42644fe073a58c1a0f8d99947858dab88",
+    "s3_identity_test.go": "f172f1ae537171e71da3ded655e219c1e66fa7a09a09216ae013efd446b3d97e"
+  },
+  "raw_receipt_sha256": "c9cd229da5837a86d1a2c4cb125b72311210eaac136a5cafaae76bb0829c3c82",
+  "resource_budget": {
+    "cpu_percent": 100,
+    "memory_bytes": 2147483648,
+    "swap_bytes": 0,
+    "tasks": 128,
+    "watchdog_seconds": 180
+  },
+  "source_verified_after": true,
+  "passed": true,
+  "stages": {
+    "baseline-negative": {
+      "exit_code": 1,
+      "seconds": 1.767,
+      "log_sha256": "72f6eeeaefae291d6601eb04dfd7b14b2f0b8bf2476ff2683837e7810946c582",
+      "expected_regression_observed": true,
+      "counts": {
+        "pass": 0,
+        "fail": 2,
+        "skip": 0
+      },
+      "non_pass": [
+        {
+          "test": "TestS3ResponseIdentityRejectsDuplicateHeaders/s3/get/ETag/identical-values",
+          "outcome": "fail"
+        },
+        {
+          "test": "TestS3ResponseIdentityRejectsDuplicateHeaders",
+          "outcome": "fail"
+        }
+      ]
+    },
+    "objectstore-race": {
+      "exit_code": 0,
+      "seconds": 3.739,
+      "log_sha256": "8efe51ecb694f3b6a74d4dd8e86fd61e5f5bfb4b22e63716f615f96f5e2f593b",
+      "counts": {
+        "pass": 385,
+        "fail": 0,
+        "skip": 0
+      },
+      "non_pass": []
+    },
+    "objectstore-vet": {
+      "exit_code": 0,
+      "seconds": 1.316,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "counts": {
+        "pass": 0,
+        "fail": 0,
+        "skip": 0
+      },
+      "non_pass": []
+    }
+  },
+  "validation_note": "Two tested files were overlaid onto a frozen source. Their exact content hashes bind this check; complete branch validation is recorded separately."
+}

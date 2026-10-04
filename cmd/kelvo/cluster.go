@@ -60,6 +60,7 @@ func runCluster(args []string) error {
 	for _, tenant := range cfg.Tenants {
 		s, err := cluster.OpenStore(ctx, tenant.NATS, tenant.Policy, args[0] == "cluster-init")
 		if err != nil {
+			reportStoreMetadataDiagnostic(err)
 			return query.NewError("CONFIGURATION_ERROR", err.Error())
 		}
 		stores[tenant.Policy.TenantID] = s
@@ -69,6 +70,11 @@ func runCluster(args []string) error {
 			}
 			if _, err = s.OpenRefreshQueue(ctx, true); err != nil {
 				return query.NewError("CONFIGURATION_ERROR", "Acceleration dispatch could not be initialized")
+			}
+			if tenant.Policy.Exports != nil {
+				if _, err = cluster.OpenExportStore(ctx, s, true); err != nil {
+					return query.NewError("CONFIGURATION_ERROR", "Export dispatch could not be initialized")
+				}
 			}
 		}
 	}
@@ -90,7 +96,18 @@ func runCluster(args []string) error {
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
-	return serveCluster(ctx, ln, serverTLS.Config, serverTLS.Handler(gateway), func() { _ = gateway.Close() }, *drainTimeout)
+
+	var closeErr error
+	closed := make(chan struct{})
+	result := serveCluster(ctx, ln, serverTLS.Config, serverTLS.Handler(gateway), func() { closeErr = gateway.Close(); close(closed) }, *drainTimeout)
+	select {
+	case <-closed:
+		if result == nil && closeErr != nil {
+			return query.NewError("UNAVAILABLE", "Gateway shutdown remains uncertain")
+		}
+	default:
+	}
+	return result
 }
 
 func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resultErr error) {
@@ -98,6 +115,19 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
+
+	cfg.RuntimeAudit, err = cluster.OpenServiceAudit(cfg.Audit, "worker", []string{cfg.Policy.TenantID})
+	if err != nil {
+		return query.NewError("CONFIGURATION_ERROR", "Worker audit storage is unavailable")
+	}
+	auditTransferred := false
+	defer func() {
+		if !auditTransferred {
+			if err := cfg.RuntimeAudit.CloseBounded(); err != nil && resultErr == nil {
+				resultErr = query.NewError("UNAVAILABLE", "Worker audit shutdown remains uncertain")
+			}
+		}
+	}()
 	serverTLS, err := cluster.OpenServerTLS(cfg.TLS, cluster.WorkerIdentity(cfg.Policy.TenantID, cfg.WorkerID), cluster.GatewayIdentity)
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
@@ -109,6 +139,9 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	}
 	if catalogue.Acceleration != nil && catalogue.Acceleration.TenantID != cfg.Policy.TenantID {
 		return query.NewError("CONFIGURATION_ERROR", "Acceleration tenant must match worker tenant")
+	}
+	if err := cluster.ValidateExportCatalog(cfg, catalogue); err != nil {
+		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
 	executor, err := worker.New(catalogue, cfg.Policy.Limits)
 	if err != nil {
@@ -129,7 +162,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	if cfg.Secrets != nil {
 		provider, err := secrets.New(*cfg.Secrets)
 		if err != nil {
-			return query.NewError("CONFIGURATION_ERROR", "File secret provider is unavailable")
+			return query.NewError("CONFIGURATION_ERROR", "Source secret provider is unavailable")
 		}
 		defer provider.Close()
 		executor.Secrets = provider
@@ -161,7 +194,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 		}
 		executor.SourceHealth = cfg.RuntimeSourceHealth
 	}
-	cfg.RuntimeMetrics = telemetry.New()
+	cfg.RuntimeMetrics = cfg.Metrics.NewRegistry()
 	executor.Metrics = cfg.RuntimeMetrics
 	var pool *admission.Pool
 	var overhead int64
@@ -206,6 +239,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	}
 	store, err := cluster.OpenStore(ctx, cfg.NATS, cfg.Policy, false)
 	if err != nil {
+		reportStoreMetadataDiagnostic(err)
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
 	defer store.Close()
@@ -276,14 +310,20 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	if refreshQueue != nil {
 		refreshDone = make(chan error, 1)
 		go func() {
-			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeSourceHealth, executor.ScratchRoot, executor.Containment, executor.ContainmentBudget, cfg.RuntimeTracing)
+			refreshDone <- runClusterRefresh(refreshCtx, catalogue, cfg.SandboxPath, refreshQueue, pool, overhead, cfg.RuntimeMetrics, refreshGate, sourceQuotas, executor.Secrets, cfg.RuntimeSourceHealth, executor.ScratchRoot, executor.Containment, executor.ContainmentBudget, cfg.RuntimeAudit, cfg.Policy, cfg.RuntimeTracing)
 			stop()
 		}()
 	}
-	lifecycle := &nodeLifecycle{Node: node, pool: pool, refresh: refreshGate, stopRefresh: stopRefresh}
+	lifecycle := &nodeLifecycle{Node: node, pool: pool, refresh: refreshGate, stopRefresh: stopRefresh, leaseFailure: node.LeaseFailure()}
+	stopLeaseWatch := watchLeaseFailure(runCtx, node.LeaseFailure(), func() {
+		lifecycle.fence()
+		stop()
+	})
+	defer stopLeaseWatch()
 	cleanupDone := make(chan struct{})
-	var refreshErr error // read only after cleanupDone closes
+	var refreshErr, auditCloseErr error // read only after cleanupDone closes
 	datasetsTransferred = true
+	auditTransferred = true
 	result := serveCluster(runCtx, ln, serverTLS.Config, serverTLS.Handler(lifecycle), func() {
 		defer close(cleanupDone)
 		stopRefresh()
@@ -296,11 +336,15 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 		}
 		<-nodeDone
 		<-datasetsDone
+		auditCloseErr = cfg.RuntimeAudit.CloseBounded()
 	}, drainTimeout)
 	stop()
 	// serveCluster bounds both joins; never wait again after its deadline.
 	select {
 	case <-cleanupDone:
+		if auditCloseErr != nil && result == nil {
+			result = query.NewError("UNAVAILABLE", "Worker audit shutdown remains uncertain")
+		}
 		if refreshErr != nil && !errors.Is(refreshErr, context.Canceled) && result == nil {
 			result = refreshErr
 		}
@@ -309,7 +353,36 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 			result = errors.New("cluster shutdown deadline exceeded")
 		}
 	}
+	select {
+	case <-node.LeaseFailure():
+		// Do not expose the broker error, identity or lease payload. A nonzero
+		// exit lets restart-on-failure supervision create a fresh fenced owner.
+		return workerLeaseFailure()
+	default:
+	}
 	return result
+}
+
+func workerLeaseFailure() error {
+	return query.NewError("UNAVAILABLE", "Worker coordination lease lost")
+}
+
+// The returned stop joins the watcher. Cancellation alone never calls failed;
+// callers independently inspect the durable failure channel for final status.
+func watchLeaseFailure(parent context.Context, failure <-chan struct{}, failed func()) func() {
+	ctx, cancel := context.WithCancel(parent)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		select {
+		case <-failure:
+			if ctx.Err() == nil {
+				failed()
+			}
+		case <-ctx.Done():
+		}
+	}()
+	return func() { cancel(); <-done }
 }
 
 func serveCluster(ctx context.Context, ln net.Listener, tc *tls.Config, handler http.Handler, closeHandler func(), drainTimeout time.Duration) error {
@@ -362,14 +435,22 @@ type drainingNode interface {
 	Drain(context.Context) error
 }
 type nodeLifecycle struct {
-	Node        drainingNode
-	pool        *admission.Pool
-	refresh     *refreshGate
-	stopRefresh context.CancelFunc
+	Node         drainingNode
+	pool         *admission.Pool
+	refresh      *refreshGate
+	stopRefresh  context.CancelFunc
+	leaseFailure <-chan struct{}
 }
 
 func (n *nodeLifecycle) ServeHTTP(w http.ResponseWriter, r *http.Request) { n.Node.ServeHTTP(w, r) }
 func (n *nodeLifecycle) Drain(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stopWatch := watchLeaseFailure(ctx, n.leaseFailure, func() {
+		n.fence()
+		cancel() // Permanent fencing skips grace; bounded close still joins work.
+	})
+	defer stopWatch()
 	n.Node.BeginDrain()
 	n.refresh.Drain()
 	err := n.Node.Drain(ctx)
@@ -384,4 +465,20 @@ func (n *nodeLifecycle) Drain(ctx context.Context) error {
 	}
 	n.stopRefresh()
 	return err
+}
+
+func (n *nodeLifecycle) fence() {
+	n.Node.BeginDrain()
+	n.refresh.Drain()
+	if n.pool != nil {
+		n.pool.Drain()
+	}
+	n.stopRefresh()
+}
+
+// The usual terminal error remains the final line for callers which match it.
+func reportStoreMetadataDiagnostic(err error) {
+	if diagnostic, ok := cluster.StoreMetadataDiagnostic(err); ok {
+		fmt.Fprintln(os.Stderr, "KELVO_CLUSTER_METADATA "+diagnostic)
+	}
 }
