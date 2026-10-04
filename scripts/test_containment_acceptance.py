@@ -20,7 +20,7 @@ TEST_USER = "fixture-user"
 def live_service(parent=None):
     properties = {key: str(value) for key, value in fixture.LIVE_NUMERIC_LIMITS.items()}
     properties.update(CPUQuotaPerSecUSec="1s", RuntimeMaxUSec="10min", TimeoutStopUSec="30s",
-                      Id=TEST_UNIT + ".service", Description=TEST_DESCRIPTION, InvocationID="b" * 32,
+                      Id=TEST_UNIT + ".service", Description=TEST_DESCRIPTION, InvocationID="b" * 32, MainPID="1234",
                       User=TEST_USER, Transient="yes", ControlGroup="/system.slice/" + TEST_UNIT + ".service",
                       ActiveState="active", LoadState="loaded", Delegate="yes", KillMode="control-group",
                       Requisite=parent or "", BindsTo=parent or "", After="sysinit.target" + (" " + parent if parent else ""))
@@ -129,6 +129,12 @@ class ContainmentControls(unittest.TestCase):
             self.assertEqual(fixture.duration_usec(value), expected)
         for value in (None, False, "infinity", "600", "-1s", "10minjunk", "1e3ms", "1s\n", "1s  1s"):
             self.assertIsNone(fixture.duration_usec(value), value)
+
+    def test_live_readback_requires_an_original_positive_main_pid(self):
+        for value in ("0", "-1", "01", "+1", "1.0", "1e3", " 1234", "1234\n", "", None, True, 1234):
+            report = valid_report(protected=True)
+            report["live_service"]["properties"]["MainPID"] = value
+            self.assertFalse(fixture.reconcile(report), value)
 
     def test_live_readback_is_retained_and_rejects_duplicate_unknown_missing_or_failed_output(self):
         evidence = live_service()

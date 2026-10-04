@@ -59,7 +59,7 @@ RESOURCE_LIMITS = {"MemoryMax": "1G", "MemorySwapMax": "0", "CPUQuota": "100%", 
 LIVE_NUMERIC_LIMITS = {"MemoryMax": 1 << 30, "MemorySwapMax": 0, "TasksMax": 256,
                        "LimitFSIZE": 5 << 30, "LimitFSIZESoft": 5 << 30}
 LIVE_TIME_LIMITS = {"CPUQuotaPerSecUSec": 1_000_000, "RuntimeMaxUSec": 600_000_000, "TimeoutStopUSec": 30_000_000}
-LIVE_PROPERTIES = {*LIVE_NUMERIC_LIMITS, *LIVE_TIME_LIMITS, "Id", "Description", "InvocationID", "User",
+LIVE_PROPERTIES = {*LIVE_NUMERIC_LIMITS, *LIVE_TIME_LIMITS, "Id", "Description", "InvocationID", "MainPID", "User",
                    "Transient", "ControlGroup", "ActiveState", "LoadState", "Delegate", "KillMode",
                    "Requisite", "BindsTo", "After"}
 
@@ -227,6 +227,7 @@ def valid_live_service(evidence, unit, description, user, parent=None):
                 "Transient": "yes", "Delegate": "yes", "KillMode": "control-group"}
     if (any(properties[key] != value for key, value in expected.items())
             or not re.fullmatch(r"[0-9a-f]{32}", properties["InvocationID"])
+            or not re.fullmatch(r"[1-9][0-9]*", properties["MainPID"])
             or any(properties[key] != str(value) for key, value in LIVE_NUMERIC_LIMITS.items())
             or any(duration_usec(properties[key]) != value for key, value in LIVE_TIME_LIMITS.items())):
         return False
