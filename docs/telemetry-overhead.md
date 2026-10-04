@@ -62,3 +62,33 @@ python3 scripts/telemetry_overhead/format_summary.py \
 The [first smoke](evidence/telemetry-overhead-smoke-93339e7-failed.json) stopped at the campaign guard before creating queries. Its guard searched every `systemctl` column and could match a path in DESCRIPTION; the original offending row was not retained. The corrected guard checks complete UNIT names.
 
 The [corrected smoke](evidence/telemetry-overhead-smoke-93339e7.json) passed both epochs and all eight warmup/measured queries, with exact Arrow results, no tracing traffic and independent cleanup. All 13 VM controls passed (nine harness and four outer controls). Both attempts remain recorded.
+
+## Recorded full comparison
+
+All 48 epochs passed on runtime `93339e7`: 96 warmups and 96 measured queries, exact Arrow answers, reconciled collector ledgers and independent service/cgroup cleanup. Host trust and frozen inputs stayed unchanged. [Full receipt](evidence/telemetry-overhead-full-93339e7.json).
+
+Local fixture: one worker, one million Parquet source rows, and a total service quota of 2 CPU / 6 GiB.
+
+Warmups are excluded. Timings cover submission through complete body receipt; client Arrow validation is excluded. Tracing comparisons keep metrics enabled. Ratios are variant/baseline; above 1 means slower.
+
+**Aggregate CTE: one million source rows, ten groups returned**
+
+| Comparison | Baseline median (ms) | Variant median (ms) | Median paired ratio | Ratio IQR | Paired ratio min–max |
+|---|---:|---:|---:|---:|---:|
+| Metrics: off to on | 101.950 | 104.860 | 1.030x | 0.015 | 0.988x–1.037x |
+| Tracing: off to 0% | 102.969 | 103.011 | 1.000x | 0.018 | 0.988x–1.014x |
+| Tracing: off to 10% | 104.369 | 103.704 | 0.999x | 0.012 | 0.967x–1.052x |
+| Tracing: off to 100% | 103.147 | 102.454 | 0.995x | 0.010 | 0.987x–1.014x |
+
+**Transfer CTE: one million ordered rows returned**
+
+| Comparison | Baseline median (ms) | Variant median (ms) | Median paired ratio | Ratio IQR | Paired ratio min–max |
+|---|---:|---:|---:|---:|---:|
+| Metrics: off to on | 301.878 | 309.207 | 1.030x | 0.080 | 0.903x–1.102x |
+| Tracing: off to 0% | 303.313 | 306.794 | 1.008x | 0.040 | 0.938x–1.062x |
+| Tracing: off to 10% | 301.551 | 307.980 | 1.031x | 0.087 | 0.933x–1.126x |
+| Tracing: off to 100% | 308.620 | 321.455 | 1.073x | 0.102 | 0.972x–1.139x |
+
+Six matched pairs per comparison; IQR is the 75th–25th percentile spread of paired ratios. Ratios are raw observations; IQR/min–max describe spread, not confidence intervals or statistical significance. 48 epochs, 96 measured queries and 96 warmups. These fixture measurements do not establish production capacity.
+
+[Measured runtime 93339e79ab13](https://github.com/SYNEHQ/kelvo-go/commit/93339e79ab135b6d1c2c09da04a00f3e711fd24d).

@@ -22,7 +22,7 @@ Use 1 CPU, 3 GiB RAM, no swap and a watchdog. The fixture installs no packages. 
 
 A missing queued-wait span makes the run inconclusive and failed; it is not proof of a product defect. Failed runs retain their failure and cleanup state. No cross-host timestamp subtraction or pure source/compute attribution is claimed.
 
-See [tracing configuration](tracing.md), [worker timing metrics](child-timings.md) and [validation rules](validation.md).
+See [tracing configuration](tracing.md), [worker timing metrics](child-timings.md), [telemetry measurement](telemetry-overhead.md) and [validation rules](validation.md).
 
 ## Recorded result
 

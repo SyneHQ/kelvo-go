@@ -4,6 +4,8 @@ This is recorded developer-preview evidence, tied to specific binaries and fixtu
 
 Latest: [durable export validation](export-validation.md) covers the combined worker, broker, transport and crash checks on `d144a43`; [export CI diagnostics](export-ci-diagnostics.md) retains a later unresolved failure and a separate passing isolated reproduction.
 
+The [telemetry comparison](telemetry-overhead.md#recorded-full-comparison) passed all 48 epochs on `93339e7`, with 96 warmups and 96 measured queries. Paired metrics/tracing ratios describe one local million-row fixture; they do not establish deployment capacity or separate source/compute time. Both smoke attempts and full cleanup evidence are retained.
+
 The [pinned worker-capacity gate](node-capacity.md) also passed on `d144a43` with observer `9cad904`: five matched metrics on/off pairs, 130/130 workload queries and a separate 3/3 preflight. Its warm-cache, worker-only scope excludes the Azure gateway, NATS, source database and SSH tunnels; broader sustained and deployment capacity remain separate.
 
 ## Expanded federation and public adapter SDK
