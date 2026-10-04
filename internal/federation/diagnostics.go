@@ -62,7 +62,7 @@ func diagnosticPredicate(filter federationapi.Filter, left *int, truncated *bool
 		*truncated = true
 	}
 	switch result.Type {
-	case "", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "bool":
+	case "", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "bool", "date32":
 	default:
 		result.Type = "unknown"
 		*truncated = true

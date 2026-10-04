@@ -6,6 +6,7 @@
 #include "duckdb.h"
 #include "duckdb/catalog/catalog_entry/table_function_catalog_entry.hpp"
 #include "duckdb/common/arrow/arrow_wrapper.hpp"
+#include "duckdb/execution/operator/scan/physical_table_scan.hpp"
 #include "duckdb/function/table/arrow.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/main/extension/extension_loader.hpp"
@@ -15,6 +16,7 @@
 #include "duckdb/planner/filter/optional_filter.hpp"
 #include <cstring>
 #include <new>
+#include <string>
 
 using namespace duckdb;
 
@@ -39,6 +41,7 @@ LogicalType PredicateType(uint8_t type) {
 	case KELVO_PREDICATE_UINT16: return LogicalType::USMALLINT;
 	case KELVO_PREDICATE_UINT32: return LogicalType::UINTEGER;
 	case KELVO_PREDICATE_UINT64: return LogicalType::UBIGINT;
+	case KELVO_PREDICATE_DATE32: return LogicalType::DATE;
 	default: return LogicalType::INVALID;
 	}
 }
@@ -81,8 +84,20 @@ string ConstantType(const Value &value) {
 	case LogicalTypeId::USMALLINT: return "uint16";
 	case LogicalTypeId::UINTEGER: return "uint32";
 	case LogicalTypeId::UBIGINT: return "uint64";
+	case LogicalTypeId::DATE: return "date32";
 	default: return Unsupported();
 	}
+}
+
+string ConstantValue(const Value &value) {
+	if (value.IsNull()) { return Unsupported(); }
+	if (value.type().id() == LogicalTypeId::DATE) {
+		// DATE comparisons and Arrow Date32 use the same signed day count.
+		// Preserve infinity sentinels too; calendar text or Unix seconds would
+		// change the domain and can clamp at a source's supported date range.
+		return std::to_string(DateValue::Get(value).days);
+	}
+	return value.ToString();
 }
 
 string FilterJSON(const TableFilter &filter, const string &column, idx_t depth) {
@@ -108,7 +123,7 @@ string FilterJSON(const TableFilter &filter, const string &column, idx_t depth) 
 		default: return Unsupported();
 		}
 		return "{\"kind\":\"comparison\",\"column\":" + JsonString(column) + ",\"op\":" + JsonString(op) +
-		       ",\"type\":" + JsonString(ConstantType(comparison.constant)) + ",\"value\":" + JsonString(comparison.constant.ToString()) + "}";
+		       ",\"type\":" + JsonString(ConstantType(comparison.constant)) + ",\"value\":" + JsonString(ConstantValue(comparison.constant)) + "}";
 	}
 	case TableFilterType::CONJUNCTION_AND:
 	case TableFilterType::CONJUNCTION_OR: {
@@ -159,11 +174,12 @@ string OptionalConstantType(const Value &value) {
 	}
 }
 
-void OptionalInPlans(const TableFilter &filter, const string &column, idx_t depth, vector<OptionalInPlan> &plans) {
+void OptionalInPlans(const TableFilter &filter, const string &column, const LogicalType &expected,
+                     idx_t depth, vector<OptionalInPlan> &plans) {
 	if (depth > 32 || plans.size() >= 256) { return; }
 	if (filter.filter_type == TableFilterType::CONJUNCTION_AND) {
 		for (auto &child : filter.Cast<ConjunctionAndFilter>().child_filters) {
-			OptionalInPlans(*child, column, depth + 1, plans);
+			OptionalInPlans(*child, column, expected, depth + 1, plans);
 		}
 		return;
 	}
@@ -174,6 +190,7 @@ void OptionalInPlans(const TableFilter &filter, const string &column, idx_t dept
 	if (!optional.child_filter || optional.child_filter->filter_type != TableFilterType::IN_FILTER) { return; }
 	auto &values = optional.child_filter->Cast<InFilter>().values;
 	if (values.empty() || values.size() > 256) { return; }
+	if (expected == LogicalType::INVALID || values[0].type() != expected) { return; }
 	auto kind = OptionalConstantType(values[0]);
 	if (kind.empty()) { return; }
 	string children;
@@ -206,7 +223,7 @@ idx_t MandatoryFilterNodes(const TableFilter &filter, idx_t depth) {
 	return nodes;
 }
 
-string PlanJSON(ArrowStreamParameters &parameters) {
+string PlanJSON(const FactoryState &factory, ArrowStreamParameters &parameters) {
 	string json = "{\"columns\":[";
 	for (idx_t i = 0; i < parameters.projected_columns.columns.size(); i++) {
 		if (i) { json += ","; }
@@ -220,7 +237,12 @@ string PlanJSON(ArrowStreamParameters &parameters) {
 			auto name = parameters.projected_columns.projection_map.find(entry.first);
 			if (name == parameters.projected_columns.projection_map.end()) { return Unsupported(); }
 			auto filter = FilterJSON(*entry.second, name->second, 0);
-			OptionalInPlans(*entry.second, name->second, 0, optional);
+			// Arrow maps a projected filter index back to the original schema.
+			// A late join hint must not authorize a column the factory excluded.
+			auto ordinal = parameters.projected_columns.filter_to_col.find(entry.first);
+			if (ordinal != parameters.projected_columns.filter_to_col.end() && ordinal->second < factory.predicate_types.size()) {
+				OptionalInPlans(*entry.second, name->second, factory.predicate_types[ordinal->second], 0, optional);
+			}
 			if (filter.empty()) { continue; }
 			if (filters++) { json += ","; }
 			nodes += MandatoryFilterNodes(*entry.second, 0);
@@ -244,7 +266,7 @@ string PlanJSON(ArrowStreamParameters &parameters) {
 unique_ptr<ArrowArrayStreamWrapper> Produce(uintptr_t pointer, ArrowStreamParameters &parameters) {
 	auto factory = reinterpret_cast<FactoryState *>(pointer);
 	string plan;
-	try { plan = PlanJSON(parameters); }
+	try { plan = PlanJSON(*factory, parameters); }
 	catch (...) { kelvo_go_fail(factory->handle, 1); throw; }
 	auto stream = make_uniq<ArrowArrayStreamWrapper>();
 	stream->number_of_rows = -1;
@@ -253,6 +275,37 @@ unique_ptr<ArrowArrayStreamWrapper> Produce(uintptr_t pointer, ArrowStreamParame
 		throw InvalidInputException("Native source could not produce an Arrow stream");
 	}
 	return stream;
+}
+
+unique_ptr<GlobalTableFunctionState> InitGlobal(ClientContext &context, TableFunctionInitInput &input) {
+	if (!input.op || input.op->type != PhysicalOperatorType::TABLE_SCAN || !input.bind_data) {
+		throw NotImplementedException("Native source scan origin is unavailable");
+	}
+	const auto &scan = input.op->Cast<PhysicalTableScan>();
+	if (scan.bind_data.get() != input.bind_data.get() || scan.function.init_global != InitGlobal) {
+		throw NotImplementedException("Native source scan origin is invalid");
+	}
+	if (!scan.dynamic_filters || !input.filters) {
+		return ArrowTableFunction::ArrowScanInitGlobal(context, input);
+	}
+	// v1.5.6 adds dynamic join filters after supports_pushdown_type is checked.
+	// Keep every static mandatory filter. Only the separately identified late
+	// additions may be omitted for ineligible columns; the join still enforces
+	// them, including singleton hints represented as ordinary ConstantFilter.
+	auto selected = scan.table_filters ? scan.table_filters->Copy() : make_uniq<TableFilterSet>();
+	for (auto &entry : input.filters->filters) {
+		if (entry.first >= input.column_ids.size()) {
+			throw NotImplementedException("Native source filter column is unavailable");
+		}
+		if (SupportsPushdown(*input.bind_data, input.column_ids[entry.first])) {
+			selected->filters[entry.first] = entry.second->Copy();
+		}
+	}
+	// The pinned Arrow global initializer consumes this copy synchronously.
+	// Do not mutate input: local initialization retains DuckDB's own filters.
+	TableFunctionInitInput source_input(input.bind_data, input.column_indexes, input.projection_ids, selected.get(),
+	                                   input.sample_options, input.op);
+	return ArrowTableFunction::ArrowScanInitGlobal(context, source_input);
 }
 
 void Schema(ArrowArrayStream *pointer, ArrowSchema &schema) {
@@ -326,6 +379,7 @@ extern "C" int kelvo_factory_register(void *factory, void *connection, const cha
 		auto scan = loader.GetTableFunction("arrow_scan").functions.GetFunctionByOffset(0);
 		scan.name = function_name;
 		scan.supports_pushdown_type = SupportsPushdown;
+		scan.init_global = InitGlobal;
 		loader.RegisterFunction(scan);
 		auto relation = conn->TableFunction(function_name, {Value::POINTER(reinterpret_cast<uintptr_t>(factory)), Value::POINTER(reinterpret_cast<uintptr_t>(Produce)), Value::POINTER(reinterpret_cast<uintptr_t>(Schema))});
 		relation->CreateView(schema, name, false, false);

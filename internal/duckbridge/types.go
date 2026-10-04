@@ -12,8 +12,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 )
 
-// PredicateCapabilities explicitly allows the existing integer/Boolean filter
-// vocabulary on named fields of the exposed schema. Empty keeps query predicates
+// PredicateCapabilities explicitly allows integer, Boolean and Date32 filters
+// on named fields of the exposed schema. Empty keeps query predicates
 // in DuckDB; it does not control independent authorization predicates.
 type PredicateCapabilities struct{ Columns []string }
 
@@ -33,6 +33,8 @@ func predicateScalarType(id arrow.Type) (predicateScalar, bool) {
 		return predicateScalar{"int16", 16, true}, true
 	case arrow.INT32:
 		return predicateScalar{"int32", 32, true}, true
+	case arrow.DATE32:
+		return predicateScalar{"date32", 32, true}, true
 	case arrow.INT64:
 		return predicateScalar{"int64", 64, true}, true
 	case arrow.UINT8:
@@ -159,7 +161,8 @@ type ScanPlan = federation.ScanPlan
 
 // Filter is a typed predicate, never source SQL. Kinds are comparison, is_null,
 // is_not_null, and, or. Comparisons use eq/ne/lt/le/gt/ge and exact lexical values
-// with type int8/int16/int32/int64/uint8/uint16/uint32/uint64/bool.
+// with type int8/int16/int32/int64/uint8/uint16/uint32/uint64/bool/date32.
+// Date32 uses signed Int32 epoch days, including DuckDB's infinity sentinels.
 type Filter = federation.Filter
 
 // Producer returns an owned reader whose schema and columns follow plan.Columns.

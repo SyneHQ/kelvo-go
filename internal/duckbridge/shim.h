@@ -15,7 +15,8 @@ enum kelvo_predicate_type {
 	KELVO_PREDICATE_UINT8,
 	KELVO_PREDICATE_UINT16,
 	KELVO_PREDICATE_UINT32,
-	KELVO_PREDICATE_UINT64
+	KELVO_PREDICATE_UINT64,
+	KELVO_PREDICATE_DATE32
 };
 struct kelvo_predicate_column {
 	uint32_t ordinal;

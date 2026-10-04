@@ -140,3 +140,59 @@ func TestDiagnosticsBoundNestedFiltersAndInvalidVocabulary(t *testing.T) {
 		t.Fatal("diagnostics enabled by default")
 	}
 }
+
+func TestDiagnosticsKeepDate32ShapeWithoutSignedDayLiteral(t *testing.T) {
+	ctx, collector := WithScanDiagnostics(context.Background())
+	schema := date32CompilerTable().schema
+	table, err := newTable(ctx, testSource(), registeredTable, query.DefaultLimits(), func(catalog.Config, query.Limits) (execution, error) {
+		return &fakeExecutor{run: func(_ context.Context, request query.Request, sink query.Sink) error {
+			if err := sink.Schema(schema); err != nil {
+				return err
+			}
+			if strings.HasSuffix(request.SQL, " LIMIT 0") {
+				return nil
+			}
+			if !strings.Contains(request.SQL, "toInt32(`event_day`) = CAST('918273645' AS Int32)") {
+				return errors.New("required Date32 filter was removed")
+			}
+			return errors.New("private-date-source-error")
+		}}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+	plan := federationapi.ScanPlan{Columns: []string{"id", "event_day"}, Filters: []federationapi.Filter{
+		{Kind: "comparison", Column: "event_day", Op: "eq", Type: "date32", Value: "918273645"},
+	}}
+	reader, err := table.Scan(ctx, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reader.Next() || reader.Err() == nil {
+		t.Fatal("failed Date32 source scan was reported as successful")
+	}
+	reader.Release()
+	_ = table.Close()
+	report := collector.Snapshot()
+	if len(report.Scans) != 1 || report.Truncated || len(report.Scans[0].Predicates) != 1 {
+		t.Fatalf("Date32 diagnostic missing or truncated: %+v", report)
+	}
+	scan := report.Scans[0]
+	predicate := scan.Predicates[0]
+	if predicate.Kind != "comparison" || predicate.Column != "event_day" || predicate.Operator != "eq" || predicate.Type != "date32" || scan.Outcome != "error" || scan.ResidualVisibility != "not_observed" {
+		t.Fatalf("Date32 diagnostic changed: %+v", scan)
+	}
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, private := range []string{"918273645", "private-date-source-error", "CAST(", "SELECT", "KELVO_SOURCE"} {
+		if strings.Contains(string(encoded), private) {
+			t.Fatalf("Date32 diagnostic exposed %q", private)
+		}
+	}
+	if plan.Filters[0].Value != "918273645" {
+		t.Fatal("diagnostics changed the required Date32 predicate")
+	}
+}

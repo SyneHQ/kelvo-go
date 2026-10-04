@@ -159,10 +159,19 @@ func (p *predicateCompiler) compile(filter duckbridge.Filter, depth int) (string
 	if err != nil {
 		return "", err
 	}
+	if filter.Type == "date32" {
+		// Date32 is compared as its exact signed epoch-day storage. toInt32
+		// preserves ClickHouse Nullable even when CAST would remove it; the
+		// projected column and the IS NULL branches above remain unchanged.
+		column = "toInt32(" + column + ")"
+	}
 	return "(" + column + " " + operator + " " + constant + ")", nil
 }
 func (d scanDialect) exactConstant(kind, value string, column arrow.DataType) (string, error) {
-	unsupported := query.NewError("UNSUPPORTED", "Federation predicates require exact matching integer or boolean types")
+	unsupported := query.NewError("UNSUPPORTED", "Federation predicate requires an exact supported source type")
+	if kind == "date32" && d != dialectClickHouse {
+		return "", unsupported
+	}
 	if kind == "bool" {
 		if column.ID() != arrow.BOOL || (value != "true" && value != "false") || d == dialectMySQL || d == dialectOracle {
 			return "", unsupported
@@ -184,6 +193,7 @@ func (d scanDialect) exactConstant(kind, value string, column arrow.DataType) (s
 	}{
 		"int8": {arrow.INT8, 8, true, "Int8"}, "int16": {arrow.INT16, 16, true, "Int16"}, "int32": {arrow.INT32, 32, true, "Int32"}, "int64": {arrow.INT64, 64, true, "Int64"},
 		"uint8": {arrow.UINT8, 8, false, "UInt8"}, "uint16": {arrow.UINT16, 16, false, "UInt16"}, "uint32": {arrow.UINT32, 32, false, "UInt32"}, "uint64": {arrow.UINT64, 64, false, "UInt64"},
+		"date32": {arrow.DATE32, 32, true, "Int32"},
 	}
 	typ, found := types[kind]
 	if !found || column.ID() != typ.id || len(value) > 21 {
@@ -241,5 +251,7 @@ func (d scanDialect) exactConstant(kind, value string, column arrow.DataType) (s
 	// Validated decimal strings and typed CAST avoid any floating-literal path,
 	// including UInt64 max and Int64 min. MySQL casts to exact 64-bit integers;
 	// PostgreSQL's only native unsigned column type here is the 32-bit OID.
+	// Date32 includes the full physical Int32 day domain, including DuckDB's
+	// infinity sentinels. It never depends on a source calendar or date parser.
 	return "CAST('" + value + "' AS " + castType + ")", nil
 }

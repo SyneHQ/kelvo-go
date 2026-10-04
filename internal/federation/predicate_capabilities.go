@@ -7,7 +7,7 @@ import (
 )
 
 // PredicateCapabilities identifies exposed columns whose effective executor can
-// enforce the bridge's complete existing integer/Boolean predicate vocabulary.
+// enforce the bridge's complete predicate vocabulary for that column type.
 // Discovery is already complete; this method never calls an adapter or source.
 func (t *Table) PredicateCapabilities() duckbridge.PredicateCapabilities {
 	var result duckbridge.PredicateCapabilities
@@ -42,6 +42,13 @@ func (t *Table) PredicateCapabilities() duckbridge.PredicateCapabilities {
 			kind, value = field.Type.Name(), "0"
 		case arrow.BOOL:
 			kind, value = "bool", "false"
+		case arrow.DATE32:
+			// The local guard has no Date32 evaluator. Custom and snapshot
+			// paths are excluded above; only native ClickHouse can enforce it.
+			if t.guard != nil || t.dialect != dialectClickHouse {
+				continue
+			}
+			kind, value = "date32", "0"
 		default:
 			continue
 		}
