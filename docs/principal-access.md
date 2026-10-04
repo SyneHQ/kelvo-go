@@ -26,6 +26,8 @@ policy:
 
 Grant source IDs from the worker catalog. A snapshot dataset can appear in `federated_sources`; that grants the whole published dataset. Unlisted sources are denied. `allow_literal_queries` permits queries selecting no catalog sources, such as `SELECT 1`; it does not attach additional sources.
 
+To pin those IDs to catalog definitions, add an optional [catalog binding](catalog-authority.md). Generate it with `kelvo catalog-fingerprint --config kelvo.yml`, then install the same version-1 digest in `policy.access.catalog_binding` on the gateway and every worker. Omitting it preserves legacy unbound behavior.
+
 Limits: 64 principals per tenant, 64 source IDs per mode, and explicit `user` or `service` kinds. No wildcards. A principal with empty grants is disabled for queries.
 
 ## 2. Bind keys

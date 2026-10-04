@@ -59,6 +59,10 @@ func NewExportRuntime(cfg NodeConfig, store ExportStore, executor *worker.Execut
 	if executor == nil || cfg.SandboxPath == "" || executor.SandboxPath != cfg.SandboxPath || executor.ResourcePool == nil || cfg.Resources == nil || store == nil || !reflect.DeepEqual(cfg.Policy, store.Policy()) || !validOwner(owner) || cfg.Policy.Workers[cfg.WorkerID] < 1 {
 		return nil, exports.ErrInvalid
 	}
+	executor, err := bindCatalogExecutor(cfg.Policy, executor)
+	if err != nil {
+		return nil, err
+	}
 	if err := validateNodeExports(cfg); err != nil {
 		return nil, err
 	}

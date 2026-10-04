@@ -24,6 +24,9 @@ func TestMain(m *testing.M) {
 	if len(os.Args) == 2 {
 		switch os.Args[1] {
 		case "worker":
+			if os.Getenv("KELVO_SOURCE_CATALOG_TOKEN") == catalogChildToken {
+				os.Exit(catalogAuthorityChild())
+			}
 			os.Exit(testWorkerMain())
 		case "--group-child":
 			time.Sleep(time.Hour)

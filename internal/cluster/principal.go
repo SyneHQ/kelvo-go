@@ -13,6 +13,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/access"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
 
 // PrincipalPolicy grants source access and optional callback-federation row
@@ -20,8 +21,9 @@ import (
 // A change requires draining and reprovisioning the tenant's broker account:
 // OpenStore rejects replicas with any different durable policy metadata.
 type PrincipalPolicy struct {
-	Revision   uint64                    `json:"revision" yaml:"revision"`
-	Principals map[string]PrincipalGrant `json:"principals" yaml:"principals"`
+	Revision       uint64                    `json:"revision" yaml:"revision"`
+	Principals     map[string]PrincipalGrant `json:"principals" yaml:"principals"`
+	CatalogBinding *CatalogBinding           `json:"catalog_binding,omitempty" yaml:"catalog_binding,omitempty"`
 }
 
 type PrincipalGrant struct {
@@ -53,6 +55,9 @@ func validatePrincipalPolicy(p *PrincipalPolicy) error {
 		return nil
 	}
 	bad := errors.New("invalid principal source policy")
+	if !validCatalogBinding(p.CatalogBinding) {
+		return bad
+	}
 	if p.Revision == 0 || len(p.Principals) == 0 || len(p.Principals) > 64 {
 		return bad
 	}
@@ -243,6 +248,18 @@ func (a *gatewayAuthenticator) active(ctx context.Context) bool {
 func executionAuthorityContext(ctx context.Context, p Policy, authority *JobAuthority, request query.Request) (context.Context, error) {
 	if err := validateJobAuthority(p, authority, request); err != nil {
 		return nil, err
+	}
+	expected := ""
+	if p.Access != nil && p.Access.CatalogBinding != nil {
+		if !validCatalogBinding(p.Access.CatalogBinding) {
+			return nil, errCatalogAuthority
+		}
+		expected = p.Access.CatalogBinding.SHA256
+	}
+	var err error
+	ctx, err = worker.WithCatalogAuthority(ctx, expected)
+	if err != nil {
+		return nil, errCatalogAuthority
 	}
 	if authority == nil {
 		return ctx, nil

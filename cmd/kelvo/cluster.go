@@ -137,6 +137,9 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Worker catalog cannot be loaded")
 	}
+	if err := cluster.ValidateCatalogAuthority(cfg.Policy, catalogue); err != nil {
+		return query.NewError("CONFIGURATION_ERROR", err.Error())
+	}
 	if catalogue.Acceleration != nil && catalogue.Acceleration.TenantID != cfg.Policy.TenantID {
 		return query.NewError("CONFIGURATION_ERROR", "Acceleration tenant must match worker tenant")
 	}
