@@ -86,7 +86,7 @@ func decodeObjectDescriptor(data []byte) (objectGenerationDescriptor, error) {
 	return d, nil
 }
 
-func (backend *objectBackend) loadObjectSnapshot(ctx context.Context, dataset string, committed *objectCommitted, reference time.Time, client objectstore.Client) (Snapshot, error) {
+func (backend *objectBackend) loadObjectSnapshot(ctx context.Context, dataset string, committed *objectCommitted, reference time.Time, client objectstore.Client) (snapshot Snapshot, resultErr error) {
 	if committed == nil {
 		return Snapshot{}, ErrNotFound
 	}
@@ -102,10 +102,24 @@ func (backend *objectBackend) loadObjectSnapshot(ctx context.Context, dataset st
 	ref := committed.Descriptor
 	key := backend.key(dataset, objectDescriptorName(committed.Generation))
 	body, info, err := client.Get(ctx, key, ref.ObjectVersion)
+	if backend.protected() && !nilReaderDependency(body) {
+		defer func() {
+			finishProtectedRead(body, &resultErr)
+			if resultErr != nil {
+				snapshot = Snapshot{}
+			}
+		}()
+	}
 	if err != nil {
 		return Snapshot{}, err
 	}
-	defer body.Close()
+	if backend.protected() {
+		if nilReaderDependency(body) {
+			return Snapshot{}, ErrCorrupt
+		}
+	} else {
+		defer body.Close()
+	}
 	if info.Size != ref.Bytes || info.Version != ref.ObjectVersion || info.SHA256 != committed.SHA256 {
 		return Snapshot{}, fmt.Errorf("%w: object descriptor metadata changed", ErrCorrupt)
 	}
@@ -126,7 +140,7 @@ func (backend *objectBackend) loadObjectSnapshot(ctx context.Context, dataset st
 	if descriptor.Dataset != dataset || descriptor.Generation != committed.Generation || descriptor.SchemaHash != committed.SchemaHash || descriptor.Rows != committed.Rows || descriptor.Bytes != committed.Bytes || len(descriptor.Parts) != ref.PartCount {
 		return Snapshot{}, fmt.Errorf("%w: descriptor identity or totals differ from manifest", ErrCorrupt)
 	}
-	snapshot := Snapshot{Dataset: dataset, Generation: committed.Generation, SchemaHash: committed.SchemaHash, Fingerprint: committed.Fingerprint, SHA256: committed.SHA256, Rows: committed.Rows, Bytes: committed.Bytes, RefreshedAt: committed.RefreshedAt, Parts: make([]SnapshotPart, len(descriptor.Parts))}
+	snapshot = Snapshot{Dataset: dataset, Generation: committed.Generation, SchemaHash: committed.SchemaHash, Fingerprint: committed.Fingerprint, SHA256: committed.SHA256, Rows: committed.Rows, Bytes: committed.Bytes, RefreshedAt: committed.RefreshedAt, Parts: make([]SnapshotPart, len(descriptor.Parts))}
 	for index, part := range descriptor.Parts {
 		snapshot.Parts[index] = SnapshotPart{Rows: part.Rows, Bytes: part.Bytes, SHA256: part.SHA256, ObjectVersion: part.ObjectVersion, ObjectKey: backend.key(dataset, multipartName(committed.Generation, index))}
 	}
@@ -193,7 +207,7 @@ func (backend *objectBackend) objectSnapshotSchema(ctx context.Context, snapshot
 			}
 		}
 		var rows int64
-		schema, err := readParquetSchema(&schemaObjectReader{ctx: ctx, client: ranges, snapshot: part}, part.Bytes, &rows)
+		schema, err := readParquetSchema(&schemaObjectReader{ctx: ctx, client: ranges, snapshot: part, protected: backend.protected()}, part.Bytes, &rows)
 		if err != nil {
 			return nil, err
 		}

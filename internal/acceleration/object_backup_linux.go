@@ -19,6 +19,9 @@ import (
 )
 
 func backupObjectToLocal(ctx context.Context, backend *objectBackend, request MigrationRequest, copyFile backupCopyFunc, syncParent func(*os.File) error) (result MigrationResult, resultErr error) {
+	if backend.protected() {
+		return result, ErrRecoveryUnsupported
+	}
 	if !filepath.IsAbs(request.Destination) || filepath.Clean(request.Destination) != request.Destination || request.Destination == "/" {
 		return result, errors.New("migration destination must be a new absolute directory")
 	}
