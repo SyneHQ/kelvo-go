@@ -17,10 +17,10 @@ Kelvo remains a developer preview. The board tracks owners, dependencies and acc
 | Strict schemas, optional widening, multipart snapshots and verified restore | [Acceleration](acceleration.md) · [Schema policy](schema-evolution.md) · [Multipart](multipart-acceleration.md) |
 | Local backup and remote-to-local migration | [Recovery](snapshot-backup.md) |
 | Passive source observations and local lifecycle telemetry | [Source health](source-health.md) · [Tracing](tracing.md) |
-| Opt-in federated exports and authorized repeat downloads | [Setup and API](exports.md) · [Storage contract](export-storage.md); [acceptance status](production-status.md) |
+| Opt-in federated exports and authorized repeat downloads | [Setup and API](exports.md) · [Storage contract](export-storage.md) · [Merged-cargo acceptance](export-ci-diagnostics.md) |
 | Repeatable release gates | [Process loss](process-loss-acceptance.md) · [Snapshot upgrades](release-upgrades.md) · [Rolling matrix](rolling-upgrades.md) · [Broker/client matrix](nats-compatibility.md) · [Storage](storage-conformance.md) |
 
-Implemented controls are not deployment certification. Live-provider gates and sustained fault/load campaigns remain open. The [rolling matrix](rolling-upgrades.md) covers one application pair; the [broker/client matrix](nats-compatibility.md) adds the declared NATS versions and security-configuration refusal checks. Deployment-specific combinations still need validation. Existing measurements belong to their recorded binaries.
+The [two-hour campaign](sustained-acceptance.md#recorded-two-hour-run) passed on pinned `0544d5f`; [merged-cargo functional acceptance](evidence/cargo-b1a0ea5-acceptance.json) passed on `b1a0ea5`. Later releases still need sustained validation, live-provider fixtures and deployment capacity checks. The [application](rolling-upgrades.md) and [broker/client](nats-compatibility.md) matrices cover their declared versions and policies. These results do not certify other deployment combinations.
 
 ## Review scope
 
@@ -36,9 +36,9 @@ One SQL plan runs on one worker. DuckDB completes execution before Arrow deliver
 
 | Priority | Remaining work | Completion needs |
 | --- | --- | --- |
-| P0 | Deployment containment acceptance, provider/rotation coverage, rolling upgrades and sustained load | Correct cleanup, exact results and failure-inclusive runtime evidence |
+| P0 | Deployment containment/capacity, live-provider rotation and release-specific upgrade/sustained tests | Correct cleanup, exact results and failure-inclusive runtime evidence |
 | P1 | Remote reader protection, GC, compaction and selective refresh | Crash-safe retention, bounded storage and unchanged results |
-| P1 | Asynchronous exports and result cache | Authorization, storage/admission bounds and publication fencing |
+| P1 | Result cache | Authorization/generation keys, bounded fills and revocation fencing |
 | P1/P2 | Explain, richer pushdown and columnar warehouse reads | Real bound plans, dialect parity and measured savings |
 | P2 | Read-only Flight SQL server and CDC | Client conformance and recoverable data/checkpoint publication |
 
@@ -48,7 +48,7 @@ Priorities express order, not delivery dates.
 
 Admission, optional Linux containment, probes, drain and local telemetry are implemented. Validate delegation, parent headroom and recovery on each deployment before claiming safe production capacity.
 
-- Account for native memory, Arrow buffers, scratch and refresh publication. Export dispatch must reserve its own workload capacity.
+- Account for native memory, Arrow buffers, scratch and refresh publication. Export dispatch already uses separate workload reservations.
 - Keep metrics and trace queues bounded; exclude SQL, parameters, secrets and unbounded labels.
 - Report queue, source, compute and delivery time only where measured. Unknown or overlapping intervals must stay explicit.
 
@@ -70,13 +70,13 @@ Multipart full refresh is available. Next: partition replacement, part reuse, in
 
 **Gate:** datasets above 4 GiB, bounded parts, concurrent readers/publication/GC, full disks and crashes. Prove unchanged answers and reduced source/object reads.
 
-## Durable exports and result caching are different features
+## Exports and result caching
 
-[Durable exports](exports.md) provide opt-in federated jobs and authorized repeat downloads. They reserve storage before SQL and publish only complete, verified parts bound to the principal and policy. Finish the [acceptance gates](production-status.md) before claiming deployment readiness.
+[Durable exports](exports.md) reserve storage before SQL and publish complete, verified parts bound to the principal and policy. [Merged-cargo acceptance](export-ci-diagnostics.md) passed child-crash, cancellation, source-quota and real broker lifecycle gates. Export storage is local to its worker; sustained capacity and deployment recovery remain separate.
 
-Start caching with immutable accelerated generations. Keys must include SQL, typed parameters, tenant, effective authorization, generations and relevant versions. Fence fills against refresh/revocation; bound entries, bytes and concurrent fills.
+Result caching is pending. Start with immutable accelerated generations. Keys must include SQL, typed parameters, tenant, effective authorization, generations and relevant versions. Fence fills against refresh/revocation; bound entries, bytes and concurrent fills.
 
-**Gate:** disconnects and crashes at publication boundaries, repeat downloads without SQL replay, revocation, expiry and compressible oversized results. Any stale-data policy must never bypass revoked access or schema incompatibility.
+**Cache gate:** concurrent fills, crashes at publication boundaries, refresh/revocation races, expiry, storage exhaustion and oversized decoded results. Any stale-data policy must preserve current authorization and schema compatibility.
 
 ## Federation and client interoperability
 
@@ -98,8 +98,8 @@ Principal source/handle grants, callback and local/object-snapshot row/column po
 ## Release gates and delivery order
 
 1. Complete isolation, lifecycle, credentials and recurring conformance.
-2. Complete provider-backed recovery and sustained mixed-load gates.
-3. Add storage maintenance, exports and generation-scoped caching.
+2. Complete provider-backed recovery and release-specific sustained mixed-load gates.
+3. Add storage maintenance and generation-scoped caching.
 4. Add richer federation, standard clients and CDC.
 
 Retain failed/skipped trials, exact type checks and pinned revision/fixture hashes. Re-run the micro-VM profile after runtime changes. Single-query distribution, model/GPU runtimes and additional query engines remain outside the current design.
