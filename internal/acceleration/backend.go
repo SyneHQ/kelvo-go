@@ -13,6 +13,11 @@ import (
 
 // Backend preserves the full-refresh lifecycle independently of where the
 // committed bytes live. A query must keep its Lease until execution ends.
+// Object backend Close seals writer admission, cancels admitted writers and
+// joins their cleanup before closing its reader client. Writer callers must
+// stop using staging and call Commit/Abort after cancellation; an uncooperative
+// caller or provider can keep Close waiting. This is not proof that all query
+// consumers or other backend read operations have quiesced.
 type Backend interface {
 	Begin(context.Context, string) (RefreshWriter, error)
 	Acquire(context.Context, string, string, time.Duration) (*Lease, error)
@@ -23,7 +28,9 @@ type Backend interface {
 }
 
 // RefreshWriter owns a single refresh. Context also cancels when a remote
-// writer loses its fencing lease. Finish all writes before Commit or Abort.
+// writer loses its fencing lease or its object backend closes. Finish all
+// writes before Commit or Abort, including after cancellation. Object backend
+// Close waits for that handback instead of closing a caller-borrowed File.
 type RefreshWriter interface {
 	Context() context.Context
 	File() *os.File

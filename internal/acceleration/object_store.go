@@ -38,6 +38,8 @@ type objectBackend struct {
 	renewInterval time.Duration
 	closed        atomic.Bool
 	closeOnce     sync.Once
+	closeErr      error
+	writers       objectWriterLifetime
 }
 
 type objectManifest struct {
@@ -110,10 +112,10 @@ func newObjectBackend(config catalog.AccelerationConfig, client objectstore.Clie
 
 func (backend *objectBackend) Close() error {
 	backend.closeOnce.Do(func() {
-		backend.closed.Store(true)
+		backend.closeErr = backend.drainWriters()
 		backend.reader.Close()
 	})
-	return nil
+	return backend.closeErr
 }
 
 func (backend *objectBackend) check(ctx context.Context, dataset string) error {
@@ -405,18 +407,32 @@ func (backend *objectBackend) Begin(ctx context.Context, dataset string) (Refres
 	if err := backend.check(ctx, dataset); err != nil {
 		return nil, err
 	}
-	client, closeClient, err := backend.writeClient()
+	tx, err := backend.reserveWriter(ctx, dataset)
 	if err != nil {
 		return nil, err
 	}
-	tx := &objectTransaction{backend: backend, client: client, closeClient: closeClient, dataset: dataset}
-	tx.ctx, tx.cancel = context.WithCancelCause(ctx)
 	success := false
 	defer func() {
 		if !success {
 			_ = tx.cleanup()
 		}
 	}()
+	if err := context.Cause(tx.ctx); err != nil {
+		return nil, err
+	}
+	// The reservation owns a late or partial factory result even when drain
+	// started while the external constructor was running.
+	tx.client, tx.closeClient, err = backend.writeClient()
+	if err != nil {
+		return nil, err
+	}
+	if tx.client == nil {
+		return nil, errors.New("object snapshot writer client is unavailable")
+	}
+	if err := backend.writerOpeningError(tx.ctx); err != nil {
+		return nil, err
+	}
+	client := tx.client
 	// Staging is private and worker-local. It never publishes a local manifest.
 	local, err := OpenStore(backend.config.Directory, backend.config.TenantID)
 	if err != nil {
@@ -470,6 +486,9 @@ func (backend *objectBackend) Begin(ctx context.Context, dataset string) (Refres
 	renewCtx, stop := context.WithCancel(tx.ctx)
 	tx.stopRenew, tx.renewDone = stop, make(chan struct{})
 	go tx.renewLoop(renewCtx)
+	if err := backend.writerOpeningError(tx.ctx); err != nil {
+		return nil, err
+	}
 	success = true
 	return tx, nil
 }
@@ -645,7 +664,8 @@ func (tx *objectTransaction) Abort() error {
 	return tx.cleanup()
 }
 
-func (tx *objectTransaction) cleanup() error {
+func (tx *objectTransaction) cleanup() (err error) {
+	defer func() { tx.backend.writerFinished(tx, err) }()
 	tx.stopRenewal()
 	var errs []error
 	if tx.owned {
@@ -666,7 +686,7 @@ func (tx *objectTransaction) cleanup() error {
 	if tx.local != nil {
 		errs = append(errs, tx.local.Abort())
 	}
-	if tx.closeClient {
+	if tx.closeClient && tx.client != nil {
 		tx.client.Close()
 		tx.closeClient = false
 	}
