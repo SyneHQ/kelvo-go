@@ -50,7 +50,7 @@ Projected columns support flat Arrow types, including decimals and timestamps. N
 - Raw source budgets still apply, even when few rows are authorized. Filtering adds a mask and selected-column buffers per batch. Timing and resource usage can reflect raw data; this is not a timing-isolation guarantee.
 - Equivalent views, aliases and snapshots need their own grants. Kelvo does not infer data lineage between separately granted sources.
 
-Native SQL, export redownloads and cache policy integration remain in [#28](https://github.com/SyneHQ/kelvo-go/issues/28). Standalone `query`/`serve` do not authenticate these cluster principal grants.
+[Federated exports](exports.md) apply these policies during execution and recheck current principal authority for downloads. Native SQL row policies, cache integration and coordinated enrollment/revocation remain in [#28](https://github.com/SyneHQ/kelvo-go/issues/28). Standalone `query`/`serve` do not authenticate these cluster principal grants.
 
 ## Change or revoke access
 
