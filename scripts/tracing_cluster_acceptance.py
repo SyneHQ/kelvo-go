@@ -33,7 +33,7 @@ FORGED_TRACE = "1" * 32
 FORGED_SPAN = "2" * 16
 CANARY = "kelvo-otlp-private-canary"
 SOURCE = "otlp_private_source"
-SQL = "SELECT id, amount, at, note FROM otlp_private_source ORDER BY id"
+SQL = 'SELECT id, amount, "at", note FROM otlp_private_source ORDER BY id'
 VIOLATIONS = ("privacy_violations", "plan_source_privacy_violations", "cap_violations",
               "protocol_violations", "auth_violations", "write_violations", "connections_rejected")
 
@@ -247,8 +247,20 @@ def main(args):
 
         def result(self, identifier, sent=None):
             code, body, headers = self.call("/v1/queries/" + identifier + "/results", sent=sent)
-            require(code == 200 and headers.get("kelvo-result-completion") == "durable-eos-v1"
-                    and body.endswith(ops.EOS), "INCOMPLETE_DURABLE_ARROW")
+            complete = headers.get("kelvo-result-completion") == "durable-eos-v1"
+            eos = body.endswith(ops.EOS)
+            if code != 200 or not complete or not eos:
+                # Preserve bounded diagnostics privately; query errors and
+                # Arrow payloads must never enter the public acceptance report.
+                diagnostic = {"http_status": code, "completion_header_valid": complete,
+                              "ends_with_eos": eos, "body_bytes": len(body),
+                              "body_sha256": hashlib.sha256(body).hexdigest(),
+                              "body_prefix_hex": body[:4096].hex()}
+                with (private / "result-failure-private.json").open("x") as output:
+                    json.dump(diagnostic, output)
+            require(code == 200, "DURABLE_RESULT_HTTP_STATUS")
+            require(complete, "DURABLE_RESULT_COMPLETION_HEADER")
+            require(eos, "DURABLE_RESULT_EOS")
             source = pa.BufferReader(body)
             with pa.ipc.open_stream(source) as reader:
                 actual = reader.read_all()
