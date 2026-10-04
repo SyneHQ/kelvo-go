@@ -6,9 +6,9 @@ Latest: [merged-cargo acceptance](evidence/cargo-b1a0ea5-acceptance.json) passed
 
 The [telemetry comparison](telemetry-overhead.md#recorded-full-comparison) passed all 48 epochs on `93339e7`, with 96 warmups and 96 measured queries. Paired metrics/tracing ratios describe one local million-row fixture; they do not establish deployment capacity or separate source/compute time. Both smoke attempts and full cleanup evidence are retained.
 
-The [pinned worker-capacity gate](node-capacity.md) also passed on `d144a43` with observer `9cad904`: five matched metrics on/off pairs, 130/130 workload queries and a separate 3/3 preflight. Its warm-cache, worker-only scope excludes the Azure gateway, NATS, source database and SSH tunnels; broader sustained and deployment capacity remain separate.
+The [pinned worker-capacity gate](node-capacity.md) passed on `b1a0ea5` with observer `fbb9ae8`: five matched metrics on/off pairs, 130/130 workload queries and a separate 3/3 preflight. Exact Arrow results, resource gates, independent reconciliation and both-host cleanup passed. Its warm-cache, worker-only scope excludes the Azure gateway, NATS, source database and SSH tunnels; sustained and deployment capacity remain separate.
 
-The [fresh `b1a0ea5` revalidation](evidence/node-capacity-b1a0ea5-preflight-refusal.json) stopped after all three preflight queries returned HTTP 503 `QUERY_FAILED`, with no result bytes. No measured pairs ran; the earlier capacity result does not validate this runtime.
+The [first `b1a0ea5` attempt](evidence/node-capacity-b1a0ea5-preflight-refusal.json) remains recorded: its source policy refused all three preflight queries. The fresh campaign used bounded source settings, passed 24 live policy checks and retained the same runtime.
 
 ## Expanded federation and public adapter SDK
 
