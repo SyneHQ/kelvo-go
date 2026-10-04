@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "revision": "b1a0ea520d65ac931ccdac3ea6f42531139a5399",
+  "tree": "9c3d2d12ca08854fe1c1885a40fe377b834371a1",
+  "run": {
+    "id": 37179473684,
+    "url": "https://github.com/SYNEHQ/kelvo-go/actions/runs/37179473684",
+    "event": "push",
+    "branch": "cargo",
+    "attempt": 1,
+    "status": "completed",
+    "conclusion": "success"
+  },
+  "jobs": [
+    {
+      "id": 111368918401,
+      "name": "validate",
+      "url": "https://github.com/SYNEHQ/kelvo-go/actions/runs/37179473684/job/111368918401",
+      "conclusion": "success"
+    },
+    {
+      "id": 111368918584,
+      "name": "federation",
+      "url": "https://github.com/SYNEHQ/kelvo-go/actions/runs/37179473684/job/111368918584",
+      "conclusion": "success"
+    }
+  ],
+  "successful_workflow_steps": 67,
+  "notebooks_passed": 15,
+  "artifacts": [
+    {
+      "id": 11295057613,
+      "name": "acceptance-evidence",
+      "url": "https://api.github.com/repos/SYNEHQ/kelvo-go/actions/artifacts/11295057613",
+      "zip_sha256": "693b68994bb341723b6e57a3a3f0e19bdd51b29ee625079ec7c0013df0805917"
+    },
+    {
+      "id": 11294881986,
+      "name": "export-broker-evidence",
+      "url": "https://api.github.com/repos/SYNEHQ/kelvo-go/actions/artifacts/11294881986",
+      "zip_sha256": "4eacc3a03b9e6c1eca0c44f6dcb7125b6214043ecfd2eb08400a219796291209"
+    }
+  ],
+  "exports": {
+    "source_inventory_sha256": "08d006eedade9026928111e0150049611258efefc42b41d01c87ed740f607103",
+    "binary_sha256": "877b39fe81828b9ae3af7a63730fbda93ff40f7286cdca66fbf6b511470f3f34",
+    "sandbox_sha256": "a2dc9f21d53654d740722288172673558580f11597f6ad7ed5a52e7fca7b7697",
+    "worker_gates": {
+      "required_top_level_tests": 5,
+      "missing_required_tests": 0,
+      "failed_or_skipped": 0
+    },
+    "brokers": [
+      {
+        "version": "2.14.7",
+        "passed_modes": ["acl", "dispatch", "lifecycle"],
+        "lifecycle_scenarios_passed": 5,
+        "lifecycle_parent_passed": 1,
+        "failures": 0,
+        "skips": 0,
+        "lost_completion": {
+          "observed": "cancelled",
+          "deadline_reached": false,
+          "receipt_present": true,
+          "total_campaign_executions": 3
+        }
+      },
+      {
+        "version": "2.15.0",
+        "passed_modes": ["acl", "dispatch", "lifecycle"],
+        "lifecycle_scenarios_passed": 5,
+        "lifecycle_parent_passed": 1,
+        "failures": 0,
+        "skips": 0,
+        "lost_completion": {
+          "observed": "cancelled",
+          "deadline_reached": false,
+          "receipt_present": true,
+          "total_campaign_executions": 3
+        }
+      }
+    ]
+  }
+}

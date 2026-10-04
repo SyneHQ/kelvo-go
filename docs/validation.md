@@ -1,8 +1,8 @@
-# Validation — 2026-10-03 UTC evidence
+# Validation evidence
 
 This is recorded developer-preview evidence, tied to specific binaries and fixtures. Use [production status](production-status.md) for current release gates; these results do not certify arbitrary multi-tenant deployments.
 
-Latest: [durable export validation](export-validation.md) covers the combined worker, broker, transport and crash checks on `d144a43`; [export CI diagnostics](export-ci-diagnostics.md) retains a later unresolved failure and a separate passing isolated reproduction.
+Latest: [merged-cargo acceptance](evidence/cargo-b1a0ea5-acceptance.json) passed both CI jobs on `b1a0ea5`, including worker/broker export gates and all 15 notebooks. [Export lifecycle acceptance](export-ci-diagnostics.md) separates these direct passes from the retained historical failure and its unknown cause. [Earlier combined validation](export-validation.md) remains tied to `d144a43`.
 
 The [telemetry comparison](telemetry-overhead.md#recorded-full-comparison) passed all 48 epochs on `93339e7`, with 96 warmups and 96 measured queries. Paired metrics/tracing ratios describe one local million-row fixture; they do not establish deployment capacity or separate source/compute time. Both smoke attempts and full cleanup evidence are retained.
 

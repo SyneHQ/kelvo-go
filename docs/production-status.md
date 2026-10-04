@@ -7,7 +7,7 @@ Status reviewed 4 October 2026. This is a capability checklist, not production c
 | Available | Still needed |
 | --- | --- |
 | Shared query/export/refresh budgets, interactive reserves and source quotas | Sustained mixed-workload capacity gates |
-| [Two-hour two-tenant campaign](sustained-acceptance.md#recorded-two-hour-run) on `0544d5f`: all ten gates, exact source/binary checks and independent cleanup passed | Revalidation of later runtime changes; joins/exports, WAN, live providers and deployment capacity remain separate |
+| [Pinned two-hour campaign (#7)](sustained-acceptance.md#recorded-two-hour-run) on `0544d5f`: all ten gates, exact source/binary checks and independent cleanup passed | Sustained acceptance for later releases; joins/exports, WAN, live providers and deployment capacity need separate evidence |
 | [Pinned worker-capacity gate (#8)](node-capacity.md): five metrics on/off pairs and 130 exact workload queries on `d144a43` | Revalidate after runtime changes; worker-only warm-cache evidence does not establish sustained or deployment-wide capacity |
 | Opt-in Linux process-tree memory, CPU and PID limits | Deployment-specific headroom, restart recovery and sustained fault/load validation |
 | Independent probes, dataset readiness, phased drain and [application](rolling-upgrades.md) and [broker/client](nats-compatibility.md) upgrade matrices | Deployment-specific rollout and multi-hour fault/load campaigns |
@@ -15,7 +15,7 @@ Status reviewed 4 October 2026. This is a capability checklist, not production c
 | [Paired telemetry cost](telemetry-overhead.md#recorded-full-comparison) on `93339e7`: 48 epochs, 96 measured queries and exact results | Deployment-specific cost; broker queue and separate source/compute attribution remain unknown |
 | Selected-secret forwarding, files, opt-in cloud secrets, API-key and TLS rotation | Live-provider IAM/rotation coverage and coordinated enrollment/revocation |
 | Managed Linux scratch with inherited leases | Deployment-specific disk capacity and recovery validation |
-| CI, 15 executed notebooks, process-loss and snapshot-upgrade gates | Recurring real-provider tests on each release candidate |
+| [Merged `cargo` acceptance](evidence/cargo-b1a0ea5-acceptance.json) on `b1a0ea5`: both CI jobs, 15 notebooks, process-loss and snapshot-upgrade gates passed | Recurring provider, sustained-load and deployment tests on each release candidate |
 
 See [operations](operations.md), [process containment](process-containment.md), [process-loss acceptance](process-loss-acceptance.md), [snapshot upgrades](release-upgrades.md), [rolling applications](rolling-upgrades.md), [broker/client compatibility](nats-compatibility.md), [worker scratch](worker-scratch.md) and [runtime recovery](runtime-recovery.md).
 
@@ -40,7 +40,7 @@ The [durable reader registry](durable-reader-registry.md), [object-store adapter
 | Capability | Status |
 | --- | --- |
 | Arrow delivery and optional LZ4 | Available; decoded limits remain unchanged |
-| Durable exports | [Opt-in federated jobs and repeat downloads](exports.md); [earlier combined gates passed](export-validation.md). A [later CI failure remains unresolved despite a passing isolated reproduction](export-ci-diagnostics.md). Sustained capacity and deployment acceptance remain separate |
+| Durable exports | Delivered: [opt-in federated jobs and repeat downloads](exports.md). [Merged-cargo gates](export-ci-diagnostics.md) passed on NATS 2.14.7 and 2.15.0; the earlier failure's cause remains unknown. Sustained capacity, live providers and deployment acceptance remain separate |
 | Result cache | Pending authorization/generation keys, bounded fills and revocation fencing |
 | Eight federation adapters | Available; live Oracle/warehouse gates remain open |
 | Automatic remote joins/aggregates | Pending bound-plan integration and parity checks |
