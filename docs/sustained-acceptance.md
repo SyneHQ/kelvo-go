@@ -5,6 +5,22 @@ two-tenant cluster for at least two hours. A passing smoke run cannot close the
 [sustained-load gate](https://github.com/SyneHQ/kelvo-go/issues/7). Results apply
 only to the recorded binary, source inventories, topology and resource budget.
 
+## Recorded two-hour run
+
+The [two-hour campaign on `0544d5f`](evidence/sustained-7200-0544d5f.json) passed strict reconciliation and all ten gates. Source, binaries and the prerequisite smoke matched. [Independent cleanup](evidence/sustained-7200-cleanup-0544d5f.json) confirmed exit 0, service/cgroup removal and the unchanged raw report.
+
+| Observation | Recorded result |
+| --- | --- |
+| Mixed workload / total controller time | 7,200.162 / 7,214.150 seconds |
+| Completed work | 19,545 queries, 960 refreshes, 240 slow readers, 239 cancellations |
+| Fault gates | Saturation, gateway loss, worker loss and broker loss passed |
+| Process sampling | 140,590 samples; zero hard read errors or diagnostic overflow |
+| Charged memory / sampled process RSS peak | 910,630,912 / 752,504,832 bytes |
+| Client/resource errors and OOMs | Zero |
+| Cleanup | No forced application kills, live descendants, scratch directories or containment records; owned brokers stopped |
+
+This is paced, two-tenant lifecycle evidence under a 2 CPU / 6 GiB cap. [Six component gates ran during the campaign](evidence/sustained-7200-overlap-0544d5f.json); two failed, and the first OTLP overlap observation arrived after that component exited. Later shutdown, tracing and child-timing changes have separate component evidence. This run does not establish their sustained capacity, joins/exports coverage, WAN performance, provider compatibility or deployment sizing.
+
 ## Recorded smoke
 
 The [600-second smoke on `0544d5f`](evidence/sustained-smoke-0544d5f.json) passed
@@ -22,9 +38,9 @@ nine focused Go race tests (39 pass events), vet and both binary builds.
 | Client/resource errors and OOMs | Zero |
 | Cleanup | No forced application kills, live descendants, scratch directories or containment records; owned brokers stopped, service and cgroup independently confirmed removed |
 
-This is lifecycle evidence, not maximum throughput or deployment sizing. The
-multi-hour gate remains open until a matching two-hour run completes and its
-results reconcile. Passing smoke does not satisfy that gate.
+This smoke is lifecycle evidence, not maximum throughput or deployment sizing.
+The separate matching two-hour result is recorded above; a smoke alone cannot
+satisfy that gate.
 
 ## Earlier evidence
 

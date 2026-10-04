@@ -7,7 +7,7 @@ Status reviewed 4 October 2026. This is a capability checklist, not production c
 | Available | Still needed |
 | --- | --- |
 | Shared query/export/refresh budgets, interactive reserves and source quotas | Sustained mixed-workload capacity gates |
-| [600-second two-tenant smoke](sustained-acceptance.md#recorded-smoke) on `0544d5f`: ten lifecycle/fault gates, strict source/binary checks and zero hard sampler errors | Matching multi-hour acceptance; this paced smoke does not establish deployment sizing or maximum throughput |
+| [Two-hour two-tenant campaign](sustained-acceptance.md#recorded-two-hour-run) on `0544d5f`: all ten gates, exact source/binary checks and independent cleanup passed | Revalidation of later runtime changes; joins/exports, WAN, live providers and deployment capacity remain separate |
 | [Pinned worker-capacity gate (#8)](node-capacity.md): five metrics on/off pairs and 130 exact workload queries on `d144a43` | Revalidate after runtime changes; worker-only warm-cache evidence does not establish sustained or deployment-wide capacity |
 | Opt-in Linux process-tree memory, CPU and PID limits | Deployment-specific headroom, restart recovery and sustained fault/load validation |
 | Independent probes, dataset readiness, phased drain and [application](rolling-upgrades.md) and [broker/client](nats-compatibility.md) upgrade matrices | Deployment-specific rollout and multi-hour fault/load campaigns |

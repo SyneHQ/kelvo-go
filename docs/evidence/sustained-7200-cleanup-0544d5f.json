@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "unit": "kelvo-sustained-c259ccfefa71.service",
+  "service_exit_code": 0,
+  "owned_service_removed": true,
+  "owned_cgroup_removed": true,
+  "raw_report_sha256": "bb695b18cf8b47cc7afe32744eccabe48e495f10a05d1eae22b7f9075568bcdc",
+  "runner_log_sha256": "d9d4b22e2ba60d42e5c51a85b85ad593829b6fefd6764c9628fd178fff142f19",
+  "coordinator_sha256": "0514999e6c47df31f6673713d1ac69341bb8f43bcb7bfaeddc1e00789a131bee",
+  "revision": "0544d5f013eb72598a6da608331ec8b00711866f",
+  "reported_passed": true,
+  "coordinator_passed": true,
+  "unit_state": {
+    "MainPID": "0",
+    "Result": "success",
+    "LoadState": "not-found",
+    "ActiveState": "inactive",
+    "SubState": "dead"
+  },
+  "reported_cleanup_matches_independent": true,
+  "raw_report_unchanged": true,
+  "passed": true
+}
