@@ -6,6 +6,7 @@ nothing. Only exact fixture brokers and application children may be signalled.
 """
 import argparse
 import concurrent.futures
+from contextlib import nullcontext
 from datetime import datetime, timezone
 import http.client
 import json
@@ -26,6 +27,7 @@ REQUIRED = ("startup", "gateway_loss_under_admitted_load", "worker_loss_under_ad
             "broker_loss_under_admitted_load", "cleanup")
 TERMINAL_FAILURE = {"failed", "cancelled"}
 SLOW_SQL = "SELECT sum(i + metric) AS total FROM ops_snapshot, range(1000000000000) t(i)"
+WORKER_PREFAULT_TIMEOUT = 4.0
 
 
 def rejected_result(response):
@@ -55,6 +57,18 @@ def reconcile(report):
                 or type(worker.get("inherited_sandbox_lease_children")) is not int
                 or worker["inherited_sandbox_lease_children"] < 1):
             return False
+        observed = report.get("worker_prefault_observation")
+        if (not isinstance(observed, dict) or observed.get("passed") is not True
+                or observed.get("timeout_seconds") != WORKER_PREFAULT_TIMEOUT
+                or type(observed.get("attempts")) is not int or observed["attempts"] < 1
+                or type(observed.get("zero_observations")) is not int
+                or not 0 <= observed["zero_observations"] < observed["attempts"]
+                or type(observed.get("read_failures")) is not int or observed["read_failures"] != 0
+                or type(observed.get("elapsed_seconds")) not in (int, float)
+                or not 0 <= observed["elapsed_seconds"] <= WORKER_PREFAULT_TIMEOUT
+                or type(observed.get("inherited_sandbox_lease_children")) is not int
+                or observed["inherited_sandbox_lease_children"] != worker["inherited_sandbox_lease_children"]):
+            return False
     cleanup = next(item for item in checks if item["test"] == "cleanup")
     return (cleanup.get("forced_application_kills") == 0
             and cleanup.get("observed_live_descendants") == 0
@@ -77,6 +91,7 @@ class LossAcceptance(ops.Acceptance):
         self.managed_roots = {}
         self.control_response_counts = {}
         self.broker_supervision = None
+        self.worker_prefault_observation = None
 
     def call(self, path, tenant="a", body=None, node=None, timeout=12, with_headers=False, gateway=None):
         if node:
@@ -115,27 +130,120 @@ class LossAcceptance(ops.Acceptance):
                 for path in (self.directory/(worker+"-runtime")).glob(pattern)]
 
     def inherited_lease_children(self, name):
+        observed = self._lease_child_observation(name)
+        return None if observed is None else len(observed["identities"])
+
+    def _lease_child_observation(self, name, identities=None):
         root = self.managed_roots.get(name)
         if root is None:
             return None
-        observed = 0
-        for pid, identity in list(self.samples.owned.items()):
-            if ops.proc_identity(pid) != identity:
+        observed, read_failures = [], 0
+        identities = list(self.samples.owned.values()) if identities is None else identities
+        for identity in identities:
+            pid = identity[0]
+            if ops.proc_identity(pid, self.samples.proc_root) != identity:
                 continue
             try:
-                base = Path(f"/proc/{pid}")
-                if not (base/"cwd").resolve().is_relative_to(root):
+                base = self.samples.proc_root/str(pid)
+                if not (base/"cwd").resolve(strict=True).is_relative_to(root):
                     continue
                 for descriptor in (base/"fd").iterdir():
                     target = descriptor.resolve()
                     if target.parent == root and target.name.startswith(".kelvo-lease-"):
                         current, held = target.stat(), descriptor.stat()
-                        if (current.st_ino, current.st_dev) == (held.st_ino, held.st_dev):
-                            observed += 1
+                        if ((current.st_ino, current.st_dev) == (held.st_ino, held.st_dev)
+                                and ops.proc_identity(pid, self.samples.proc_root) == identity):
+                            observed.append(identity)
                             break
             except (OSError, RuntimeError):
-                continue
-        return observed
+                read_failures += 1
+        return {"identities": observed, "read_failures": read_failures}
+
+    def _sample_worker_descendants(self):
+        # A fresh scoped sample detects repeated read failures without confusing
+        # them with cumulative errors from earlier intentional process losses.
+        snapshot = ops.Samples({"a1": self.processes["a1"]},
+                               proc_root=self.samples.proc_root, cgroup_root=self.samples.cgroup_root)
+        snapshot.sample()
+        with getattr(self.samples, "lock", None) or nullcontext():
+            self.samples.owned.update(snapshot.owned)
+        failures = snapshot.errors & {"PROCESS_CHILDREN_SAMPLE_UNAVAILABLE", "PROCESS_SAMPLE_UNAVAILABLE"}
+        children = [identity for pid, identity in snapshot.owned.items() if pid != self.processes["a1"].pid]
+        return children, len(failures)
+
+    def prefault_states(self, handles, deadline):
+        for tenant, item in handles.items():
+            ops.require(not item["future"].done(), "PREFAULT_MIXED_STATES_NOT_OBSERVED")
+            for kind, expected in (("running", "running"), ("queued", "queued")):
+                remaining = deadline-time.monotonic()
+                ops.require(remaining > 0, "SANDBOX_WORKER_LEASE_READINESS_DEADLINE")
+                try:
+                    code, raw = self.call("/v1/queries/"+item[kind], tenant, timeout=min(0.5, remaining))
+                    state = json.loads(raw)["state"] if code == 200 else None
+                except (OSError, urllib.error.URLError, http.client.HTTPException, ValueError, KeyError, TypeError):
+                    self.worker_prefault_observation["read_failures"] += 1
+                    raise ops.AcceptanceError("PREFAULT_QUERY_STATUS_UNAVAILABLE") from None
+                ops.require(time.monotonic() < deadline, "SANDBOX_WORKER_LEASE_READINESS_DEADLINE")
+                if code != 200:
+                    self.worker_prefault_observation["read_failures"] += 1
+                    raise ops.AcceptanceError("PREFAULT_QUERY_STATUS_UNAVAILABLE")
+                ops.require(state == expected, "PREFAULT_MIXED_STATES_NOT_OBSERVED")
+            ops.require(not item["future"].done(), "PREFAULT_MIXED_STATES_NOT_OBSERVED")
+
+    def wait_worker_child(self, handles):
+        started = time.monotonic()
+        deadline = started+WORKER_PREFAULT_TIMEOUT
+        detail = {"passed": False, "timeout_seconds": WORKER_PREFAULT_TIMEOUT, "attempts": 0,
+                  "zero_observations": 0, "read_failures": 0, "inherited_sandbox_lease_children": 0,
+                  "read_failure_scope": "Surfaced status, lease and descendant-sampling failures; sampling categories counted once per attempt",
+                  "scope": "An owned managed sandbox child; not attributed to a particular running query"}
+        self.worker_prefault_observation = detail
+        proc = self.processes["a1"]
+        target = ops.proc_identity(proc.pid)
+        try:
+            ops.require(proc.poll() is None and target is not None, "FAULT_TARGET_NOT_RUNNING")
+            while True:
+                ops.require(time.monotonic() < deadline, "SANDBOX_WORKER_LEASE_READINESS_DEADLINE")
+                detail["attempts"] += 1
+                try:
+                    identities, failures = self._sample_worker_descendants()
+                except (OSError, ValueError, RuntimeError):
+                    detail["read_failures"] += 1
+                    raise ops.AcceptanceError("SANDBOX_WORKER_LEASE_OBSERVATION_FAILED") from None
+                detail["read_failures"] += failures
+                ops.require(failures == 0, "SANDBOX_WORKER_LEASE_OBSERVATION_FAILED")
+                self.prefault_states(handles, deadline)
+                observed = self._lease_child_observation("a1", identities)
+                ops.require(observed is not None, "SANDBOX_WORKER_MANAGED_ROOT_MISSING")
+                detail["read_failures"] += observed["read_failures"]
+                ops.require(observed["read_failures"] == 0, "SANDBOX_WORKER_LEASE_OBSERVATION_FAILED")
+                if observed["identities"]:
+                    # Durable Running precedes child startup. Recheck original
+                    # jobs after finding a child, then its live lease again.
+                    with getattr(self.samples, "lock", None) or nullcontext():
+                        before = set(self.samples.owned.values())
+                    self.prefault_states(handles, deadline)
+                    final = self._lease_child_observation("a1", observed["identities"])
+                    detail["read_failures"] += final["read_failures"]
+                    ops.require(final["read_failures"] == 0, "SANDBOX_WORKER_LEASE_OBSERVATION_FAILED")
+                    ops.require(all(not item["future"].done() for item in handles.values()),
+                                "PREFAULT_MIXED_STATES_NOT_OBSERVED")
+                    ops.require(proc.poll() is None and ops.proc_identity(proc.pid) == target,
+                                "FAULT_TARGET_IDENTITY_CHANGED")
+                    ops.require(time.monotonic() < deadline, "SANDBOX_WORKER_LEASE_READINESS_DEADLINE")
+                    if final["identities"]:
+                        detail["passed"] = True
+                        detail["inherited_sandbox_lease_children"] = len(final["identities"])
+                        return before, len(final["identities"]), target, deadline
+                detail["zero_observations"] += 1
+                remaining = deadline-time.monotonic()
+                ops.require(remaining > 0, "SANDBOX_WORKER_LEASE_READINESS_DEADLINE")
+                time.sleep(min(0.05, remaining))
+        except ops.AcceptanceError as error:
+            detail["failure_category"] = str(error)
+            raise
+        finally:
+            detail["elapsed_seconds"] = round(time.monotonic()-started, 6)
 
     def startup(self):
         self.config_hashes = {path.name: ops.sha256(path) for pattern in ("*.yml", "*.conf")
@@ -168,7 +276,7 @@ class LossAcceptance(ops.Acceptance):
             return None
 
     def prepare_load(self):
-        """Observe actual execution plus durable queued states, not submit order."""
+        """Observe durable Running/Queued states, not child startup or submit order."""
         handles = {}
         for tenant, gateway in (("a", 1), ("b", 2)):
             query_id = self.submit(tenant, SLOW_SQL)
@@ -185,10 +293,13 @@ class LossAcceptance(ops.Acceptance):
         self.samples.sample()
         return handles
 
-    def kill_application(self, name):
+    def kill_application(self, name, expected_identity=None, deadline=None):
         proc = self.processes[name]
         identity = ops.proc_identity(proc.pid)
         ops.require(proc.poll() is None and identity is not None, "FAULT_TARGET_NOT_RUNNING")
+        ops.require(expected_identity is None or identity == expected_identity, "FAULT_TARGET_IDENTITY_CHANGED")
+        if deadline is not None:
+            ops.require(time.monotonic() < deadline, "SANDBOX_WORKER_LEASE_READINESS_DEADLINE")
         ops.signal_owned(identity, signal.SIGKILL)
         ops.require(proc.wait(timeout=3) == -signal.SIGKILL, "FAULT_SIGNAL_NOT_CONFIRMED")
         self.intentional_kills += 1
@@ -277,12 +388,18 @@ class LossAcceptance(ops.Acceptance):
 
     def worker_loss(self):
         handles = self.prepare_load()
-        self.samples.sample()
-        before = set(self.samples.owned.values())
-        inherited = self.inherited_lease_children("a1")
         if self.managed_roots:
-            ops.require(inherited >= 1, "SANDBOX_WORKER_DID_NOT_INHERIT_SCRATCH_LEASE")
-        self.kill_application("a1")
+            before, inherited, target, deadline = self.wait_worker_child(handles)
+            try:
+                self.kill_application("a1", expected_identity=target, deadline=deadline)
+            except ops.AcceptanceError as error:
+                self.worker_prefault_observation.update(passed=False, failure_category=str(error),
+                    elapsed_seconds=round(time.monotonic()-(deadline-WORKER_PREFAULT_TIMEOUT), 6))
+                raise
+        else:
+            self.samples.sample()
+            before, inherited = set(self.samples.owned.values()), None
+            self.kill_application("a1")
         self.failed_attempt(handles["a"], "a")
         ops.require(self.state(handles["a"]["queued"], "a") == "queued", "UNASSIGNED_QUERY_LOST_DURING_WORKER_OUTAGE")
         self.failed_attempt(handles["b"], "b", cancel=True)
@@ -468,6 +585,7 @@ def main():
             acceptance.checks.append({"test": name, "passed": False, "category": "INTERRUPTED"})
     report["interrupted"] = interrupted
     report["elapsed_seconds"] = round(time.monotonic()-acceptance.started, 3)
+    report["worker_prefault_observation"] = acceptance.worker_prefault_observation
     report["passed"] = reconcile(report)
     report["crash_scratch_directories_observed"] = len(acceptance.crash_scratch)
     report["worker_scratch_directories_after_cleanup"] = len(acceptance.scratch_leftovers())
