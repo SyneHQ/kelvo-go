@@ -1,0 +1,267 @@
+{
+  "passed": false,
+  "revision": "4b54b16d17ad1938a61a0752b47b8dd7ab3ee8d0",
+  "staging_json_sha256": "de23cc3548f382e63c696334d8f6b269828e495488289da57b9e17e3e3f7d536",
+  "source_manifest_sha256": "d2b32172cb64db909a26ab011308932bb74140a8d6d326f869365f71ed0b5a92",
+  "source_file_count": 1016,
+  "scope": "Offline collector controls and actual CLI TLS OTLP continuity, privacy, exact Arrow and exporter failure. No overhead or capacity claim.",
+  "compiler_lanes": 1,
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "helpers_verified_before": true,
+  "helpers_verified_after": true,
+  "shared_bridge_unchanged": true,
+  "effective_modules_unchanged": true,
+  "capability_sets_zero": true,
+  "no_new_privileges": true,
+  "enforced_isolation": {
+    "non_root": true,
+    "private_network": true,
+    "memory_max_bytes": 3221225472,
+    "swap_max_bytes": 0,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "tasks_max": 256
+  },
+  "enforced_watchdog": {
+    "TimeoutStopUSec": "20s",
+    "RuntimeMaxUSec": "30min",
+    "KillMode": "control-group",
+    "SendSIGKILL": "yes"
+  },
+  "shared_inputs_before": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+  },
+  "effective_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "binary_sha256": {
+    "collector": "026f3992d102cac7e96d919f55ac9573b5a3c14f5f38ab7f79894c71c2d97016",
+    "kelvo": "e7fe8977d3d4f8716bf2abdd72aa831fc1bfd4a281ff5eba8b41796192bcee5d",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "trust_preparation": {
+    "system_bundle_before_sha256": "4e3df1b7cefec516bc6dcc615565455a6658f6ae9da64989b8959827e87161dc",
+    "prepared_bundle_sha256": "51f252446b928f6851bd0b739f42c35d0b0caf3045f766551ea4a7e0a416b0c3",
+    "collector_certificate_sha256": "ce7c9af98fac0ec0e5062113707ccd00fddfb031e5a0c3b565590769b47e1298"
+  },
+  "prepared_trust_unchanged": true,
+  "nats_archive_sha256": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+  "python_syntax_checked": true,
+  "raw_report_sha256": "74676b421b7d006ac48041dbc361534eeebfd8bbaf2866bda857f300d7d9dab8",
+  "reported_passed": false,
+  "failure_type": "RuntimeError",
+  "failure_category": "UNEXPECTED_STAGE_EXIT",
+  "source_current_match": true,
+  "helpers_current_match": true,
+  "shared_inputs_current_match": true,
+  "effective_modules_current_match": true,
+  "host_trust_unchanged": true,
+  "trust_reconciled": true,
+  "nats_unchanged": true,
+  "isolation_reconciled": true,
+  "stages": {
+    "collector-build": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 1.066,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "collector-race": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 2.268,
+      "log_sha256": "d1ecf72cec24071e71144bb747b9c7c80aeaf7c55035a6b5a60c787db40d35c9"
+    },
+    "collector-vet": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 0.314,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "external-modfile": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 0.003,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kelvo-build": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 21.173,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "launcher-build": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 0.765,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "otlp-acceptance": {
+      "exit_code": 1,
+      "timeout": false,
+      "seconds": 7.685,
+      "log_sha256": "84faa7f0031ed555d8d55fc765571498f7a1cc05719fecc6aaed05e491ed7a52"
+    }
+  },
+  "stages_reconciled": false,
+  "collector_controls": {
+    "passed": true,
+    "package": "github.com/SYNEHQ/kelvo-go/scripts/fixtures/otlp-collector",
+    "required_top_level_tests": [
+      "TestCollectorAcceptsFixedOTLPAndPreservesParentEvidence",
+      "TestCollectorAttributesPrivateCanaryFailures",
+      "TestCollectorCapsFailWithoutPartialEvidence",
+      "TestCollectorRejectsForbiddenTelemetryBeforeWritingEvidence",
+      "TestCollectorRejectsRecursiveUnknownProtobufFields"
+    ],
+    "log_sha256": "d1ecf72cec24071e71144bb747b9c7c80aeaf7c55035a6b5a60c787db40d35c9",
+    "passed_top_level_count": 5,
+    "passed_events_including_subtests": 28,
+    "failures_or_skips": 0
+  },
+  "collector_controls_reconciled": true,
+  "binary_reconciled": true,
+  "acceptance": {
+    "checks": [
+      {
+        "nats_peers": 3,
+        "passed": true,
+        "test": "private_mounted_trust_and_three_peer_fixture",
+        "tls_minimum": "1.3"
+      },
+      {
+        "cross_tenant_status": 404,
+        "forged_body_status": 400,
+        "passed": true,
+        "test": "client_context_and_cross_tenant_rejection",
+        "unauthenticated_status": 401
+      },
+      {
+        "passed": true,
+        "test": "owned_service_and_broker_processes_stopped"
+      }
+    ],
+    "cleanup_errors": [],
+    "failure": "INCOMPLETE_DURABLE_ARROW",
+    "inconclusive": false,
+    "input_sha256": {
+      "acceptance_harness": "fa0809d14b6ad23eefb1151fa4be69c2a110905aac8b0ebca2abdf1248d45120",
+      "binary": "e7fe8977d3d4f8716bf2abdd72aa831fc1bfd4a281ff5eba8b41796192bcee5d",
+      "collector": "026f3992d102cac7e96d919f55ac9573b5a3c14f5f38ab7f79894c71c2d97016",
+      "fixture_harness": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+      "harness": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+      "nats": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+      "operational_harness": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639",
+      "sandbox": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+    },
+    "passed": false,
+    "schema_version": 1,
+    "scope": "actual CLI TLS OTLP correctness; no throughput, overhead or production capacity claim",
+    "started_at": "2026-10-04T00:42:52.248474+00:00"
+  },
+  "acceptance_sha256": "e858851105edab92806893d6960f53aefc0723ce7210f5add13af5efecba6aea",
+  "acceptance_reconciled": false,
+  "collector_evidence": {
+    "summary_sha256": "6dc68b5a1af6ab07e28fa8a1a713926486119ceaf5cc47bb2cb0e0813154e310",
+    "events_sha256": "bab768ca1bc90f5d034147749517362532a47cbf51791b688374125fc4398b68",
+    "summary": {
+      "roles": [
+        {
+          "requests": 1,
+          "spans": 1,
+          "accepted": 1,
+          "accepted_spans": 1,
+          "stalled": 0,
+          "unavailable": 0,
+          "active_stalls": 0
+        },
+        {
+          "requests": 1,
+          "spans": 2,
+          "accepted": 1,
+          "accepted_spans": 2,
+          "stalled": 0,
+          "unavailable": 0,
+          "active_stalls": 0
+        },
+        {
+          "requests": 1,
+          "spans": 15,
+          "accepted": 1,
+          "accepted_spans": 15,
+          "stalled": 0,
+          "unavailable": 0,
+          "active_stalls": 0
+        }
+      ],
+      "requests": 3,
+      "spans": 18,
+      "accepted_spans": 18,
+      "bytes": 2180,
+      "privacy_violations": 0,
+      "plan_source_privacy_violations": 0,
+      "cap_violations": 0,
+      "protocol_violations": 0,
+      "auth_violations": 0,
+      "write_violations": 0,
+      "connections_rejected": 0
+    },
+    "ledger_span_count": 18,
+    "reconciled": true
+  },
+  "collector_final_reconciled": true,
+  "service_exit": {
+    "revision": "4b54b16d17ad1938a61a0752b47b8dd7ab3ee8d0",
+    "unit": "kelvo-otlp-acceptance-4b54b16d17-b1b6d7",
+    "systemd_run_exit_code": 1
+  },
+  "service_exit_receipt_sha256": "48ce00e9dca2523944773e8cc986ded9ff1d4afcb20902c4a8e6329fe9a9b0bd",
+  "service_exit_reconciled": false,
+  "cleanup": {
+    "unit": "kelvo-otlp-acceptance-4b54b16d17-b1b6d7",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true
+  },
+  "local_launch": {
+    "ssh_exit_code": 1,
+    "revision": "4b54b16d17ad1938a61a0752b47b8dd7ab3ee8d0",
+    "unit": "kelvo-otlp-acceptance-4b54b16d17-b1b6d7"
+  },
+  "collection_ssh_exit_code": 1,
+  "local_launch_reconciled": false,
+  "local_stage_reconciled": true,
+  "local_trust_preparation_reconciled": true,
+  "independent_cleanup": {
+    "unit": "kelvo-otlp-acceptance-4b54b16d17-b1b6d7",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true,
+    "revision": "4b54b16d17ad1938a61a0752b47b8dd7ab3ee8d0"
+  }
+}

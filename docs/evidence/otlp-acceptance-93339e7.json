@@ -1,0 +1,319 @@
+{
+  "passed": true,
+  "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+  "staging_json_sha256": "44bdef6c9e24289d69b9ab50cec0e949f9dab7b469d509c6d38f0dbdf246a459",
+  "source_manifest_sha256": "72575584df0b17a9ab522af8ee150b91e739bfd26ed4e73979a40ccd5fa8ce3a",
+  "source_file_count": 1016,
+  "scope": "Offline collector controls and actual CLI TLS OTLP continuity, privacy, exact Arrow and exporter failure. No overhead or capacity claim.",
+  "compiler_lanes": 1,
+  "build_tags": [
+    "duckdb_arrow",
+    "duckbridge"
+  ],
+  "go_version": "go version go1.26.8 linux/amd64",
+  "go_binary_sha256": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+  "bridge_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+  "source_verified_before": true,
+  "source_verified_after": true,
+  "helpers_verified_before": true,
+  "helpers_verified_after": true,
+  "shared_bridge_unchanged": true,
+  "effective_modules_unchanged": true,
+  "capability_sets_zero": true,
+  "no_new_privileges": true,
+  "enforced_isolation": {
+    "non_root": true,
+    "private_network": true,
+    "memory_max_bytes": 3221225472,
+    "swap_max_bytes": 0,
+    "cpu_quota": 100000,
+    "cpu_period": 100000,
+    "tasks_max": 256
+  },
+  "enforced_watchdog": {
+    "TimeoutStopUSec": "20s",
+    "RuntimeMaxUSec": "30min",
+    "KillMode": "control-group",
+    "SendSIGKILL": "yes"
+  },
+  "shared_inputs_before": {
+    "driver_tree_sha256": "519f23c499e0bc7ba154ef3e866300511932d18304bb97246f461431aef1c13b",
+    "headers_tree_sha256": "c38d94b19e91fcdd3b9be52d175cd86698619810406ebe93d0f5fc4804b68333",
+    "driver_patch_marker_sha256": "46853100c87b3495ea41d509bcf7ef925d48762252d6dd52bbf1da614b1eb08b"
+  },
+  "effective_module_files": {
+    "mod_sha256": "4b787214b96ed2f23793ddc018f35f745683bced751a5de79581c60dc3b5952d",
+    "sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "binary_sha256": {
+    "collector": "9520e8165e3a7160422c227cead54eff30a401d29e4d2502da005b05d8f3cb77",
+    "kelvo": "af29afdc04b18275de1a3d5906ba474cb27e81a113cfac2ec4139834f4fb41fd",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+  },
+  "trust_preparation": {
+    "system_bundle_before_sha256": "4e3df1b7cefec516bc6dcc615565455a6658f6ae9da64989b8959827e87161dc",
+    "prepared_bundle_sha256": "dd460865e9077656747e23bb4f9257112e9b12de74b6cf946ff774f49e9bb5a2",
+    "collector_certificate_sha256": "4d745443d4ec52b22e78e3971126fe3b9424ea65e792795f45f625e66fbf7c13"
+  },
+  "prepared_trust_unchanged": true,
+  "nats_archive_sha256": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+  "python_syntax_checked": true,
+  "raw_report_sha256": "d2b60279ca2ce5bb9eeb9c939f8587efbaf5d7645dbf658041e204ea07262122",
+  "reported_passed": true,
+  "source_current_match": true,
+  "helpers_current_match": true,
+  "shared_inputs_current_match": true,
+  "effective_modules_current_match": true,
+  "host_trust_unchanged": true,
+  "trust_reconciled": true,
+  "nats_unchanged": true,
+  "isolation_reconciled": true,
+  "stages": {
+    "collector-build": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 1.066,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "collector-race": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 2.168,
+      "log_sha256": "d06eca181f49ab16982778144cbf381431e8a7f2b128b074967714292df1f701"
+    },
+    "collector-vet": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 0.317,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "external-modfile": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 0.003,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "kelvo-build": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 21.411,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "launcher-build": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 0.165,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "otlp-acceptance": {
+      "exit_code": 0,
+      "timeout": false,
+      "seconds": 25.067,
+      "log_sha256": "f9deee154e13b9291eab3b1a42735d3cacfa10faa196a658465156bcc59310e7"
+    }
+  },
+  "stages_reconciled": true,
+  "collector_controls": {
+    "passed": true,
+    "package": "github.com/SYNEHQ/kelvo-go/scripts/fixtures/otlp-collector",
+    "required_top_level_tests": [
+      "TestCollectorAcceptsFixedOTLPAndPreservesParentEvidence",
+      "TestCollectorAttributesPrivateCanaryFailures",
+      "TestCollectorCapsFailWithoutPartialEvidence",
+      "TestCollectorRejectsForbiddenTelemetryBeforeWritingEvidence",
+      "TestCollectorRejectsRecursiveUnknownProtobufFields"
+    ],
+    "log_sha256": "d06eca181f49ab16982778144cbf381431e8a7f2b128b074967714292df1f701",
+    "passed_top_level_count": 5,
+    "passed_events_including_subtests": 28,
+    "failures_or_skips": 0
+  },
+  "collector_controls_reconciled": true,
+  "binary_reconciled": true,
+  "acceptance": {
+    "checks": [
+      {
+        "nats_peers": 3,
+        "passed": true,
+        "test": "private_mounted_trust_and_three_peer_fixture",
+        "tls_minimum": "1.3"
+      },
+      {
+        "cross_tenant_status": 404,
+        "forged_body_status": 400,
+        "passed": true,
+        "test": "client_context_and_cross_tenant_rejection",
+        "unauthenticated_status": 401
+      },
+      {
+        "controlled_wrong_parent_rejected": true,
+        "durable_phases": 6,
+        "durable_spans": 11,
+        "passed": true,
+        "startup_probe_phases": 6,
+        "startup_probe_spans": 7,
+        "submit_gateway_stopped_before_dispatch": true,
+        "test": "durable_trace_across_gateway_restart"
+      },
+      {
+        "checks": [
+          "int64",
+          "decimal128",
+          "timestamp_ns",
+          "null",
+          "durable_eos"
+        ],
+        "passed": true,
+        "rows": 2,
+        "test": "exact_arrow_values_and_durable_eos",
+        "wire_bytes": 736
+      },
+      {
+        "passed": true,
+        "per_process_bound_seconds": 8,
+        "shutdown_seconds": {
+          "stall": {
+            "a1": 2.868084424000699,
+            "gateway2": 2.9704465290124062
+          },
+          "unavailable": {
+            "a1": 0.06352109299041331,
+            "gateway2": 0.0032104359997902066
+          }
+        },
+        "successful_queries": 2,
+        "test": "collector_outages_preserve_queries_and_bound_shutdown"
+      },
+      {
+        "passed": true,
+        "requests": 7,
+        "spans": 52,
+        "test": "collector_privacy_and_caps",
+        "violations": {
+          "auth_violations": 0,
+          "cap_violations": 0,
+          "connections_rejected": 0,
+          "plan_source_privacy_violations": 0,
+          "privacy_violations": 0,
+          "protocol_violations": 0,
+          "write_violations": 0
+        }
+      },
+      {
+        "passed": true,
+        "test": "owned_service_and_broker_processes_stopped"
+      }
+    ],
+    "cleanup_errors": [],
+    "failure": null,
+    "inconclusive": false,
+    "input_sha256": {
+      "acceptance_harness": "8546104debf124ec8969a0045127b807844cabff4bf0a24cbabd4b4423774279",
+      "binary": "af29afdc04b18275de1a3d5906ba474cb27e81a113cfac2ec4139834f4fb41fd",
+      "collector": "9520e8165e3a7160422c227cead54eff30a401d29e4d2502da005b05d8f3cb77",
+      "fixture_harness": "f9f76f4147cde7891b6d721a3f866c5ac4bc0604526ea47e1b87d1494c0875f1",
+      "harness": "e81f70976c506c3e5174735ad3fd2e59b8b5024c731aa709c320f0731ecf70e8",
+      "nats": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+      "operational_harness": "42140203a746ec82209ec193e07b1942e18d14e58a4f34f62d1f8f0c05730639",
+      "sandbox": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+    },
+    "passed": true,
+    "schema_version": 1,
+    "scope": "actual CLI TLS OTLP correctness; no throughput, overhead or production capacity claim",
+    "started_at": "2026-10-04T00:51:06.764278+00:00"
+  },
+  "acceptance_sha256": "c2ebc5c4420ccc385ac69da5983f23272d253adef2c58997b9e4d8b1920850f4",
+  "acceptance_reconciled": true,
+  "collector_evidence": {
+    "summary_sha256": "8fbde59b2d35637d6eb29f7b0d012fa8c1ac64bcefb8a347c94bf43f4c76961b",
+    "events_sha256": "5c71a60330ce32db2ebc401a0855cb59d6deec433ae9a4ce38029a624eb488df",
+    "summary": {
+      "roles": [
+        {
+          "requests": 1,
+          "spans": 1,
+          "accepted": 1,
+          "accepted_spans": 1,
+          "stalled": 0,
+          "unavailable": 0,
+          "active_stalls": 0
+        },
+        {
+          "requests": 3,
+          "spans": 6,
+          "accepted": 1,
+          "accepted_spans": 2,
+          "stalled": 1,
+          "unavailable": 1,
+          "active_stalls": 0
+        },
+        {
+          "requests": 3,
+          "spans": 45,
+          "accepted": 1,
+          "accepted_spans": 15,
+          "stalled": 1,
+          "unavailable": 1,
+          "active_stalls": 0
+        }
+      ],
+      "requests": 7,
+      "spans": 52,
+      "accepted_spans": 18,
+      "bytes": 6058,
+      "privacy_violations": 0,
+      "plan_source_privacy_violations": 0,
+      "cap_violations": 0,
+      "protocol_violations": 0,
+      "auth_violations": 0,
+      "write_violations": 0,
+      "connections_rejected": 0
+    },
+    "ledger_span_count": 52,
+    "reconciled": true
+  },
+  "collector_final_reconciled": true,
+  "service_exit": {
+    "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+    "unit": "kelvo-otlp-acceptance-93339e79ab-688362",
+    "systemd_run_exit_code": 0
+  },
+  "service_exit_receipt_sha256": "d21336033295e3c983ee124ecd7bc279289b3f3174cf070bc5acf89e1300fefa",
+  "service_exit_reconciled": true,
+  "cleanup": {
+    "unit": "kelvo-otlp-acceptance-93339e79ab-688362",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true
+  },
+  "local_launch": {
+    "ssh_exit_code": 0,
+    "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d",
+    "unit": "kelvo-otlp-acceptance-93339e79ab-688362"
+  },
+  "collection_ssh_exit_code": 0,
+  "local_launch_reconciled": true,
+  "local_stage_reconciled": true,
+  "local_trust_preparation_reconciled": true,
+  "independent_cleanup": {
+    "unit": "kelvo-otlp-acceptance-93339e79ab-688362",
+    "fields": {
+      "MainPID": "0",
+      "Result": "success",
+      "LoadState": "not-found",
+      "ActiveState": "inactive",
+      "SubState": "dead"
+    },
+    "owned_service_removed": true,
+    "owned_cgroup_removed": true,
+    "passed": true,
+    "revision": "93339e79ab135b6d1c2c09da04a00f3e711fd24d"
+  }
+}

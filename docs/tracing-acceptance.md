@@ -23,3 +23,11 @@ Use 1 CPU, 3 GiB RAM, no swap and a watchdog. The fixture installs no packages. 
 A missing queued-wait span makes the run inconclusive and failed; it is not proof of a product defect. Failed runs retain their failure and cleanup state. No cross-host timestamp subtraction or pure source/compute attribution is claimed.
 
 See [tracing configuration](tracing.md), [worker timing metrics](child-timings.md) and [validation rules](validation.md).
+
+## Recorded result
+
+Source `93339e7` passed all seven gates on Azure: trace continuity across gateway restart, exact parent links, authorization, Arrow values, collector faults, privacy and cleanup. Collector race tests (5 tests, 28 test/subtest pass events), vet and all three builds passed. [Receipt](evidence/otlp-acceptance-93339e7.json).
+
+The correctness trace contained 11 durable spans and 7 startup-probe spans. The same events rejected a wrong parent. Queries still succeeded during collector stalls and HTTP 503 responses; the slowest service shutdown stayed below 2.971 seconds against an 8-second bound. Service/cgroup removal and unchanged host trust were independently verified.
+
+The [first run](evidence/otlp-acceptance-4b54b16-failed.json) failed its result check. Its SQL used the unquoted identifier `at`; the corrected fixture quotes it and retains bounded private result diagnostics. Both runs remain recorded, including their [component timing and overlap observations](evidence/otlp-acceptance-overlap.json). The first overlap observation arrived after that component had exited; the second observed both services running. This gate measures correctness, not telemetry overhead or deployment capacity.
