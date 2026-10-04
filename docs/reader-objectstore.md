@@ -74,8 +74,8 @@ and its cgroup disappeared afterward. These are validation limits, not a
 production sizing or throughput claim.
 
 This historical receipt covers the adapter and binding components.
-[Runtime acceptance](protected-object-readers.md#validation-and-remaining-work)
-is separate. Remaining [lifecycle gates](durable-reader-registry.md#integration-gates-still-open)
+[Protected runtime acceptance](evidence/protected-object-readers.json) passed
+all ten Linux stages on `c8bae34`, using a local TLS object/registry fixture. Remaining [lifecycle gates](durable-reader-registry.md#integration-gates-still-open)
 include providers, maintenance readers and legacy cutover. Retirement and
 deletion need their own reviewed protocol.
 

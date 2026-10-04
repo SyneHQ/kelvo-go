@@ -10,6 +10,12 @@ The [pinned worker-capacity gate](node-capacity.md) passed on `b1a0ea5` with obs
 
 The [first `b1a0ea5` attempt](evidence/node-capacity-b1a0ea5-preflight-refusal.json) remains recorded: its source policy refused all three preflight queries. The fresh campaign used bounded source settings, passed 24 live policy checks and retained the same runtime.
 
+## Protected object snapshots
+
+[Linux acceptance](evidence/protected-object-readers.json) on `c8bae34` passed all ten stages: 36 runner controls, ordinary/race/native checks, vet, build and contained execution. All seven protected worker cases passed, including exact CTE results, role separation, cancellation and lease loss after the last batch. Preactivation also passed 27 parser controls and 18 workspace-monitor controls. Source and both-unit cleanup were independently checked; the outer bridge was rehashed and the child bridge has the runner's before/after attestation.
+
+The receipt retains an initial SSH setup denial and two rejected runtime trials: a helper misclassified the expected skip outside a contained service, then Python added a bytecode file to the source tree. The accepted run corrected both harness defects. This TLS fixture uses deterministic Arrow refresh input; it establishes neither cloud IAM/signatures, throughput/footprint nor the full protected gateway/export lifecycle. [Setup and limits](protected-object-readers.md).
+
 ## Authentication history
 
 [Linux acceptance](evidence/gateway-auth-state.json) on `6bbbc71` passed regular and race checks (all 50 required entries each), vet and the tagged CLI build. Checks cover restart rollback and token-reassignment refusal, real-process locks/crashes, blocked-I/O expiry, persistence failures, legacy behavior and offline CLI command handlers. [PR CI](https://github.com/SYNEHQ/kelvo-go/actions/runs/37214177804) passed all 68 steps.

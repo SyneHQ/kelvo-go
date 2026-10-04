@@ -52,10 +52,10 @@ Data and registry traffic use separate transports. These bounds describe admissi
 
 ## Validation and remaining work
 
-Integration acceptance is tracked in [#118](https://github.com/SYNEHQ/kelvo-go/issues/118). The fixture exercises TLS object publication and real contained DuckDB queries; it does not validate cloud IAM or signatures. Refresh input is deterministic Arrow data.
+[Linux acceptance](evidence/protected-object-readers.json) passed all ten stages on `c8bae34`, including 36 runner controls and seven protected worker cases. The fixture exercises TLS object publication and real contained DuckDB queries; it does not validate cloud IAM, signatures, throughput or footprint. Refresh input is deterministic Arrow data.
 
 The worker checks include catalog-bound executor copies and externally owned export reservations. A complete protected gateway/export lifecycle still needs separate acceptance.
 
-[#14](https://github.com/SYNEHQ/kelvo-go/issues/14) retains maintenance readers, legacy cutover and provider acceptance. No lease expiry, empty registry or node restart permits deletion. Retirement needs a separate protocol.
+[#119](https://github.com/SYNEHQ/kelvo-go/issues/119) tracks protected verification and inventory. [#14](https://github.com/SYNEHQ/kelvo-go/issues/14) retains the other maintenance readers, legacy cutover and provider acceptance. No lease expiry, empty registry or node restart permits deletion. Retirement needs a separate protocol.
 
 [Registry contract](durable-reader-registry.md) · [Reader ownership](reader-owner.md) · [Production checklist](production-status.md)

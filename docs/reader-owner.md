@@ -49,8 +49,9 @@ preparation, range handlers, the verified-empty process tree and scratch cleanup
 detection and `go vet`. Inputs stayed unchanged and service cleanup passed.
 
 That receipt covers the owner component before runtime integration.
-[Issue 118](https://github.com/SYNEHQ/kelvo-go/issues/118) tracks protected runtime
-acceptance. [Issue 14](https://github.com/SYNEHQ/kelvo-go/issues/14) retains
+[Protected runtime acceptance](evidence/protected-object-readers.json) passed on
+`c8bae34`, including late lease loss and contained query cleanup.
+[Issue 14](https://github.com/SYNEHQ/kelvo-go/issues/14) retains
 maintenance readers, legacy cutover and provider acceptance. Retirement and
 deletion require a separate reviewed protocol.
 

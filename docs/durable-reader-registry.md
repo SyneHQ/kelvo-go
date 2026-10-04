@@ -60,9 +60,8 @@ Immutable authorization provenance in a binding does not grant current access.
 
 | Reviewable slice | Required behavior and acceptance |
 | --- | --- |
-| Runtime acceptance | [#118](https://github.com/SYNEHQ/kelvo-go/issues/118): verify publication, acquisition order, contained queries and cleanup against the frozen source. |
 | Live providers | Validate exact-key CAS, service time, cancellation and credential rotation against each supported object provider. |
-| Maintenance readers | Status and previous-schema reads use guards. Verification, inventory, historical restore and migration backup refuse protected namespaces until integrated. |
+| Maintenance readers | Status and previous-schema reads use guards. [Verification and inventory (#119)](https://github.com/SYNEHQ/kelvo-go/issues/119), historical restore and migration backup refuse protected namespaces until integrated. |
 | Legacy cutover | Protected mode requires a fresh namespace and v5 bindings. Legacy namespaces remain non-collecting until an explicit, fenced cutover. |
 
 Remote garbage collection needs a separate reviewed retirement protocol that
@@ -71,6 +70,8 @@ node/process cleanup. An empty or expired registry does not prove that a native
 child stopped reading. No absence, timeout or restart authorizes deletion.
 
 ## Validation evidence
+
+[Runtime integration](evidence/protected-object-readers.json) passed all ten Linux stages on `c8bae34`: protected publication, contained queries, late lease loss and independently verified cleanup. This local TLS fixture does not cover cloud IAM or the full gateway/export lifecycle. Earlier failed trials remain recorded.
 
 [The receipt](evidence/durable-reader-registry.json) records source commit
 `50fd0ce86e284441b1a90da7d26194724904cc1f`, the exact nine-file package/module
