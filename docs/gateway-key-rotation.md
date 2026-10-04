@@ -42,7 +42,7 @@ Symlinks, hardlinks, unsafe ancestors/modes, in-place changes, duplicate keys/fi
 3. Publish another higher revision removing the old key. Verify old-key `401`, new-key access and readiness on every replica; remove stale/unreachable replicas from service.
 4. Raise deployment `min_revision` before future restarts and retain the corresponding file.
 
-Changed bytes, including whitespace, require a higher revision. The highest observed revision is in memory; `min_revision` supplies the restart floor. Restarting with an old floor and old file can restore revoked keys. A higher revision can intentionally reintroduce a key for the same identity. Retired bindings remain fenced for the gateway process lifetime, up to 8,192 unique keys; the gateway rejects new bindings at that limit rather than evicting history. Never reuse keys for other identities, including across restarts.
+Changed bytes, including whitespace, require a higher revision. By default, revision and retired-key history are in memory; restarting with an old `min_revision` and file can restore revoked keys. Enable [persistent authentication state](gateway-auth-state.md) to retain both across restarts. A higher revision can reintroduce a key for the same identity. The 8,192-binding limit rejects new ownership without eviction. Never reuse keys for another identity.
 
 Propagation is operator-managed. A replica with its old valid file can continue accepting old keys; revocation is not globally atomic. An exact valid current file can recover a replica after I/O or permission failure.
 
@@ -57,7 +57,7 @@ Propagation is operator-managed. A replica with its old valid file can continue 
 | Removed key | New requests denied; requests already authenticated with it canceled |
 | File failure/expiry | All file-authenticated request contexts canceled |
 
-Unchanged keys retain request contexts during overlap. Authentication requests do no filesystem I/O. A valid reload restores service.
+Unchanged keys retain request contexts during overlap. Authentication requests do no filesystem I/O. A valid reload restores service after key-file rejection; uncertain persistent-state writes require a successful reopen.
 
 Revocation cannot recall delivered bytes, undo durable success or guarantee immediate remote database cancellation. Require normal complete HTTP/Arrow/EOS checks. With version-1 keys, durable jobs remain tenant-owned: another current tenant key can retrieve/cancel an unconsumed handle. [Version-2 principal keys](principal-access.md) restrict handles to their submitting principal. Cancellation before a parked request claims results leaves the handle unclaimed.
 
