@@ -113,7 +113,7 @@ func (b *federationBindings) attach(ctx context.Context, raw any, sources []cata
 func (b *federationBindings) register(ctx context.Context, conn driver.Conn, table *federation.Table, source, name, schema string) error {
 	b.tables = append(b.tables, table)
 	b.identities = append(b.identities, [2]string{source, name})
-	factory, err := duckbridge.New(ctx, table.Schema(), table.Scan)
+	factory, err := duckbridge.New(ctx, table.Schema(), table.Scan, table.PredicateCapabilities())
 	if err != nil {
 		return err
 	}

@@ -159,7 +159,15 @@ func registeredFactory(t *testing.T, schema *arrow.Schema, producer Producer) (*
 		cancel()
 		t.Fatal(err)
 	}
-	factory, err := New(ctx, schema, producer)
+	// Existing bridge controls explicitly retain the old scalar allowlist.
+	var predicates PredicateCapabilities
+	for _, field := range schema.Fields() {
+		switch field.Type.ID() {
+		case arrow.BOOL, arrow.INT8, arrow.INT16, arrow.INT32, arrow.INT64, arrow.UINT8, arrow.UINT16, arrow.UINT32, arrow.UINT64:
+			predicates.Columns = append(predicates.Columns, field.Name)
+		}
+	}
+	factory, err := New(ctx, schema, producer, predicates)
 	if err != nil {
 		conn.Close()
 		db.Close()

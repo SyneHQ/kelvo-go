@@ -19,27 +19,41 @@
 using namespace duckdb;
 
 namespace {
-struct FactoryState { uint64_t handle; };
+struct FactoryState {
+	FactoryState(uint64_t handle_p, vector<LogicalType> predicate_types_p)
+	    : handle(handle_p), predicate_types(std::move(predicate_types_p)) {}
+	const uint64_t handle;
+	const vector<LogicalType> predicate_types;
+};
+
+unique_ptr<ArrowArrayStreamWrapper> Produce(uintptr_t pointer, ArrowStreamParameters &parameters);
+
+LogicalType PredicateType(uint8_t type) {
+	switch (type) {
+	case KELVO_PREDICATE_BOOL: return LogicalType::BOOLEAN;
+	case KELVO_PREDICATE_INT8: return LogicalType::TINYINT;
+	case KELVO_PREDICATE_INT16: return LogicalType::SMALLINT;
+	case KELVO_PREDICATE_INT32: return LogicalType::INTEGER;
+	case KELVO_PREDICATE_INT64: return LogicalType::BIGINT;
+	case KELVO_PREDICATE_UINT8: return LogicalType::UTINYINT;
+	case KELVO_PREDICATE_UINT16: return LogicalType::USMALLINT;
+	case KELVO_PREDICATE_UINT32: return LogicalType::UINTEGER;
+	case KELVO_PREDICATE_UINT64: return LogicalType::UBIGINT;
+	default: return LogicalType::INVALID;
+	}
+}
 
 bool SupportsPushdown(const FunctionData &data, idx_t column) {
 	const auto &arrow = data.Cast<ArrowScanFunctionData>();
-	if (column >= arrow.all_types.size()) { return false; }
-	// Advertise only the exact scalar types understood by the Go contract.
-	// DuckDB keeps other predicates above the scan instead of handing us a
-	// required predicate that a source cannot safely implement (collations,
-	// floating-point, decimal and timezone semantics are engine-local).
-	switch (arrow.all_types[column].id()) {
-	case LogicalTypeId::BOOLEAN:
-	case LogicalTypeId::TINYINT:
-	case LogicalTypeId::SMALLINT:
-	case LogicalTypeId::INTEGER:
-	case LogicalTypeId::BIGINT:
-	case LogicalTypeId::UTINYINT:
-	case LogicalTypeId::USMALLINT:
-	case LogicalTypeId::UINTEGER:
-	case LogicalTypeId::UBIGINT: return true;
-	default: return false;
+	if (!arrow.stream_factory_ptr || arrow.scanner_producer != Produce || column >= arrow.all_types.size()) {
+		return false;
 	}
+	// v1.5.6 plan_get.cpp passes the original bound schema ordinal here, not
+	// the projected filter index. ArrowScanBind retains our factory argument.
+	const auto &factory = *reinterpret_cast<const FactoryState *>(arrow.stream_factory_ptr);
+	if (column >= factory.predicate_types.size()) { return false; }
+	const auto &expected = factory.predicate_types[column];
+	return expected != LogicalType::INVALID && arrow.all_types[column] == expected;
 }
 
 string JsonString(const string &value) {
@@ -283,7 +297,22 @@ void ArrayRelease(ArrowArray *array) {
 } // namespace
 
 extern "C" const char *kelvo_runtime_version(void) { return duckdb_library_version(); }
-extern "C" void *kelvo_factory_create(uint64_t handle) { return new (std::nothrow) FactoryState{handle}; }
+extern "C" void *kelvo_factory_create(uint64_t handle, uint32_t schema_columns,
+                                      const kelvo_predicate_column *columns, size_t count) {
+	if (!schema_columns || schema_columns > 1024 || count > schema_columns || (count && !columns)) { return nullptr; }
+	try {
+		vector<LogicalType> expected(schema_columns, LogicalType::INVALID);
+		for (size_t i = 0; i < count; i++) {
+			const auto &column = columns[i];
+			if (column.ordinal >= schema_columns || expected[column.ordinal] != LogicalType::INVALID) { return nullptr; }
+			auto type = PredicateType(column.scalar_type);
+			if (type == LogicalType::INVALID) { return nullptr; }
+			expected[column.ordinal] = std::move(type);
+		}
+		// Own the copy before returning across Cgo; no Go slice is retained.
+		return new (std::nothrow) FactoryState(handle, std::move(expected));
+	} catch (...) { return nullptr; }
+}
 extern "C" void kelvo_factory_destroy(void *factory) { delete static_cast<FactoryState *>(factory); }
 extern "C" int kelvo_factory_register(void *factory, void *connection, const char *schema, const char *name) {
 	try {
