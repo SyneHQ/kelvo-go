@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 import subprocess
+import stat
 import tempfile
 import unittest
 from unittest import mock
@@ -12,11 +13,12 @@ from unittest import mock
 import containment_acceptance as fixture
 
 
-def valid_report():
-    files = {name: "a" * 64 for name in fixture.SOURCE_REQUIRED}
+def valid_report(protected=False):
+    files = {name: "a" * 64 for name in fixture.SOURCE_REQUIRED | (fixture.PROTECTED_SOURCE_REQUIRED if protected else set())}
     canonical = json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
-    return {
-        "gates": {name: "pass" for name in fixture.REQUIRED},
+    report = {
+        "mode": fixture.PROTECTED_MODE if protected else fixture.BASE_MODE,
+        "gates": {name: "pass" for name in fixture.required_gates(protected)},
         "non_root": True, "capability_sets_zero": True,
         "source": {"verified": True, "file_count": len(files), "files": files,
                    "sha256": hashlib.sha256(canonical).hexdigest(), "base_revision": "c" * 40,
@@ -26,9 +28,254 @@ def valid_report():
         "remaining_job_groups": 0, "remaining_ownership_records": 0,
         "service_exit_code": 0, "owned_service_removed": True, "owned_cgroup_removed": True,
     }
+    if protected:
+        report["bridge"] = {"duckdb": fixture.bridge.VERSION, "driver": fixture.bridge.MODULE_VERSION,
+                            "module_sum": fixture.bridge.MODULE_SUM, "source_sha256": fixture.bridge.ARCHIVE_SHA256,
+                            "tags": fixture.BRIDGE_TAGS} | {name: "a" * 64 for name in fixture.BRIDGE_HASHES}
+        report["bridge_inputs_unchanged"] = True
+        report["resource_limits"] = dict(fixture.RESOURCE_LIMITS)
+        report["protected_gates"] = {name: "pass" for name in ("outer", "inner", *fixture.PROTECTED_LEAVES)}
+    return report
+
+
+def protected_output():
+    root = fixture.PROTECTED_GATE
+    return "".join(f"        --- PASS: {name} (0s)\n" for name in fixture.PROTECTED_LEAVES) + \
+        f"    --- PASS: {root} (0s)\n--- PASS: {root} (0s)\n"
 
 
 class ContainmentControls(unittest.TestCase):
+    def test_protected_mode_requires_its_gate_and_cannot_be_downgraded(self):
+        self.assertTrue(fixture.reconcile(valid_report(protected=True)))
+        for state in ("missing", "skip", "fail", "duplicate", True, None):
+            report = valid_report(protected=True)
+            report["gates"][fixture.PROTECTED_GATE] = state
+            self.assertFalse(fixture.reconcile(report), state)
+        for mode in (None, "", "native", fixture.BASE_MODE):
+            report = valid_report(protected=True)
+            report["mode"] = mode
+            self.assertFalse(fixture.reconcile(report), mode)
+        report = valid_report(protected=True)
+        del report["gates"][fixture.PROTECTED_GATE]
+        self.assertFalse(fixture.reconcile(report))
+        report = valid_report()
+        report["mode"] = fixture.PROTECTED_MODE
+        self.assertFalse(fixture.reconcile(report))
+        report = valid_report()
+        del report["mode"]
+        self.assertTrue(fixture.reconcile(report), "existing baseline reports remain compatible")
+
+    def test_protected_gate_rejects_nested_skip_or_failure_behind_outer_pass(self):
+        root = fixture.PROTECTED_GATE
+        for status in ("SKIP", "FAIL"):
+            for name in (root, root + "/cte-join-types-policy-and-shared-manager"):
+                output = f"    --- {status}: {name} (0s)\n--- PASS: {root} (0s)\n"
+                self.assertEqual(fixture.gates(output, [root]), {root: "fail"})
+        self.assertEqual(fixture.gates(protected_output(), [root]), {root: "pass"})
+
+    def test_protected_child_evidence_requires_both_roots_and_every_exact_leaf(self):
+        root, output = fixture.PROTECTED_GATE, protected_output()
+        self.assertEqual(set(fixture.protected_gates(output)), {"inner", "outer", *fixture.PROTECTED_LEAVES})
+        self.assertEqual(fixture.gates(f"--- PASS: {root} (0s)\n", [root]), {root: "fail"})
+        for line in output.splitlines(keepends=True):
+            for changed in (output.replace(line, ""), output + line):
+                self.assertEqual(fixture.gates(changed, [root]), {root: "fail"})
+        for name in ("inner", "outer", *fixture.PROTECTED_LEAVES):
+            report = valid_report(protected=True)
+            del report["protected_gates"][name]
+            self.assertFalse(fixture.reconcile(report), name)
+        report = valid_report(protected=True)
+        report["protected_gates"][root + "/unexpected"] = "pass"
+        self.assertFalse(fixture.reconcile(report))
+
+    def test_protected_report_requires_pinned_unchanged_bridge_provenance(self):
+        for field in ("bridge", "bridge_inputs_unchanged"):
+            report = valid_report(protected=True)
+            del report[field]
+            self.assertFalse(fixture.reconcile(report), field)
+        for field in ("duckdb", "driver", "module_sum", "source_sha256", "tags", *fixture.BRIDGE_HASHES):
+            for value in (None, "", "wrong", False):
+                report = valid_report(protected=True)
+                report["bridge"][field] = value
+                self.assertFalse(fixture.reconcile(report), (field, value))
+        report = valid_report(protected=True)
+        report["bridge"]["driver_patch_sha256"] = "f" * 64
+        self.assertFalse(fixture.reconcile(report), "bridge patch must bind to source inventory")
+        report = valid_report(protected=True)
+        report["bridge_inputs_unchanged"] = 1
+        self.assertFalse(fixture.reconcile(report))
+        for name in fixture.RESOURCE_LIMITS:
+            report = valid_report(protected=True)
+            report["resource_limits"][name] = "unbounded"
+            self.assertFalse(fixture.reconcile(report), name)
+
+    def test_native_test_binaries_and_cli_use_one_exact_bridge_configuration(self):
+        artifact = Path("/owned/fixture")
+        native = fixture.build_commands("fixture-go", artifact, protected=True)
+        self.assertEqual(len(native), len(fixture.BINARIES))
+        for command in native[:5]:
+            self.assertEqual(command[0], "fixture-go")
+            self.assertEqual(command[command.index("-modfile") + 1], str(artifact / "duckbridge/duckbridge.mod"))
+            self.assertEqual(command[command.index("-tags") + 1], fixture.BRIDGE_TAGS)
+            self.assertIn("-mod=readonly", command)
+        baseline = fixture.build_commands("fixture-go", artifact)
+        for command in baseline[:4]:
+            self.assertNotIn("-modfile", command)
+            self.assertNotIn("-tags", command)
+        self.assertEqual(baseline[4][baseline[4].index("-tags") + 1], "duckdb_arrow")
+        self.assertNotIn("-modfile", baseline[4])
+
+    def test_protected_environment_is_explicit_and_cannot_inherit_child_bypass(self):
+        with mock.patch.dict(fixture.os.environ, {"KELVO_TEST_PROTECTED_OBJECTS": "1", "KELVO_PROTECTED_FIXTURE_CHILD": "1",
+                                                  "KELVO_SOURCE_REGISTRY_SECRET": "fixture", "AWS_SECRET_ACCESS_KEY": "fixture", "LD_PRELOAD": "/fixture"}):
+            for protected in (False, True):
+                env = fixture.test_environment(Path("/owned/fixture"), "/owned/jobs", "/owned/state", protected)
+                self.assertNotIn("KELVO_PROTECTED_FIXTURE_CHILD", env)
+                self.assertEqual(env.get("KELVO_TEST_PROTECTED_OBJECTS"), "1" if protected else None)
+                for name in ("KELVO_SOURCE_REGISTRY_SECRET", "AWS_SECRET_ACCESS_KEY", "LD_PRELOAD"):
+                    self.assertNotIn(name, env)
+
+    def test_cached_bridge_seed_is_pinned_bounded_regular_and_never_adopts_destination(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            source = root / "cached.tar.gz"
+            source.write_bytes(b"fixture archive")
+            artifact = root / "artifact"
+            artifact.mkdir()
+            with mock.patch.object(fixture.bridge, "ARCHIVE_SHA256", fixture.digest(source)):
+                fixture.seed_bridge_archive(source, artifact)
+                seeded = artifact / "duckbridge" / ("duckdb-" + fixture.bridge.VERSION + ".tar.gz")
+                self.assertEqual(seeded.read_bytes(), source.read_bytes())
+                with self.assertRaises(FileExistsError):
+                    fixture.seed_bridge_archive(source, artifact)
+            wrong = root / "wrong"
+            wrong.mkdir()
+            with self.assertRaisesRegex(RuntimeError, "checksum mismatch"):
+                fixture.seed_bridge_archive(source, wrong)
+            self.assertFalse((wrong / "duckbridge" / seeded.name).exists())
+            for name in ("symlink", "oversized", "directory"):
+                candidate = root / name
+                candidate.mkdir()
+                if name == "symlink":
+                    linked = root / "linked.tar.gz"
+                    linked.symlink_to(source)
+                    with self.assertRaises(OSError):
+                        fixture.seed_bridge_archive(linked, candidate)
+                elif name == "oversized":
+                    with mock.patch.object(fixture.os, "fstat", return_value=SimpleNamespace(st_mode=stat.S_IFREG, st_size=(128 << 20) + 1)):
+                        with self.assertRaisesRegex(RuntimeError, "bounded regular"):
+                            fixture.seed_bridge_archive(source, candidate)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "bounded regular"):
+                        fixture.seed_bridge_archive(root, candidate)
+
+    def test_external_artifact_root_is_fresh_private_and_owned(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            root.chmod(0o700)
+            target = root / "fresh"
+            self.assertEqual(fixture.prepare_artifact(root, target), target)
+            self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o700)
+            with self.assertRaises(FileExistsError):
+                fixture.prepare_artifact(root, target)
+            linked = root / "linked"
+            linked.symlink_to(target, target_is_directory=True)
+            with self.assertRaises(FileExistsError):
+                fixture.prepare_artifact(root, linked)
+            with self.assertRaisesRegex(RuntimeError, "absolute path"):
+                fixture.prepare_artifact(root, Path("relative"))
+            with mock.patch.object(fixture.os, "geteuid", return_value=root.stat().st_uid + 1):
+                with self.assertRaisesRegex(RuntimeError, "private and owned"):
+                    fixture.prepare_artifact(root, root / "foreign")
+            root.chmod(0o755)
+            with self.assertRaisesRegex(RuntimeError, "private and owned"):
+                fixture.prepare_artifact(root, root / "public-parent")
+
+    def test_fresh_unit_refuses_existing_unknown_or_unsafe_identity(self):
+        unit = "kelvo-containment-0123456789ab"
+        for status, result, exists in (("loaded", 0, False), ("not-found", 1, False), ("not-found", 0, True)):
+            with mock.patch.object(fixture, "run", return_value=subprocess.CompletedProcess([], result, status)), \
+                    mock.patch.object(Path, "exists", return_value=exists):
+                with self.assertRaisesRegex(RuntimeError, "already exists|cannot be checked"):
+                    fixture.require_fresh_unit(unit)
+        with mock.patch.object(fixture, "run") as run:
+            with self.assertRaisesRegex(RuntimeError, "invalid owned"):
+                fixture.require_fresh_unit("unrelated-production")
+            run.assert_not_called()
+
+    def test_parent_dependency_requires_current_membership_and_active_exact_service(self):
+        parent = "kelvo-protected-readers-validation-0123456789ab.service"
+        for member in ("/system.slice/" + parent, "/system.slice/" + parent + "/supervisor"):
+            with mock.patch.object(Path, "read_text", return_value="0::" + member + "\n"), \
+                    mock.patch.object(fixture, "run", return_value=subprocess.CompletedProcess([], 0, "active\n")):
+                fixture.require_parent_unit(parent)
+        for membership in ("0::/unrelated\n", "0::/system.slice/" + parent + "-other\n", "1:cpu:/unrelated\n"):
+            with mock.patch.object(Path, "read_text", return_value=membership), mock.patch.object(fixture, "run") as run:
+                with self.assertRaises(RuntimeError):
+                    fixture.require_parent_unit(parent)
+                run.assert_not_called()
+        for status, code in (("inactive", 0), ("activating", 0), ("active", 1)):
+            with mock.patch.object(Path, "read_text", return_value="0::/system.slice/" + parent + "\n"), \
+                    mock.patch.object(fixture, "run", return_value=subprocess.CompletedProcess([], code, status)):
+                with self.assertRaisesRegex(RuntimeError, "not active"):
+                    fixture.require_parent_unit(parent)
+
+    def test_timeout_preserves_bounded_partial_diagnostics_without_returning_success(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            log = Path(temporary) / "worker.test.log"
+            failure = subprocess.TimeoutExpired(["fixture"], 10, output=b"x" * (2 << 20) + b"partial cancellation trace\n", stderr=b"partial stderr trace\n")
+            with mock.patch.object(fixture, "run", side_effect=failure):
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    fixture.run_logged(["fixture"], log, timeout=10)
+            self.assertLessEqual(log.stat().st_size, 1 << 20)
+            self.assertTrue(log.read_text().startswith("[timeout diagnostic truncated;"))
+            self.assertIn("partial cancellation trace", log.read_text())
+            self.assertTrue(log.read_text().endswith("partial stderr trace\n"))
+            with mock.patch.object(fixture, "run", side_effect=subprocess.TimeoutExpired(["fixture"], 10, output=b"short trace\n")):
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    fixture.run_logged(["fixture"], log, timeout=10)
+            self.assertEqual(log.read_bytes(), b"short trace\n")
+
+    def test_bridge_provenance_rejects_wrong_paths_pins_and_changed_inputs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            artifact = repo / "artifacts/fixture"
+            directory = artifact / "duckbridge"
+            headers, driver = directory / "headers", directory / "duckdb-go"
+            headers.mkdir(parents=True)
+            driver.mkdir()
+            (headers / "header.hpp").write_text("fixture header")
+            (driver / "native_connection.go").write_text("fixture driver")
+            (directory / "duckbridge.mod").write_text("fixture mod")
+            (directory / "duckbridge.sum").write_text("fixture sums")
+            archive = directory / ("duckdb-" + fixture.bridge.VERSION + ".tar.gz")
+            archive.write_bytes(b"fixture archive")
+            (repo / "scripts").mkdir()
+            patch = repo / "scripts/duckbridge-driver.patch"
+            patch.write_text("fixture patch")
+            pinned = fixture.digest(archive)
+            build = {"duckdb": fixture.bridge.VERSION, "driver": fixture.bridge.MODULE_VERSION,
+                     "module_sum": fixture.bridge.MODULE_SUM, "source_sha256": pinned,
+                     "driver_patch_sha256": fixture.digest(patch), "tags": fixture.BRIDGE_TAGS,
+                     "headers": str(headers), "header_count": 101,
+                     "modfile": str(directory / "duckbridge.mod"), "CGO_CXXFLAGS": "-I" + str(headers)}
+            manifest = directory / "build.json"
+            manifest.write_text(json.dumps(build))
+            with mock.patch.object(fixture.bridge, "ARCHIVE_SHA256", pinned):
+                original = fixture.bridge_provenance(repo, artifact)
+                for field, value in (("source_sha256", "f" * 64), ("module_sum", "wrong"),
+                                     ("headers", "/other/headers"), ("modfile", "/other/duckbridge.mod"),
+                                     ("CGO_CXXFLAGS", "-I/other/headers"), ("header_count", True)):
+                    manifest.write_text(json.dumps(build | {field: value}))
+                    with self.assertRaisesRegex(RuntimeError, "provenance mismatch"):
+                        fixture.bridge_provenance(repo, artifact)
+                manifest.write_text(json.dumps(build))
+                (headers / "header.hpp").write_text("changed header")
+                self.assertNotEqual(original, fixture.bridge_provenance(repo, artifact))
+                (headers / "link.hpp").symlink_to(headers / "header.hpp")
+                with self.assertRaisesRegex(RuntimeError, "symlink"):
+                    fixture.bridge_provenance(repo, artifact)
+
     def test_every_gate_is_required_and_must_pass(self):
         self.assertTrue(fixture.reconcile(valid_report()))
         for name in fixture.REQUIRED:
@@ -141,26 +388,45 @@ class ContainmentControls(unittest.TestCase):
                         fixture.source_manifest(root)
 
     def test_cleanup_targets_only_the_exact_owned_unit_and_checks_cgroup(self):
-        unit = "kelvo-containment-testfixture"
-        with mock.patch.object(fixture, "run", side_effect=[subprocess.CompletedProcess([], 0, ""), subprocess.CompletedProcess([], 0, "not-found\n")]) as run, \
+        unit, description = "kelvo-containment-0123456789ab", "Kelvo containment acceptance " + "a" * 32
+        outputs = ["loaded\n", description + "\n", "", "not-found\n"]
+        with mock.patch.object(fixture, "run", side_effect=[subprocess.CompletedProcess([], 0, value) for value in outputs]) as run, \
                 mock.patch.object(Path, "exists", return_value=False):
-            self.assertEqual(fixture.cleanup_owned(unit), {"owned_service_removed": True, "owned_cgroup_removed": True})
-            self.assertEqual(run.call_args_list[0].args[0], ["sudo", "-n", "systemctl", "stop", unit + ".service"])
-            self.assertEqual(run.call_args_list[1].args[0][2], unit + ".service")
+            self.assertEqual(fixture.cleanup_owned(unit, description), {"owned_service_removed": True, "owned_cgroup_removed": True})
+            self.assertEqual(run.call_args_list[2].args[0], ["sudo", "-n", "systemctl", "stop", unit + ".service"])
+            self.assertEqual(run.call_args_list[1].args[0][3], "--property=Description")
+            self.assertEqual(run.call_args_list[3].args[0][2], unit + ".service")
         with mock.patch.object(fixture, "run", side_effect=subprocess.TimeoutExpired([], 20)):
-            result = fixture.cleanup_owned(unit)
+            result = fixture.cleanup_owned(unit, description)
             self.assertFalse(result["owned_service_removed"])
             self.assertFalse(result["owned_cgroup_removed"])
             self.assertTrue(result["cleanup_failure"])
 
     def test_cleanup_does_not_equate_failed_status_lookup_with_absent_unit(self):
-        with mock.patch.object(fixture, "run", side_effect=[subprocess.CompletedProcess([], 0, ""), subprocess.CompletedProcess([], 1, "not-found\n")]), \
+        with mock.patch.object(fixture, "run", return_value=subprocess.CompletedProcess([], 1, "not-found\n")), \
                 mock.patch.object(Path, "exists", return_value=False):
-            self.assertFalse(fixture.cleanup_owned("kelvo-containment-testfixture")["owned_service_removed"])
+            self.assertFalse(fixture.cleanup_owned("kelvo-containment-0123456789ab", "fixture")["owned_service_removed"])
+
+    def test_cleanup_never_stops_a_foreign_description_or_adopts_unsafe_unit_name(self):
+        unit = "kelvo-containment-0123456789ab"
+        with mock.patch.object(fixture, "run", side_effect=[subprocess.CompletedProcess([], 0, "loaded\n"),
+                                                             subprocess.CompletedProcess([], 0, "unrelated fixture\n")]) as run:
+            self.assertTrue(fixture.cleanup_owned(unit, "owned fixture")["cleanup_failure"])
+            self.assertFalse(any("stop" in call.args[0] for call in run.call_args_list))
+        with mock.patch.object(fixture, "run") as run:
+            self.assertTrue(fixture.cleanup_owned("unrelated-production", "fixture")["cleanup_failure"])
+            run.assert_not_called()
+
+    def test_already_removed_owned_service_needs_no_stop(self):
+        with mock.patch.object(fixture, "run", return_value=subprocess.CompletedProcess([], 0, "not-found\n")) as run, \
+                mock.patch.object(Path, "exists", return_value=False):
+            result = fixture.cleanup_owned("kelvo-containment-0123456789ab", "fixture")
+            self.assertEqual(result, {"owned_service_removed": True, "owned_cgroup_removed": True})
+            self.assertFalse(any("stop" in call.args[0] for call in run.call_args_list))
 
     def test_unowned_service_fails_with_retained_missing_gate_report(self):
         with tempfile.TemporaryDirectory() as temporary:
-            args = SimpleNamespace(artifact=temporary, unit="kelvo-containment-testfixture")
+            args = SimpleNamespace(artifact=temporary, unit="kelvo-containment-testfixture", protected_objects=False)
             with mock.patch.object(Path, "read_text", return_value="0::/user.slice/unrelated.service\n"), \
                     mock.patch.object(fixture, "run") as run:
                 self.assertEqual(fixture.inside(args), 1)
@@ -168,6 +434,17 @@ class ContainmentControls(unittest.TestCase):
             report = json.loads((Path(temporary) / "inside.json").read_text())
             self.assertTrue(report["failure"])
             self.assertTrue(all(value == "missing" for value in report["gates"].values()))
+
+    def test_unowned_protected_service_retains_its_required_gate_and_mode(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = SimpleNamespace(artifact=temporary, unit="kelvo-containment-testfixture", protected_objects=True)
+            with mock.patch.object(Path, "read_text", return_value="0::/user.slice/unrelated.service\n"), \
+                    mock.patch.object(fixture, "run") as run:
+                self.assertEqual(fixture.inside(args), 1)
+                run.assert_not_called()
+            report = json.loads((Path(temporary) / "inside.json").read_text())
+            self.assertEqual(report["mode"], fixture.PROTECTED_MODE)
+            self.assertEqual(report["gates"][fixture.PROTECTED_GATE], "missing")
 
     def test_wrong_fixture_identity_never_runs_outside_probe(self):
         with tempfile.TemporaryDirectory() as temporary:

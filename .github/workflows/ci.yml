@@ -172,6 +172,26 @@ jobs:
             go test -p 2 -race -count=1 -timeout=5m -modfile artifacts/duckbridge/duckbridge.mod \
             -tags duckdb_arrow,duckbridge ./internal/worker ./internal/cluster \
             -run '^Test(Snapshot(WorkerSandboxPoliciesCancellationAndPinnedGeneration|PrincipalRealWorkerRevocationWithholdsEOS)|ObjectSnapshot(WorkerActualChild.*|PrincipalRealWorkerRevocationWithholdsEOS))$'
+      - name: Verify protected-object containment evidence controls
+        run: python3 -m unittest discover -s scripts -p test_containment_acceptance.py
+      - name: Verify protected object publication and contained queries
+        run: |
+          mkdir -m 700 artifacts/containment-protected-private
+          python3 scripts/containment_acceptance.py --protected-objects --go go \
+            --artifact-root "$PWD/artifacts/containment-protected-private/run" \
+            --report artifacts/containment-protected-ci.json
+      - name: Retain protected-object containment evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: containment-protected-evidence
+          path: |
+            artifacts/containment-protected-ci.json
+            artifacts/containment-protected-private/run/*.log
+            artifacts/containment-protected-private/run/inside.json
+            artifacts/containment-protected-private/run/run.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Verify export fixture and permission controls
         run: |
           python3 -m unittest discover -s scripts -p test_nats_export_permissions.py

@@ -12,11 +12,14 @@ import os
 from pathlib import Path, PurePosixPath
 import pwd
 import re
+import stat
 import subprocess
 import sys
 import tempfile
 import time
 import uuid
+
+import provision_duckbridge as bridge
 
 KERNEL_GATES = [
     "TestKernelPrestartMembershipAndControls", "TestKernelNativeMemoryOOM",
@@ -34,10 +37,25 @@ STARTUP_GATE = "TestContainedNodeStartupPlacement"
 EXPORT_GATE = "TestExportWorkerConstructorBindsKernelContainment"
 OUTSIDE_GATE = "StartupPlacementOutsideDelegation"
 REQUIRED = KERNEL_GATES + WORKER_GATES + [STARTUP_GATE, EXPORT_GATE, OUTSIDE_GATE]
+PROTECTED_GATE = "TestContainedWorkerProtectedObjects"
+PROTECTED_LEAVES = [PROTECTED_GATE + "/" + name for name in (
+    "publish-single-and-multipart", "resolved-child-catalog-has-no-provider-identity",
+    "cte-join-types-policy-and-shared-manager", "hidden-column-and-uncontained-refusal",
+    "immutable-runtime-refuses-retargeting", "cancellation-joins-ranges-and-child",
+    "binding-loss-after-last-batch-refuses-completion")]
+BASE_MODE, PROTECTED_MODE = "containment", "protected-objects"
+BRIDGE_TAGS = "duckdb_arrow,duckbridge"
+BRIDGE_HASHES = {"driver_patch_sha256", "headers_sha256", "driver_tree_sha256", "modfile_sha256", "sumfile_sha256"}
 BINARIES = ["containment.test", "worker.test", "startup.test", "export.test", "kelvo", "kelvo-landlock", "sandbox-runtime"]
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 METADATA_NAMES = {".DS_Store"}
 SOURCE_REQUIRED = {"go.mod", "go.sum", "sandbox/launcher.c", "internal/containment/manager_linux.go"}
+PROTECTED_SOURCE_REQUIRED = {"scripts/provision_duckbridge.py", "scripts/duckbridge-driver.patch",
+                             "internal/worker/protected_object_worker_linux_test.go"}
+UNIT_PATTERN = re.compile(r"^kelvo-containment-[0-9a-f]{12}$")
+PARENT_PATTERN = re.compile(r"^kelvo-protected-readers-validation-[0-9a-f]{12}\.service$")
+RESOURCE_LIMITS = {"MemoryMax": "1G", "MemorySwapMax": "0", "CPUQuota": "100%", "TasksMax": "256",
+                   "RuntimeMaxSec": "600", "TimeoutStopSec": "30", "KillMode": "control-group", "LimitFSIZE": "5G"}
 
 
 def run(command, *, env=None, timeout=180):
@@ -45,17 +63,185 @@ def run(command, *, env=None, timeout=180):
                           stderr=subprocess.STDOUT, text=True, timeout=timeout)
 
 
+def run_logged(command, log, *, env=None, timeout=180):
+    try:
+        result = run(command, env=env, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        chunks = [value.encode("utf-8") if isinstance(value, str) else value
+                  for value in (exc.stdout, exc.stderr) if value]
+        # subprocess merges stderr into stdout. Bound the retained diagnostic
+        # even if the timed-out process flooded its capture pipe.
+        maximum = 1 << 20
+        output = b"\n".join(chunk[-maximum:] for chunk in chunks)
+        if sum(len(chunk) for chunk in chunks) + max(0, len(chunks) - 1) > maximum:
+            marker = b"[timeout diagnostic truncated; only the final output bytes follow]\n"
+            output = marker + output[-(maximum - len(marker)):]
+        log.write_bytes(output)
+        raise
+    log.write_text(result.stdout)
+    return result
+
+
 def gates(output, expected):
     observed = {}
     for status, name in re.findall(r"^--- (PASS|FAIL|SKIP): (\w+)\b", output, re.M):
         if name in expected:
             observed[name] = "duplicate" if name in observed else status.lower()
+    if PROTECTED_GATE in expected:
+        children = protected_gates(output)
+        if set(children) != {"outer", "inner", *PROTECTED_LEAVES} or not all(value == "pass" for value in children.values()):
+            observed[PROTECTED_GATE] = "fail"
     return {name: observed.get(name, "missing") for name in expected}
+
+
+def required_gates(protected=False):
+    return REQUIRED + ([PROTECTED_GATE] if protected else [])
+
+
+def protected_gates(output):
+    # Child output is indented by t.Log. Require both terminal root records and
+    # every frozen leaf: an outer PASS cannot hide a skip or truncated capture.
+    expected = ["outer", "inner", *PROTECTED_LEAVES]
+    observed = {}
+    for indent, status, name in re.findall(
+            r"^([ \t]*)--- (PASS|FAIL|SKIP): (" + PROTECTED_GATE + r"(?:/[^\s]+)?)\s", output, re.M):
+        key = ("inner" if indent else "outer") if name == PROTECTED_GATE else name
+        observed[key] = "duplicate" if key in observed else status.lower()
+    return {name: observed.get(name, "missing") for name in expected} | {
+        name: value for name, value in observed.items() if name not in expected}
 
 
 def digest(path):
     with Path(path).open("rb") as source:
         return hashlib.file_digest(source, "sha256").hexdigest()
+
+
+def tree_digest(root):
+    files = {}
+    if root.is_symlink() or not root.is_dir():
+        raise RuntimeError("bridge input directory is invalid")
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise RuntimeError("bridge input contains a symlink")
+        if path.is_file():
+            files[str(path.relative_to(root))] = digest(path)
+        elif not path.is_dir():
+            raise RuntimeError("bridge input is not a regular file")
+    if not files:
+        raise RuntimeError("bridge input directory is empty")
+    canonical = json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def seed_bridge_archive(source, artifact):
+    if not source.is_absolute():
+        raise RuntimeError("cached bridge archive path must be absolute")
+    destination = artifact / "duckbridge" / ("duckdb-" + bridge.VERSION + ".tar.gz")
+    destination.parent.mkdir(mode=0o700)
+    descriptor = os.open(source, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 128 << 20:
+            raise RuntimeError("cached bridge archive is not a bounded regular file")
+        checksum, size = hashlib.sha256(), 0
+        with os.fdopen(descriptor, "rb", closefd=False) as incoming, destination.open("xb") as outgoing:
+            while block := incoming.read(1 << 20):
+                size += len(block)
+                if size > 128 << 20:
+                    raise RuntimeError("cached bridge archive exceeds its size bound")
+                checksum.update(block)
+                outgoing.write(block)
+        if size != info.st_size or checksum.hexdigest() != bridge.ARCHIVE_SHA256:
+            raise RuntimeError("cached bridge archive checksum mismatch")
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        raise
+    finally:
+        os.close(descriptor)
+
+
+def prepare_artifact(repo, requested=None):
+    if requested is None:
+        (repo / "artifacts").mkdir(exist_ok=True)
+        artifact = Path(tempfile.mkdtemp(prefix="containment-", dir=repo / "artifacts"))
+        artifact.chmod(0o700)
+        return artifact
+    parent = requested.parent
+    if not requested.is_absolute() or parent.resolve() != parent or not parent.is_dir():
+        raise RuntimeError("artifact root requires an absolute path under an existing private directory")
+    info = parent.stat()
+    if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) & 0o077:
+        raise RuntimeError("artifact parent must be private and owned by the test account")
+    requested.mkdir(mode=0o700) # Existing directories, including symlinks, are never adopted.
+    return requested
+
+
+def require_fresh_unit(unit):
+    if not UNIT_PATTERN.fullmatch(unit):
+        raise RuntimeError("invalid owned service name")
+    state = run(["systemctl", "show", unit + ".service", "--property=LoadState", "--value"], timeout=10)
+    if state.returncode or state.stdout.strip() != "not-found" or Path("/sys/fs/cgroup/system.slice", unit + ".service").exists():
+        raise RuntimeError("requested service or cgroup already exists or ownership cannot be checked")
+
+
+def require_parent_unit(unit):
+    if not PARENT_PATTERN.fullmatch(unit):
+        raise RuntimeError("invalid validation parent service name")
+    rows = Path("/proc/self/cgroup").read_text().splitlines()
+    expected = "/system.slice/" + unit
+    if len(rows) != 1 or not rows[0].startswith("0::"):
+        raise RuntimeError("validation parent requires unified cgroup membership")
+    current = rows[0][3:]
+    if current != expected and not current.startswith(expected + "/"):
+        raise RuntimeError("runner is outside the declared validation parent")
+    state = run(["systemctl", "show", unit, "--property=ActiveState", "--value"], timeout=10)
+    if state.returncode or state.stdout.strip() != "active":
+        raise RuntimeError("validation parent is not active")
+
+
+def bridge_provenance(repo, artifact):
+    directory = artifact / "duckbridge"
+    headers, modfile = directory / "headers", directory / "duckbridge.mod"
+    manifest = json.loads((directory / "build.json").read_text())
+    expected = {"duckdb": bridge.VERSION, "driver": bridge.MODULE_VERSION,
+                "module_sum": bridge.MODULE_SUM, "source_sha256": bridge.ARCHIVE_SHA256,
+                "driver_patch_sha256": digest(repo / "scripts/duckbridge-driver.patch"),
+                "tags": BRIDGE_TAGS, "headers": str(headers), "modfile": str(modfile),
+                "CGO_CXXFLAGS": "-I" + str(headers)}
+    if (not isinstance(manifest, dict) or any(manifest.get(key) != value for key, value in expected.items())
+            or type(manifest.get("header_count")) is not int or manifest["header_count"] < 100
+            or digest(directory / ("duckdb-" + bridge.VERSION + ".tar.gz")) != bridge.ARCHIVE_SHA256):
+        raise RuntimeError("pinned bridge provenance mismatch")
+    return {key: expected[key] for key in ("duckdb", "driver", "module_sum", "source_sha256", "driver_patch_sha256", "tags")} | {
+        "headers_sha256": tree_digest(headers), "driver_tree_sha256": tree_digest(directory / "duckdb-go"),
+        "modfile_sha256": digest(modfile), "sumfile_sha256": digest(modfile.with_suffix(".sum")),
+    }
+
+
+def valid_bridge_provenance(report):
+    provenance = report.get("bridge")
+    source = report.get("source", {})
+    if not isinstance(provenance, dict) or not isinstance(source, dict) or not isinstance(source.get("files"), dict):
+        return False
+    return (PROTECTED_SOURCE_REQUIRED.issubset(source["files"])
+            and provenance.get("duckdb") == bridge.VERSION and provenance.get("driver") == bridge.MODULE_VERSION
+            and provenance.get("module_sum") == bridge.MODULE_SUM and provenance.get("source_sha256") == bridge.ARCHIVE_SHA256
+            and provenance.get("tags") == BRIDGE_TAGS and report.get("bridge_inputs_unchanged") is True
+            and report.get("resource_limits") == RESOURCE_LIMITS
+            and provenance.get("driver_patch_sha256") == source["files"].get("scripts/duckbridge-driver.patch")
+            and all(isinstance(provenance.get(name), str) and HEX_SHA256.fullmatch(provenance[name]) for name in BRIDGE_HASHES))
+
+
+def build_commands(go, artifact, protected=False):
+    flags = (["-mod=readonly", "-modfile", str(artifact / "duckbridge/duckbridge.mod"), "-tags", BRIDGE_TAGS]
+             if protected else [])
+    commands = [[go, "test", "-p", "1", *flags, "-c", "-o", str(artifact / binary), package]
+                for binary, package in [("containment.test", "./internal/containment"), ("worker.test", "./internal/worker"),
+                                        ("startup.test", "./cmd/kelvo"), ("export.test", "./internal/cluster")]]
+    commands += [[go, "build", *(flags if protected else ["-tags", "duckdb_arrow"]), "-p", "1", "-o", str(artifact / "kelvo"), "./cmd/kelvo"],
+                 ["cc", "-O2", "-Wall", "-Wextra", "-Werror", "sandbox/launcher.c", "-o", str(artifact / "kelvo-landlock")],
+                 ["c++", "-O2", "-std=c++17", "-pthread", "internal/containment/testdata/sandbox_runtime.cc", "-o", str(artifact / "sandbox-runtime")]]
+    return commands
 
 
 def source_manifest(repo):
@@ -116,8 +302,19 @@ def reconcile(report):
     binaries = report.get("binary_sha256", {})
     if not isinstance(source, dict) or not isinstance(binaries, dict) or not isinstance(report.get("gates"), dict):
         return False
-    return (set(report["gates"]) == set(REQUIRED)
-            and all(report["gates"][name] == "pass" for name in REQUIRED)
+    mode = report.get("mode", BASE_MODE) # Existing schema-2 reports describe the baseline gate only.
+    if mode not in (BASE_MODE, PROTECTED_MODE):
+        return False
+    protected = mode == PROTECTED_MODE
+    required = required_gates(protected)
+    if protected:
+        expected = {"outer", "inner", *PROTECTED_LEAVES}
+        children = report.get("protected_gates")
+        if not isinstance(children, dict) or set(children) != expected or any(value != "pass" for value in children.values()):
+            return False
+    return (set(report["gates"]) == set(required)
+            and all(report["gates"][name] == "pass" for name in required)
+            and (valid_bridge_provenance(report) if protected else "bridge" not in report)
             and report.get("non_root") is True and report.get("capability_sets_zero") is True
             and report.get("source_unchanged") is True and valid_source_identity(source)
             and set(binaries) == set(BINARIES)
@@ -134,12 +331,14 @@ def zero_capabilities(status):
     return len(caps) == 5 and not any(int(value, 16) for value in caps.values())
 
 
-def test_environment(artifact, jobs, state):
-    env = dict(os.environ, GOMAXPROCS="1", KELVO_TEST_CGROUP_ROOT=str(jobs),
+def test_environment(artifact, jobs, state, protected=False):
+    env = {key: value for key, value in os.environ.items() if key in ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")}
+    env.update(GOMAXPROCS="1", KELVO_TEST_CGROUP_ROOT=str(jobs),
                KELVO_TEST_CGROUP_STATE=str(state), KELVO_TEST_SANDBOX=str(artifact / "kelvo-landlock"),
                KELVO_TEST_RUNTIME_HELPER=str(artifact / "sandbox-runtime"),
                KELVO_TEST_BINARY=str(artifact / "kelvo"))
-    env.pop("KELVO_TEST_EXPECT_PLACEMENT_REJECTION", None)
+    if protected:
+        env["KELVO_TEST_PROTECTED_OBJECTS"] = "1"
     return env
 
 
@@ -155,7 +354,11 @@ def wait_for_file(path, process=None, timeout=30):
 
 def inside(args):
     artifact = Path(args.artifact)
-    report = {"gates": {name: "missing" for name in REQUIRED if name != OUTSIDE_GATE}, "observations": {}}
+    protected = args.protected_objects
+    report = {"mode": PROTECTED_MODE if protected else BASE_MODE,
+              "gates": {name: "missing" for name in required_gates(protected) if name != OUTSIDE_GATE}, "observations": {}}
+    if protected:
+        report["protected_gates"] = protected_gates("")
     try:
         relative = Path("/proc/self/cgroup").read_text().strip().split(":", 2)[2]
         if relative != "/system.slice/" + args.unit + ".service":
@@ -174,14 +377,16 @@ def inside(args):
         report.update(non_root=True, capability_sets_zero=True)
         (artifact / "fixture-ready.json").write_text(json.dumps({"jobs": str(jobs), "state": str(state)}))
         wait_for_file(artifact / "outside-complete", timeout=60)
-        env = test_environment(artifact, jobs, state)
+        env = test_environment(artifact, jobs, state, protected)
         for binary, pattern, required in [("containment.test", "^TestKernel", KERNEL_GATES),
-                                          ("worker.test", "^TestContainedWorker", WORKER_GATES),
+                                          ("worker.test", "^TestContainedWorker", WORKER_GATES + ([PROTECTED_GATE] if protected else [])),
                                           ("startup.test", "^" + STARTUP_GATE + "$", [STARTUP_GATE]),
                                           ("export.test", "^" + EXPORT_GATE + "$", [EXPORT_GATE])]:
-            result = run([str(artifact / binary), "-test.v", "-test.run=" + pattern, "-test.timeout=90s"], env=env, timeout=100)
-            (artifact / (binary + ".log")).write_text(result.stdout)
+            result = run_logged([str(artifact / binary), "-test.v", "-test.run=" + pattern, "-test.timeout=90s"],
+                                artifact / (binary + ".log"), env=env, timeout=100)
             report["gates"].update(gates(result.stdout, required))
+            if protected and binary == "worker.test":
+                report["protected_gates"] = protected_gates(result.stdout)
             if result.returncode:
                 report["execution_failed"] = True
             for key in ["charged_native_peak_bytes", "oom_kills", "cpu_usage_usec", "throttled_periods"]:
@@ -200,31 +405,41 @@ def inside(args):
                  and report.get("remaining_ownership_records") == 0) else 1
 
 
-def outside_check(artifact, unit, process):
+def outside_check(artifact, unit, process, protected=False):
     wait_for_file(artifact / "fixture-ready.json", process)
     fixture = json.loads((artifact / "fixture-ready.json").read_text())
     expected = "/sys/fs/cgroup/system.slice/" + unit + ".service/jobs"
     if fixture != {"jobs": expected, "state": str(artifact / "state")}:
         raise RuntimeError("fixture ownership mismatch")
-    env = test_environment(artifact, fixture["jobs"], fixture["state"])
+    env = test_environment(artifact, fixture["jobs"], fixture["state"], protected)
     env["KELVO_TEST_EXPECT_PLACEMENT_REJECTION"] = "yes"
     try:
-        result = run([str(artifact / "startup.test"), "-test.v", "-test.run=^" + STARTUP_GATE + "$", "-test.timeout=20s"], env=env, timeout=25)
-        (artifact / "startup-outside.log").write_text(result.stdout)
+        result = run_logged([str(artifact / "startup.test"), "-test.v", "-test.run=^" + STARTUP_GATE + "$", "-test.timeout=20s"],
+                            artifact / "startup-outside.log", env=env, timeout=25)
         return gates(result.stdout, [STARTUP_GATE])[STARTUP_GATE] if result.returncode == 0 else "fail"
     finally:
         (artifact / "outside-complete").touch()
 
 
-def cleanup_owned(unit):
-    # Only this invocation's unpredictable exact unit is ever stopped.
+def cleanup_owned(unit, description):
+    # Only this invocation's unpredictable exact unit and ownership marker may
+    # be stopped, including after a failed or interrupted systemd-run launch.
     result = {"owned_service_removed": False, "owned_cgroup_removed": False}
     try:
-        run(["sudo", "-n", "systemctl", "stop", unit + ".service"], timeout=20)
+        if not UNIT_PATTERN.fullmatch(unit):
+            raise RuntimeError("invalid owned service name")
+        state = run(["systemctl", "show", unit + ".service", "--property=LoadState", "--value"], timeout=10)
+        if state.returncode:
+            raise RuntimeError("service ownership lookup failed")
+        if state.stdout.strip() != "not-found":
+            owner = run(["systemctl", "show", unit + ".service", "--property=Description", "--value"], timeout=10)
+            if owner.returncode or owner.stdout.strip() != description:
+                raise RuntimeError("refusing to stop an unowned service")
+            run(["sudo", "-n", "systemctl", "stop", unit + ".service"], timeout=40)
         state = run(["systemctl", "show", unit + ".service", "--property=LoadState", "--value"], timeout=10)
         result["owned_service_removed"] = state.returncode == 0 and state.stdout.strip() == "not-found"
         result["owned_cgroup_removed"] = not Path("/sys/fs/cgroup/system.slice", unit + ".service").exists()
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, RuntimeError, subprocess.TimeoutExpired):
         result["cleanup_failure"] = True
     return result
 
@@ -234,72 +449,110 @@ def main():
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--go", default="go")
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--protected-objects", action="store_true", help="require native protected-object refresh/query acceptance using the pinned bridge")
+    parser.add_argument("--bridge-archive", type=Path, help="checksum-pinned cached DuckDB source archive; protected mode only")
+    parser.add_argument("--artifact-root", type=Path, help="fresh absolute artifact directory beneath a private owned parent")
+    parser.add_argument("--parent-unit", help="active kelvo-protected-readers-validation-<12 hex digits>.service containing this runner")
     parser.add_argument("--inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--artifact", help=argparse.SUPPRESS)
-    parser.add_argument("--unit", help=argparse.SUPPRESS)
+    parser.add_argument("--unit", help="fresh kelvo-containment-<12 hex digits> service name")
     args = parser.parse_args()
     if sys.platform != "linux" or os.geteuid() == 0:
         parser.error("run on the designated Linux test machine as a non-root account")
+    if args.unit is not None and not UNIT_PATTERN.fullmatch(args.unit):
+        parser.error("unit must be kelvo-containment- followed by 12 lowercase hex digits")
+    if args.bridge_archive is not None and not args.protected_objects:
+        parser.error("--bridge-archive requires --protected-objects")
+    if args.parent_unit is not None and not PARENT_PATTERN.fullmatch(args.parent_unit):
+        parser.error("invalid validation parent service name")
     if args.inside:
+        if args.artifact is None or args.unit is None:
+            parser.error("inside service requires its exact artifact directory and unit")
         return inside(args)
     args.report = args.report.resolve()
     if args.report.exists():
         parser.error("preserve prior reports; choose a new report path")
     repo = args.repo.resolve()
-    (repo / "artifacts").mkdir(exist_ok=True)
-    artifact = Path(tempfile.mkdtemp(prefix="containment-", dir=repo / "artifacts"))
-    artifact.chmod(0o700)
-    unit = "kelvo-containment-" + uuid.uuid4().hex[:12]
-    report = {"schema": 2, "scope": "single Linux node process-tree containment and query/refresh custody",
-              "passed": False, "gates": {name: "missing" for name in REQUIRED}, "limitations": [
+    try:
+        artifact = prepare_artifact(repo, args.artifact_root)
+    except (OSError, RuntimeError) as exc:
+        parser.error(str(exc))
+    unit = args.unit or "kelvo-containment-" + uuid.uuid4().hex[:12]
+    description = "Kelvo containment acceptance " + uuid.uuid4().hex
+    (artifact / "run.json").write_text(json.dumps({"unit": unit, "description": description, "parent_unit": args.parent_unit,
+        "artifact": str(artifact), "resource_limits": RESOURCE_LIMITS}, indent=2) + "\n")
+    report = {"schema": 2, "mode": PROTECTED_MODE if args.protected_objects else BASE_MODE,
+              "scope": "single Linux node process-tree containment and query/refresh custody",
+              "passed": False, "gates": {name: "missing" for name in required_gates(args.protected_objects)}, "limitations": [
                   "No hostile native escape reproduction was executed.",
                   "Native charged memory is not parent RSS or whole-node memory.",
                   "Stale root identity rejection is tested; arbitrary host reboot recovery is not promised.",
                   "No throughput or multi-host production capacity claim is made."],
               "kernel": os.uname().release, "architecture": os.uname().machine}
+    report.update(owned_unit=unit, resource_limits=RESOURCE_LIMITS)
+    if args.protected_objects:
+        report["protected_gates"] = protected_gates("")
+        report["limitations"].append("Protected objects use a local TLS fixture; live S3, R2, Azure Blob and GCS certification is separate.")
     started, stage, process = time.monotonic(), "source", None
     try:
         os.chdir(repo)
+        stage = "service-ownership"
+        require_fresh_unit(unit)
+        if args.parent_unit is not None:
+            require_parent_unit(args.parent_unit)
+        stage = "source"
         report["source"] = source_manifest(repo)
         env = dict(os.environ, GOMAXPROCS="1")
         version = run([args.go, "version"], env=env, timeout=15)
         if version.returncode:
             raise RuntimeError("Go toolchain unavailable")
         report["go_version"] = version.stdout.strip()
-        commands = [[args.go, "test", "-p", "1", "-c", "-o", str(artifact / "containment.test"), "./internal/containment"],
-                    [args.go, "test", "-p", "1", "-c", "-o", str(artifact / "worker.test"), "./internal/worker"],
-                    [args.go, "test", "-p", "1", "-c", "-o", str(artifact / "startup.test"), "./cmd/kelvo"],
-                    [args.go, "test", "-p", "1", "-c", "-o", str(artifact / "export.test"), "./internal/cluster"],
-                    [args.go, "build", "-tags", "duckdb_arrow", "-p", "1", "-o", str(artifact / "kelvo"), "./cmd/kelvo"],
-                    ["cc", "-O2", "-Wall", "-Wextra", "-Werror", "sandbox/launcher.c", "-o", str(artifact / "kelvo-landlock")],
-                    ["c++", "-O2", "-std=c++17", "-pthread", "internal/containment/testdata/sandbox_runtime.cc", "-o", str(artifact / "sandbox-runtime")]]
-        for number, command in enumerate(commands):
+        if args.protected_objects:
+            stage = "provision-bridge"
+            if args.bridge_archive is not None:
+                seed_bridge_archive(args.bridge_archive, artifact)
+            env.update(CGO_ENABLED="1", CGO_CXXFLAGS="-I" + str(artifact / "duckbridge/headers"), GOWORK="off", GOFLAGS="")
+            result = run_logged([sys.executable, str(repo / "scripts/provision_duckbridge.py"), str(artifact / "duckbridge"),
+                                "--go", args.go, "--source-directory", str(repo)], artifact / (stage + ".log"), env=env, timeout=300)
+            if result.returncode:
+                raise RuntimeError("pinned bridge provisioning failed")
+            report["bridge"] = bridge_provenance(repo, artifact)
+        for number, command in enumerate(build_commands(args.go, artifact, args.protected_objects)):
             stage = "build-" + str(number)
-            result = run(command, env=env, timeout=300)
-            (artifact / (stage + ".log")).write_text(result.stdout)
+            result = run_logged(command, artifact / (stage + ".log"), env=env, timeout=300)
             if result.returncode:
                 raise RuntimeError("bounded build failed")
         report["binary_sha256"] = {name: digest(artifact / name) for name in BINARIES}
         account = pwd.getpwuid(os.geteuid()).pw_name
+        require_fresh_unit(unit)
+        dependencies = []
+        if args.parent_unit is not None:
+            require_parent_unit(args.parent_unit)
+            dependencies = ["--property=" + key + "=" + args.parent_unit for key in ("Requisite", "BindsTo", "After")]
         command = ["sudo", "-n", "systemd-run", "--unit=" + unit, "--uid=" + account,
-                   "--property=Delegate=yes", "--property=MemoryMax=1G", "--property=CPUQuota=100%",
-                   "--property=TasksMax=256", "--property=NoNewPrivileges=yes",
+                   "--description=" + description, "--property=Delegate=yes",
+                   *["--property=" + key + "=" + value for key, value in RESOURCE_LIMITS.items()], "--property=NoNewPrivileges=yes",
+                   *dependencies,
                    "--property=CapabilityBoundingSet=", "--property=AmbientCapabilities=", "--collect", "--wait", "--pipe",
                    sys.executable, str(Path(__file__).resolve()), "--inside", "--artifact", str(artifact),
                    "--unit", unit, "--report", str(args.report)]
+        if args.protected_objects:
+            command.append("--protected-objects")
         stage = "kernel-service"
         with (artifact / "service.log").open("w") as log:
             process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
-            report["gates"][OUTSIDE_GATE] = outside_check(artifact, unit, process)
+            report["gates"][OUTSIDE_GATE] = outside_check(artifact, unit, process, args.protected_objects)
             report["service_exit_code"] = process.wait(timeout=330)
         if (artifact / "inside.json").exists():
             inner = json.loads((artifact / "inside.json").read_text())
+            if inner.get("mode") != report["mode"]:
+                raise RuntimeError("service acceptance mode mismatch")
             report["gates"].update(inner.pop("gates", {}))
             report.update(inner)
     except (OSError, RuntimeError, subprocess.TimeoutExpired, ValueError) as exc:
         report["failure"] = stage + ":" + type(exc).__name__
     finally:
-        report.update(cleanup_owned(unit))
+        report.update(cleanup_owned(unit, description))
         if process is not None:
             try:
                 process.wait(timeout=10)
@@ -314,6 +567,11 @@ def main():
             report["source_unchanged"] = source_manifest(repo) == report.get("source")
         except (OSError, RuntimeError, subprocess.TimeoutExpired):
             report["source_unchanged"] = False
+        if args.protected_objects:
+            try:
+                report["bridge_inputs_unchanged"] = bridge_provenance(repo, artifact) == report.get("bridge")
+            except (OSError, RuntimeError, ValueError):
+                report["bridge_inputs_unchanged"] = False
         report["passed"] = reconcile(report)
         report["duration_seconds"] = round(time.monotonic() - started, 3)
         args.report.parent.mkdir(parents=True, exist_ok=True)
