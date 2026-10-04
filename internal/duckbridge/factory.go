@@ -37,15 +37,16 @@ import (
 // cover every database/view referencing it: close the connection and database
 // before Close. No Go pointer is stored in C; callbacks use cgo.Handle integers.
 type Factory struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	schema   *arrow.Schema
-	producer Producer
-	mu       sync.Mutex
-	err      error
-	pointer  unsafe.Pointer
-	handle   cgo.Handle
-	once     sync.Once
+	ctx        context.Context
+	cancel     context.CancelFunc
+	schema     *arrow.Schema
+	producer   Producer
+	predicates map[string]arrow.Type
+	mu         sync.Mutex
+	err        error
+	pointer    unsafe.Pointer
+	handle     cgo.Handle
+	once       sync.Once
 }
 
 var activeStreams atomic.Int64
@@ -53,7 +54,7 @@ var activePins atomic.Int64
 
 func Available() bool { return C.GoString(C.kelvo_runtime_version()) == "v1.5.6" }
 
-func New(ctx context.Context, schema *arrow.Schema, producer Producer) (*Factory, error) {
+func New(ctx context.Context, schema *arrow.Schema, producer Producer, predicates PredicateCapabilities) (*Factory, error) {
 	if C.GoString(C.kelvo_runtime_version()) != "v1.5.6" {
 		return nil, query.NewError("UNAVAILABLE", "Native bridge requires DuckDB v1.5.6")
 	}
@@ -67,16 +68,62 @@ func New(ctx context.Context, schema *arrow.Schema, producer Producer) (*Factory
 		}
 		seen[field.Name] = true
 	}
+	eligible, ordinals, err := bindPredicateCapabilities(schema, predicates)
+	if err != nil {
+		return nil, err
+	}
+	columns := make([]C.struct_kelvo_predicate_column, len(ordinals))
+	for i, ordinal := range ordinals {
+		columns[i].ordinal = C.uint32_t(ordinal)
+		columns[i].scalar_type = nativePredicateType(schema.Field(int(ordinal)).Type.ID())
+	}
+	var columnPointer *C.struct_kelvo_predicate_column
+	if len(columns) != 0 {
+		columnPointer = &columns[0]
+	}
 	child, cancel := context.WithCancel(ctx)
-	factory := &Factory{ctx: child, cancel: cancel, schema: schema, producer: producer}
+	factory := &Factory{ctx: child, cancel: cancel, schema: schema, producer: producer, predicates: eligible}
 	factory.handle = cgo.NewHandle(factory)
-	factory.pointer = C.kelvo_factory_create(C.uint64_t(factory.handle))
+	factory.pointer = C.kelvo_factory_create(C.uint64_t(factory.handle), C.uint32_t(schema.NumFields()), columnPointer, C.size_t(len(columns)))
+	runtime.KeepAlive(columns)
 	if factory.pointer == nil {
 		factory.handle.Delete()
 		cancel()
 		return nil, query.NewError("RESOURCE_EXHAUSTED", "Native bridge could not allocate its factory")
 	}
 	return factory, nil
+}
+
+func nativePredicateType(id arrow.Type) C.uint8_t {
+	switch id {
+	case arrow.BOOL:
+		return C.KELVO_PREDICATE_BOOL
+	case arrow.INT8:
+		return C.KELVO_PREDICATE_INT8
+	case arrow.INT16:
+		return C.KELVO_PREDICATE_INT16
+	case arrow.INT32:
+		return C.KELVO_PREDICATE_INT32
+	case arrow.INT64:
+		return C.KELVO_PREDICATE_INT64
+	case arrow.UINT8:
+		return C.KELVO_PREDICATE_UINT8
+	case arrow.UINT16:
+		return C.KELVO_PREDICATE_UINT16
+	case arrow.UINT32:
+		return C.KELVO_PREDICATE_UINT32
+	case arrow.UINT64:
+		return C.KELVO_PREDICATE_UINT64
+	default:
+		return 0
+	}
+}
+
+func (f *Factory) produce(ctx context.Context, plan ScanPlan) (array.RecordReader, error) {
+	if err := validatePredicatePlan(plan, f.predicates); err != nil {
+		return nil, err
+	}
+	return f.producer(ctx, plan)
 }
 
 func validName(name string) bool {
@@ -194,7 +241,7 @@ func kelvo_go_produce(handle C.uint64_t, input *C.char, length C.size_t, out uns
 		return 1
 	}
 	var err error
-	reader, err = f.producer(f.ctx, plan)
+	reader, err = f.produce(f.ctx, plan)
 	if err != nil {
 		if reader != nil {
 			_ = releaseReader(reader)

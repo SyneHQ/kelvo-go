@@ -6,7 +6,23 @@
 extern "C" {
 #endif
 const char *kelvo_runtime_version(void);
-void *kelvo_factory_create(uint64_t handle);
+enum kelvo_predicate_type {
+	KELVO_PREDICATE_BOOL = 1,
+	KELVO_PREDICATE_INT8,
+	KELVO_PREDICATE_INT16,
+	KELVO_PREDICATE_INT32,
+	KELVO_PREDICATE_INT64,
+	KELVO_PREDICATE_UINT8,
+	KELVO_PREDICATE_UINT16,
+	KELVO_PREDICATE_UINT32,
+	KELVO_PREDICATE_UINT64
+};
+struct kelvo_predicate_column {
+	uint32_t ordinal;
+	uint8_t scalar_type;
+};
+void *kelvo_factory_create(uint64_t handle, uint32_t schema_columns,
+                          const struct kelvo_predicate_column *columns, size_t count);
 void kelvo_factory_destroy(void *factory);
 int kelvo_factory_register(void *factory, void *connection, const char *schema, const char *name);
 void kelvo_schema_zero(void *schema);
