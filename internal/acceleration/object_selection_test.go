@@ -9,11 +9,13 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/objectstore"
 	"github.com/SYNEHQ/kelvo-go/internal/readerlease"
+	"go.yaml.in/yaml/v3"
 )
 
 func protectedGenerationEvent(event protectedObjectEvent) bool {
@@ -272,15 +274,6 @@ func TestProtectedMetadataClosesPartialBodiesAndRefusesCloseErrors(t *testing.T)
 				if err != nil {
 					t.Fatal(err)
 				}
-				var schemaWriter SchemaWriter
-				if operation == "schema" {
-					refresh, err := backend.Begin(context.Background(), "events")
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer refresh.Abort()
-					schemaWriter = refresh.(SchemaWriter)
-				}
 				var bodies []*protectedFaultBody
 				service.bodyHook = func(method, key string, body io.ReadCloser, resultErr error) (io.ReadCloser, error) {
 					matches := operation == "root" && method == "get" && strings.HasSuffix(key, storeManifestName) ||
@@ -300,6 +293,15 @@ func TestProtectedMetadataClosesPartialBodiesAndRefusesCloseErrors(t *testing.T)
 						resultErr = objectstore.ErrNotFound
 					}
 					return broken, resultErr
+				}
+				var schemaWriter SchemaWriter
+				if operation == "schema" {
+					refresh, err := backend.Begin(context.Background(), "events")
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer refresh.Abort()
+					schemaWriter = refresh.(SchemaWriter)
 				}
 				service.takeEvents()
 				if operation == "schema" {
@@ -332,4 +334,147 @@ func TestProtectedMetadataClosesPartialBodiesAndRefusesCloseErrors(t *testing.T)
 			})
 		}
 	}
+}
+
+// Remove the real durable pin and let the production renewer discover its loss.
+// No local guard state, cancellation function or registry timing is replaced.
+func loseProtectedRegistryPin(t *testing.T, runtime *ObjectRuntime, service *protectedObjectService, snapshot Snapshot) {
+	t.Helper()
+	runtime.owner.mu.Lock()
+	var guard *ReadGuard
+	count := len(runtime.owner.guards)
+	for current := range runtime.owner.guards {
+		guard = current
+	}
+	runtime.owner.mu.Unlock()
+	if count != 1 || guard == nil {
+		t.Fatal("late-loss boundary must retain exactly one real guard", count)
+	}
+	guard.mu.Lock()
+	var lease *readerlease.Lease
+	if len(guard.pins) == 1 {
+		lease, _ = guard.pins[0].(*readerlease.Lease)
+	}
+	guard.mu.Unlock()
+	if lease == nil || lease.Check() != nil {
+		t.Fatal("late-loss boundary has no live registry lease")
+	}
+	key := runtime.backend.key(snapshot.Dataset, "reader-leases/"+snapshot.Generation+".yml")
+	func() {
+		service.mu.Lock()
+		defer service.mu.Unlock()
+		object, found := service.objects[key]
+		if !found {
+			t.Fatal("selected generation registry is missing")
+		}
+		var document map[string]any
+		if err := yaml.Unmarshal(object.data, &document); err != nil {
+			t.Fatal(err)
+		}
+		readers, ok := document["readers"].([]any)
+		if !ok || len(readers) != 1 {
+			t.Fatal("selected generation must have exactly one durable pin")
+		}
+		document["readers"] = []any{}
+		raw, err := yaml.Marshal(document)
+		if err != nil {
+			t.Fatal(err)
+		}
+		object.data = raw
+		object.info.Size, object.info.SHA256 = int64(len(raw)), objectSHA256(raw)
+		object.info.Version += "-pin-lost"
+		service.objects[key] = object
+	}()
+	deadline := time.NewTimer(25 * time.Second)
+	defer deadline.Stop()
+	for _, ctx := range []context.Context{lease.Context(), guard.Context()} {
+		select {
+		case <-ctx.Done():
+			if !errors.Is(context.Cause(ctx), readerlease.ErrLost) {
+				t.Fatal("registry loss was masked by unrelated cancellation", context.Cause(ctx))
+			}
+		case <-deadline.C:
+			t.Fatal("production renewal did not observe the removed durable pin")
+		}
+	}
+}
+
+func TestProtectedStatusRejectsRegistryLossAfterFinalHead(t *testing.T) {
+	runtime, service, config := protectedPublicationFixture(t)
+	backend := runtime.backend
+	committed := commitRemoteRecovery(t, backend, "id", protectedFingerprint(t, config))
+	service.takeEvents()
+	boundary := false
+	service.infoHook = func(method, key string, info objectstore.Info) objectstore.Info {
+		if method == "head" && key == committed.ObjectKey {
+			if boundary || info.Version != committed.ObjectVersion {
+				t.Fatal("unexpected final HEAD boundary")
+			}
+			boundary = true
+			loseProtectedRegistryPin(t, runtime, service, committed)
+		}
+		return info
+	}
+	snapshot, err := backend.Status(context.Background(), "events")
+	if !boundary || !errors.Is(err, readerlease.ErrLost) || snapshot.Generation != "" || snapshot.ObjectKey != "" {
+		t.Fatalf("final HEAD hid registry loss: boundary=%v snapshot=%+v error=%v", boundary, snapshot, err)
+	}
+	requirePinBeforeGeneration(t, service.takeEvents())
+}
+
+type protectedCloseBoundaryBody struct {
+	io.ReadCloser
+	closed func()
+}
+
+func (body *protectedCloseBoundaryBody) Close() error {
+	if err := body.ReadCloser.Close(); err != nil {
+		return err
+	}
+	body.closed()
+	return nil
+}
+
+func TestProtectedPreviousSchemaRejectsRegistryLossAfterFinalRangeClose(t *testing.T) {
+	runtime, service, config := protectedPublicationFixture(t)
+	backend := runtime.backend
+	committed := commitRemoteRecovery(t, backend, "id", protectedFingerprint(t, config))
+	var armed atomic.Bool
+	var closed atomic.Int32
+	finalRange := 0
+	service.bodyHook = func(method, key string, body io.ReadCloser, err error) (io.ReadCloser, error) {
+		if method != "range" || key != committed.ObjectKey || err != nil || body == nil || !armed.Load() {
+			return body, err
+		}
+		return &protectedCloseBoundaryBody{ReadCloser: body, closed: func() {
+			if int(closed.Add(1)) == finalRange {
+				loseProtectedRegistryPin(t, runtime, service, committed)
+			}
+		}}, nil
+	}
+	writer, err := backend.Begin(context.Background(), "events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Abort()
+	schemaWriter := writer.(SchemaWriter)
+	service.takeEvents()
+	baseline, err := schemaWriter.PreviousSchema()
+	if err != nil || baseline == nil {
+		t.Fatal("baseline schema read", err)
+	}
+	for _, event := range service.takeEvents() {
+		if event.operation == "range" && event.key == committed.ObjectKey {
+			finalRange++
+		}
+	}
+	if finalRange == 0 {
+		t.Fatal("baseline did not read the selected Parquet footer")
+	}
+	armed.Store(true)
+	schema, err := schemaWriter.PreviousSchema()
+	if int(closed.Load()) != finalRange || !errors.Is(err, readerlease.ErrLost) || schema != nil {
+		t.Fatalf("final schema Close hid registry loss: closes=%d/%d schema=%v error=%v", closed.Load(), finalRange, schema, err)
+	}
+	requirePinBeforeGeneration(t, service.takeEvents())
 }
