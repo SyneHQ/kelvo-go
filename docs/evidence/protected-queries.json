@@ -1,0 +1,464 @@
+{
+  "schema_version": 1,
+  "issue": 123,
+  "organization": "SYNEHQ",
+  "name": "Authenticated protected-object query acceptance",
+  "scope": "One Linux node; public gateway, two isolated TLS NATS accounts, real TLS/CAS object runtime and contained native workers.",
+  "accepted": true,
+  "selected_trial": "r2",
+  "independent_final_review": "accepted",
+  "source": {
+    "revision": "15bd93f2dec66bbf00c701bfa63c4d51dade1e69",
+    "tree": "f13e7d8ad0018fe2da0dc097dbecab23ff12f1fa",
+    "archive_sha256": "6fc9043c97525d8f79a63b9c4e5299d32a13edccd625d3b2ba7ec35f99f48bae",
+    "manifest_sha256": "95323c3fcd55f37157fec328ddd399018c4faf784dfa6c057b1dade935340751",
+    "file_count": 1131,
+    "go_mod_sha256": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+    "go_sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "toolchain": {
+    "go": "go version go1.26.8 linux/amd64",
+    "duckdb": "v1.5.6",
+    "driver": "v2.10506.0",
+    "module_sum": "h1:mcZjUQ/kSNeZdtGCqyj5/JEDUdj7/kvILfIOUTzQIu0=",
+    "bridge_source_sha256": "1fadcbe9e69e1470f9093b6bcde08daf477d729c449e59a807f45c346622099b",
+    "driver_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+    "tags": "duckdb_arrow,duckbridge",
+    "nats": "2.15.0",
+    "nats_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+    "offline_dependencies": true
+  },
+  "binary": {
+    "sha256": "9bddff154730c96420ed666b5e01dce920382082f179503b904d7b78f6582ece",
+    "bytes": 159907648
+  },
+  "containment_binaries_sha256": {
+    "containment.test": "dba3697700541008056b94356a2978fc33756f2bacf2e32bedb265d6a67c301d",
+    "worker.test": "34599d50c3710867f4680b837cd0a5a3e3323bcc747f93f1cff4ebdd9f087417",
+    "startup.test": "ed9e015b797c6fa702ac5ef44de8509a526ece8cfd6ae2ee1f627f84a5944636",
+    "export.test": "181004f05098a3fb8c4f340e6c0e64741d2713a9ef1d74b763ccfa353f6dae08",
+    "kelvo": "3272145552241d9f513385cd58edb17b7480f2d4b1d2f0e18cfef9251a1c3a5c",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+    "sandbox-runtime": "d356e26f1a4be434cb0e1ca125eba8c02437bafdb5d6600f6ffb94ad256f457e",
+    "nats-server": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341"
+  },
+  "containment_bridge_sha256": {
+    "headers_sha256": "27e788d2d18b336f95da0b5e8c81eef22864955f3343f5ae2ba919be3bf042ac",
+    "driver_tree_sha256": "3791b17c92e539530678ef5538e2025cc3314bdd331e64c092ff70b52b043f9a",
+    "modfile_sha256": "f0e99c65846aaa3ae8cf28e7cf72bcba2b66edd4da486ff30e343a0a7f85a343",
+    "sumfile_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "required_counts": {
+    "ordinary_roots": 172,
+    "native_roots": 190,
+    "protected_worker_leaves": 8,
+    "protected_query_leaves": 10,
+    "runner_controls": 38,
+    "query_broker_controls": 19,
+    "parser_controls": 55,
+    "monitor_controls": 18
+  },
+  "protected_worker_leaves": [
+    "TestContainedWorkerProtectedObjects/publish-single-and-multipart",
+    "TestContainedWorkerProtectedObjects/verify-and-inventory-single-and-descriptor-layouts",
+    "TestContainedWorkerProtectedObjects/resolved-child-catalog-has-no-provider-identity",
+    "TestContainedWorkerProtectedObjects/cte-join-types-policy-and-shared-manager",
+    "TestContainedWorkerProtectedObjects/hidden-column-and-uncontained-refusal",
+    "TestContainedWorkerProtectedObjects/immutable-runtime-refuses-retargeting",
+    "TestContainedWorkerProtectedObjects/cancellation-joins-ranges-and-child",
+    "TestContainedWorkerProtectedObjects/binding-loss-after-last-batch-refuses-completion"
+  ],
+  "protected_query_leaves": [
+    "TestContainedProtectedObjectQueries/publish-real-single-and-two-part",
+    "TestContainedProtectedObjectQueries/tenant-principal-cte-join-aggregate",
+    "TestContainedProtectedObjectQueries/hidden-schema-and-foreign-handles",
+    "TestContainedProtectedObjectQueries/forged-stale-and-unsupported-before-io",
+    "TestContainedProtectedObjectQueries/revocation-none-chunked",
+    "TestContainedProtectedObjectQueries/revocation-none-length",
+    "TestContainedProtectedObjectQueries/revocation-lz4-chunked",
+    "TestContainedProtectedObjectQueries/revocation-lz4-length",
+    "TestContainedProtectedObjectQueries/cancelled-range-releases-custody",
+    "TestContainedProtectedObjectQueries/stalled-registry-retains-custody"
+  ],
+  "protected_inner_and_outer_root_passes": {
+    "worker": 2,
+    "query": 2
+  },
+  "lower_layer_close_and_eos_roots": [
+    "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectRangesReleaseJoinsDelayedBodyClose",
+    "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestProtectedObjectRangeCloseFailureWithholdsFinalByte",
+    "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestProtectedVerificationStalledBodyCloseRetainsConsumer",
+    "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestReadGuardPinCloseAndQuiescenceRemainCharged",
+    "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestResolutionKeepsPinsThroughRangeProcessAndScratchCleanup",
+    "github.com/SYNEHQ/kelvo-go/internal/cluster:TestGatewayRelaysCompressedIPCOnlyAfterDurableSuccess",
+    "github.com/SYNEHQ/kelvo-go/internal/objectstore:TestSharedTransportRetainsRequestSlotsUntilBodyClose",
+    "github.com/SYNEHQ/kelvo-go/internal/readerlease:TestReaderObjectStoreCancellationJoinsReadAndCloseBeforeReturningCapacity"
+  ],
+  "ordinary_protected_skips": {
+    "reason": "Both protected roots run separately under the delegated kernel containment stage.",
+    "roots": [
+      "github.com/SYNEHQ/kelvo-go/internal/worker:TestContainedWorkerProtectedObjects",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster:TestContainedProtectedObjectQueries"
+    ]
+  },
+  "fixture": {
+    "tenants": 2,
+    "restricted_principals_per_tenant": 2,
+    "source_rows_per_snapshot": 4,
+    "single_file_snapshot": true,
+    "multipart_physical_parts": 2,
+    "rows_per_part": 2,
+    "arrow_compression": [
+      "none",
+      "lz4_frame"
+    ],
+    "worker_http_framing": [
+      "chunked",
+      "content-length"
+    ],
+    "public_completion": "durable-eos-v1"
+  },
+  "trials": [
+    {
+      "trial": "r1",
+      "accepted": false,
+      "revision": "c166d1d08fe5a63264e83fc2aa1c753f564beb80",
+      "tree": "182acf3b11738f42303a04ae3882939224ea9b9b",
+      "stages": [
+        {
+          "name": "go-version",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00",
+          "seconds": 0.2
+        },
+        {
+          "name": "runner-controls",
+          "passed": false,
+          "exit_code": 1,
+          "timed_out": false,
+          "log_sha256": "9811ac93a7245bf20c380b965cc8709257515a972278e170b521c7af047ce295",
+          "seconds": 0.401
+        }
+      ],
+      "unrun_stages": [
+        "query-runner-controls",
+        "regular",
+        "race",
+        "provision-bridge",
+        "native-regular",
+        "native-race",
+        "vet",
+        "build",
+        "protected-containment"
+      ],
+      "failures": [
+        {
+          "stage": "runner-controls",
+          "passed_controls": 36,
+          "errors": 2,
+          "type": "AttributeError",
+          "reason": "Two existing SimpleNamespace test fixtures omitted protected_queries.",
+          "controls": [
+            "test_unowned_protected_service_retains_its_required_gate_and_mode",
+            "test_unowned_service_fails_with_retained_missing_gate_report"
+          ]
+        }
+      ],
+      "fix_revision": "15bd93f2dec66bbf00c701bfa63c4d51dade1e69",
+      "fix": "Set protected_queries=False in both fixtures; production behavior unchanged.",
+      "artifact_manifest_sha256": "bcc47a48f64e00e2968879781a122ad68d5229b87929f6211c1856e9f01f9161",
+      "validation_sha256": "9eef817a5e34267abb37d9b65685c0d7dc14a820c0b4daae435dfe1afac646eb",
+      "cleanup_receipt_sha256": "512c77b5026b9b7b66f9cbdffa1d7b747dfacacbed65e7384ff5689f33e8585b",
+      "cleanup_verified": true,
+      "sibling_or_broker_started": false
+    },
+    {
+      "trial": "r2",
+      "accepted": true,
+      "revision": "15bd93f2dec66bbf00c701bfa63c4d51dade1e69",
+      "tree": "f13e7d8ad0018fe2da0dc097dbecab23ff12f1fa",
+      "stages": [
+        {
+          "name": "go-version",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00",
+          "seconds": 0.2
+        },
+        {
+          "name": "runner-controls",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "1c52f2aca68c88710632a361474918b8a726780973642fb0cdd9c4af77c81630",
+          "seconds": 0.401
+        },
+        {
+          "name": "query-runner-controls",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "fb1ee074456fc60615946c824a52d7af55b12fb452858c6feb7e8844182d34e6",
+          "seconds": 0.2
+        },
+        {
+          "name": "regular",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "ad9d54b00f232109be046498e908c53a6fa0f91a9cb330065eeaed953a7a19f8",
+          "seconds": 120.775,
+          "pass_events": 3046,
+          "passed_roots": 754,
+          "required_roots_passed": 172,
+          "failed_events": 0,
+          "skip_events": 49,
+          "passed_packages": 7,
+          "failed_packages": 0,
+          "missing_required_roots": 0,
+          "required_root_skips": 0,
+          "skip_set_sha256": "5b65c8f2b43a3169a9c264206043686f771c3afc5b63f0fa94c232504f6db6ed"
+        },
+        {
+          "name": "race",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "5b40c1c971b9e171dc66724e89cbd45166e9687cb183dc7f8a11ae800687f059",
+          "seconds": 174.981,
+          "pass_events": 3046,
+          "passed_roots": 754,
+          "required_roots_passed": 172,
+          "failed_events": 0,
+          "skip_events": 49,
+          "passed_packages": 7,
+          "failed_packages": 0,
+          "missing_required_roots": 0,
+          "required_root_skips": 0,
+          "skip_set_sha256": "5b65c8f2b43a3169a9c264206043686f771c3afc5b63f0fa94c232504f6db6ed"
+        },
+        {
+          "name": "provision-bridge",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "2aa98a436f60624e17d3d64d5ab5b220c32a1c41284e4cd71e2c7106d9122cf4",
+          "seconds": 1.601
+        },
+        {
+          "name": "native-regular",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "32e65dac7fbabb9b39ccd2c054452b82a41c9898370f6358602a591cb582139a",
+          "seconds": 90.459,
+          "pass_events": 537,
+          "passed_roots": 190,
+          "required_roots_passed": 190,
+          "failed_events": 0,
+          "skip_events": 0,
+          "passed_packages": 10,
+          "failed_packages": 0,
+          "missing_required_roots": 0,
+          "required_root_skips": 0
+        },
+        {
+          "name": "native-race",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "d288eb62acd4ed2de00728d39ae646b7fbce1c10aa12a6c71bd51550c647f8a2",
+          "seconds": 108.286,
+          "pass_events": 537,
+          "passed_roots": 190,
+          "required_roots_passed": 190,
+          "failed_events": 0,
+          "skip_events": 0,
+          "passed_packages": 10,
+          "failed_packages": 0,
+          "missing_required_roots": 0,
+          "required_root_skips": 0
+        },
+        {
+          "name": "vet",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "seconds": 3.003
+        },
+        {
+          "name": "build",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "seconds": 5.603
+        },
+        {
+          "name": "protected-containment",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "0e33ef8f5bb8633252f61d5a4cd079c2e69cafb6c3205b14576e24393664ea03",
+          "seconds": 47.825
+        }
+      ],
+      "unrun_stages": [],
+      "failures": [],
+      "skipped_test_sets": {
+        "5b65c8f2b43a3169a9c264206043686f771c3afc5b63f0fa94c232504f6db6ed": [
+          "github.com/SYNEHQ/kelvo-go/cmd/kelvo:TestContainedNodeStartupPlacement",
+          "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestMongoPipelineLiveAcceleration",
+          "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestMultipartDatasetLargerThanFourGiB",
+          "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestObjectMultipartDatasetLargerThanFourGiB",
+          "github.com/SYNEHQ/kelvo-go/internal/acceleration:TestStoreProcessHelper",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestCatalogBindingActualGuardedSnapshot",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestCatalogBindingActualNodeAndExportExecution",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestContainedProtectedObjectQueries",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportClusterActualWorkerLifecycle",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerCancellationReapsSandboxAndReservations",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerConstructorBindsKernelContainment",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerCrashAcrossLocalCommit",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerSourceQuotaRevocationReapsChild",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestExportWorkerUsesSandboxAndExternalCustody",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSAccountIsolation",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSExportRetainedLifecycleAndProvisioning",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSExportRuntimeACLAndAccountIsolation",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSRefreshQueueProvisionDedupRetry",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSRefreshStatusDurabilityResetAndBudget",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreAdmissionCASAndReuse",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreCorruptJobFailsClosed",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreQueueAndWorkerLease",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreReconcileFailsStaleAssigned",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestNATSStoreRejectsMetadataMismatch",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/multipart",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/single",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+          "github.com/SYNEHQ/kelvo-go/internal/cluster:TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestContainedWorkerProtectedObjects",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestContainedWorkerRealDuckDBCTE",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestContainedWorkerRefreshCustody",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestContainedWorkerStartFailureCleansOwnership",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestContainedWorkerSuccessAndCancellation",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotPreviousChildRefusesNewEnvelope",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotWorkerActualChildCancellationDrainsResources/result-delivery",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotWorkerActualChildCancellationDrainsResources/source-range",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/digest",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-bytes",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-rows",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/rows",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/schema",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/version",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotWorkerActualChildRejectsRawAccessAndReplay",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-1",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-2",
+          "github.com/SYNEHQ/kelvo-go/internal/worker:TestSnapshotWorkerSandboxPoliciesCancellationAndPinnedGeneration"
+        ]
+      },
+      "artifact_manifest_sha256": "d52734a0d9fe6eb609f149eb65013651e0326fbf150a32e8854cd9129da658f7",
+      "validation_sha256": "7b0dba0b1c1b4884e66d5206f87913ad64d83ac9961a2aa4f6adb57ce69f7352",
+      "cleanup_receipt_sha256": "d646bffe27d0698dbaed9a3be5fb8e28f91107c44ef4528ac4ee4308452ee209"
+    }
+  ],
+  "configured_limits": {
+    "outer": {
+      "cpu_percent": 200,
+      "memory_bytes": 8589934592,
+      "swap_bytes": 0,
+      "tasks": 512,
+      "runtime_seconds": 1800,
+      "stop_seconds": 30,
+      "max_file_bytes": 5368709120
+    },
+    "delegated_sibling": {
+      "cpu_percent": 100,
+      "memory_bytes": 1073741824,
+      "swap_bytes": 0,
+      "tasks": 256,
+      "runtime_seconds": 600,
+      "stop_seconds": 30,
+      "max_file_bytes": 5368709120
+    },
+    "broker_shares_delegated_sibling": true,
+    "possible_combined": {
+      "cpu_percent": 300,
+      "memory_bytes": 9663676416,
+      "tasks": 768
+    },
+    "sampled_workspace_ceiling_bytes": 12884901888,
+    "minimum_free_disk_bytes": 12884901888
+  },
+  "observed_workspace_peak_bytes": 1023698117,
+  "workspace_monitor_samples": 112,
+  "cleanup": {
+    "both_units_absent": true,
+    "both_cgroups_absent": true,
+    "original_driver_and_containment_processes_absent": true,
+    "owned_processes_absent": true,
+    "launch_closed": true,
+    "broker": {
+      "original_pid_and_start_ticks_verified": true,
+      "original_identity_absent": true,
+      "pid_absent": true,
+      "supervisor_cgroup_verified": true,
+      "exact_argv_verified": true,
+      "reaped": true,
+      "alive_before_stop": true,
+      "returncode": 0,
+      "forced_kill": false,
+      "private_files_absent": true
+    },
+    "source_hashes_unchanged": true,
+    "bridge_hashes_unchanged": true,
+    "binary_hashes_rechecked": 8
+  },
+  "receipts_sha256": {
+    "plan.json": "f1bde8b4a58184e497878cdfcdf1e758575e1d6cf164ab3fb835c58f386241a9",
+    "source-manifest.json": "95323c3fcd55f37157fec328ddd399018c4faf784dfa6c057b1dade935340751",
+    "staging-receipt.json": "43143e1538ad97f62b5e4fe93438090124598f4ca76e07f91f8041ed3df0d00e",
+    "running-properties.json": "d58706c68868dc9c77473db260874c695dc1db2eb8eb517deb5d3aecefcbe4a8",
+    "final-exit.json": "b2a5a8e51d7484925bddaa9afa1c42c9146d2393eb18330d2e361ab2beb6a065",
+    "cleanup-receipt.json": "d646bffe27d0698dbaed9a3be5fb8e28f91107c44ef4528ac4ee4308452ee209",
+    "collection-observation.json": "a370bebd76d5fd5f6619f3eb67c3e049e661140e382f451c6f762937232a350b",
+    "output/validation.json": "7b0dba0b1c1b4884e66d5206f87913ad64d83ac9961a2aa4f6adb57ce69f7352",
+    "output/bridge-manifest-before.json": "b77d5bda81e80611c29e0c9fa0e39c8a663f6ff6fdb1d446ac8e79db8813178f",
+    "output/bridge-manifest-after.json": "b77d5bda81e80611c29e0c9fa0e39c8a663f6ff6fdb1d446ac8e79db8813178f",
+    "output/protected-containment.json": "c51814c5125791cc86ea73764f30912604b65d65f167767d512f4c512b319d69",
+    "containment/live-service.json": "304abfb8c23e2dff2f002c94c86f33d6805484e0994aa8d29ba499fad98005b3",
+    "containment/worker.test.log": "198b245d7226d7ecbfd904488f50b5768a96aadadf1704c8db90cf5188a8dea7",
+    "containment/protected-query.test.log": "bbf9941a0f8dc791457f427bc62cfe52434b8b1480069b568717c393b4402b1a",
+    "containment/query-broker-ownership.json": "945c7f8c3eb1515995f3df930ff09b56d27f229b458d5c728a715008d3256334",
+    "artifact_manifest": "d52734a0d9fe6eb609f149eb65013651e0326fbf150a32e8854cd9129da658f7",
+    "source_review": "0ab08c30edc73ba2df433dcb31566fbf06da006d5ec55d22306c5f63a5023b64",
+    "helper_review": "3a76466aca6bbd484412371bb62d4e94cb930070679e6c85239f47f03276d9f8",
+    "preactivation_review": "6312d54f07d2a614c06f70b4bf127f855a6b3a704403daa2c22b0e054140a879",
+    "r1_failed_run_review": "f943334ed5606ca49d7cd6ddf524e2e74a55a20c362cec7ee2cd99a6cb59bb74",
+    "independent_vm_review": "2368eea8d9713c5b46dab2f9fb03e7ca2cbb31873e6cb6bb6a771564c4075acd"
+  },
+  "redactions": [
+    "VM addresses, usernames, private paths, process identifiers and fixture credentials are excluded.",
+    "Raw logs and exact OS identities remain in the private collected packet; receipt hashes bind this summary."
+  ],
+  "limitations": [
+    "No throughput, query RSS, whole-node memory, production capacity or deployment claim.",
+    "Live Oracle TCPS, Snowflake, BigQuery, Databricks, S3, R2, Azure Blob and GCS gates remain blocked pending dedicated fixtures.",
+    "The local TLS service verifies fixture role, tenant, CAS and reader-pin behavior; it does not verify AWS signatures or certify cloud IAM.",
+    "Current-key checks do not make revocation atomic with terminal CAS. The revocation leaves durably reach Succeeded while the public Arrow EOS is withheld; delivered bytes cannot be recalled.",
+    "Revocation is local to the tested gateway. Coordinated replica revocation and online policy rollout remain separate work.",
+    "The integrated range test holds HTTP body completion. The registry test holds release CAS, retains admission/node custody through the tested 50 ms Drain timeout, then completes after release. Neither simulates local Body.Close; named lower-layer Close gates cover that lifetime separately.",
+    "Protected-object export, restore, result-cache authorization, restricted native SQL and general cluster HA are outside this acceptance.",
+    "The new query fixture publishes two real multipart parts. The retained worker descriptor fixture can still use one physical part.",
+    "Outer bridge inputs are rehashed at collection; child bridge inputs have runner before/after attestation only.",
+    "Workspace scanning is sampled logical storage, not RSS or a disk quota; shared caches and open-unlinked files are excluded.",
+    "Delegated sibling resources are additional to outer limits; independent timeouts and exact-owned cleanup apply.",
+    "RemainAfterExit does not establish immediate sibling shutdown after every clean driver exit.",
+    "Hosted CI, rebase integration and the final cargo tree are not established by this VM receipt."
+  ]
+}

@@ -55,7 +55,7 @@ Data and registry traffic use separate transports. These bounds describe admissi
 
 [Linux acceptance](evidence/protected-object-readers.json) passed all ten stages on `c8bae34`, including 36 runner controls and seven protected worker cases. The fixture exercises TLS object publication and real contained DuckDB queries; it does not validate cloud IAM, signatures, throughput or footprint. Refresh input is deterministic Arrow data.
 
-The worker checks include catalog-bound executor copies and externally owned export reservations. A complete protected gateway/export lifecycle still needs separate acceptance.
+The worker checks include catalog-bound executor copies and externally owned export reservations. [Authenticated query acceptance](protected-query-acceptance.md) now covers the complete gateway, NATS, node and contained-worker path with two tenants and real multipart data. All 11 VM stages passed on `15bd93f`; the public protected-export lifecycle remains a separate gate.
 
 [Protected verification and inventory](protected-verification.md) also passed [Linux acceptance](evidence/protected-verification.json) on `c8e4199`. [Historical restore (#121)](https://github.com/SYNEHQ/kelvo-go/issues/121), migration, legacy cutover and provider acceptance remain under [#14](https://github.com/SYNEHQ/kelvo-go/issues/14). No lease expiry, empty registry or node restart permits deletion. Retirement needs a separate protocol.
 
