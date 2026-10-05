@@ -60,6 +60,10 @@ func (d delivery) Retry(c context.Context) error {
 	return d.msg.Nak()
 }
 func OpenStore(parent context.Context, c NATSConfig, p Policy, initialize bool) (*NATSStore, error) {
+	p, err := clonePolicy(p)
+	if err != nil {
+		return nil, errors.New("invalid cluster policy")
+	}
 	if err := ValidatePolicy(p); err != nil {
 		return nil, errors.New("invalid cluster policy")
 	}
@@ -262,8 +266,13 @@ func validateDispatchConsumer(ctx context.Context, consumer jetstream.Consumer, 
 	}
 	return nil
 }
-func (s *NATSStore) Policy() Policy { return s.policy }
-func (s *NATSStore) Close() error   { s.nc.Close(); return nil }
+func (s *NATSStore) Policy() Policy {
+	// The stored graph was validated and detached before broker setup, so its
+	// row-policy clone cannot fail during normal operation.
+	p, _ := clonePolicy(s.policy)
+	return p
+}
+func (s *NATSStore) Close() error { s.nc.Close(); return nil }
 func slot(id string) (int, bool) {
 	a := strings.Split(id, "-")
 	if len(a) != 2 || len(a[0]) == 0 || len(a[1]) != 32 {

@@ -91,12 +91,8 @@ func OpenExportStore(parent context.Context, base *NATSStore, initialize bool) (
 	if base == nil || base.js == nil || base.kv == nil {
 		return nil, errExportInvalid
 	}
-	rawPolicy, err := json.Marshal(base.Policy())
+	p, err := clonePolicy(base.policy)
 	if err != nil {
-		return nil, errExportInvalid
-	}
-	var p Policy
-	if json.Unmarshal(rawPolicy, &p) != nil {
 		return nil, errExportInvalid
 	}
 	if p.Exports == nil {
@@ -169,11 +165,9 @@ func OpenExportStore(parent context.Context, base *NATSStore, initialize bool) (
 }
 
 func (s *natsExportStore) Policy() Policy {
-	// Policy includes mutable maps/pointers. Callers cannot reconfigure the store.
-	raw, _ := json.Marshal(s.policy)
-	var out Policy
-	_ = json.Unmarshal(raw, &out)
-	return out
+	// Return an owned graph without JSON round-trip normalization.
+	p, _ := clonePolicy(s.policy)
+	return p
 }
 
 func exportKey(slot int) string { return fmt.Sprintf("export.%x", slot) }

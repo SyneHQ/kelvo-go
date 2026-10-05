@@ -5,6 +5,7 @@ package access
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -186,14 +187,14 @@ func integerType(name string) (int, bool, bool) {
 }
 
 func clonePredicate(p Predicate) Predicate {
-	p.Children = append([]Predicate(nil), p.Children...)
+	p.Children = slices.Clone(p.Children)
 	for i := range p.Children {
 		p.Children[i] = clonePredicate(p.Children[i])
 	}
 	return p
 }
 func cloneTable(t TablePolicy) TablePolicy {
-	t.Columns = append([]string(nil), t.Columns...)
+	t.Columns = slices.Clone(t.Columns)
 	if t.Rows != nil {
 		row := clonePredicate(*t.Rows)
 		t.Rows = &row

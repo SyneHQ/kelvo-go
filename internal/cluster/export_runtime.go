@@ -56,10 +56,15 @@ func NewExportRuntime(cfg NodeConfig, store ExportStore, executor *worker.Execut
 	if cfg.Exports == nil || cfg.Policy.Exports == nil {
 		return nil, ErrExportDisabled
 	}
+	policy, err := clonePolicy(cfg.Policy)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Policy = policy
 	if executor == nil || cfg.SandboxPath == "" || executor.SandboxPath != cfg.SandboxPath || executor.ResourcePool == nil || cfg.Resources == nil || store == nil || !reflect.DeepEqual(cfg.Policy, store.Policy()) || !validOwner(owner) || cfg.Policy.Workers[cfg.WorkerID] < 1 {
 		return nil, exports.ErrInvalid
 	}
-	executor, err := bindCatalogExecutor(cfg.Policy, executor)
+	executor, err = bindCatalogExecutor(cfg.Policy, executor)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +101,11 @@ func NewExportRuntime(cfg NodeConfig, store ExportStore, executor *worker.Execut
 }
 
 func newExportRuntime(cfg NodeConfig, store ExportStore, executor query.Executor, pool *admission.Pool, owner string) (*ExportRuntime, error) {
+	policy, err := clonePolicy(cfg.Policy)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Policy = policy
 	if cfg.Exports == nil || cfg.Policy.Exports == nil || store == nil || executor == nil || pool == nil || cfg.Resources == nil || cfg.Exports.MaxConcurrent < 1 || cfg.Exports.MaxDownloads < 1 || cfg.Exports.DownloadMemoryMB < 1 || cfg.Exports.CleanupInterval <= 0 || cfg.Exports.CleanupMaxRemovals < 1 || !reflect.DeepEqual(cfg.Policy, store.Policy()) {
 		return nil, exports.ErrInvalid
 	}
@@ -104,7 +114,6 @@ func newExportRuntime(cfg NodeConfig, store ExportStore, executor query.Executor
 	r.dispatchCtx, r.dispatchCancel = context.WithCancel(ctx)
 	probe, stop := context.WithTimeout(ctx, 5*time.Second)
 	defer stop()
-	var err error
 	r.custody, err = exports.OpenCustody(probe, cfg.Exports.Directory, cfg.Policy.TenantID, cfg.WorkerID)
 	if err != nil {
 		cancel()
