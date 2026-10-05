@@ -4,6 +4,8 @@ The Linux gate runs authenticated queries through the gateway, a private NATS br
 
 [Retained acceptance](evidence/protected-queries.json) passed all 11 VM stages on `15bd93f`: 8 existing worker cases and 10 authenticated-query cases. It includes the first trial's fixture errors, their fix and independently verified cleanup.
 
+The first hosted CI attempt caught an older broker-prefix count assertion. Its correction passed 37 targeted Python controls on the VM; the evidence retains both results separately.
+
 | Check | What the gate verifies |
 | --- | --- |
 | Publication | Separate tenant namespaces; single-file and two-part Parquet snapshots |
