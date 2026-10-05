@@ -87,7 +87,7 @@ func (backend *objectBackend) verifyObjectGeneration(ctx context.Context, datase
 // storage. Legacy untracked generations and dropped entries remain undiscovered.
 func (backend *objectBackend) Inventory(ctx context.Context, dataset string) ([]Generation, error) {
 	if backend.protected() {
-		return nil, ErrRecoveryUnsupported
+		return backend.inventoryProtectedObjects(ctx, dataset)
 	}
 	if _, ok := backend.reader.(objectstore.RangeClient); !ok {
 		return nil, ErrRecoveryUnsupported

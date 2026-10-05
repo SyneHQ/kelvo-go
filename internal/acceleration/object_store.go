@@ -90,6 +90,9 @@ func (state objectState) now() time.Time {
 }
 
 func newObjectBackend(config catalog.AccelerationConfig, client objectstore.Client) (*objectBackend, error) {
+	if err := config.ValidateVerification(); err != nil {
+		return nil, err
+	}
 	if config.ObjectStorage == nil || !storeTenantID.MatchString(config.TenantID) || config.Directory == "" {
 		return nil, errors.New("object snapshots require a tenant, object storage and local staging directory")
 	}
@@ -396,7 +399,7 @@ func (backend *objectBackend) Acquire(ctx context.Context, dataset, fingerprint 
 
 func (backend *objectBackend) Verify(ctx context.Context, dataset string) (Snapshot, error) {
 	if backend.protected() {
-		return Snapshot{}, ErrRecoveryUnsupported
+		return backend.verifyProtectedObject(ctx, dataset)
 	}
 	// Full verification includes bounded footer/schema reads for every layout.
 	// A checksum-only client must not claim that persisted row/schema metadata
@@ -415,11 +418,29 @@ func (backend *objectBackend) Verify(ctx context.Context, dataset string) (Snaps
 }
 
 func (backend *objectBackend) verifyObjectBytes(ctx context.Context, snapshot Snapshot) (Snapshot, error) {
-	body, info, err := backend.reader.Get(ctx, snapshot.ObjectKey, snapshot.ObjectVersion)
+	return backend.verifyObjectBytesWithReader(ctx, snapshot, backend.reader)
+}
+
+func (backend *objectBackend) verifyObjectBytesWithReader(ctx context.Context, snapshot Snapshot, client objectstore.Client) (verified Snapshot, resultErr error) {
+	body, info, err := client.Get(ctx, snapshot.ObjectKey, snapshot.ObjectVersion)
+	if backend.protected() && !nilReaderDependency(body) {
+		defer func() {
+			finishProtectedRead(body, &resultErr)
+			if resultErr != nil {
+				verified = Snapshot{}
+			}
+		}()
+	}
 	if err != nil {
 		return Snapshot{}, err
 	}
-	defer body.Close()
+	if backend.protected() {
+		if nilReaderDependency(body) {
+			return Snapshot{}, ErrCorrupt
+		}
+	} else {
+		defer body.Close()
+	}
 	if err := validateSnapshotObject(snapshot, info); err != nil {
 		return Snapshot{}, err
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/objectstore"
 	"github.com/SYNEHQ/kelvo-go/internal/readerlease"
 )
 
@@ -39,7 +40,13 @@ func (backend *objectBackend) selectObject(ctx context.Context, dataset, fingerp
 }
 
 func (backend *objectBackend) selectObjectState(ctx context.Context, dataset string, state objectState, fingerprint string, maxAge time.Duration, checkPolicy bool) (selectedObjectSnapshot, error) {
-	selected := selectedObjectSnapshot{backend: backend, dataset: dataset, committed: cloneObjectCommit(state.manifest.Committed),
+	return backend.selectObjectStateEntry(ctx, dataset, state, 0, fingerprint, maxAge, checkPolicy)
+}
+
+// Index zero is the current commit; retained entries can only be selected by
+// their position in the same validated root. No caller-supplied key is adopted.
+func (backend *objectBackend) selectObjectStateEntry(ctx context.Context, dataset string, state objectState, index int, fingerprint string, maxAge time.Duration, checkPolicy bool) (selectedObjectSnapshot, error) {
+	selected := selectedObjectSnapshot{backend: backend, dataset: dataset,
 		fingerprint: fingerprint, maxAge: maxAge, checkPolicy: checkPolicy}
 	if maxAge < 0 {
 		return selected, errors.New("acceleration maximum age cannot be negative")
@@ -50,10 +57,18 @@ func (backend *objectBackend) selectObjectState(ctx context.Context, dataset str
 	if err := validateObjectManifest(state.manifest, dataset); err != nil {
 		return selected, err
 	}
+	if index < 0 || index > len(state.manifest.History) {
+		return selected, ErrCorrupt
+	}
+	committed := state.manifest.Committed
+	if index > 0 {
+		committed = state.manifest.History[index-1]
+	}
+	selected.committed = cloneObjectCommit(committed)
 	if selected.committed == nil {
 		return selected, ErrNotFound
 	}
-	committed := selected.committed
+	committed = selected.committed
 	selected.reference = state.now()
 	selected.observation = Snapshot{Fingerprint: committed.Fingerprint, RefreshedAt: committed.RefreshedAt}.observeClock(selected.reference)
 	if err := selected.check(ctx); err != nil {
@@ -92,24 +107,35 @@ func (selected selectedObjectSnapshot) check(ctx context.Context) error {
 }
 
 func (backend *objectBackend) loadSelectedObject(ctx context.Context, selected selectedObjectSnapshot) (Snapshot, error) {
+	snapshot, err := backend.loadSelectedObjectWithReader(ctx, selected, backend.reader)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if err := backend.headObjectSnapshot(ctx, snapshot); err != nil {
+		return Snapshot{}, err
+	}
+	if err := selected.check(ctx); err != nil {
+		return Snapshot{}, err
+	}
+	return snapshot, nil
+}
+
+// Maintenance validates exact Get/range responses after loading. It avoids the
+// query path's parallel HEAD cancellation, which could turn content corruption
+// into a sticky context failure in the operation-wide verification meter.
+func (backend *objectBackend) loadSelectedObjectWithReader(ctx context.Context, selected selectedObjectSnapshot, client objectstore.Client) (Snapshot, error) {
 	if selected.backend != backend || selected.committed == nil || selected.committed.ReaderBinding == nil || selected.binding != *selected.committed.ReaderBinding {
 		return Snapshot{}, ErrProtectionRequired
 	}
 	if err := selected.check(ctx); err != nil {
 		return Snapshot{}, err
 	}
-	snapshot, err := backend.loadObjectSnapshot(ctx, selected.dataset, selected.committed, selected.reference, backend.reader)
+	snapshot, err := backend.loadObjectSnapshot(ctx, selected.dataset, selected.committed, selected.reference, client)
 	if err != nil {
 		return Snapshot{}, err
 	}
 	// Preserve the original service-clock anchor, including elapsed descriptor I/O.
 	snapshot.ageObserved, snapshot.ageObservedAt = selected.observation.ageObserved, selected.observation.ageObservedAt
-	if err := selected.check(ctx); err != nil {
-		return Snapshot{}, err
-	}
-	if err := backend.headObjectSnapshot(ctx, snapshot); err != nil {
-		return Snapshot{}, err
-	}
 	if err := selected.check(ctx); err != nil {
 		return Snapshot{}, err
 	}

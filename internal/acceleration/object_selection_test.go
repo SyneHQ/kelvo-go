@@ -176,6 +176,12 @@ func TestProtectedMaintenanceUsesPinsOrRefusesBeforeGenerationIO(t *testing.T) {
 	for _, call := range []func() error{
 		func() error { _, err := backend.Verify(ctx, "events"); return err },
 		func() error { _, err := backend.Inventory(ctx, "events"); return err },
+	} {
+		if err := call(); err == nil || errors.Is(err, ErrRecoveryUnsupported) {
+			t.Fatalf("maintenance without verification policy did not refuse: %v", err)
+		}
+	}
+	for _, call := range []func() error{
 		func() error {
 			_, err := backend.Restore(ctx, RestoreRequest{Dataset: "events", Generation: snapshot.Generation, ExpectedGeneration: snapshot.Generation, Fingerprint: fp})
 			return err

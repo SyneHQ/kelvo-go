@@ -41,6 +41,9 @@ type RefreshWriter interface {
 // OpenBackend keeps the existing POSIX backend as the default. Object reads
 // require only the read identity; the write identity is loaded lazily by Begin.
 func OpenBackend(config catalog.AccelerationConfig) (Backend, error) {
+	if err := config.ValidateVerification(); err != nil {
+		return nil, err
+	}
 	if config.ObjectStorage == nil {
 		store, err := OpenStore(config.Directory, config.TenantID)
 		if err != nil {
@@ -71,6 +74,9 @@ func OpenBackend(config catalog.AccelerationConfig) (Backend, error) {
 // NewObjectBackend injects a client for protocol tests or embedding. On success
 // the backend owns the client; it shares that client for reads and writes.
 func NewObjectBackend(config catalog.AccelerationConfig, client objectstore.Client) (Backend, error) {
+	if err := config.ValidateVerification(); err != nil {
+		return nil, err
+	}
 	if client == nil {
 		return nil, errors.New("object snapshot backend requires a client")
 	}
