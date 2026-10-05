@@ -22,7 +22,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Use S3, R2, GCS or Azure Blob | [Object storage](object-storage.md) · [Protected readers](protected-object-readers.md) · [Writer shutdown](object-writer-shutdown.md) |
 | Verify protected snapshots | [Budgets and inventory](protected-verification.md) |
 | Back up or migrate snapshots | [Backup and recovery](snapshot-backup.md) |
-| Restore or reset failed refreshes | [Generation restore](acceleration.md#schema-contracts-and-generation-recovery) · [Refresh recovery](operations.md#source-refresh-failures-and-recovery) |
+| Restore or reset failed refreshes | [Generation restore](acceleration.md#schema-contracts-and-generation-recovery) · [Protected restore](protected-restore.md) · [Refresh recovery](operations.md#source-refresh-failures-and-recovery) |
 
 ## Deploy, observe and troubleshoot
 

@@ -17,9 +17,10 @@ limits:
 ```
 
 `max_bytes` covers one command: the current snapshot for `verify`, or the current
-snapshot plus up to 16 retained generations for `inventory`. Values must be
-positive and at most 32 TiB. There is no default; omission disables these two
-protected operations. Refresh, query and status remain available.
+snapshot plus up to 16 retained generations for `inventory`. [Restore](protected-restore.md)
+verifies the current and target generation together. Values must be positive and
+at most 32 TiB. There is no default; omission disables these three protected
+operations. Refresh, query and status remain available.
 
 The allowance counts root and descriptor bodies, payload checksums, repeated
 Parquet footer reads and a conservative byte per range for its internal EOF
@@ -56,7 +57,8 @@ an error and retains capacity until ownership is resolved. The CLI emits its
 result only after manager/runtime cleanup; cancellation during cleanup suppresses
 output too.
 
-Historical restore, migration backup, legacy cutover and remote deletion remain
-separate work. Local TLS fixtures do not certify cloud IAM or production capacity.
+[Historical restore](protected-restore.md) uses the same budget and guarded reads.
+Migration backup, legacy cutover and remote deletion remain separate work.
+Local TLS fixtures do not certify cloud IAM or production capacity.
 
 [Protected readers](protected-object-readers.md) · [Snapshot recovery](snapshot-backup.md) · [Production status](production-status.md)
