@@ -350,10 +350,44 @@ func (frame r3Frame) write(writer io.Writer) error {
 }
 
 type r3ResponseFault struct {
-	kind, subject string
-	replacement   []byte
-	used          bool
+	kind, subject                 string
+	replacement                   []byte
+	used                          bool
+	matched                       int
+	expectedSequence, ackSequence uint64
+	errorCode, errorID            int
 }
+
+type r3PendingRequest struct {
+	subject          string
+	guarded          bool
+	expectedSequence uint64
+}
+
+func r3RequestGuard(frame r3Frame) (uint64, bool) {
+	if frame.fields[0] != "HPUB" || len(frame.fields) != 5 {
+		return 0, false
+	}
+	headerBytes, err := strconv.Atoi(frame.fields[3])
+	if err != nil || headerBytes <= 0 || headerBytes > len(frame.body) {
+		return 0, false
+	}
+	lines := strings.Split(string(frame.body[:headerBytes]), "\r\n")
+	if len(lines) != 6 || lines[0] != "NATS/1.0" || lines[4] != "" || lines[5] != "" {
+		return 0, false
+	}
+	headers := map[string]string{}
+	for _, line := range lines[1:4] {
+		key, value, ok := strings.Cut(line, ":")
+		if !ok || headers[key] != "" {
+			return 0, false
+		}
+		headers[key] = strings.TrimSpace(value)
+	}
+	sequence, err := strconv.ParseUint(headers[expectSequenceHeader], 10, 64)
+	return sequence, err == nil && sequence > 0 && headers[expectStreamHeader] == StreamName && headers[expectSubjectHeader] == AuthoritySubject
+}
+
 type r3ClientPair struct{ client, server net.Conn }
 
 type r3ClientProxy struct {
@@ -447,7 +481,7 @@ func (p *r3ClientProxy) serve(pair *r3ClientPair) {
 	if serverTLS.HandshakeContext(p.f.ctx) != nil || clientTLS.HandshakeContext(p.f.ctx) != nil {
 		return
 	}
-	pending := map[string]string{}
+	pending := map[string]r3PendingRequest{}
 	var pendingMu sync.Mutex
 	finished := make(chan struct{}, 2)
 	go func() {
@@ -485,8 +519,9 @@ func (p *r3ClientProxy) serve(pair *r3ClientPair) {
 				p.inboxes[inbox] = true
 				p.requests++
 				p.mu.Unlock()
+				expected, guarded := r3RequestGuard(frame)
 				pendingMu.Lock()
-				pending[inbox] = subject
+				pending[inbox] = r3PendingRequest{subject: subject, guarded: guarded, expectedSequence: expected}
 				pendingMu.Unlock()
 			}
 			if frame.write(serverTLS) != nil {
@@ -508,18 +543,38 @@ func (p *r3ClientProxy) serve(pair *r3ClientPair) {
 				}
 				inbox := frame.fields[1]
 				pendingMu.Lock()
-				subject := pending[inbox]
+				request, matched := pending[inbox]
 				delete(pending, inbox)
 				pendingMu.Unlock()
 				p.mu.Lock()
 				fault := p.fault
-				apply := !fault.used && fault.kind != "" && fault.subject == subject
+				apply := matched && !fault.used && fault.kind != "" && fault.subject == request.subject
+				if apply && request.subject == AuthoritySubject {
+					p.fault.matched++
+					p.fault.expectedSequence = request.expectedSequence
+					p.fault.ackSequence = 0
+					p.fault.errorCode, p.fault.errorID = 0, 0
+					// Only a real success ACK proves this fault happens after a
+					// commit. Pass definite errors through without hiding them.
+					apply = false
+					if request.guarded && frame.fields[0] == "MSG" && len(frame.fields) == 4 {
+						sequence, ackErr := parseAck(frame.body, request.expectedSequence)
+						p.fault.ackSequence = sequence
+						apply = ackErr == nil
+						var response struct {
+							Error *apiError `json:"error"`
+						}
+						if decodeJSON(frame.body, &response, false) == nil && response.Error != nil {
+							p.fault.errorCode, p.fault.errorID = response.Error.Code, response.Error.ErrCode
+						}
+					}
+				}
 				if apply {
 					p.fault.used = true
 				}
 				prior := p.priorInbox
 				p.priorInbox = inbox
-				if subject == messageGetSubject {
+				if request.subject == messageGetSubject {
 					p.captured = append([]byte(nil), frame.body...)
 				}
 				p.mu.Unlock()

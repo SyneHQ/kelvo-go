@@ -4,6 +4,7 @@
 package authfence
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -143,6 +144,152 @@ func (f *r3Fixture) leader(t *testing.T, node int, excluded int) int {
 	return found
 }
 
+// Capture numeric fields from the actual protocol replies without changing
+// them. A separate diagnostic request cannot explain an earlier conflict.
+type r3RecoveryDiagnostic struct {
+	readSeen, readMismatch bool
+	readSequence           uint64
+	guardSent              bool
+	expectedSequence       uint64
+	ackSequence            uint64
+	errorCode, errorID     int
+}
+
+type r3RecoverySession struct {
+	wireSession
+	expected Snapshot
+	diag     *r3RecoveryDiagnostic
+}
+
+func (s r3RecoverySession) request(subject string, data []byte, headers nats.Header) ([]byte, error) {
+	if strings.HasPrefix(subject, "auth.witness.") {
+		s.diag.guardSent = true
+		s.diag.expectedSequence, _ = strconv.ParseUint(headers.Get(expectSequenceHeader), 10, 64)
+	}
+	raw, err := s.wireSession.request(subject, data, headers)
+	if err != nil {
+		return raw, err
+	}
+	var response struct {
+		Error    *apiError `json:"error"`
+		Sequence uint64    `json:"seq"`
+		Message  *struct {
+			Subject  string `json:"subject"`
+			Sequence uint64 `json:"seq"`
+			Data     []byte `json:"data"`
+		} `json:"message"`
+	}
+	if decodeJSON(raw, &response, false) == nil {
+		if response.Error != nil {
+			s.diag.errorCode, s.diag.errorID = response.Error.Code, response.Error.ErrCode
+		}
+		if subject == messageGetSubject && response.Message != nil {
+			s.diag.readSequence = response.Message.Sequence
+			if record, decodeErr := DecodeRecord(response.Message.Data); decodeErr == nil && response.Message.Subject == AuthoritySubject {
+				s.diag.readSeen = true
+				s.diag.readMismatch = s.diag.readMismatch || response.Message.Sequence != s.expected.AuthoritySequence() || !record.Equal(s.expected.Record())
+			}
+		}
+		if strings.HasPrefix(subject, "auth.witness.") {
+			s.diag.ackSequence = response.Sequence
+		}
+	}
+	return raw, err
+}
+
+// Recovery is a bounded fixture operation, not a protocol retry. Every call
+// gets its own original attempt and must return custody before another starts.
+func (f *r3Fixture) requireRecovery(t *testing.T, stage string, expected Snapshot) {
+	t.Helper()
+	started := time.Now()
+	ctx, cancel := context.WithTimeout(f.ctx, 15*time.Second)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
+	newAttempt := func() Attempt {
+		now := time.Now()
+		end := now.Add(MaxAttemptDuration)
+		if deadline.Before(end) {
+			end = deadline
+		}
+		attempt, err := NewAttempt(now, end)
+		if err != nil {
+			t.Fatal("recovery attempt deadline exhausted")
+		}
+		return attempt
+	}
+	discarded := 0
+	for round := 1; ctx.Err() == nil; round++ {
+		all := f.assertRoutes() == nil
+		for node := range f.nodes {
+			if ctx.Err() != nil {
+				all = false
+				break
+			}
+			client, err := NewClient(f.config(node, "gateway-b"))
+			if err != nil {
+				t.Fatal("recovery client configuration rejected", err)
+			}
+			t.Cleanup(func() { r3CloseClient(t, client) })
+			diag := r3RecoveryDiagnostic{}
+			client.open = func(op *operation, config Config) (wireSession, error) {
+				session, openErr := openNATSSession(op, config)
+				if openErr != nil {
+					return session, openErr
+				}
+				return r3RecoverySession{wireSession: session, expected: expected, diag: &diag}, nil
+			}
+			attempt := newAttempt()
+			proof, probeErr := client.Verify(ctx, attempt, expected.Record().Document())
+			validProof := probeErr == nil && proof.ValidFor(f.scope, attempt, expected.Record().Document(), time.Now()) && proof.Snapshot().AuthoritySequence() == expected.AuthoritySequence() && proof.Snapshot().Record().Equal(expected.Record())
+			readEqual := false
+			probeStage := "verify"
+			if validProof && ctx.Err() == nil {
+				probeStage = "read"
+				var observed Snapshot
+				observed, probeErr = client.Read(ctx, newAttempt())
+				readEqual = probeErr == nil && observed.Valid() && observed.AuthoritySequence() == expected.AuthoritySequence() && observed.Record().Equal(expected.Record())
+			}
+			closeErr := client.Close(ctx)
+			select {
+			case <-client.Quiesced():
+			default:
+				t.Fatal("recovery client custody did not join before deadline")
+			}
+			if closeErr != nil {
+				t.Fatal("recovery client cleanup failed", closeErr)
+			}
+			if !validProof || !readEqual {
+				all = false
+				discarded++
+				t.Logf("R3_RECOVERY_DISCARD stage=%s round=%d node=%d call=%s outcome=%v read_seen=%t read_mismatch=%t read_seq=%d guard_sent=%t expected_seq=%d ack_seq=%d error_code=%d error_id=%d", stage, round, node, probeStage, probeErr, diag.readSeen, diag.readMismatch, diag.readSequence, diag.guardSent, diag.expectedSequence, diag.ackSequence, diag.errorCode, diag.errorID)
+				if validProof && diag.readMismatch {
+					t.Fatal("recovery Read after a successful witness observed a different authority record or sequence")
+				}
+				if probeErr == nil && !validProof {
+					t.Fatal("recovery Verify returned an invalid proof")
+				}
+				if probeErr == nil && probeStage == "read" && !readEqual {
+					t.Fatal("recovery Read returned a different authority record or sequence")
+				}
+				if probeErr != nil && probeErr != ErrConflict && probeErr != ErrUnavailable && probeErr != ErrExpired && probeErr != ErrUnknown {
+					t.Fatal("recovery returned a nontransient protocol failure", probeErr)
+				}
+			}
+		}
+		if all && ctx.Err() == nil {
+			t.Logf("R3_RECOVERY stage=%s endpoints=3 rounds=%d discarded=%d elapsed_ms=%d authority_seq=%d", stage, round, discarded, time.Since(started).Milliseconds(), expected.AuthoritySequence())
+			return
+		}
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+		case <-timer.C:
+		}
+	}
+	t.Fatalf("exact authority did not recover through all three endpoints: stage=%s discarded=%d", stage, discarded)
+}
+
 func r3GuardedWitnessAndCAS(t *testing.T, f *r3Fixture) {
 	prior := f.read(t, 0)
 	control := f.client(t, 0, "control")
@@ -245,6 +392,7 @@ func r3FormerLeaderAndQuorumLoss(t *testing.T, f *r3Fixture) {
 	if !r3Wait(f.ctx, 12*time.Second, func() bool { return f.assertRoutes() == nil }) {
 		t.Fatal("former leader did not rejoin routed cluster")
 	}
+	f.requireRecovery(t, "former_leader", current)
 	// Cut every route. Send guarded writes directly, so a failed preliminary
 	// stream-info read cannot accidentally stand in for the quorum test.
 	for i := range f.nodes {
@@ -266,13 +414,7 @@ func r3FormerLeaderAndQuorumLoss(t *testing.T, f *r3Fixture) {
 	if !r3Wait(f.ctx, 12*time.Second, func() bool { return f.assertRoutes() == nil }) {
 		t.Fatal("quorum-loss recovery did not restore routed cluster")
 	}
-	f.leader(t, 0, -1)
-	healthy := f.client(t, 0, "gateway-b")
-	attempt := r3Attempt(t)
-	proof, err = healthy.Verify(f.ctx, attempt, current.Record().Document())
-	if err != nil || !proof.ValidFor(f.scope, attempt, current.Record().Document(), time.Now()) {
-		t.Fatal("guarded verification failed after quorum recovery", err)
-	}
+	f.requireRecovery(t, "quorum_loss", current)
 }
 
 func r3ConcurrentAdvanceWitness(t *testing.T, f *r3Fixture) {
@@ -381,10 +523,13 @@ func r3ResponseCorrelationAndUnknown(t *testing.T, f *r3Fixture) {
 		result, err := control.Advance(f.ctx, r3Attempt(t), prior.Record().Document().Revision(), target)
 		r3CloseClient(t, control)
 		proxy.mu.Lock()
-		used := proxy.fault.used
+		fault := proxy.fault
 		proxy.mu.Unlock()
-		if !used || err != ErrUnknown || result.Outcome() != OutcomeUnknown {
-			t.Fatal("post-send response fault did not remain unknown", kind, err)
+		if !fault.used {
+			t.Fatalf("postcommit response fault was not exercised: kind=%s outcome=%v matched=%d expected_seq=%d ack_seq=%d error_code=%d error_id=%d", kind, err, fault.matched, fault.expectedSequence, fault.ackSequence, fault.errorCode, fault.errorID)
+		}
+		if err != ErrUnknown || result.Outcome() != OutcomeUnknown {
+			t.Fatal("postcommit response fault did not remain unknown", kind, err)
 		}
 		// Observe actual storage with another connection after the proxy has
 		// seen and faulted the real committed ACK, then verify using a witness.
