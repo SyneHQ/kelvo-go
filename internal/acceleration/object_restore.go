@@ -126,7 +126,7 @@ func (backend *objectBackend) Inventory(ctx context.Context, dataset string) ([]
 // immutable object versions, with bounded streaming checksum and range reads.
 func (backend *objectBackend) Restore(ctx context.Context, request RestoreRequest) (snapshot Snapshot, err error) {
 	if backend.protected() {
-		return Snapshot{}, ErrRecoveryUnsupported
+		return backend.restoreProtectedObject(ctx, request)
 	}
 	if _, ok := backend.reader.(objectstore.RangeClient); !ok {
 		return Snapshot{}, ErrRecoveryUnsupported
