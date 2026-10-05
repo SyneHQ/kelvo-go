@@ -71,7 +71,7 @@ Follow the [drained principal-policy cutover](principal-access.md). Deploy suppo
 
 Before rollback, stop new admission, drain or cancel jobs, restore a compatible catalog and policy, and then restore the earlier binaries. Do not remove a restrictive grant merely to make an older binary accept it. No snapshot manifest migration or per-principal stored copy is introduced.
 
-Native SQL policies, protected-object export acceptance, result-cache authorization and coordinated live policy updates remain tracked in [#28](https://github.com/SYNEHQ/kelvo-go/issues/28). Public [federated exports](exports.md) are implemented; their complete protected-storage lifecycle is a separate gate.
+Native SQL policies, result-cache authorization and coordinated live policy updates remain tracked in [#28](https://github.com/SYNEHQ/kelvo-go/issues/28). [Protected export acceptance](protected-export-acceptance.md) covers authenticated fills and repeat downloads; all 15 Linux stages passed on `dfe788c`.
 
 [Authenticated protected queries](protected-query-acceptance.md) passed the complete gateway, NATS, node and contained-worker path. The gate checks two tenants, differently restricted principals, real multipart CTE joins, four revocation/framing combinations and bounded cleanup. It keeps the HTTP-response and client `Body.Close` checks separate.
 
