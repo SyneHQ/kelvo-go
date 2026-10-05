@@ -23,6 +23,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/testutil/protectedobject"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/decimal128"
 )
@@ -59,26 +60,17 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 		t.Log(output.String())
 		return
 	}
-	service, endpoint := protectedObjectTLS(t)
+	service := protectedobject.New(t, protectedobject.Options{Tenants: []string{"tenant-a"}})
+	endpoint := service.Endpoint
 	executor, processManager, pool := containedExecutor(t)
 	executor.Binary = os.Getenv("KELVO_TEST_BINARY")
-	for _, role := range []string{"reader", "writer", "registry"} {
-		upper := map[string]string{"reader": "READER", "writer": "WRITER", "registry": "REGISTRY"}[role]
-		t.Setenv("KELVO_SOURCE_PROTECTED_"+upper+"_ID", role)
-		t.Setenv("KELVO_SOURCE_PROTECTED_"+upper+"_SECRET", "fixture-only-secret-"+role)
-	}
-	credentials := func(role string) catalog.ObjectCredentials {
-		return catalog.ObjectCredentials{AccessKeyIDEnv: "KELVO_SOURCE_PROTECTED_" + role + "_ID", SecretAccessKeyEnv: "KELVO_SOURCE_PROTECTED_" + role + "_SECRET"}
-	}
 	input := filepath.Join(t.TempDir(), "unused-input.csv")
 	if err := os.WriteFile(input, []byte("id\n1\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	storage := service.Storage("tenant-a")
 	config := catalog.Config{Sources: []catalog.Source{{ID: "source", Type: "csv", Path: input}},
-		Acceleration: &catalog.AccelerationConfig{Directory: t.TempDir(), TenantID: "tenant-a", ObjectStorage: &catalog.ObjectStorage{
-			ObjectLocation:  catalog.ObjectLocation{Provider: "s3", Endpoint: endpoint, Bucket: "fixtures", Prefix: "cache", Region: "us-east-1"},
-			ReadCredentials: credentials("READER"), WriteCredentials: credentials("WRITER"), ReaderRegistry: &catalog.ObjectReaderRegistry{Credentials: credentials("REGISTRY")},
-		}}}
+		Acceleration: &catalog.AccelerationConfig{Directory: t.TempDir(), TenantID: "tenant-a", ObjectStorage: &storage}}
 	if err := os.Chmod(config.Acceleration.Directory, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +161,7 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 	}
 	clean := func(t *testing.T) {
 		t.Helper()
-		if pool.Snapshot().Active != 0 || processManager.Status().Active != 0 || service.readers() != 0 {
+		if pool.Snapshot().Active != 0 || processManager.Status().Active != 0 || service.Readers("tenant-a") != 0 {
 			t.Fatal("query retained process, reservation or durable pin")
 		}
 		executor.ScratchRoot.mu.Lock()
@@ -215,12 +207,11 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 			}
 			clean(t)
 			beforeFactories, beforeExecutions := sourceFactories.Load(), sourceExecutions.Load()
-			service.mu.Lock()
-			rootKey := "/fixtures/cache/tenant-a/" + id + "/current.yaml"
-			beforeRoot := service.objects[rootKey]
-			beforeRoot.data = bytes.Clone(beforeRoot.data)
-			beforeViolations, beforeRanges := service.violations, service.ranges
-			service.mu.Unlock()
+			beforeRoot, exists := service.Root("tenant-a", id)
+			if !exists {
+				t.Fatal("published root is missing", id)
+			}
+			before := service.Snapshot().Total
 			verified, err := manager.Verify(context.Background(), id)
 			if err != nil || !sameSnapshot(verified, current) {
 				t.Fatal("TLS verification changed the exact current snapshot", id, err)
@@ -237,14 +228,12 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 				}
 			}
 			clean(t)
-			service.mu.Lock()
-			afterRoot := service.objects[rootKey]
-			violations, ranges := service.violations, service.ranges
-			service.mu.Unlock()
+			afterRoot, exists := service.Root("tenant-a", id)
+			after := service.Snapshot().Total
 			if sourceFactories.Load() != beforeFactories || sourceExecutions.Load() != beforeExecutions {
 				t.Fatal("maintenance invoked the source executor", id)
 			}
-			if beforeViolations != 0 || violations != 0 || ranges <= beforeRanges || !reflect.DeepEqual(beforeRoot, afterRoot) {
+			if !exists || before.Violations != 0 || after.Violations != 0 || after.RangeRequests <= before.RangeRequests || !reflect.DeepEqual(beforeRoot, afterRoot) {
 				t.Fatal("TLS maintenance changed the root, violated roles/read ordering, or skipped footer reads", id)
 			}
 		}
@@ -332,14 +321,14 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 		clean(t)
 	})
 	t.Run("cancellation-joins-ranges-and-child", func(t *testing.T) {
-		service.blockRead.Store(true)
-		defer service.blockRead.Store(false)
+		gate := service.Hold(protectedobject.RangeBeforeResponse, "tenant-a", "orders_single")
+		defer gate.Release()
 		deadline, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		finished := make(chan error, 1)
 		go func() { _, err := executor.Execute(deadline, request, &objectExactSink{}); finished <- err }()
 		select {
-		case <-service.readStarted:
+		case <-gate.Entered():
 			cancel()
 		case <-deadline.Done():
 			<-finished
@@ -355,7 +344,7 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 	}
 	t.Run("binding-loss-after-last-batch-refuses-completion", func(t *testing.T) {
 		allowCleanupFailure = true
-		sink := &protectedLastBatchSink{objectExactSink: objectExactSink{}, after: service.invalidateBindings}
+		sink := &protectedLastBatchSink{objectExactSink: objectExactSink{}, after: func() { service.InvalidateBindings("tenant-a") }}
 		_, err := executeWithOuterCustody(t, sink)
 		if err == nil || len(sink.values) != 3 || query.PublicError(err).Code != "DATASET_UNAVAILABLE" || query.PublicError(err).Message != "Snapshot ownership or cleanup did not complete" {
 			t.Fatal("complete result concealed terminal binding loss", err)
@@ -364,11 +353,9 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 			t.Fatal("binding loss retained a cleaned native process")
 		}
 	})
-	service.mu.Lock()
-	violations, ranges := service.violations, service.ranges
-	service.mu.Unlock()
-	if violations != 0 || ranges == 0 {
-		t.Fatal("fixture observed unpinned access, missing publication fences, or no payload reads", violations, ranges)
+	counters := service.Snapshot().Total
+	if counters.Violations != 0 || counters.RangeRequests == 0 {
+		t.Fatal("fixture observed unpinned access, missing publication fences, or no payload reads", counters.Violations, counters.RangeRequests)
 	}
 }
 
