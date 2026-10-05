@@ -181,11 +181,15 @@ func objectPayloadSnapshots(snapshot Snapshot) ([]Snapshot, error) {
 }
 
 func (backend *objectBackend) objectSnapshotSchema(ctx context.Context, snapshot Snapshot, verifyBytes bool) (*arrow.Schema, error) {
+	return backend.objectSnapshotSchemaWithReader(ctx, snapshot, verifyBytes, backend.reader)
+}
+
+func (backend *objectBackend) objectSnapshotSchemaWithReader(ctx context.Context, snapshot Snapshot, verifyBytes bool, client objectstore.Client) (*arrow.Schema, error) {
 	parts, err := objectPayloadSnapshots(snapshot)
 	if err != nil {
 		return nil, err
 	}
-	ranges, ok := backend.reader.(objectstore.RangeClient)
+	ranges, ok := client.(objectstore.RangeClient)
 	if !ok {
 		return nil, ErrRecoveryUnsupported
 	}
@@ -202,7 +206,7 @@ func (backend *objectBackend) objectSnapshotSchema(ctx context.Context, snapshot
 			return nil, ErrCorrupt
 		}
 		if verifyBytes {
-			if _, err := backend.verifyObjectBytes(ctx, part); err != nil {
+			if _, err := backend.verifyObjectBytesWithReader(ctx, part, client); err != nil {
 				return nil, err
 			}
 		}
