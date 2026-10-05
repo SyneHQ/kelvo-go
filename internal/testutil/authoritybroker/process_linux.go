@@ -19,6 +19,9 @@ import (
 
 type BrokerOutcome struct {
 	Name            string `json:"name"`
+	ClientAddress   string `json:"client_address"`
+	RouteAddress    string `json:"route_address"`
+	MonitorAddress  string `json:"monitor_address"`
 	PID             int    `json:"pid"`
 	StartTicks      string `json:"start_ticks"`
 	ProcessGroup    int    `json:"process_group"`
@@ -57,7 +60,8 @@ func (n *node) start(binary, config, logPath string) error {
 	n.cmd, n.done = cmd, make(chan error, 1)
 	go func() { err := cmd.Wait(); n.done <- errors.Join(err, f.Close()) }()
 	ticks, group, state, err := processIdentity(cmd.Process.Pid)
-	n.receipt = BrokerOutcome{Name: n.name, PID: cmd.Process.Pid, StartTicks: ticks, ProcessGroup: group, ExitCode: -1}
+	n.receipt = BrokerOutcome{Name: n.name, ClientAddress: n.client, RouteAddress: n.route, MonitorAddress: n.monitor,
+		PID: cmd.Process.Pid, StartTicks: ticks, ProcessGroup: group, ExitCode: -1}
 	if err != nil || group != cmd.Process.Pid || state == "Z" || state == "X" {
 		return errors.New("owned broker identity unverified")
 	}
