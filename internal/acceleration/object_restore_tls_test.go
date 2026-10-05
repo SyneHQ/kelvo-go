@@ -185,7 +185,7 @@ func runProtectedRestoreTLS(t *testing.T, kind string) {
 	after, afterRoot := service.Snapshot(), readRoot()
 	if restored.Generation != target.Generation || restored.ObjectVersion != target.ObjectVersion || restored.Rows != target.Rows ||
 		restored.SchemaHash != target.SchemaHash || restored.SHA256 != target.SHA256 || !restored.RefreshedAt.Equal(target.RefreshedAt) ||
-		!reflect.DeepEqual(restored.Parts, target.Parts) || !sameObjectCommit(afterRoot.Committed, expectedCommit) || afterRoot.Writer != nil {
+		!reflect.DeepEqual(restored.Parts, target.Parts) || !reflect.DeepEqual(afterRoot.Committed, expectedCommit) || afterRoot.Writer != nil {
 		t.Fatal("restore changed immutable identity, age, schema or writer release")
 	}
 	if kind == "verified-noop" && !reflect.DeepEqual(beforeRoot, afterRoot) {
