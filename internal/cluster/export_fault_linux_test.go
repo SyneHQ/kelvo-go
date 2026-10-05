@@ -89,22 +89,22 @@ func (q *exportFaultQuota) Acquire(ctx context.Context, ids []string) (context.C
 	return ctx, func() { q.cancel(); q.active.Add(-1) }, nil
 }
 
-func exportWorkerCSVSource(t *testing.T, r *ExportRuntime) {
+func exportWorkerCSVSource(t *testing.T, cfg *NodeConfig, catalogue *catalog.Config) {
 	t.Helper()
-	path := filepath.Join(filepath.Dir(r.cfg.ScratchDirectory), "source.csv")
+	path := filepath.Join(filepath.Dir(cfg.ScratchDirectory), "source.csv")
 	if err := os.WriteFile(path, []byte("value\n7\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	native := r.executor.(*worker.Executor)
-	native.Config.Sources = []catalog.Source{{ID: "sales", Type: "csv", Path: path}}
-	grant := r.cfg.Policy.Access.Principals["reports"]
+	catalogue.Sources = []catalog.Source{{ID: "sales", Type: "csv", Path: path}}
+	grant := cfg.Policy.Access.Principals["reports"]
 	grant.FederatedSources = append(grant.FederatedSources, "sales")
-	r.cfg.Policy.Access.Principals["reports"] = grant
+	cfg.Policy.Access.Principals["reports"] = grant
 }
 
 func TestExportWorkerSourceQuotaRejectsBeforeChildStart(t *testing.T) {
-	r, s, scratch, _ := exportActualWorker(t)
-	exportWorkerCSVSource(t, r)
+	r, s, scratch, _ := exportConfiguredActualWorker(t, func(cfg *NodeConfig, catalogue *catalog.Config) {
+		exportWorkerCSVSource(t, cfg, catalogue)
+	})
 	quota := &exportFaultQuota{reject: true}
 	native := r.executor.(*worker.Executor)
 	native.SourceAdmission = quota
@@ -123,8 +123,9 @@ func TestExportWorkerSourceQuotaRejectsBeforeChildStart(t *testing.T) {
 }
 
 func TestExportWorkerSourceQuotaRevocationReapsChild(t *testing.T) {
-	r, s, scratch, _ := exportActualWorker(t)
-	exportWorkerCSVSource(t, r)
+	r, s, scratch, _ := exportConfiguredActualWorker(t, func(cfg *NodeConfig, catalogue *catalog.Config) {
+		exportWorkerCSVSource(t, cfg, catalogue)
+	})
 	quota := &exportFaultQuota{started: make(chan struct{})}
 	r.executor.(*worker.Executor).SourceAdmission = quota
 	id := addRuntimeExportRequest(t, s, query.Request{Mode: "federated", SQL: "SELECT sum(sin(i::DOUBLE)) FROM range(1000000000) t(i)", Sources: []string{"sales"}})
