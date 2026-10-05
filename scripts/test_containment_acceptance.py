@@ -27,16 +27,17 @@ def live_service(parent=None):
     return {"verified": True, "properties": properties}
 
 
-def valid_report(protected=False, queries=False):
-    protected = protected or queries
+def valid_report(protected=False, queries=False, exports=False):
+    protected = protected or queries or exports
     files = {name: "a" * 64 for name in fixture.SOURCE_REQUIRED | (fixture.PROTECTED_SOURCE_REQUIRED if protected else set())
-             | (fixture.protected_query.SOURCE_REQUIRED if queries else set())}
+             | (fixture.protected_query.SOURCE_REQUIRED if queries else set())
+             | (fixture.protected_export.SOURCE_REQUIRED if exports else set())}
     canonical = json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
     report = {
         "schema": 3, "owned_unit": TEST_UNIT, "service_description": TEST_DESCRIPTION,
         "service_user": TEST_USER, "parent_unit": None, "live_service": live_service(),
-        "mode": fixture.QUERY_MODE if queries else fixture.PROTECTED_MODE if protected else fixture.BASE_MODE,
-        "gates": {name: "pass" for name in fixture.required_gates(protected, queries)},
+        "mode": fixture.EXPORT_MODE if exports else fixture.QUERY_MODE if queries else fixture.PROTECTED_MODE if protected else fixture.BASE_MODE,
+        "gates": {name: "pass" for name in fixture.required_gates(protected, queries, exports)},
         "non_root": True, "capability_sets_zero": True,
         "source": {"verified": True, "file_count": len(files), "files": files,
                    "sha256": hashlib.sha256(canonical).hexdigest(), "base_revision": "c" * 40,
@@ -53,11 +54,12 @@ def valid_report(protected=False, queries=False):
         report["bridge_inputs_unchanged"] = True
         report["resource_limits"] = dict(fixture.RESOURCE_LIMITS)
         report["protected_gates"] = {name: "pass" for name in ("outer", "inner", *fixture.PROTECTED_LEAVES)}
-    if queries:
+    if queries or exports:
+        support = fixture.protected_export if exports else fixture.protected_query
         report["binary_sha256"]["nats-server"] = "b" * 64
-        report["broker_binary"] = {"version": fixture.protected_query.VERSION, "sha256": "b" * 64, "bytes": 1000}
+        report["broker_binary"] = {"version": support.VERSION, "sha256": "b" * 64, "bytes": 1000}
         report["broker_binary_unchanged"] = True
-        report["protected_query_gates"] = {name: "pass" for name in ("outer", "inner", *fixture.protected_query.LEAVES)}
+        report["protected_export_gates" if exports else "protected_query_gates"] = {name: "pass" for name in ("outer", "inner", *support.LEAVES)}
         report["broker_custody"] = {"created_pid": 23, "started": True, "reaped": True, "pid_absent": True, "alive_before_stop": True,
             "returncode": 0, "forced_kill": False, "identity": {"pid": 23, "start_ticks": 111, "cgroup": "/system.slice/" + TEST_UNIT + ".service/supervisor",
                                          "argv_sha256": "c" * 64}}
@@ -70,6 +72,16 @@ def protected_output():
         f"    --- PASS: {root} (0s)\n--- PASS: {root} (0s)\n"
 
 
+def export_output():
+    root = fixture.protected_export.ROOT
+    return ("        fixture.go:1: KELVO_PROTECTED_EXPORT_CHILD_START\n"
+            + "".join(f"        --- PASS: {name} (0s)\n" for name in fixture.protected_export.LEAVES)
+            + "        fixture.go:1: KELVO_PROTECTED_EXPORT_CHILD_PASS\n"
+            + f"    --- PASS: {root} (0s)\n"
+            + "    fixture.go:1: KELVO_PROTECTED_EXPORT_OUTER_PASS\n"
+            + f"--- PASS: {root} (0s)\n")
+
+
 class ContainmentControls(unittest.TestCase):
     def test_direct_runner_without_bytecode_flag_keeps_imports_out_of_source(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -78,6 +90,7 @@ class ContainmentControls(unittest.TestCase):
             runner.write_bytes(Path(fixture.__file__).read_bytes())
             (root / "provision_duckbridge.py").write_text("# Import-only fixture; help must not provision anything.\n")
             (root / "protected_query_acceptance.py").write_text("# Import-only fixture; help must not start a broker.\n")
+            (root / "protected_export_acceptance.py").write_text("# Import-only fixture; help must not start a broker.\n")
             env = {key: value for key, value in fixture.os.environ.items() if not key.startswith("PYTHON")}
             result = subprocess.run([fixture.sys.executable, str(runner), "--help"],
                                     env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
@@ -85,8 +98,8 @@ class ContainmentControls(unittest.TestCase):
             self.assertFalse((root / "__pycache__").exists())
 
     def test_python_provision_and_delegated_commands_disable_bytecode_explicitly(self):
-        for protected in (False, True):
-            with self.subTest(protected=protected), tempfile.TemporaryDirectory() as temporary:
+        for protected, queries, exports in ((False, False, False), (True, False, False), (True, True, False), (True, False, True)):
+            with self.subTest(protected=protected, queries=queries, exports=exports), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary).resolve()
                 artifact = root / "artifact"
                 artifact.mkdir()
@@ -94,10 +107,12 @@ class ContainmentControls(unittest.TestCase):
                 args = ["containment_acceptance.py", "--repo", str(root), "--report", str(report), "--unit", TEST_UNIT]
                 if protected:
                     args.append("--protected-objects")
+                if queries or exports:
+                    args += ["--protected-exports" if exports else "--protected-queries", "--nats-server", "/cached/nats-server", "--nats-sha256", "a" * 64]
                 process = mock.Mock()
                 process.wait.return_value = 0
                 process.poll.return_value = 0
-                identity = valid_report(protected)["source"]
+                identity = valid_report(protected, queries, exports)["source"]
                 with mock.patch.object(fixture.sys, "argv", args), \
                         mock.patch.object(fixture.sys, "platform", "linux"), \
                         mock.patch.object(fixture.os, "geteuid", return_value=1000), \
@@ -107,6 +122,7 @@ class ContainmentControls(unittest.TestCase):
                         mock.patch.object(fixture, "require_fresh_unit"), \
                         mock.patch.object(fixture, "source_manifest", return_value=identity), \
                         mock.patch.object(fixture, "bridge_provenance", return_value={}), \
+                        mock.patch.object(fixture.protected_query, "seed_binary", return_value={"sha256": "a" * 64}), \
                         mock.patch.object(fixture, "digest", return_value="a" * 64), \
                         mock.patch.object(fixture, "run", return_value=subprocess.CompletedProcess([], 0, "go fixture\n")), \
                         mock.patch.object(fixture, "run_logged", return_value=subprocess.CompletedProcess([], 0, "")) as logged, \
@@ -119,10 +135,31 @@ class ContainmentControls(unittest.TestCase):
                 python = delegated.index(fixture.sys.executable)
                 self.assertEqual(delegated[python:python + 4],
                                  [fixture.sys.executable, "-B", str(Path(fixture.__file__).resolve()), "--inside"])
+                self.assertEqual("--protected-queries" in delegated, queries)
+                self.assertEqual("--protected-exports" in delegated, exports)
+                for key, value in fixture.RESOURCE_LIMITS.items():
+                    self.assertIn("--property=" + key + "=" + value, delegated)
+                self.assertEqual(process.wait.call_args_list[0].kwargs["timeout"], 550 if queries or exports else 330)
                 provisioning = [call.args[0] for call in logged.call_args_list if call.args[0][0] == fixture.sys.executable]
                 self.assertEqual(len(provisioning), int(protected))
                 if protected:
                     self.assertEqual(provisioning[0][:3], [fixture.sys.executable, "-B", str(root / "scripts/provision_duckbridge.py")])
+
+    def test_export_cli_requires_protected_objects_a_pinned_broker_and_its_own_invocation(self):
+        for flags in (["--protected-exports"], ["--protected-objects", "--protected-exports"],
+                      ["--protected-objects", "--protected-queries", "--protected-exports"],
+                      ["--protected-objects", "--nats-server", "/cached/nats-server"]):
+            with self.subTest(flags=flags), \
+                    mock.patch.object(fixture.sys, "argv", ["runner", "--report", "/unused/report.json", *flags]), \
+                    mock.patch.object(fixture.sys, "platform", "linux"), \
+                    mock.patch.object(fixture.os, "geteuid", return_value=1000), \
+                    mock.patch.object(fixture, "prepare_artifact") as prepare, \
+                    mock.patch.object(fixture, "run") as run, mock.patch.object(fixture.sys, "stderr"):
+                with self.assertRaises(SystemExit) as raised:
+                    fixture.main()
+                self.assertEqual(raised.exception.code, 2)
+                prepare.assert_not_called()
+                run.assert_not_called()
 
     def test_protected_mode_requires_its_gate_and_cannot_be_downgraded(self):
         self.assertTrue(fixture.reconcile(valid_report(protected=True)))
@@ -306,6 +343,119 @@ class ContainmentControls(unittest.TestCase):
         report["broker_custody"]["identity"]["pid"] += 1
         self.assertFalse(fixture.reconcile(report))
 
+    def test_export_gate_requires_every_leaf_root_and_unique_child_markers(self):
+        root, output = fixture.protected_export.ROOT, export_output()
+        self.assertEqual(fixture.gates(output, [root]), {root: "pass"})
+        self.assertEqual(set(fixture.protected_export_gates(output)), {"outer", "inner", *fixture.protected_export.LEAVES})
+        for line in output.splitlines(keepends=True):
+            for changed in (output.replace(line, ""), output + line, output.replace(line, line.replace("PASS", "SKIP"))):
+                if changed != output:
+                    self.assertEqual(fixture.gates(changed, [root]), {root: "fail"}, line)
+        for suffix in (f"    --- PASS: {root}/unknown (0s)\n",
+                       f"    --- SKIP: {root}/revocation-none-length/hidden-skip (0s)\n",
+                       "--- PASS: TestOtherGate (0s)\n", "fixture.go:1: KELVO_PROTECTED_QUERY_CHILD_PASS\n",
+                       "fixture.go:1: KELVO_PROTECTED_EXPORT_FOREIGN\n"):
+            self.assertEqual(fixture.gates(output + suffix, [root]), {root: "fail"}, suffix)
+
+    def test_export_report_requires_exact_source_binary_and_owned_broker_evidence(self):
+        self.assertTrue(fixture.reconcile(valid_report(exports=True)))
+        for field in ("broker_custody", "broker_binary", "broker_binary_unchanged", "protected_export_gates", "live_service"):
+            report = valid_report(exports=True)
+            del report[field]
+            self.assertFalse(fixture.reconcile(report), field)
+        for name in ("outer", "inner", *fixture.protected_export.LEAVES):
+            for value in ("missing", "skip", "fail", "duplicate", True, None):
+                report = valid_report(exports=True)
+                report["protected_export_gates"][name] = value
+                self.assertFalse(fixture.reconcile(report), (name, value))
+        for mode in (fixture.BASE_MODE, fixture.PROTECTED_MODE, fixture.QUERY_MODE, None):
+            report = valid_report(exports=True)
+            report["mode"] = mode
+            self.assertFalse(fixture.reconcile(report), mode)
+        for key in ("started", "reaped", "pid_absent", "alive_before_stop"):
+            report = valid_report(exports=True)
+            report["broker_custody"][key] = False
+            self.assertFalse(fixture.reconcile(report), key)
+        for code in (None, True, 1, -9):
+            report = valid_report(exports=True)
+            report["broker_custody"]["returncode"] = code
+            self.assertFalse(fixture.reconcile(report), code)
+        for key, value in (("version", "unknown"), ("sha256", "f" * 64), ("bytes", 0), ("bytes", True)):
+            report = valid_report(exports=True)
+            report["broker_binary"][key] = value
+            self.assertFalse(fixture.reconcile(report), (key, value))
+        report = valid_report(exports=True)
+        report["broker_custody"]["identity"]["cgroup"] = "/system.slice/foreign.service/supervisor"
+        self.assertFalse(fixture.reconcile(report))
+        report = valid_report(exports=True)
+        report["broker_custody"]["identity"]["pid"] += 1
+        self.assertFalse(fixture.reconcile(report))
+        for name in fixture.protected_export.SOURCE_REQUIRED:
+            report = valid_report(exports=True)
+            source = report["source"]
+            del source["files"][name]
+            source["file_count"] = len(source["files"])
+            canonical = json.dumps(source["files"], sort_keys=True, separators=(",", ":")).encode()
+            source["sha256"] = hashlib.sha256(canonical).hexdigest()
+            self.assertFalse(fixture.reconcile(report), name)
+        for field in ("source_unchanged", "broker_binary_unchanged"):
+            report = valid_report(exports=True)
+            report[field] = False
+            self.assertFalse(fixture.reconcile(report), field)
+        report = valid_report(exports=True)
+        report["source"]["files"] = None
+        self.assertFalse(fixture.reconcile(report))
+        report = valid_report(exports=True)
+        report["protected_export_gates"]["foreign"] = "pass"
+        self.assertFalse(fixture.reconcile(report))
+        report = valid_report(exports=True)
+        report["protected_query_gates"] = valid_report(queries=True)["protected_query_gates"]
+        self.assertFalse(fixture.reconcile(report))
+        report = valid_report(queries=True)
+        report["protected_export_gates"] = valid_report(exports=True)["protected_export_gates"]
+        self.assertFalse(fixture.reconcile(report))
+
+    def test_export_broker_runner_retains_cleanup_even_after_test_failure_or_timeout(self):
+        for mode in ("pass", "nonzero", "timeout", "unreaped"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                artifact = Path(temporary)
+                (artifact / "broker-binary.json").write_text(json.dumps({"sha256": "b" * 64}))
+                report = {"gates": {fixture.protected_export.ROOT: "missing"}}
+                env = fixture.test_environment(artifact, "/owned/jobs", "/owned/state", True)
+                broker = mock.MagicMock()
+                broker.environment = {name: "fixture" for name in fixture.protected_export.ENVIRONMENT}
+                broker.receipt = valid_report(exports=True)["broker_custody"]
+                if mode == "unreaped":
+                    broker.receipt["reaped"] = False
+                with mock.patch.object(fixture.protected_export, "ProtectedExportBroker", return_value=broker) as constructor, \
+                        mock.patch.object(fixture.protected_query, "QueryBroker") as query_broker, \
+                        mock.patch.object(fixture, "run_logged", return_value=subprocess.CompletedProcess([], int(mode == "nonzero"), export_output())) as logged:
+                    if mode == "timeout":
+                        logged.side_effect = subprocess.TimeoutExpired([], 340)
+                        with self.assertRaises(subprocess.TimeoutExpired):
+                            fixture.run_protected_broker(artifact, "/system.slice/" + TEST_UNIT + ".service", env, report, exports=True)
+                    elif mode == "unreaped":
+                        with self.assertRaisesRegex(RuntimeError, "broker cleanup"):
+                            fixture.run_protected_broker(artifact, "/system.slice/" + TEST_UNIT + ".service", env, report, exports=True)
+                    else:
+                        fixture.run_protected_broker(artifact, "/system.slice/" + TEST_UNIT + ".service", env, report, exports=True)
+                constructor.assert_called_once_with(artifact / "export-broker", artifact / "nats-server", "b" * 64,
+                                                    "/system.slice/" + TEST_UNIT + ".service/supervisor")
+                query_broker.assert_not_called()
+                broker.__exit__.assert_called_once()
+                self.assertIs(report["broker_custody"], broker.receipt)
+                command, log = logged.call_args.args
+                self.assertIn("-test.run=^" + fixture.protected_export.ROOT + "$", command)
+                self.assertIn("-test.timeout=330s", command)
+                self.assertEqual(log, artifact / "protected-export.test.log")
+                self.assertEqual(logged.call_args.kwargs["timeout"], 340)
+                self.assertEqual(env["KELVO_TEST_PROTECTED_EXPORTS"], "1")
+                self.assertNotIn("KELVO_TEST_PROTECTED_QUERIES", env)
+                self.assertNotIn("KELVO_PROTECTED_EXPORT_CHILD", env)
+                if mode != "timeout":
+                    self.assertEqual(report["gates"][fixture.protected_export.ROOT], "pass")
+                    self.assertEqual(bool(report.get("execution_failed")), mode == "nonzero")
+
     def test_protected_report_requires_pinned_unchanged_bridge_provenance(self):
         for field in ("bridge", "bridge_inputs_unchanged"):
             report = valid_report(protected=True)
@@ -346,14 +496,19 @@ class ContainmentControls(unittest.TestCase):
     def test_protected_environment_is_explicit_and_cannot_inherit_child_bypass(self):
         with mock.patch.dict(fixture.os.environ, {"KELVO_TEST_PROTECTED_OBJECTS": "1", "KELVO_PROTECTED_FIXTURE_CHILD": "1",
                                                   "KELVO_TEST_PROTECTED_QUERIES": "1", "KELVO_PROTECTED_QUERY_CHILD": "1",
+                                                  "KELVO_TEST_PROTECTED_EXPORTS": "1", "KELVO_PROTECTED_EXPORT_CHILD": "1",
+                                                  "KELVO_TEST_PROTECTED_EXPORT_NATS_A_GATEWAY_PASSWORD": "fixture",
                                                   "KELVO_TEST_QUERY_NATS_A_GATEWAY_PASSWORD": "fixture",
                                                   "KELVO_SOURCE_REGISTRY_SECRET": "fixture", "AWS_SECRET_ACCESS_KEY": "fixture", "LD_PRELOAD": "/fixture"}):
             for protected in (False, True):
                 env = fixture.test_environment(Path("/owned/fixture"), "/owned/jobs", "/owned/state", protected)
                 self.assertNotIn("KELVO_PROTECTED_FIXTURE_CHILD", env)
                 self.assertNotIn("KELVO_PROTECTED_QUERY_CHILD", env)
+                self.assertNotIn("KELVO_PROTECTED_EXPORT_CHILD", env)
                 self.assertNotIn("KELVO_TEST_PROTECTED_QUERIES", env)
+                self.assertNotIn("KELVO_TEST_PROTECTED_EXPORTS", env)
                 self.assertNotIn("KELVO_TEST_QUERY_NATS_A_GATEWAY_PASSWORD", env)
+                self.assertNotIn("KELVO_TEST_PROTECTED_EXPORT_NATS_A_GATEWAY_PASSWORD", env)
                 self.assertEqual(env.get("KELVO_TEST_PROTECTED_OBJECTS"), "1" if protected else None)
                 for name in ("KELVO_SOURCE_REGISTRY_SECRET", "AWS_SECRET_ACCESS_KEY", "LD_PRELOAD"):
                     self.assertNotIn(name, env)
@@ -668,6 +823,22 @@ class ContainmentControls(unittest.TestCase):
             report = json.loads((Path(temporary) / "inside.json").read_text())
             self.assertEqual(report["mode"], fixture.PROTECTED_MODE)
             self.assertEqual(report["gates"][fixture.PROTECTED_GATE], "missing")
+
+    def test_unowned_or_mixed_export_service_retains_missing_export_evidence(self):
+        for protected, queries in ((True, False), (False, False), (True, True)):
+            with self.subTest(protected=protected, queries=queries), tempfile.TemporaryDirectory() as temporary:
+                args = SimpleNamespace(artifact=temporary, unit=TEST_UNIT, protected_objects=protected,
+                                       protected_queries=queries, protected_exports=True)
+                with mock.patch.object(Path, "read_text", return_value="0::/user.slice/unrelated.service\n"), \
+                        mock.patch.object(fixture, "run") as run:
+                    self.assertEqual(fixture.inside(args), 1)
+                    run.assert_not_called()
+                report = json.loads((Path(temporary) / "inside.json").read_text())
+                self.assertEqual(report["mode"], fixture.EXPORT_MODE)
+                self.assertEqual(report["gates"][fixture.protected_export.ROOT], "missing")
+                self.assertEqual(report["protected_export_gates"]["inner"], "missing")
+                self.assertEqual(report["protected_export_gates"]["markers"], "fail")
+                self.assertTrue(report["failure"])
 
     def test_wrong_fixture_identity_never_runs_outside_probe(self):
         with tempfile.TemporaryDirectory() as temporary:

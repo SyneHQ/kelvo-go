@@ -229,6 +229,7 @@ jobs:
         run: |
           python3 -B -m unittest discover -s scripts -p test_containment_acceptance.py
           python3 -B -m unittest discover -s scripts -p test_protected_query_acceptance.py
+          python3 -B -m unittest discover -s scripts -p test_protected_export_acceptance.py
       - name: Verify authenticated queries through protected storage
         run: |
           mkdir -m 700 artifacts/containment-protected-private
@@ -237,6 +238,14 @@ jobs:
             --nats-server "$PWD/artifacts/export-brokers/2.15.0/nats-server" --nats-sha256 "$broker_sha" \
             --artifact-root "$PWD/artifacts/containment-protected-private/run" \
             --report artifacts/containment-protected-ci.json
+      - name: Verify authenticated exports from protected storage
+        run: |
+          mkdir -m 700 artifacts/containment-export-private
+          read -r broker_sha < artifacts/export-brokers/2.15.0/sha256
+          python3 -B scripts/containment_acceptance.py --protected-objects --protected-exports --go go \
+            --nats-server "$PWD/artifacts/export-brokers/2.15.0/nats-server" --nats-sha256 "$broker_sha" \
+            --artifact-root "$PWD/artifacts/containment-export-private/run" \
+            --report artifacts/containment-protected-export-ci.json
       - name: Retain protected-object containment evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -250,6 +259,21 @@ jobs:
             artifacts/containment-protected-private/run/run.json
             artifacts/containment-protected-private/run/broker-binary.json
             artifacts/containment-protected-private/run/query-broker/ownership.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Retain protected export containment evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: containment-protected-export-evidence
+          path: |
+            artifacts/containment-protected-export-ci.json
+            artifacts/containment-export-private/run/*.log
+            artifacts/containment-export-private/run/inside.json
+            artifacts/containment-export-private/run/live-service.json
+            artifacts/containment-export-private/run/run.json
+            artifacts/containment-export-private/run/broker-binary.json
+            artifacts/containment-export-private/run/export-broker/ownership.json
           if-no-files-found: warn
           retention-days: 14
       - name: Verify export lifecycle with restricted broker roles

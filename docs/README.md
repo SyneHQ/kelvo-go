@@ -37,7 +37,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Retain security and execution receipts | [Durable local audit](durable-audit.md) |
 | Inspect query/refresh outcomes | [Tracing](tracing.md) · [Passive source health](source-health.md) · [Native errors](native-error-classification.md) |
 | Recover failed workers and scratch | [Worker failures](worker-failures.md) · [Managed scratch](worker-scratch.md) |
-| Run exports and repeat downloads | [Durable exports](exports.md) · [Storage API](export-storage.md) · [Admission](workload-admission.md) |
+| Run exports and repeat downloads | [Durable exports](exports.md) · [Storage API](export-storage.md) · [Protected-source acceptance](protected-export-acceptance.md) · [Admission](workload-admission.md) |
 
 ## Evaluate and reproduce results
 
