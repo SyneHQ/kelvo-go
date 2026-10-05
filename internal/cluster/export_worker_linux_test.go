@@ -110,6 +110,11 @@ func (q *exportWorkerQuota) Acquire(ctx context.Context, _ []string) (context.Co
 
 func exportActualWorker(t *testing.T) (*ExportRuntime, *exportRuntimeStore, *worker.ScratchRoot, *exportWorkerQuota) {
 	t.Helper()
+	return exportConfiguredActualWorker(t, nil)
+}
+
+func exportConfiguredActualWorker(t *testing.T, configure func(*NodeConfig, *catalog.Config)) (*ExportRuntime, *exportRuntimeStore, *worker.ScratchRoot, *exportWorkerQuota) {
+	t.Helper()
 	binary, sandbox := os.Getenv("KELVO_TEST_EXPORT_BINARY"), os.Getenv("KELVO_TEST_EXPORT_SANDBOX")
 	if binary == "" || sandbox == "" {
 		t.Skip("set KELVO_TEST_EXPORT_BINARY and KELVO_TEST_EXPORT_SANDBOX for actual sandboxed child acceptance")
@@ -117,6 +122,10 @@ func exportActualWorker(t *testing.T) (*ExportRuntime, *exportRuntimeStore, *wor
 	cfg := runtimeExportConfigFixture(t)
 	cfg.WorkerID = "a1"
 	cfg.SandboxPath = sandbox
+	catalogue := catalog.Config{}
+	if configure != nil {
+		configure(&cfg, &catalogue)
+	}
 	if err := os.MkdirAll(cfg.ScratchDirectory, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +143,7 @@ func exportActualWorker(t *testing.T) (*ExportRuntime, *exportRuntimeStore, *wor
 		t.Fatal(err)
 	}
 	quota := &exportWorkerQuota{}
-	executor, err := worker.New(catalog.Config{}, cfg.Policy.Limits)
+	executor, err := worker.New(catalogue, cfg.Policy.Limits)
 	if err != nil {
 		t.Fatal(err)
 	}
