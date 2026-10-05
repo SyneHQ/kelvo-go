@@ -13,6 +13,7 @@ import (
 )
 
 type ProxyOutcome struct {
+	ListenAddress     string `json:"listen_address"`
 	Accepted          uint64 `json:"accepted"`
 	Rejected          uint64 `json:"rejected"`
 	Dropped           uint64 `json:"dropped"`
@@ -54,6 +55,7 @@ func newProxy(ctx context.Context, destination string) (*Proxy, error) {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	p := &Proxy{ctx: ctx, cancel: cancel, listener: listener, address: listener.Addr().String(), destination: destination, pairs: make(map[*proxyPair]bool), accepted: make(chan struct{}), joined: make(chan struct{})}
+	p.stats.ListenAddress = p.address
 	go p.accept()
 	// Waiting for accept to finish excludes a concurrent positive WaitGroup.Add.
 	go func() { <-p.accepted; p.wg.Wait(); close(p.joined) }()
