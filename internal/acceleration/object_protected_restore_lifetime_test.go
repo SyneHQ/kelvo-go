@@ -18,6 +18,31 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
+// These tests deliberately time out custody handback. Later quiescence must
+// release resources without erasing the runtime's recorded cleanup uncertainty.
+func openRestoreTimeoutFixture(t *testing.T, config catalog.Config, service *protectedObjectService) *ObjectRuntime {
+	t.Helper()
+	runtime, err := openObjectRuntime(config, func(catalog.ObjectLocation, catalog.ObjectCredentials, *objectstore.SharedTransport) (objectstore.Client, error) {
+		return &protectedObjectClient{service}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := runtime.Close(ctx); !errors.Is(err, errReaderCleanupUnknown) {
+			t.Error("timed-out custody lost its recorded cleanup uncertainty", err)
+		}
+		select {
+		case <-runtime.Quiesced():
+		case <-ctx.Done():
+			t.Error("timed-out custody did not actually quiesce")
+		}
+	})
+	return runtime
+}
+
 func TestProtectedRestoreBudgetIncludesWriterMetadata(t *testing.T) {
 	for _, mode := range []string{"root", "combined-preflight", "sufficient"} {
 		t.Run(mode, func(t *testing.T) {
@@ -263,10 +288,12 @@ func TestProtectedRestoreStalledBodyCloseRetainsPinsAndOperation(t *testing.T) {
 }
 
 func TestProtectedRestorePreservesObservedTargetThroughWriterCloseTimeout(t *testing.T) {
-	runtime, service, config := protectedVerificationFixture(t)
-	backend, fp := runtime.backend, protectedFingerprint(t, config)
-	target := commitRemoteRecovery(t, backend, "id", fp)
-	current := commitRemoteRecovery(t, backend, "id", fp)
+	seed, service, config := protectedVerificationFixture(t)
+	fp := protectedFingerprint(t, config)
+	target := commitRemoteRecovery(t, seed.backend, "id", fp)
+	current := commitRemoteRecovery(t, seed.backend, "id", fp)
+	runtime := openRestoreTimeoutFixture(t, config, service)
+	backend := runtime.backend
 	gate := &objectWriterGate{entered: make(chan struct{}), release: make(chan struct{})}
 	defer gate.unblock()
 	client := &objectWriterClient{Client: &protectedObjectClient{service}, closeGate: gate}
@@ -342,7 +369,7 @@ func TestProtectedRestoreStalledRenewalRetainsAllCustody(t *testing.T) {
 	target := commitRemoteRecovery(t, runtime.backend, "id", fp)
 	current := commitRemoteRecovery(t, runtime.backend, "id", fp)
 	config.Acceleration.Datasets[0].Limits.Timeout = 2 * time.Second
-	bounded := openVerificationFixture(t, config, service)
+	bounded := openRestoreTimeoutFixture(t, config, service)
 	backend := bounded.backend
 	backend.renewInterval = 10 * time.Millisecond
 	gate := &objectWriterGate{entered: make(chan struct{}), release: make(chan struct{})}
