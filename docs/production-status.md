@@ -26,7 +26,7 @@ Admission reserves budgets; optional containment enforces native process-tree li
 
 | Available | Still needed |
 | --- | --- |
-| Immutable local/remote full refresh, fenced publication, local pins and opt-in [protected object readers](protected-object-readers.md) | Protected restore acceptance, migration, legacy cutover and live-provider gates |
+| Immutable local/remote full refresh, fenced publication, local pins and opt-in [protected object readers](protected-object-readers.md) | Migration, legacy cutover and live-provider gates |
 | Strict schemas, optional nullable additions and conservative widening | Separate proof for any broader evolution policy |
 | Multipart snapshots and over-4-GiB development gates | Selective replacement, part reuse and incremental checkpoints |
 | Verified inventory and restore for local and legacy object snapshots, local backup and legacy remote-to-local migration | Remote-destination recovery, cross-host cutover and measured RTO/RPO |
@@ -34,7 +34,7 @@ Admission reserves budgets; optional containment enforces native process-tree li
 
 [Object writer shutdown](object-writer-shutdown.md) joins pending factories, transactions and owned client cleanup; 45 focused race tests and vet passed on `997157e`. Protected-reader acceptance is recorded below; remote deletion remains disabled.
 
-The [protected runtime](protected-object-readers.md), [verification and inventory](protected-verification.md), and [authenticated query path](protected-query-acceptance.md) have retained Linux acceptance. The query gate passed all 11 stages on `15bd93f`, including two tenants, real multipart joins, revocation and cleanup. [Historical restore](protected-restore.md) is implemented with VM acceptance pending. Migration, protected export acceptance and live-provider acceptance remain open. Protected v5 requires a fresh namespace; remote pruning deletes nothing. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
+The [protected runtime](protected-object-readers.md), [verification and inventory](protected-verification.md), and [authenticated query path](protected-query-acceptance.md) have retained Linux acceptance. The query gate passed all 11 stages on `15bd93f`, including two tenants, real multipart joins, revocation and cleanup. [Historical restore](protected-restore.md) passed all 13 Linux stages on `9d8789e`, including independent cleanup; [evidence](evidence/protected-restore.json) retains the earlier failed trial. Migration, protected export acceptance and live-provider acceptance remain open. Protected v5 requires a fresh namespace; remote pruning deletes nothing. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
 
 ## Results and interoperability
 

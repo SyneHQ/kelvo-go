@@ -1,0 +1,314 @@
+{
+  "schema_version": 1,
+  "issue": 121,
+  "organization": "SYNEHQ",
+  "name": "Protected snapshot restore acceptance",
+  "scope": "One disposable Linux node; protected metadata restore, local TLS/CAS object fixture and contained worker/query regressions.",
+  "accepted": true,
+  "selected_trial": "r2",
+  "independent_final_review": "accepted",
+  "source": {
+    "revision": "9d8789e4475523ae9a96fc2a373d0a4a039f3043",
+    "tree": "8c5d488cbe16e63fbbc59ee0a995b880b5d4965a",
+    "archive_sha256": "19b76657a15731d58417866bcf77d8ccf4eeba289ba06c99d1046ea68dd5a09b",
+    "manifest_sha256": "536910665f74931b5dcc11786301443f298769bb10cc8d67fcee57eca031df0a",
+    "file_count": 1146,
+    "go_mod_sha256": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+    "go_sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "toolchain": {
+    "go": "go version go1.26.8 linux/amd64",
+    "duckdb": "v1.5.6",
+    "driver": "v2.10506.0",
+    "module_sum": "h1:mcZjUQ/kSNeZdtGCqyj5/JEDUdj7/kvILfIOUTzQIu0=",
+    "bridge_source_sha256": "1fadcbe9e69e1470f9093b6bcde08daf477d729c449e59a807f45c346622099b",
+    "driver_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+    "tags": "duckdb_arrow,duckbridge",
+    "nats": "2.15.0",
+    "nats_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+    "offline_dependencies": true
+  },
+  "binary": {
+    "sha256": "b07d6af4940bab17255bed88a20d8c864775c1743b899b426a9686e0917be0a1",
+    "bytes": 159993304
+  },
+  "containment_binaries_sha256": {
+    "containment.test": "a53f995174309a03f124fc3b83d65b5672f5ccf58e7e870e2978e949f8edb156",
+    "worker.test": "0d154089346a71f1e6040825c4887a30f31d99777e7f2054f527ccc35a7b7d21",
+    "startup.test": "f077e68a12800396a532d0d49cea0e7841c6301742725dab192c5cf524988124",
+    "export.test": "88023ba9f878f150dc6b07cd88c90b3a4d605dc06acdd00de06844c967d667c2",
+    "kelvo": "dd0377badc38fccd53e4164eba2901257e53bdbd1c5f36553ece33d4038f56ee",
+    "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+    "sandbox-runtime": "d356e26f1a4be434cb0e1ca125eba8c02437bafdb5d6600f6ffb94ad256f457e",
+    "nats-server": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341"
+  },
+  "required_counts": {
+    "ordinary_roots": 199,
+    "native_roots": 217,
+    "restore_roots": 27,
+    "restore_descendants": 55,
+    "restore_tls_subprocesses_per_go_stage": 4,
+    "containment_gates": 21,
+    "protected_worker_leaves": 8,
+    "protected_query_leaves": 10,
+    "runner_controls": 38,
+    "query_broker_controls": 19,
+    "export_permission_controls": 12,
+    "export_diagnostic_controls": 6,
+    "parser_controls": 67,
+    "monitor_controls": 18
+  },
+  "verified_behaviors": [
+    "Metadata-only restore verifies pinned current/retained generations, checksums and schema before one publication CAS.",
+    "A fixed operation deadline covers renewal stop and ambiguous-publication reconciliation; cleanup retains custody until actual quiescence.",
+    "Partial opens, stalled renewal, delayed client Close, exhausted verification budget and lease loss preserve ownership and outcome.",
+    "CLI outcomes retain not_attempted, not_published, verified_noop, target_observed and unknown while suppressing provider diagnostics.",
+    "Four real TLS subprocesses cover single-to-single, single-to-two-parts, two-parts-to-single and verified no-op; complete committed metadata is compared independently.",
+    "Existing native worker and authenticated query containment gates pass with exact child/outer terminals and graceful broker cleanup."
+  ],
+  "ordinary_protected_skips": {
+    "reason": "Worker and query protected roots run separately in delegated containment. No required restore test or descendant was skipped.",
+    "roots": [
+      "github.com/SYNEHQ/kelvo-go/internal/worker:TestContainedWorkerProtectedObjects",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster:TestContainedProtectedObjectQueries"
+    ]
+  },
+  "configured_limits": {
+    "outer": {
+      "cpu_percent": 200,
+      "memory_bytes": 8589934592,
+      "swap_bytes": 0,
+      "tasks": 512,
+      "runtime_seconds": 1800,
+      "stop_seconds": 30,
+      "max_file_bytes": 5368709120
+    },
+    "delegated_sibling": {
+      "cpu_percent": 100,
+      "memory_bytes": 1073741824,
+      "swap_bytes": 0,
+      "tasks": 256,
+      "runtime_seconds": 600,
+      "stop_seconds": 30,
+      "max_file_bytes": 5368709120
+    },
+    "broker_shares_delegated_sibling": true,
+    "possible_combined": {
+      "cpu_percent": 300,
+      "memory_bytes": 9663676416,
+      "tasks": 768
+    }
+  },
+  "trials": [
+    {
+      "trial": "r1",
+      "accepted": false,
+      "revision": "d135678fd98420e7ff97c72c3644993dd22cfcdf",
+      "failed_stage": "regular",
+      "failed_tests": [
+        "TestProtectedRestorePreservesObservedTargetThroughWriterCloseTimeout",
+        "TestProtectedRestoreStalledRenewalRetainsAllCustody"
+      ],
+      "failure": "Generic fixture cleanup required nil after two tests deliberately caused sticky reader-cleanup uncertainty. Their bodies and all four TLS subprocesses passed.",
+      "correction": "Only those two tests use a timeout fixture requiring errReaderCleanupUnknown and actual Runtime.Quiesced; production code and generic clean-close fixtures are unchanged.",
+      "regular_log_sha256": "06be09d0c36adf9f20b173e30d030e6e1263272fd21d7dd3d77433ba43275d6c",
+      "cleanup_verified": true,
+      "cleanup_receipt_sha256": "8057a23fe7469889796c380fb97d611db854a70ba64c7802cc38111439a4e567",
+      "independent_review_sha256": "824624eeb402e89d850e564dde7a4d0ac1389846e37eab94d43e98ac63dec562",
+      "unrun_stages": [
+        "race",
+        "provision-bridge",
+        "native-regular",
+        "native-race",
+        "vet",
+        "build",
+        "protected-containment"
+      ],
+      "containment_or_broker_started": false
+    },
+    {
+      "trial": "r2",
+      "accepted": true,
+      "revision": "9d8789e4475523ae9a96fc2a373d0a4a039f3043",
+      "started_at": "2026-10-05T05:05:26.235921+00:00",
+      "finished_at": "2026-10-05T05:15:28.291971+00:00",
+      "stages": [
+        {
+          "name": "go-version",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00",
+          "seconds": 0.201
+        },
+        {
+          "name": "runner-controls",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "1c52f2aca68c88710632a361474918b8a726780973642fb0cdd9c4af77c81630",
+          "seconds": 0.401
+        },
+        {
+          "name": "query-runner-controls",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "59b9e3aaf4f6ac964533572d3c644b595667b41f5446b197c3f8da3cda3f8f57",
+          "seconds": 0.2
+        },
+        {
+          "name": "export-permission-controls",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "df7024a71c65e03f81fef78ac04a138d45f324cd0101b22b6d9a5220dc617a90",
+          "seconds": 0.2
+        },
+        {
+          "name": "export-diagnostic-controls",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "f580a18793aad964ff26090242e9a512ed18b69811254caf6fee086c6b5ec47b",
+          "seconds": 0.2
+        },
+        {
+          "name": "regular",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "96dfbb4dd9361992e67d2c7fdba128fbd53f059ff2622367cd139b805f6cc80c",
+          "seconds": 128.965,
+          "required_roots": 199,
+          "passing_test_events": 3128,
+          "required_packages": 7,
+          "restore_tls_subprocesses": 4,
+          "required_skips_or_missing": 0,
+          "optional_skipped_test_events": 49
+        },
+        {
+          "name": "race",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "68c178ab5c703444dadde0ff836577224e2029f1e62e0576a16cd71ba5dd0155",
+          "seconds": 174.794,
+          "required_roots": 199,
+          "passing_test_events": 3128,
+          "required_packages": 7,
+          "restore_tls_subprocesses": 4,
+          "required_skips_or_missing": 0,
+          "optional_skipped_test_events": 49
+        },
+        {
+          "name": "provision-bridge",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "d8124afb2450815ebd29f27ab880710c12eefd1c236070d65cf90cd6ba6a492a",
+          "seconds": 1.601
+        },
+        {
+          "name": "native-regular",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "b43919d8dd8929eea72003b347918abfc6a49e12cbd912b5c454eef95f187c79",
+          "seconds": 105.296,
+          "required_roots": 217,
+          "passing_test_events": 619,
+          "required_packages": 10,
+          "restore_tls_subprocesses": 4,
+          "required_skips_or_missing": 0,
+          "optional_skipped_test_events": 0
+        },
+        {
+          "name": "native-race",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "f3b2775084cdc952dca0a30fd45fded902ec7bd5d437cf2cb4fd986ab3a9f2ff",
+          "seconds": 130.302,
+          "required_roots": 217,
+          "passing_test_events": 619,
+          "required_packages": 10,
+          "restore_tls_subprocesses": 4,
+          "required_skips_or_missing": 0,
+          "optional_skipped_test_events": 0
+        },
+        {
+          "name": "vet",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "seconds": 3.006
+        },
+        {
+          "name": "build",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "seconds": 6.604
+        },
+        {
+          "name": "protected-containment",
+          "passed": true,
+          "exit_code": 0,
+          "timed_out": false,
+          "log_sha256": "2d1873b7f7167304cbaa92a14618ab4e07784111680850fa598e3deac4debb2e",
+          "seconds": 48.427
+        }
+      ]
+    }
+  ],
+  "cleanup": {
+    "both_units_absent": true,
+    "both_cgroups_absent": true,
+    "original_driver_and_containment_processes_absent": true,
+    "owned_processes_absent": true,
+    "launch_closed": true,
+    "broker": {
+      "original_identity_absent": true,
+      "pid_absent": true,
+      "reaped": true,
+      "alive_before_stop": true,
+      "returncode": 0,
+      "forced_kill": false,
+      "private_files_absent": true
+    },
+    "source_files_independently_rehashed": 1146,
+    "outer_bridge_files_independently_rehashed": 1449,
+    "collected_evidence_files_rehashed": 121,
+    "remote_artifact_files_rehashed": 120,
+    "containment_binary_hashes_rechecked": 8
+  },
+  "receipts_sha256": {
+    "plan.json": "1b31892cfb6f476ec463d800f6ad0f02e58f4fc6c5978e81e48553a9573afcaf",
+    "source-manifest.json": "536910665f74931b5dcc11786301443f298769bb10cc8d67fcee57eca031df0a",
+    "output/validation.json": "5308d91f36be8ffbcdef43ee103ae7a3c555c8a2840a1b81610453b7d7c59808",
+    "output/protected-containment.json": "7d38f5c819cdfeb2ccdc4fd3034531d9e4c6250da8ce6554d8755b3f900908eb",
+    "cleanup-receipt.json": "9b5c1826caf61c37fcdf5fdb52b3d52a057e2e6655a6ec412e28cc02b552e48c",
+    "final-exit.json": "683f1211f0f6fa5ffba33dd385be288d524abd3068569491acce5ea6458d6d0b",
+    "collection-observation.json": "d4dceb483554db0fe6a04f5f7eba482e594a0ce872a2439d01298eefa3c29292",
+    "containment/worker.test.log": "fa8d013d867fda1b0f4e827298e11ae9246d96226afa54a5e3a8b935597b7a18",
+    "containment/protected-query.test.log": "da60c792b556d68cf537eec3764e59728d02b6bd27f838c881a955df042a6178",
+    "containment/query-broker-ownership.json": "6460c753d4020ced67a54be01a7763650bb48e1c1224449c9974c18dcc9c87a5",
+    "artifact_manifest": "203b1a51ffc177e905a4293809b557fcff96dff477473a3e20e69fa01c00df53",
+    "independent_vm_review": "2d654d611952bfd3f854830ef9e1f2ad798d26fc07b7afce5d958ff0c79c629e",
+    "independent_remote_readback": "2e20a6d095e921692f403428f91be6783332eafb9874d5cf21a1602022427477",
+    "r1_failed_review": "824624eeb402e89d850e564dde7a4d0ac1389846e37eab94d43e98ac63dec562"
+  },
+  "redactions": [
+    "VM addresses, usernames, private paths, process identifiers and fixture credentials are excluded; exact identities and raw logs remain in the private packet."
+  ],
+  "limitations": [
+    "This receipt establishes bounded VM validation on the stated source; hosted CI, merged cargo, release and deployment require separate evidence.",
+    "No throughput, RSS, whole-node memory or production capacity claim. Configured sibling limits are additional to the outer build limits.",
+    "The TLS fixture verifies CAS, generations and reader pins; it does not certify cloud IAM or signatures. Live provider gates remain blocked pending dedicated fixtures.",
+    "Protected export acceptance, migration, remote deletion and coordinated replica revocation remain separate work.",
+    "Outer bridge files are independently rehashed; child bridge inputs retain runner before/after provenance. Final-byte transport holds are distinct from the lower-layer client Close gates."
+  ]
+}

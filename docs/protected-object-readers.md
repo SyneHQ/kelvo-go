@@ -32,7 +32,7 @@ All three identities load in the parent runtime, including on query nodes. Provi
 | `accelerate refresh`, `watch`, `status` | Runtime-aware operator commands; contained node refresh is the managed path |
 | Standalone `query` / `serve` | Refused; use a contained node |
 | Verify and inventory | [Explicit byte budget](protected-verification.md); one pinned selection and deadline; [Linux acceptance](evidence/protected-verification.json) passed |
-| Historical restore | [Verify both generations and swap only the pointer](protected-restore.md); VM acceptance pending |
+| Historical restore | [Verify both generations and swap only the pointer](protected-restore.md); [Linux acceptance](evidence/protected-restore.json) passed |
 | Migration backup | Refused before generation access; integration remains pending |
 | Remote pruning or garbage collection | Disabled |
 
@@ -58,6 +58,6 @@ Data and registry traffic use separate transports. These bounds describe admissi
 
 The worker checks include catalog-bound executor copies and externally owned export reservations. [Authenticated query acceptance](protected-query-acceptance.md) now covers the complete gateway, NATS, node and contained-worker path with two tenants and real multipart data. All 11 VM stages passed on `15bd93f`; the public protected-export lifecycle remains a separate gate.
 
-[Protected verification and inventory](protected-verification.md) also passed [Linux acceptance](evidence/protected-verification.json) on `c8e4199`. [Historical restore](protected-restore.md) is implemented with VM acceptance pending. Migration, legacy cutover and provider acceptance remain under [#14](https://github.com/SYNEHQ/kelvo-go/issues/14). No lease expiry, empty registry or node restart permits deletion. Retirement needs a separate protocol.
+[Protected verification and inventory](protected-verification.md) also passed [Linux acceptance](evidence/protected-verification.json) on `c8e4199`. [Historical restore](protected-restore.md) passed all 13 [Linux stages](evidence/protected-restore.json) on `9d8789e`. Migration, legacy cutover and provider acceptance remain under [#14](https://github.com/SYNEHQ/kelvo-go/issues/14). No lease expiry, empty registry or node restart permits deletion. Retirement needs a separate protocol.
 
 [Registry contract](durable-reader-registry.md) · [Reader ownership](reader-owner.md) · [Production checklist](production-status.md)

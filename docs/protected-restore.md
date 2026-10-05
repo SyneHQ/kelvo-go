@@ -58,8 +58,10 @@ An observation does not prove which writer published the pointer or that it is
 still current. Inspect it again before another restore. Pending body, lease or
 provider cleanup keeps its operation capacity until the owned work actually ends.
 
-VM acceptance is pending. The local TLS tests cover single-file/two-part transitions
-and no-op; separate fault tests cover cancellation, conflicts and delayed cleanup.
+[Linux acceptance](evidence/protected-restore.json) passed all 13 stages on `9d8789e`,
+including ordinary/race/native checks, four TLS restore workflows and independent
+process cleanup. The first trial's cleanup-fixture failure and correction remain
+recorded. Fault tests cover cancellation, conflicts and delayed cleanup.
 These fixtures do not certify cloud IAM, distributed revocation or deletion safety.
 
 [Verification](protected-verification.md) · [Backup and migration](snapshot-backup.md) · [Production status](production-status.md)
