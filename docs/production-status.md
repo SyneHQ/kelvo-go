@@ -34,7 +34,7 @@ Admission reserves budgets; optional containment enforces native process-tree li
 
 [Object writer shutdown](object-writer-shutdown.md) joins pending factories, transactions and owned client cleanup; 45 focused race tests and vet passed on `997157e`. Protected-reader acceptance is recorded below; remote deletion remains disabled.
 
-The [protected-runtime fixture](evidence/protected-object-readers.json) passed all ten Linux stages on `c8bae34`, including contained queries and late lease-loss checks. [Protected verification and inventory](protected-verification.md) passed [all ten Linux stages](evidence/protected-verification.json) on `c8e4199`. [Historical restore (#121)](https://github.com/SYNEHQ/kelvo-go/issues/121) and migration remain open. Full protected gateway/export and live-provider acceptance remain separate. Protected v5 requires a fresh namespace; legacy v4 still needs coordinated reader/writer upgrades. Remote pruning deletes nothing. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
+The [protected runtime](protected-object-readers.md), [verification and inventory](protected-verification.md), and [authenticated query path](protected-query-acceptance.md) have retained Linux acceptance. The query gate passed all 11 stages on `15bd93f`, including two tenants, real multipart joins, revocation and cleanup. [Historical restore (#121)](https://github.com/SYNEHQ/kelvo-go/issues/121), migration, protected export acceptance and live-provider acceptance remain open. Protected v5 requires a fresh namespace; remote pruning deletes nothing. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
 
 ## Results and interoperability
 
