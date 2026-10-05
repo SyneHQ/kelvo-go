@@ -106,11 +106,16 @@ func runAcceleration(args []string) (resultErr error) {
 	var closeManager func() error
 	var closeRuntime func(context.Context) error
 	var publish func() error
+	var restoreResult *accelerationRestoreResult
 	if objectRuntime != nil {
 		closeRuntime = objectRuntime.Close
 	}
 	defer func() {
-		resultErr = finishAccelerationCommand(ctx, resultErr, closeManager, closeRuntime, publish)
+		if args[0] == "restore" && objectRuntime != nil {
+			resultErr = finishRestoreCommand(ctx, resultErr, restoreResult, closeManager, closeRuntime, publish)
+		} else {
+			resultErr = finishAccelerationCommand(ctx, resultErr, closeManager, closeRuntime, publish)
+		}
 	}()
 	if runtimeErr != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Protected object runtime is unavailable")
@@ -161,6 +166,7 @@ func runAcceleration(args []string) (resultErr error) {
 	}
 	if args[0] == "restore" {
 		snapshot, err = m.Restore(ctx, *id, *generation, *expected)
+		restoreResult = &accelerationRestoreResult{snapshot: snapshot, err: err}
 	} else if args[0] == "refresh" {
 		snapshot, err = m.Refresh(ctx, *id, false)
 	} else if args[0] != "verify" {

@@ -39,6 +39,8 @@ type Counters struct {
 	RegistryWrites           int
 	PinAcquires, PinReleases int
 	Violations               int
+	PayloadWriteRequests     int
+	StageWrites, SealWrites  int
 }
 
 // Stats contains detached maps. Requests includes rejected requests; registry
@@ -229,6 +231,30 @@ func (s *Service) Root(tenant, dataset string) (Object, bool) {
 	object, exists := s.objects["/fixtures/cache/"+tenant+"/"+dataset+"/current.yaml"]
 	object.Data = bytes.Clone(object.Data)
 	return object, exists
+}
+
+// ImmutableObjects copies generation payloads and descriptors, including their
+// exact versions. It excludes the mutable root and reader registry documents.
+func (s *Service) ImmutableObjects(tenant, dataset string) map[string]Object {
+	if !validSegment(tenant) || !validSegment(dataset) {
+		panic("protected fixture object selection is invalid")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make(map[string]Object)
+	prefix := "/fixtures/cache/" + tenant + "/" + dataset + "/"
+	for key, object := range s.objects {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		name := strings.TrimPrefix(key, prefix)
+		if name == "current.yaml" || strings.Contains(name, "/") {
+			continue
+		}
+		object.Data = bytes.Clone(object.Data)
+		result[key] = object
+	}
+	return result
 }
 
 func (s *Service) Readers(tenant string) int {
