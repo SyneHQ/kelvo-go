@@ -1,0 +1,464 @@
+{
+  "schema_version": 1,
+  "organization": "SYNEHQ",
+  "issue": 129,
+  "name": "Key version provenance and policy ownership isolation",
+  "accepted": true,
+  "selected_trial": "r2",
+  "scope": "Linux amd64, duckdb_arrow, regular/race tests for cluster, access and CLI; tagged build and vet. Gateway authority adoption remains separate.",
+  "required_counts": {
+    "validation_stages": 14,
+    "required_roots_per_profile": 317,
+    "fixture_exclusions_per_profile": 27,
+    "new_regression_roots_per_profile": 7,
+    "exact_skip_paths_per_profile": 28,
+    "excluded_structural_parent_passes_per_profile": 1
+  },
+  "required_by_package": {
+    "internal/cluster": {
+      "required_roots_per_profile": 250,
+      "excluded_fixture_roots": [
+        "TestCatalogBindingActualGuardedSnapshot",
+        "TestCatalogBindingActualNodeAndExportExecution",
+        "TestContainedProtectedObjectExports",
+        "TestContainedProtectedObjectQueries",
+        "TestExportClusterActualWorkerLifecycle",
+        "TestExportWorkerCancellationReapsSandboxAndReservations",
+        "TestExportWorkerConstructorBindsKernelContainment",
+        "TestExportWorkerCrashAcrossLocalCommit",
+        "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+        "TestExportWorkerSourceQuotaRevocationReapsChild",
+        "TestExportWorkerUsesSandboxAndExternalCustody",
+        "TestNATSAccountIsolation",
+        "TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
+        "TestNATSExportRetainedLifecycleAndProvisioning",
+        "TestNATSExportRuntimeACLAndAccountIsolation",
+        "TestNATSRefreshQueueProvisionDedupRetry",
+        "TestNATSRefreshStatusDurabilityResetAndBudget",
+        "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+        "TestNATSStoreAdmissionCASAndReuse",
+        "TestNATSStoreCorruptJobFailsClosed",
+        "TestNATSStoreQueueAndWorkerLease",
+        "TestNATSStoreReconcileFailsStaleAssigned",
+        "TestNATSStoreRejectsMetadataMismatch",
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS",
+        "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+        "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS"
+      ],
+      "excluded_structural_pass_roots": [
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS"
+      ],
+      "required_skip_paths": [
+        "TestCatalogBindingActualGuardedSnapshot",
+        "TestCatalogBindingActualNodeAndExportExecution",
+        "TestContainedProtectedObjectExports",
+        "TestContainedProtectedObjectQueries",
+        "TestExportClusterActualWorkerLifecycle",
+        "TestExportWorkerCancellationReapsSandboxAndReservations",
+        "TestExportWorkerConstructorBindsKernelContainment",
+        "TestExportWorkerCrashAcrossLocalCommit",
+        "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+        "TestExportWorkerSourceQuotaRevocationReapsChild",
+        "TestExportWorkerUsesSandboxAndExternalCustody",
+        "TestNATSAccountIsolation",
+        "TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
+        "TestNATSExportRetainedLifecycleAndProvisioning",
+        "TestNATSExportRuntimeACLAndAccountIsolation",
+        "TestNATSRefreshQueueProvisionDedupRetry",
+        "TestNATSRefreshStatusDurabilityResetAndBudget",
+        "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+        "TestNATSStoreAdmissionCASAndReuse",
+        "TestNATSStoreCorruptJobFailsClosed",
+        "TestNATSStoreQueueAndWorkerLease",
+        "TestNATSStoreReconcileFailsStaleAssigned",
+        "TestNATSStoreRejectsMetadataMismatch",
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/multipart",
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/single",
+        "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+        "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS"
+      ]
+    },
+    "internal/access": {
+      "required_roots_per_profile": 19,
+      "excluded_fixture_roots": [],
+      "excluded_structural_pass_roots": [],
+      "required_skip_paths": []
+    },
+    "cmd/kelvo": {
+      "required_roots_per_profile": 48,
+      "excluded_fixture_roots": [
+        "TestContainedNodeStartupPlacement"
+      ],
+      "excluded_structural_pass_roots": [],
+      "required_skip_paths": [
+        "TestContainedNodeStartupPlacement"
+      ]
+    }
+  },
+  "new_required_regressions": [
+    "TestExportRuntimeOwnsPolicyAfterConstruction",
+    "TestGatewayKeyDocumentPreservesVersionProvenance",
+    "TestGatewayRejectedKeyDocumentHasNoVersionProvenance",
+    "TestNodeOwnsPolicyAfterConstruction",
+    "TestPolicyClonePreservesAuthorityAndShape",
+    "TestPolicyCloneRejectsCyclicRowsBeforeConstruction",
+    "TestStorePolicyExposureIsDetached"
+  ],
+  "toolchain": {
+    "go": "go version go1.26.8 linux/amd64",
+    "offline_dependencies": true,
+    "selected_tools_sha256": {
+      "go": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+      "compile": "ef107d98e82bd89096c64a50dbe0ddbaba3c898880616376835416bbb69ae21b",
+      "link": "6d7bee86e8d035f4220a4be15e85554ef5558267d58bdba5efdcb0bd63681924",
+      "asm": "28bab01b519bb3c6089c0b12d5bd7894c282ef271c05b4e1dbaa3e83e26df52f",
+      "vet": "332f2354d95c1fc029be66d7e37288528047f3451914636139163e51aee00124",
+      "cgo": "55b62c0f62c5b65ff399e77d3441a87281b0968ff024ca3e2d459179f23f7ace",
+      "test2json": "a1dcebc6f4fa3377049b0b55582afd4e179cadb4d1f4b98e2278498e7d8bdb63",
+      "x86_64-linux-gnu-gcc-12": "75e997ec62297a6484f491bae28ab0ccb489daba23e398fd10fe68e9e6f0def8",
+      "x86_64-linux-gnu-g++-12": "dd91977c184e327710578363ad93ebb175c3a457b6236b874fd3911b7c055c65",
+      "cc1": "18a3506428fe238a6c14c9a39251a11c7203245d632df40ddb8e9d3bf2d387d8",
+      "x86_64-linux-gnu-as": "41fe4f5a03389ea5cf7c92d6753fa1ecc69b45b12534fd8713c53bba0e2d7e17",
+      "x86_64-linux-gnu-ld.bfd": "f6d71a1bcd45764550a42dfaa179bc43b63ee879ec6f875bfd39fca013515da7",
+      "collect2": "06c070d6b746da665041ea6f2e7d30faf9ef4e1f87cb9c932f963953e32aeec2",
+      "cc1plus": "323f308b79cab3005857c1f3a103fd690eb1e8f044159929bad4e8526daee2bf"
+    },
+    "limits": "Executable pinning does not exhaustively attest compiler libraries or shared module-cache contents."
+  },
+  "configured_limits": {
+    "service_cpu_percent": 200,
+    "service_memory_bytes": 8589934592,
+    "service_swap_bytes": 0,
+    "service_tasks": 512,
+    "service_runtime_seconds": 1800,
+    "stop_timeout_seconds": 30,
+    "per_file_bytes": 2147483648,
+    "minimum_sampled_free_disk_bytes": 12884901888,
+    "sampling_interval_seconds": 0.5
+  },
+  "trials": [
+    {
+      "trial": "r1",
+      "accepted": false,
+      "status": "failed_test_inventory_accounting",
+      "revision": "12a364d328e1fbab9c8d328174b571174b823246",
+      "tree": "dadc5975f8649d0316ae04574d7efae3899d77ab",
+      "source_files": 1170,
+      "started_at": "2026-10-05T07:30:55.946355+00:00",
+      "finished_at": "2026-10-05T07:32:23.110462+00:00",
+      "final_report_present": true,
+      "stages": [
+        {
+          "name": "build-internal-cluster-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 11.769,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-internal-cluster-regular",
+          "passed": false,
+          "exit_code": 0,
+          "seconds": 74.804,
+          "log_sha256": "92bb235d859c1e9dfb78218af3b5db2b6e2a6454b753361bb4c46be412d77946"
+        }
+      ],
+      "unrun_stages": [
+        "build-internal-access-regular",
+        "run-internal-access-regular",
+        "build-cmd-kelvo-regular",
+        "run-cmd-kelvo-regular",
+        "build-internal-cluster-race",
+        "run-internal-cluster-race",
+        "build-internal-access-race",
+        "run-internal-access-race",
+        "build-cmd-kelvo-race",
+        "run-cmd-kelvo-race",
+        "vet",
+        "cli-build"
+      ],
+      "measured": {
+        "peak_sampled_memory_bytes": 427962368,
+        "peak_sampled_tasks": 16,
+        "minimum_sampled_free_disk_bytes": 124555563008,
+        "sample_count": 175,
+        "max_sample_gap_seconds": 0.5029473050381057,
+        "memory_events_before": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+        "memory_events_after": null
+      },
+      "cleanup": {
+        "cleanup_verified": true,
+        "unit_absent": true,
+        "cgroup_absent": true,
+        "original_runner_absent": true,
+        "original_stages_absent": true,
+        "forced_interruption": false
+      },
+      "test_binary_sha256": {
+        "internal-cluster-regular": "34f58f63a0aa0055ab7d3266b2150e5246b52e9579e4ab67eb7d7894b1766cf7"
+      },
+      "cli_binary_sha256": null,
+      "hashes": {
+        "plan": "124f9ef259d74b97035a2ec7316b7c9b6aa3ca1ae12a6b41435772206c501bb3",
+        "source_archive": "d1a3b662c5c98012945169ad38e6afc64939bf1b01f196f363889807a55ef135",
+        "source_manifest": "9e725ccf0530d87aede545c5cd15d7e2056a9b2b0b0d7dd5fda35829ca116239",
+        "requirements": "61d87172d5a3cee6731d860e11caa72ecc385ce456361228377f5b521c35f238",
+        "collection": "6b9c530730db297a1be4bbc25a46c68dcb2c71fdd30257978fcef758ffd71ff5",
+        "validation_report": "1bf54e860d25fce4a702f583395627c37aa265150b2e6fefe5e8071fa205c461",
+        "reviewed_helpers": {
+          "vm_runner.py": "cbc07066e2fb0463d9ebfe17a1643d29005a7b17da734209f480348c33f5e36e",
+          "packet.py": "d2e89758b223d2dbf149484e8437e71edea82b150cfb542f4104c48406a01b6b",
+          "collect.py": "929ed72906a0caf2597daea672b8db0489f206ccc47d833f3408927363e05cc8",
+          "review_result.py": "52784100fda9972e0314f30cd13ad15c97896ca6b1aaab683539759b79e97927",
+          "prepare_requirements.py": "8d66c470a5350ade315b8cba941e8a29db22e9aaa906f1b024b5bf072831d2bd",
+          "tools-pinned.json": "3d31173232fc26256c58de6c853139b2ead08415fd714edfbe834b22b7f91ae9"
+        },
+        "automated_review": "6138942a9ba4585635f6c803e4cc3a0980c22af5d7de5b3a8e0b69894a445ab7",
+        "manual_review": "a51a05bfbba69217afcde93a51eb562587c039396d8f5129e68519dc1406ff02"
+      },
+      "automated_review": {
+        "status": "incomplete",
+        "binding_complete": false,
+        "problem_count": 10
+      },
+      "review_binding_complete": true,
+      "finding": "The checker expected the excluded TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS root to skip. Go passed that structural parent and skipped exactly its /single and /multipart children because the opt-in fixture prerequisites were absent. The test process exited 0; all 250 required functional cluster roots, including the seven new regressions, passed. No failed, duplicate or unfinished test paths were found. The checker rejected the fixture shape, leaving the later stages unrun.",
+      "functional_cluster_roots_passed": 250,
+      "new_required_roots_passed": 7,
+      "no_failed_duplicate_or_unfinished_test_paths": true,
+      "independent_cleanup_verified": true
+    },
+    {
+      "trial": "r2",
+      "accepted": true,
+      "status": "passed",
+      "revision": "12a364d328e1fbab9c8d328174b571174b823246",
+      "tree": "dadc5975f8649d0316ae04574d7efae3899d77ab",
+      "source_files": 1170,
+      "started_at": "2026-10-05T07:42:33.386703+00:00",
+      "finished_at": "2026-10-05T07:46:34.770029+00:00",
+      "final_report_present": true,
+      "stages": [
+        {
+          "name": "build-internal-cluster-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 9.519,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-internal-cluster-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 74.567,
+          "log_sha256": "ed72585119ceaf40e3b66c6437b1266b6e22d3455b5e48ca9d1a4cf42deb08d8"
+        },
+        {
+          "name": "build-internal-access-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 1.515,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-internal-access-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 0.268,
+          "log_sha256": "bc42776e74add5910d9a3defbe2db285e170ad424f72fea156b9398a070c5b3c"
+        },
+        {
+          "name": "build-cmd-kelvo-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 17.773,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-cmd-kelvo-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 0.521,
+          "log_sha256": "9610aa1eea32e2b54c9a6e2af4f683097283b4f7b2e99e77d5d5054fb0a1443d"
+        },
+        {
+          "name": "build-internal-cluster-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 15.525,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-internal-cluster-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 81.309,
+          "log_sha256": "be014fe376bd11cbddbbafd8a39d05efcd2e291ef93e1144b43b89243ddc76c1"
+        },
+        {
+          "name": "build-internal-access-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 2.017,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-internal-access-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 1.268,
+          "log_sha256": "0b4aa1568989aa2502685017046693359e9aee77f5d663342ca906cf1ac7dbda"
+        },
+        {
+          "name": "build-cmd-kelvo-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 20.025,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-cmd-kelvo-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 1.769,
+          "log_sha256": "0d9e7ccd8a07bd5ead3c2a620aaafe43ce1e0d816c586aa882a8e5d30d1b9767"
+        },
+        {
+          "name": "vet",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 2.767,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "cli-build",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 5.519,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "unrun_stages": [],
+      "measured": {
+        "peak_sampled_memory_bytes": 1937379328,
+        "peak_sampled_tasks": 18,
+        "minimum_sampled_free_disk_bytes": 123500908544,
+        "sample_count": 483,
+        "max_sample_gap_seconds": 0.5032977249938995,
+        "memory_events_before": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+        "memory_events_after": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+      },
+      "cleanup": {
+        "cleanup_verified": true,
+        "unit_absent": true,
+        "cgroup_absent": true,
+        "original_runner_absent": true,
+        "original_stages_absent": true,
+        "forced_interruption": false
+      },
+      "test_binary_sha256": {
+        "internal-cluster-regular": "5ff87b9e897013f17096cfbba8bf7d60d1a1e95819f16fc669a6936fae06d7b0",
+        "internal-access-regular": "d6512650f7bd036b92bf7e192c4fdda1cba5aa174a8679eaccb5801fcde2f6f1",
+        "cmd-kelvo-regular": "9bae43d9aee39a67b2142821e2eded657b4a6edcca439280ab1a987cedaba290",
+        "internal-cluster-race": "8901f11884676fadecac107e6cf47da58ff58fd6e93a6dbc0550a9fad740d97e",
+        "internal-access-race": "ecd3e98c949b4f8f4a8dbb04301b0dac7b7ffac4a7c6811b33b453b651ba22b5",
+        "cmd-kelvo-race": "2c389900ea3f183025dc6c6780d96c7ad94b57dcd6280830a0c7bb750f962bca"
+      },
+      "cli_binary_sha256": "6809effc431eda86dbc1f253312b6e7828d87ed7f4a70721a4fbe464409e6218",
+      "hashes": {
+        "plan": "ee5f6a5772f900c79e8ba04098f6b96f742a50aaf290b520acb2711fce35b432",
+        "source_archive": "d1a3b662c5c98012945169ad38e6afc64939bf1b01f196f363889807a55ef135",
+        "source_manifest": "9e725ccf0530d87aede545c5cd15d7e2056a9b2b0b0d7dd5fda35829ca116239",
+        "requirements": "d11a686feba5c676240dc5d79506c963392d3ecc4044dad1383f6226792078a2",
+        "collection": "8e497fe762922450129779fa8e0bf5a63eff388e2c222ca2d640d6d9b37018aa",
+        "validation_report": "2dfdf0e3a8d4de6cefef57ed0ca6a0aeb95e71a21628dd143d8be0f651abdb55",
+        "reviewed_helpers": {
+          "vm_runner.py": "40cbccc2e6ab5060948dd91dde0300a04701b93eaf4b914cd933f099dee3c334",
+          "packet.py": "d2e89758b223d2dbf149484e8437e71edea82b150cfb542f4104c48406a01b6b",
+          "collect.py": "929ed72906a0caf2597daea672b8db0489f206ccc47d833f3408927363e05cc8",
+          "review_result.py": "a2e10adf0ef3443191bd1784aaa790ebb44fd9068f28340307cfa788a07507fc",
+          "prepare_requirements.py": "01e224eea6a52f85766f431dcf62c1538801285e42098d4336081651e80637d4",
+          "tools-pinned.json": "3d31173232fc26256c58de6c853139b2ead08415fd714edfbe834b22b7f91ae9"
+        },
+        "automated_review": "47a70121119b5a0192e049740f540a3d08a4ac565ea5828c574b22321de2222f",
+        "manual_review": "3ce3cbd966d09ad6b1fb94e29da75028716e1de51a621cdb12e68bebee5726a9"
+      },
+      "automated_review": {
+        "status": "passed",
+        "binding_complete": true,
+        "problem_count": 0
+      },
+      "review_binding_complete": true,
+      "source_unchanged_from_r1": true,
+      "harness_correction": "Require the one named excluded structural parent to pass and exactly its /single and /multipart children to skip. Keep all 317 functional required roots and 27 excluded fixture roots unchanged; the structural parent does not count as fixture coverage. Source, resource limits, packet controller, collector and tool pins are unchanged from R1.",
+      "tests_by_profile": {
+        "regular": {
+          "internal/cluster": {
+            "functional_roots": 250,
+            "excluded_fixture_roots": 26,
+            "structural_parent_passes": 1,
+            "skip_paths": 27,
+            "run_paths": 705,
+            "pass_paths": 678
+          },
+          "internal/access": {
+            "functional_roots": 19,
+            "excluded_fixture_roots": 0,
+            "structural_parent_passes": 0,
+            "skip_paths": 0,
+            "run_paths": 48,
+            "pass_paths": 48
+          },
+          "cmd/kelvo": {
+            "functional_roots": 48,
+            "excluded_fixture_roots": 1,
+            "structural_parent_passes": 0,
+            "skip_paths": 1,
+            "run_paths": 107,
+            "pass_paths": 106
+          }
+        },
+        "race": {
+          "internal/cluster": {
+            "functional_roots": 250,
+            "excluded_fixture_roots": 26,
+            "structural_parent_passes": 1,
+            "skip_paths": 27,
+            "run_paths": 705,
+            "pass_paths": 678
+          },
+          "internal/access": {
+            "functional_roots": 19,
+            "excluded_fixture_roots": 0,
+            "structural_parent_passes": 0,
+            "skip_paths": 0,
+            "run_paths": 48,
+            "pass_paths": 48
+          },
+          "cmd/kelvo": {
+            "functional_roots": 48,
+            "excluded_fixture_roots": 1,
+            "structural_parent_passes": 0,
+            "skip_paths": 1,
+            "run_paths": 107,
+            "pass_paths": 106
+          }
+        }
+      },
+      "independent_completion": {
+        "receipt_sha256": "bc6d581b0d3738e5cb519b9800d91bf74366321a99f428ebab5d01922a15070b",
+        "source_files_rechecked": 1170,
+        "pinned_tools_rechecked": 14,
+        "unchanged_test_binaries": 6,
+        "runner_and_stage_identities_absent": 24,
+        "process_groups_empty": 22
+      }
+    }
+  ],
+  "limits": [
+    "A structural fixture-parent PASS does not validate its skipped fixture children.",
+    "Resource samples include compilation and tests; they are not runtime memory footprints or throughput benchmarks.",
+    "A sampled disk floor is not a workspace quota.",
+    "Broker, contained-worker and live-provider fixture coverage is excluded here; those gates remain separate."
+  ]
+}

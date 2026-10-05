@@ -57,6 +57,8 @@ List exactly the gateway's tenant IDs. Keys have the existing 32–256-byte boun
 
 Tenant policy metadata must match exactly across replicas. Access-policy changes require another drained cutover; do not edit broker metadata underneath running workers. Older binaries reject the new policy metadata. There is no automatic policy migration or mixed-policy rollout.
 
+Stores and workers keep detached policy snapshots. Changing a caller-owned map or a returned policy value cannot update authorization; use the drained cutover above.
+
 Key removal cancels active requests. Completion also checks current key membership and expiry before releasing final Arrow EOS. Already delivered bytes or committed results cannot be recalled. Revocation reaches each replica only after its operator-managed key-file update.
 
 Never reuse a key for another identity. A gateway retains up to 8,192 bindings, including retired keys, without eviction. By default, this history lasts for the process lifetime. Enable [persistent authentication state](gateway-auth-state.md) to keep revision and ownership history across restarts; exhaustion fails closed and has no automatic reset.

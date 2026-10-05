@@ -32,6 +32,12 @@ The first VM run passed regular checks but its monitor interrupted race validati
 
 The failed first trial remains recorded: recovery assertions preceded later elections; the fault proxy could intercept an error ACK. Test-only corrections require witnessed recovery and a successful ACK before fault injection. Gateway adoption, revocation bounds and capacity remain separate. [Protocol and reproduction](key-authority-protocol.md).
 
+## Policy ownership isolation
+
+[Linux acceptance](evidence/key-policy-isolation.json) on `12a364d` passed all 14 build/test/vet stages. Each regular/race profile passed 317 required functional roots, including seven new key-version and policy-ownership regressions. The 27 opt-in fixture roots remain excluded. Source, tools, binaries and cleanup were independently checked.
+
+R1 remains failed: all 250 required cluster roots passed, but its checker expected an excluded fixture wrapper to skip; the wrapper passed while its two children skipped. R2 corrected that exact classification without changing product source. The wrapper is not fixture coverage. Gateway authority adoption, provider acceptance and capacity remain separate.
+
 ## Catalog authority
 
 [Linux acceptance](evidence/catalog-authority.json) on `bcbb3dc` passed nine stages, including all 34 required correctness/race/stub controls and 11 real sandboxed query/export/snapshot controls. It verifies legacy policy compatibility, stale-authority refusal, detached execution definitions and exact Arrow results after attempted source retargeting. Source/bridge inputs and independent cleanup checks passed; fixture-dependent skips remain in the record. No provider or capacity claim.
