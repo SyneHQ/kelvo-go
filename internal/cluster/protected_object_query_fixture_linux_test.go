@@ -82,6 +82,7 @@ type protectedQueryTenant struct {
 	allowCloseFailure bool
 	wireMu            sync.Mutex
 	lastWire          []byte
+	export            *protectedExportProbe
 }
 
 type protectedQueryFixture struct {
@@ -215,6 +216,13 @@ func protectedQueryNATS(t *testing.T, tenant, role string) NATSConfig {
 
 func newProtectedQueryFixture(t *testing.T) *protectedQueryFixture {
 	t.Helper()
+	return newProtectedQueryFixtureWithOptions(t, protectedQueryFixtureOptions{})
+}
+
+type protectedQueryFixtureOptions struct{ exports bool }
+
+func newProtectedQueryFixtureWithOptions(t *testing.T, options protectedQueryFixtureOptions) *protectedQueryFixture {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	t.Cleanup(cancel)
 	f := &protectedQueryFixture{ctx: ctx, service: protectedobject.New(t, protectedobject.Options{Tenants: []string{"a", "b"}}), tenants: map[string]*protectedQueryTenant{}, keys: map[string]map[string][]string{}}
@@ -231,16 +239,28 @@ func newProtectedQueryFixture(t *testing.T) *protectedQueryFixture {
 		}
 	})
 	f.pool, err = admission.New(admission.Limits{MaxConcurrent: 1, MemoryBytes: 256 << 20, ScratchBytes: 32 << 20})
+	if options.exports {
+		f.pool, err = protectedExportResources().NewPool()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
 	gatewayTLS, workersTLS := protectedQueryTLS(t)
 	var tenantConfigs []TenantConfig
 	stores := map[string]Store{}
+	exportStores := map[string]ExportStore{}
+	broker := protectedQueryNATS
+	if options.exports {
+		broker = protectedExportNATS
+	}
 	for _, tenant := range []string{"a", "b"} {
 		x := &protectedQueryTenant{}
 		f.tenants[tenant] = x
 		x.config, x.policy = protectedQueryCatalog(t, f.service, tenant)
+		if options.exports {
+			configureProtectedExportPolicy(t, &x.policy)
+			x.export = &protectedExportProbe{}
+		}
 		x.runtime, err = acceleration.OpenObjectRuntime(x.config)
 		if x.runtime != nil {
 			t.Cleanup(func() {
@@ -292,19 +312,29 @@ func newProtectedQueryFixture(t *testing.T) *protectedQueryFixture {
 		e.Containment, e.ContainmentBudget = f.containment, containment.Budget{NativeOverheadMB: 64, ParentOverheadMB: 32, MaxProcesses: 64}
 		e.ResourcePool, e.ResourceOverheadBytes, e.ObjectRuntime = f.pool, 160<<20, x.runtime
 		e.Secrets = protectedQuerySecrets{calls: &f.secrets}
-		initialize, err := OpenStore(ctx, protectedQueryNATS(t, tenant, "INITIALIZER"), x.policy, true)
+		initialize, err := OpenStore(ctx, broker(t, tenant, "INITIALIZER"), x.policy, true)
 		if err != nil {
 			t.Fatal("initialize protected-query namespace", err)
+		}
+		if options.exports {
+			if _, err := OpenExportStore(ctx, initialize, true); err != nil {
+				_ = initialize.Close()
+				t.Fatal("initialize protected export namespace", err)
+			}
 		}
 		if err := initialize.Close(); err != nil {
 			t.Fatal("close namespace initializer", err)
 		}
-		workerNATS := protectedQueryNATS(t, tenant, "WORKER")
+		workerNATS := broker(t, tenant, "WORKER")
 		workerStore, err := OpenStore(ctx, workerNATS, x.policy, false)
 		if err != nil {
 			t.Fatal("open node store", err)
 		}
-		x.node, err = NewNode(NodeConfig{Policy: x.policy, WorkerID: tenant + "1", NATS: workerNATS, RuntimeResources: f.pool, SandboxPath: e.SandboxPath}, workerStore, e)
+		nodeConfig := NodeConfig{Policy: x.policy, WorkerID: tenant + "1", NATS: workerNATS, RuntimeResources: f.pool, SandboxPath: e.SandboxPath}
+		if options.exports {
+			configureProtectedExportNode(t, x, e, &nodeConfig)
+		}
+		x.node, err = NewNode(nodeConfig, workerStore, e)
 		if err != nil {
 			_ = workerStore.Close()
 			t.Fatal("start protected query node", err)
@@ -319,6 +349,9 @@ func newProtectedQueryFixture(t *testing.T) *protectedQueryFixture {
 			t.Fatal(err)
 		}
 		server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if x.export != nil && x.export.serve(x, w, r) {
+				return
+			}
 			if !strings.HasSuffix(r.URL.Path, "/results") {
 				x.node.ServeHTTP(w, r)
 				return
@@ -350,21 +383,32 @@ func newProtectedQueryFixture(t *testing.T) *protectedQueryFixture {
 		server.TLS = serverTLS
 		server.StartTLS()
 		t.Cleanup(server.Close)
-		gatewayNATS := protectedQueryNATS(t, tenant, "GATEWAY")
+		gatewayNATS := broker(t, tenant, "GATEWAY")
 		gatewayStore, err := OpenStore(ctx, gatewayNATS, x.policy, false)
 		if err != nil {
 			t.Fatal("open gateway store", err)
 		}
 		x.store = &protectedQueryStore{NATSStore: gatewayStore}
 		t.Cleanup(func() { _ = x.store.Close() })
+		if options.exports {
+			exportStores[tenant], err = OpenExportStore(ctx, gatewayStore, false)
+			if err != nil {
+				t.Fatal("open protected export gateway store", err)
+			}
+		}
 		stores[tenant] = x.store
 		tenantConfigs = append(tenantConfigs, TenantConfig{Policy: x.policy, NATS: gatewayNATS, Workers: []Endpoint{{ID: tenant + "1", URL: server.URL}}})
 		f.keys[tenant] = map[string][]string{"analyst": {protectedQueryKey(tenant, "analyst", "old"), protectedQueryKey(tenant, "analyst", "new")}, "reports": {protectedQueryKey(tenant, "reports", "old")}}
 	}
 	f.keyFile = filepath.Join(t.TempDir(), "principals.yml")
 	f.writeKeys(t)
-	f.gateway, err = NewGateway(GatewayConfig{WorkerTLS: gatewayTLS, MaxHTTPRequests: 8, Tenants: tenantConfigs,
-		Authentication: &GatewayAuthenticationConfig{KeysFile: f.keyFile, ReloadInterval: 30 * time.Second}}, stores)
+	gatewayConfig := GatewayConfig{WorkerTLS: gatewayTLS, MaxHTTPRequests: 8, Tenants: tenantConfigs,
+		Authentication: &GatewayAuthenticationConfig{KeysFile: f.keyFile, ReloadInterval: 30 * time.Second}}
+	if options.exports {
+		gatewayConfig.Exports = &GatewayExportConfig{MaxSupervisors: 4, MaxDownloads: 2}
+		gatewayConfig.RuntimeExportStores = exportStores
+	}
+	f.gateway, err = NewGateway(gatewayConfig, stores)
 	if err != nil {
 		for _, s := range stores {
 			_ = s.Close()
