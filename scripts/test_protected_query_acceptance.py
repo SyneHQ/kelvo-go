@@ -47,7 +47,7 @@ class Process:
         return outcome
 
 
-class ProtectedQueryControls(unittest.TestCase):
+class BrokerControlFixture:
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -103,6 +103,8 @@ class ProtectedQueryControls(unittest.TestCase):
             connection.side_effect = OSError("fixture connection refused")
         return stack, launch, connection
 
+
+class ProtectedQueryControls(BrokerControlFixture, unittest.TestCase):
     def test_seed_copies_only_verified_bounded_bytes_and_runs_the_copy(self):
         with mock.patch.object(fixture.subprocess, "run", return_value=self.version()) as run:
             receipt = self.seed()

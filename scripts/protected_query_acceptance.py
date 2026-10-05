@@ -79,8 +79,9 @@ def process_identity(pid, binary, config, group):
 
 class QueryBroker(ExportBrokerFixture):
     """Broker shares the delegated supervisor cap and records custody before readiness."""
-    def __init__(self, directory, binary, binary_sha256, group):
-        super().__init__(directory, binary, binary_sha256, VERSION, "query")
+    def __init__(self, directory, binary, binary_sha256, group, *, mode="query", environment=ENVIRONMENT):
+        super().__init__(directory, binary, binary_sha256, VERSION, mode)
+        self.expected_environment = frozenset(environment)
         self.group = group
         self.identity = None
         self.closed_verified = False
@@ -97,8 +98,8 @@ class QueryBroker(ExportBrokerFixture):
 
     def start(self):
         result = super().start()
-        if set(self.environment) != ENVIRONMENT:
-            raise RuntimeError("exact query broker environment required")
+        if set(self.environment) != self.expected_environment:
+            raise RuntimeError("exact contained broker environment required")
         if process_identity(self.process.pid, self.binary, self.directory / "broker.conf", self.group) != self.identity:
             raise RuntimeError("broker changed during readiness")
         return result
