@@ -61,7 +61,7 @@ Immutable authorization provenance in a binding does not grant current access.
 | Reviewable slice | Required behavior and acceptance |
 | --- | --- |
 | Live providers | Validate exact-key CAS, service time, cancellation and credential rotation against each supported object provider. |
-| Maintenance readers | Status and previous-schema reads use guards. [Verification and inventory](protected-verification.md) use an explicit byte budget and guarded reads; [Linux acceptance](evidence/protected-verification.json) passed. [Historical restore](protected-restore.md) verifies both generations before a fenced pointer swap; VM acceptance is pending. Migration backup still refuses protected namespaces. |
+| Maintenance readers | Status and previous-schema reads use guards. [Verification and inventory](protected-verification.md) use an explicit byte budget and guarded reads; [Linux acceptance](evidence/protected-verification.json) passed. [Historical restore](protected-restore.md) verifies both generations before a fenced pointer swap; [Linux acceptance](evidence/protected-restore.json) passed on `9d8789e`. Migration backup still refuses protected namespaces. |
 | Legacy cutover | Protected mode requires a fresh namespace and v5 bindings. Legacy namespaces remain non-collecting until an explicit, fenced cutover. |
 
 Remote garbage collection needs a separate reviewed retirement protocol that
