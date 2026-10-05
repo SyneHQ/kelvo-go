@@ -55,6 +55,9 @@ func (s *Service) serve(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Range") != "" {
 			c.RangeRequests++
 		}
+		if r.Method == http.MethodPut && !registry && path.Base(key) != "current.yaml" {
+			c.PayloadWriteRequests++
+		}
 	})
 	s.mu.Unlock()
 	defer func() {
@@ -107,6 +110,7 @@ func (s *Service) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var acquires, releases int
+		var staged, sealed bool
 		if registry {
 			previous, _ := decodeRegistry(object.Data)
 			next, valid := decodeRegistry(data)
@@ -115,6 +119,8 @@ func (s *Service) serve(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			acquires, releases = pinChanges(previous, next)
+			staged = !exists && !next.Sealed
+			sealed = !previous.Sealed && next.Sealed
 			if gate := s.gates[gateKey{PinReleaseBeforeCAS, tenant, dataset}]; releases > 0 && gate != nil {
 				s.mu.Unlock()
 				gate.wait(r.Context(), false)
@@ -156,6 +162,12 @@ func (s *Service) serve(w http.ResponseWriter, r *http.Request) {
 				c.RegistryWrites++
 				c.PinAcquires += acquires
 				c.PinReleases += releases
+				if staged {
+					c.StageWrites++
+				}
+				if sealed {
+					c.SealWrites++
+				}
 			})
 		}
 		w.Header().Set("ETag", object.Version)
