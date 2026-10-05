@@ -94,6 +94,9 @@ func InitializeGatewayAuthState(ctx context.Context, cfg GatewayConfig) error {
 			set, err = parseGatewayKeys(raw, tenants, cfg.Authentication.MinRevision)
 		}
 		clear(raw)
+		if err == nil && cfg.Authentication.Authority != nil && set.version != 2 {
+			err = errGatewayAuthUnavailable
+		}
 		if err == nil && gatewayAuthAttemptFresh(ctx) {
 			err = authstate.Initialize(ctx, cfg.Authentication.State.Directory, gatewayAuthScope(cfg.Authentication.State, tenants), gatewayAuthCandidate(set))
 		}

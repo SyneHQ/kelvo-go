@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/secrets"
@@ -27,6 +28,7 @@ type GatewayAuthenticationConfig struct {
 	ReloadInterval time.Duration                     `yaml:"reload_interval,omitempty"`
 	MinRevision    uint64                            `yaml:"min_revision,omitempty"`
 	State          *GatewayAuthenticationStateConfig `yaml:"state,omitempty"`
+	Authority      *GatewayKeyAuthorityConfig        `yaml:"authority,omitempty"`
 }
 
 func (c GatewayAuthenticationConfig) normalized() (GatewayAuthenticationConfig, error) {
@@ -45,6 +47,14 @@ func (c GatewayAuthenticationConfig) normalized() (GatewayAuthenticationConfig, 
 			return c, errGatewayAuthConfig
 		}
 		c.State = &state
+	}
+	if c.Authority != nil {
+		if c.State == nil || c.ReloadInterval != time.Second {
+			return c, errGatewayAuthConfig
+		}
+		authority := *c.Authority
+		authority.Gateways = slices.Clone(authority.Gateways)
+		c.Authority = &authority
 	}
 	return c, nil
 }
@@ -68,7 +78,8 @@ func validateGatewayAuthentication(c *GatewayConfig) error {
 			return errGatewayAuthConfig
 		}
 	}
-	return nil
+	_, err := bindGatewayKeyAuthority(*c)
+	return err
 }
 
 type gatewayKeySet struct {

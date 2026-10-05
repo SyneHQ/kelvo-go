@@ -59,6 +59,15 @@ func (c Config) valid() bool {
 	return len(c.Username) > 0 && len(c.Username) <= 128 && !strings.ContainsAny(c.Username, "\r\n\x00") && envName.MatchString(c.PasswordEnv)
 }
 
+// Validate checks the complete reference and scope shape without reading
+// credentials, touching the filesystem or constructing a transport.
+func (c Config) Validate() error {
+	if !c.valid() {
+		return ErrInvalid
+	}
+	return nil
+}
+
 type wireSession interface {
 	request(string, []byte, nats.Header) ([]byte, error)
 	close() error
@@ -81,8 +90,8 @@ type Client struct {
 }
 
 func NewClient(config Config) (*Client, error) {
-	if !config.valid() {
-		return nil, ErrInvalid
+	if err := config.Validate(); err != nil {
+		return nil, err
 	}
 	// Reconstruct the scope so even package-local callers cannot share slices.
 	scope, err := NewScope(config.Scope.ID(), config.Scope.Tenants(), config.Scope.Gateways())

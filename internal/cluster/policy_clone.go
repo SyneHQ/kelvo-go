@@ -28,6 +28,10 @@ func clonePolicy(p Policy) (Policy, error) {
 		binding := *principal.CatalogBinding
 		principal.CatalogBinding = &binding
 	}
+	if principal.KeyAuthority != nil {
+		binding := *principal.KeyAuthority
+		principal.KeyAuthority = &binding
+	}
 	for id, grant := range principal.Principals {
 		grant.NativeSources = slices.Clone(grant.NativeSources)
 		grant.FederatedSources = slices.Clone(grant.FederatedSources)

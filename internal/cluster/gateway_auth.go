@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/authfence"
 	"github.com/SYNEHQ/kelvo-go/internal/authstate"
 	"github.com/SYNEHQ/kelvo-go/internal/secrets"
 )
@@ -30,6 +31,8 @@ type gatewayAuthRead struct {
 	started  time.Time
 	err      error
 	admitted bool
+	attempt  authfence.Attempt
+	proof    authfence.VerifiedObservation
 }
 
 type gatewayKeyReader func(context.Context, string, int) ([]byte, error)
@@ -53,13 +56,20 @@ type gatewayAuthenticator struct {
 	read       gatewayKeyReader
 	state      gatewayAuthenticationStore
 	openState  gatewayAuthStateOpener
-	admitting  bool
-	poisoned   bool
-	running    bool
-	loaders    sync.WaitGroup
-	closeOnce  sync.Once
-	closeDone  chan struct{}
-	closeErr   error // published by closeDone
+	authority  *gatewayKeyAuthority
+	verifier   gatewayAuthorityVerifierFactory
+	// Accepted sequence floors survive key invalidation and failed renewals.
+	authoritySequence uint64
+	witnessSequence   uint64
+	loading           bool
+	authorityClosing  bool
+	admitting         bool
+	poisoned          bool
+	running           bool
+	loaders           sync.WaitGroup
+	closeOnce         sync.Once
+	closeDone         chan struct{}
+	closeErr          error // published by closeDone
 }
 
 func newGatewayAuthenticator(config GatewayAuthenticationConfig, tenants map[string]bool, reader gatewayKeyReader) (*gatewayAuthenticator, error) {
@@ -67,6 +77,10 @@ func newGatewayAuthenticator(config GatewayAuthenticationConfig, tenants map[str
 }
 
 func newGatewayAuthenticatorWithState(config GatewayAuthenticationConfig, tenants map[string]bool, reader gatewayKeyReader, opener gatewayAuthStateOpener) (*gatewayAuthenticator, error) {
+	return newGatewayAuthenticatorWithAuthority(config, tenants, reader, opener, nil)
+}
+
+func newGatewayAuthenticatorWithAuthority(config GatewayAuthenticationConfig, tenants map[string]bool, reader gatewayKeyReader, opener gatewayAuthStateOpener, authority *gatewayKeyAuthority) (*gatewayAuthenticator, error) {
 	normalized, err := config.normalized()
 	if err != nil {
 		return nil, err
@@ -81,17 +95,24 @@ func newGatewayAuthenticatorWithState(config GatewayAuthenticationConfig, tenant
 	if len(identities) == 0 || len(identities) > 256 || opener == nil {
 		return nil, errGatewayAuthConfig
 	}
+	if err := validateGatewayKeyAuthorityRuntime(normalized, identities, authority); err != nil {
+		return nil, err
+	}
+	if authority != nil {
+		detached := *authority
+		authority = &detached
+	}
 	if reader == nil {
 		reader = secrets.ReadPrivateDocument
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &gatewayAuthenticator{config: normalized, tenants: identities, ctx: ctx, cancel: cancel, done: make(chan struct{}), read: reader, openState: opener}
+	a := &gatewayAuthenticator{config: normalized, tenants: identities, ctx: ctx, cancel: cancel, done: make(chan struct{}), read: reader, openState: opener, authority: authority, verifier: newGatewayAuthorityVerifier}
 	startup, stopStartup := context.WithTimeout(context.Background(), gatewayKeyReadTimeout)
 	defer stopStartup()
 	initial := a.beginRead()
 	fail := func() (*gatewayAuthenticator, error) {
 		a.startClose()
-		if normalized.State != nil {
+		if normalized.State != nil || authority != nil {
 			if err := a.awaitClose(startup); err != nil {
 				return nil, errors.Join(errGatewayAuthUnavailable, err)
 			}
@@ -112,20 +133,44 @@ func newGatewayAuthenticatorWithState(config GatewayAuthenticationConfig, tenant
 
 func (a *gatewayAuthenticator) beginRead() <-chan gatewayAuthRead {
 	output := make(chan gatewayAuthRead, 1)
-	started := time.Now()
-	a.mu.Lock()
-	if a.closed || a.poisoned {
-		a.mu.Unlock()
-		output <- gatewayAuthRead{started: started, err: errGatewayAuthUnavailable}
+	result := gatewayAuthRead{started: time.Now()}
+	if (a.config.Authority != nil) != (a.authority != nil) {
+		result.err = errGatewayAuthUnavailable
+		output <- result
 		return output
 	}
-	// Admission to this wait group is fenced by the same mutex as close.
+	// Freeze the protocol identity and deadline before local state opening,
+	// private-file work or loader scheduling consumes any of the budget.
+	if a.authority != nil {
+		var err error
+		result.attempt, err = authfence.NewAttempt(result.started, result.started.Add(gatewayKeyReadTimeout))
+		if err != nil {
+			result.err = errGatewayAuthUnavailable
+			output <- result
+			return output
+		}
+	}
+	a.mu.Lock()
+	if a.closed || a.poisoned || a.loading {
+		a.mu.Unlock()
+		result.err = errGatewayAuthUnavailable
+		output <- result
+		return output
+	}
+	// Close and all callers share this one loader slot, even after timeout.
+	a.loading = true
 	a.loaders.Add(1)
 	a.mu.Unlock()
-	ctx, cancel := context.WithDeadline(a.ctx, started.Add(gatewayKeyReadTimeout))
+	ctx, cancel := context.WithDeadline(a.ctx, result.started.Add(gatewayKeyReadTimeout))
 	go func() {
-		defer a.loaders.Done()
-		defer cancel()
+		defer func() {
+			cancel()
+			a.mu.Lock()
+			a.loading = false
+			a.mu.Unlock()
+			a.loaders.Done()
+			output <- result
+		}()
 		var err error
 		if a.config.State != nil {
 			a.mu.Lock()
@@ -145,18 +190,19 @@ func (a *gatewayAuthenticator) beginRead() <-chan gatewayAuthRead {
 			}
 		}
 		var raw []byte
-		var set gatewayKeySet
 		if err == nil && gatewayAuthAttemptFresh(ctx) {
 			raw, err = a.read(ctx, a.config.KeysFile, gatewayKeyFileLimit)
 		}
 		if err == nil {
-			set, err = parseGatewayKeys(raw, a.tenants, a.config.MinRevision)
+			result.set, err = parseGatewayKeys(raw, a.tenants, a.config.MinRevision)
 		}
 		clear(raw)
-		admitted := false
+		if err == nil && a.authority != nil {
+			err = a.verifyKeyAuthority(ctx, &result)
+		}
 		if err == nil && gatewayAuthAttemptFresh(ctx) && a.config.State != nil {
-			err = a.admitState(ctx, set)
-			admitted = err == nil
+			err = a.admitState(ctx, result.set)
+			result.admitted = err == nil
 		}
 		if err == nil {
 			err = ctx.Err()
@@ -164,7 +210,7 @@ func (a *gatewayAuthenticator) beginRead() <-chan gatewayAuthRead {
 				err = context.DeadlineExceeded
 			}
 		}
-		output <- gatewayAuthRead{set: set, started: started, err: err, admitted: admitted}
+		result.err = err
 	}()
 	return output
 }
@@ -207,25 +253,36 @@ func (a *gatewayAuthenticator) applyRead(result gatewayAuthRead) bool {
 		a.invalidate()
 		return false
 	}
-	return a.publish(result.set, result.started, result.admitted)
+	return a.publishRead(result)
 }
 
 // The direct helper is retained for memory-only authority and its contract
-// tests; configured durable authority cannot bypass admission through it.
+// tests; durable or broker-bound authority cannot bypass admission/proof through it.
 func (a *gatewayAuthenticator) apply(set gatewayKeySet, started time.Time) bool {
 	return a.publish(set, started, false)
 }
 
 func (a *gatewayAuthenticator) publish(set gatewayKeySet, started time.Time, admitted bool) bool {
+	return a.publishRead(gatewayAuthRead{set: set, started: started, admitted: admitted})
+}
+
+func (a *gatewayAuthenticator) publishRead(result gatewayAuthRead) bool {
+	set, started, admitted := result.set, result.started, result.admitted
 	until := started.Add(a.config.ReloadInterval + gatewayKeyReadTimeout)
+	if a.authority != nil || a.config.Authority != nil {
+		until = started.Add(gatewayAuthorityLease)
+	}
 	a.mu.Lock()
 	// Recheck after acquiring the mutex: a result can be fresh at applyRead
 	// and expire while waiting to publish. Durability never extends that budget.
 	now := time.Now()
-	valid := a.validCandidateLocked(set) && now.Before(until) &&
+	valid := result.err == nil && a.validCandidateLocked(set) && now.Before(until) &&
 		(a.config.State == nil || (admitted && now.Before(started.Add(gatewayKeyReadTimeout))))
+	if a.authority != nil || a.config.Authority != nil {
+		valid = valid && admitted && a.validAuthorityProofLocked(result, now)
+	}
 	prior := a.keys
-	priorFresh := time.Now().Before(a.validUntil)
+	priorFresh := now.Before(a.validUntil)
 	if !valid {
 		a.keys, a.validUntil = nil, time.Time{}
 		a.mu.Unlock()
@@ -251,6 +308,10 @@ func (a *gatewayAuthenticator) publish(set gatewayKeySet, started time.Time, adm
 		a.bindings[hash] = tenant + "\x00" + set.principals[hash]
 	}
 	a.keys, a.validUntil, a.revision, a.digest = next, until, set.revision, set.digest
+	if a.authority != nil {
+		a.authoritySequence = result.proof.Snapshot().AuthoritySequence()
+		a.witnessSequence = result.proof.WitnessSequence()
+	}
 	a.mu.Unlock()
 	cancelGatewayKeys(prior)
 	return true
@@ -356,7 +417,7 @@ func (a *gatewayAuthenticator) run() {
 		case <-timeout:
 			timeout, timedOut = nil, true
 			a.mu.Lock()
-			if a.admitting {
+			if a.admitting || a.authorityClosing {
 				a.poisoned = true
 			}
 			prior := a.keys
@@ -385,7 +446,7 @@ func (a *gatewayAuthenticator) startClose() {
 			}
 			// Memory-only authentication owns no durable writer. Preserve its
 			// existing shutdown behavior when a private-file read is stuck.
-			if a.config.State == nil {
+			if a.config.State == nil && a.authority == nil {
 				return
 			}
 			a.loaders.Wait()
