@@ -34,9 +34,9 @@ The failed first trial remains recorded: recovery assertions preceded later elec
 
 ## Policy ownership isolation
 
-[Linux acceptance](evidence/key-policy-isolation.json) on `12a364d` passed all 14 build/test/vet stages. Each regular/race profile passed 317 required functional roots, including seven new key-version and policy-ownership regressions. The 27 opt-in fixture roots remain excluded. Source, tools, binaries and cleanup were independently checked.
+[Linux acceptance](evidence/key-policy-isolation.json) on `740ab49` passed 17 stages. Each ordinary regular/race profile passed 317 functional roots, including seven new regressions; 27 fixture roots remain excluded there. Separate export-worker runs each passed five roots/seven paths, with unchanged test, CLI and sandbox binaries. The race profile instruments the test harness; its CLI child is an ordinary build. Independent readback verified source, tools and cleanup.
 
-R1 remains failed: all 250 required cluster roots passed, but its checker expected an excluded fixture wrapper to skip; the wrapper passed while its two children skipped. R2 corrected that exact classification without changing product source. The wrapper is not fixture coverage. Gateway authority adoption, provider acceptance and capacity remain separate.
+The record preserves R1's inventory-checker failure, R2's correction on unchanged source, and the [first PR CI failure](https://github.com/SYNEHQ/kelvo-go/actions/runs/37280473087). That CI run exposed fixture grants changed after construction; R3 validates configuring them before construction while keeping policy isolation intact. Gateway authority adoption, live-provider acceptance and capacity remain separate gates.
 
 ## Catalog authority
 

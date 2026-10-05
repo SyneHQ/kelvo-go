@@ -4,15 +4,15 @@
   "issue": 129,
   "name": "Key version provenance and policy ownership isolation",
   "accepted": true,
-  "selected_trial": "r2",
-  "scope": "Linux amd64, duckdb_arrow, regular/race tests for cluster, access and CLI; tagged build and vet. Gateway authority adoption remains separate.",
+  "selected_trial": "r3",
+  "scope": "Linux amd64, duckdb_arrow, regular/race tests for cluster, access and CLI; tagged build and vet. Actual export-worker fixtures passed with both test harness profiles. Gateway authority adoption remains separate.",
   "required_counts": {
-    "validation_stages": 14,
+    "validation_stages": 17,
     "required_roots_per_profile": 317,
-    "fixture_exclusions_per_profile": 27,
+    "fixture_exclusions_per_ordinary_profile": 27,
     "new_regression_roots_per_profile": 7,
-    "exact_skip_paths_per_profile": 28,
-    "excluded_structural_parent_passes_per_profile": 1
+    "actual_export_fixture_roots_per_profile": 5,
+    "actual_export_fixture_paths_per_profile": 7
   },
   "required_by_package": {
     "internal/cluster": {
@@ -226,7 +226,31 @@
       "functional_cluster_roots_passed": 250,
       "new_required_roots_passed": 7,
       "no_failed_duplicate_or_unfinished_test_paths": true,
-      "independent_cleanup_verified": true
+      "independent_cleanup_verified": true,
+      "required_validation_stages": [
+        "build-internal-cluster-regular",
+        "run-internal-cluster-regular",
+        "build-internal-access-regular",
+        "run-internal-access-regular",
+        "build-cmd-kelvo-regular",
+        "run-cmd-kelvo-regular",
+        "build-internal-cluster-race",
+        "run-internal-cluster-race",
+        "build-internal-access-race",
+        "run-internal-access-race",
+        "build-cmd-kelvo-race",
+        "run-cmd-kelvo-race",
+        "vet",
+        "cli-build"
+      ],
+      "validation_stage_count": 14,
+      "test_binary_before_after_sha256": {
+        "internal-cluster-regular": {
+          "before_sha256": "34f58f63a0aa0055ab7d3266b2150e5246b52e9579e4ab67eb7d7894b1766cf7",
+          "after_sha256": null
+        }
+      },
+      "cli_build_metadata_sha256": null
     },
     {
       "trial": "r2",
@@ -452,6 +476,408 @@
         "unchanged_test_binaries": 6,
         "runner_and_stage_identities_absent": 24,
         "process_groups_empty": 22
+      },
+      "required_validation_stages": [
+        "build-internal-cluster-regular",
+        "run-internal-cluster-regular",
+        "build-internal-access-regular",
+        "run-internal-access-regular",
+        "build-cmd-kelvo-regular",
+        "run-cmd-kelvo-regular",
+        "build-internal-cluster-race",
+        "run-internal-cluster-race",
+        "build-internal-access-race",
+        "run-internal-access-race",
+        "build-cmd-kelvo-race",
+        "run-cmd-kelvo-race",
+        "vet",
+        "cli-build"
+      ],
+      "validation_stage_count": 14,
+      "test_binary_before_after_sha256": {
+        "internal-cluster-regular": {
+          "before_sha256": "5ff87b9e897013f17096cfbba8bf7d60d1a1e95819f16fc669a6936fae06d7b0",
+          "after_sha256": "5ff87b9e897013f17096cfbba8bf7d60d1a1e95819f16fc669a6936fae06d7b0"
+        },
+        "internal-access-regular": {
+          "before_sha256": "d6512650f7bd036b92bf7e192c4fdda1cba5aa174a8679eaccb5801fcde2f6f1",
+          "after_sha256": "d6512650f7bd036b92bf7e192c4fdda1cba5aa174a8679eaccb5801fcde2f6f1"
+        },
+        "cmd-kelvo-regular": {
+          "before_sha256": "9bae43d9aee39a67b2142821e2eded657b4a6edcca439280ab1a987cedaba290",
+          "after_sha256": "9bae43d9aee39a67b2142821e2eded657b4a6edcca439280ab1a987cedaba290"
+        },
+        "internal-cluster-race": {
+          "before_sha256": "8901f11884676fadecac107e6cf47da58ff58fd6e93a6dbc0550a9fad740d97e",
+          "after_sha256": "8901f11884676fadecac107e6cf47da58ff58fd6e93a6dbc0550a9fad740d97e"
+        },
+        "internal-access-race": {
+          "before_sha256": "ecd3e98c949b4f8f4a8dbb04301b0dac7b7ffac4a7c6811b33b453b651ba22b5",
+          "after_sha256": "ecd3e98c949b4f8f4a8dbb04301b0dac7b7ffac4a7c6811b33b453b651ba22b5"
+        },
+        "cmd-kelvo-race": {
+          "before_sha256": "2c389900ea3f183025dc6c6780d96c7ad94b57dcd6280830a0c7bb750f962bca",
+          "after_sha256": "2c389900ea3f183025dc6c6780d96c7ad94b57dcd6280830a0c7bb750f962bca"
+        }
+      },
+      "cli_build_metadata_sha256": "776f90feef62b769dd2df8b9867341916aabaf7dff6681c12c412fe64ffb0f6a"
+    },
+    {
+      "trial": "r3",
+      "accepted": true,
+      "status": "passed",
+      "review_binding_complete": true,
+      "revision": "740ab49d1eb9147fa45b7309f47cc323c9d95fdc",
+      "tree": "a2f8a0f30445cf1a78e48f30faec6f026e4f50ac",
+      "source_files": 1171,
+      "started_at": "2026-10-05T08:15:35.109071+00:00",
+      "finished_at": "2026-10-05T08:19:24.269363+00:00",
+      "final_report_present": true,
+      "required_validation_stages": [
+        "build-internal-cluster-regular",
+        "run-internal-cluster-regular",
+        "build-internal-access-regular",
+        "run-internal-access-regular",
+        "build-cmd-kelvo-regular",
+        "run-cmd-kelvo-regular",
+        "build-internal-cluster-race",
+        "run-internal-cluster-race",
+        "build-internal-access-race",
+        "run-internal-access-race",
+        "build-cmd-kelvo-race",
+        "run-cmd-kelvo-race",
+        "vet",
+        "cli-build",
+        "sandbox-build",
+        "export-fixture-regular",
+        "export-fixture-race"
+      ],
+      "validation_stage_count": 17,
+      "stages": [
+        {
+          "name": "build-internal-cluster-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 9.518,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-internal-cluster-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 73.808,
+          "log_sha256": "aff13e0648274e1bff90ba23dd4f2fd398525213ab0cc2405ff8f9219f0c19ea"
+        },
+        {
+          "name": "build-internal-access-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 1.515,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-internal-access-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 0.266,
+          "log_sha256": "df64c9276e9b474b2040bc53fadff34e1e6c85e88b1bf70d8ba122aad848cfa2"
+        },
+        {
+          "name": "build-cmd-kelvo-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 10.521,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-cmd-kelvo-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 0.519,
+          "log_sha256": "b60f7e91936aa0d91dbd34a1d308b49f2a14487847f57d63316591757b41ebb4"
+        },
+        {
+          "name": "build-internal-cluster-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 13.022,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-internal-cluster-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 81.811,
+          "log_sha256": "6f8c2cfedae07d19285bfc266b422f6544bb5dc1798f6244ecb77b4f7e8e17dd"
+        },
+        {
+          "name": "build-internal-access-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 2.016,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-internal-access-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 1.267,
+          "log_sha256": "e3c356f4b57bd5d89a426341a163122491ed1357f92b732e2f45584c558c70fe"
+        },
+        {
+          "name": "build-cmd-kelvo-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 12.271,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "run-cmd-kelvo-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 1.768,
+          "log_sha256": "c577e5f4acd04d6b37c067a5c28e2fb176ba08892016267068d97c7a058ff957"
+        },
+        {
+          "name": "vet",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 2.52,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "cli-build",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 5.519,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "sandbox-build",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 0.267,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "export-fixture-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 1.767,
+          "log_sha256": "cc0a5a916bc9765ea4b7c1c17c2e29b54fe592c1455f4162874e0191259f654c"
+        },
+        {
+          "name": "export-fixture-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 2.768,
+          "log_sha256": "dc9f6eb498b94601813bd889d5139586b66fe57ee5fccdbb076b2602c12d64b3"
+        }
+      ],
+      "unrun_stages": [],
+      "measured": {
+        "peak_sampled_memory_bytes": 1908322304,
+        "peak_sampled_tasks": 20,
+        "minimum_sampled_free_disk_bytes": 122538823680,
+        "sample_count": 458,
+        "max_sample_gap_seconds": 0.502970653004013,
+        "memory_events_before": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+        "memory_events_after": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+      },
+      "cleanup": {
+        "cleanup_verified": true,
+        "unit_absent": true,
+        "cgroup_absent": true,
+        "original_runner_absent": true,
+        "original_stages_absent": true,
+        "forced_interruption": false
+      },
+      "test_binary_sha256": {
+        "internal-cluster-regular": "1aa16cbd3f23359aa7b4b47f31747f681ee47fd4d7ca4d571e659a54dbe1b069",
+        "internal-access-regular": "3b91ded555c12ceef07581f7aa4b36de17e0ca23610c985cbf762d9708aa5a38",
+        "cmd-kelvo-regular": "c3e5b111d6438832b11634b152b06908c0f58f2810fb1571524c2c3030c25ad4",
+        "internal-cluster-race": "962693e03604968845a3688679503b8a30c0d212a744649054eb7aa236fb4e87",
+        "internal-access-race": "e22a5799eec42e82b5982cf99525a155fcbc72ede2c9f104dffadddee98116bc",
+        "cmd-kelvo-race": "12edd31dd5aed3e36c108af6fdb5332ed3926ea2cd1a2b927bd34627d842fa25"
+      },
+      "test_binary_before_after_sha256": {
+        "internal-cluster-regular": {
+          "before_sha256": "1aa16cbd3f23359aa7b4b47f31747f681ee47fd4d7ca4d571e659a54dbe1b069",
+          "after_sha256": "1aa16cbd3f23359aa7b4b47f31747f681ee47fd4d7ca4d571e659a54dbe1b069"
+        },
+        "internal-access-regular": {
+          "before_sha256": "3b91ded555c12ceef07581f7aa4b36de17e0ca23610c985cbf762d9708aa5a38",
+          "after_sha256": "3b91ded555c12ceef07581f7aa4b36de17e0ca23610c985cbf762d9708aa5a38"
+        },
+        "cmd-kelvo-regular": {
+          "before_sha256": "c3e5b111d6438832b11634b152b06908c0f58f2810fb1571524c2c3030c25ad4",
+          "after_sha256": "c3e5b111d6438832b11634b152b06908c0f58f2810fb1571524c2c3030c25ad4"
+        },
+        "internal-cluster-race": {
+          "before_sha256": "962693e03604968845a3688679503b8a30c0d212a744649054eb7aa236fb4e87",
+          "after_sha256": "962693e03604968845a3688679503b8a30c0d212a744649054eb7aa236fb4e87"
+        },
+        "internal-access-race": {
+          "before_sha256": "e22a5799eec42e82b5982cf99525a155fcbc72ede2c9f104dffadddee98116bc",
+          "after_sha256": "e22a5799eec42e82b5982cf99525a155fcbc72ede2c9f104dffadddee98116bc"
+        },
+        "cmd-kelvo-race": {
+          "before_sha256": "12edd31dd5aed3e36c108af6fdb5332ed3926ea2cd1a2b927bd34627d842fa25",
+          "after_sha256": "12edd31dd5aed3e36c108af6fdb5332ed3926ea2cd1a2b927bd34627d842fa25"
+        }
+      },
+      "cli_binary_sha256": "8bd5277f695711bb4abad1c9cf1ed49d1e6dc58b4f0230906ef8420db9fd908c",
+      "cli_build_metadata_sha256": "0c46861dd037466b4f34874cf85b9e39f29b57d9266a7231a8ee5722012dfa18",
+      "hashes": {
+        "plan": "8ab606ed7c7b013d08e82a2246424f1148b492bc2d2176455f6f48c053f7372f",
+        "source_archive": "5b7ccf39863074cbe0c3267392925ebd18b0412c99e44082b800ef4783aa6bfc",
+        "source_manifest": "541b110df72e9bb64883fb183bded3c3649c21cc6421aca9b11d9c8d43001907",
+        "requirements": "ad3cadf0a4057cff28b45a3e6c65688000b13081a317d98429332d9ae4be3028",
+        "collection": "5d4401b4c620ec24634d63dd8ffda021b599a97e9077cba8c1abc5cec3869710",
+        "automated_review": "ae651cf18473d5029a22269e6c4f5049722d6bb3c896320a9acdda19d48976af",
+        "validation_report": "7a1b569fd6fc04cfbaee2d7d3b24692e00a155fcea46dfe0860769613c7a1732",
+        "reviewed_helpers": {
+          "vm_runner.py": "0733754c78a7cb28f1e06202c8ad57577037a774dc58e5694db9903dbaf0e5a2",
+          "packet.py": "d6ee95f428c11fa01ddfc04829a839dc0ba8ae658a1ca0901b256bfc84a9988f",
+          "collect.py": "b72a73273d4955e02b8864fbc8aab5ec346dbda961be6557635a011c3d827964",
+          "review_result.py": "850a412d27f266b03fcf79d7af8adc0d6693da0931975d46735790b0876c2ccc",
+          "prepare_requirements.py": "01e224eea6a52f85766f431dcf62c1538801285e42098d4336081651e80637d4",
+          "tools-pinned.json": "3d31173232fc26256c58de6c853139b2ead08415fd714edfbe834b22b7f91ae9"
+        },
+        "manual_review": "dd3a5a4953ef8a0fbe7c40da0945c3893871a5766c78b3bd2e6a9d500f2ea54a"
+      },
+      "sandbox_binary_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+      "actual_export_worker_fixture": {
+        "profiles": {
+          "regular": {
+            "stage": "export-fixture-regular",
+            "required_roots": [
+              "TestExportWorkerCancellationReapsSandboxAndReservations",
+              "TestExportWorkerCrashAcrossLocalCommit",
+              "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+              "TestExportWorkerSourceQuotaRevocationReapsChild",
+              "TestExportWorkerUsesSandboxAndExternalCustody"
+            ],
+            "required_paths": [
+              "TestExportWorkerCancellationReapsSandboxAndReservations",
+              "TestExportWorkerCrashAcrossLocalCommit",
+              "TestExportWorkerCrashAcrossLocalCommit/after",
+              "TestExportWorkerCrashAcrossLocalCommit/before",
+              "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+              "TestExportWorkerSourceQuotaRevocationReapsChild",
+              "TestExportWorkerUsesSandboxAndExternalCustody"
+            ],
+            "required_root_count": 5,
+            "required_path_count": 7,
+            "ran": [
+              "TestExportWorkerCancellationReapsSandboxAndReservations",
+              "TestExportWorkerCrashAcrossLocalCommit",
+              "TestExportWorkerCrashAcrossLocalCommit/after",
+              "TestExportWorkerCrashAcrossLocalCommit/before",
+              "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+              "TestExportWorkerSourceQuotaRevocationReapsChild",
+              "TestExportWorkerUsesSandboxAndExternalCustody"
+            ],
+            "passed": [
+              "TestExportWorkerCancellationReapsSandboxAndReservations",
+              "TestExportWorkerCrashAcrossLocalCommit",
+              "TestExportWorkerCrashAcrossLocalCommit/after",
+              "TestExportWorkerCrashAcrossLocalCommit/before",
+              "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+              "TestExportWorkerSourceQuotaRevocationReapsChild",
+              "TestExportWorkerUsesSandboxAndExternalCustody"
+            ],
+            "skipped": [],
+            "failed": [],
+            "package_passes": 1,
+            "test_harness_race_instrumented": false,
+            "cli_child_race_instrumented": false,
+            "test_binary_sha256": {
+              "before_sha256": "1aa16cbd3f23359aa7b4b47f31747f681ee47fd4d7ca4d571e659a54dbe1b069",
+              "after_sha256": "1aa16cbd3f23359aa7b4b47f31747f681ee47fd4d7ca4d571e659a54dbe1b069"
+            },
+            "cli_binary_sha256": {
+              "before_sha256": "8bd5277f695711bb4abad1c9cf1ed49d1e6dc58b4f0230906ef8420db9fd908c",
+              "after_sha256": "8bd5277f695711bb4abad1c9cf1ed49d1e6dc58b4f0230906ef8420db9fd908c"
+            },
+            "sandbox_binary_sha256": {
+              "before_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+              "after_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+            }
+          },
+          "race": {
+            "stage": "export-fixture-race",
+            "required_roots": [
+              "TestExportWorkerCancellationReapsSandboxAndReservations",
+              "TestExportWorkerCrashAcrossLocalCommit",
+              "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+              "TestExportWorkerSourceQuotaRevocationReapsChild",
+              "TestExportWorkerUsesSandboxAndExternalCustody"
+            ],
+            "required_paths": [
+              "TestExportWorkerCancellationReapsSandboxAndReservations",
+              "TestExportWorkerCrashAcrossLocalCommit",
+              "TestExportWorkerCrashAcrossLocalCommit/after",
+              "TestExportWorkerCrashAcrossLocalCommit/before",
+              "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+              "TestExportWorkerSourceQuotaRevocationReapsChild",
+              "TestExportWorkerUsesSandboxAndExternalCustody"
+            ],
+            "required_root_count": 5,
+            "required_path_count": 7,
+            "ran": [
+              "TestExportWorkerCancellationReapsSandboxAndReservations",
+              "TestExportWorkerCrashAcrossLocalCommit",
+              "TestExportWorkerCrashAcrossLocalCommit/after",
+              "TestExportWorkerCrashAcrossLocalCommit/before",
+              "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+              "TestExportWorkerSourceQuotaRevocationReapsChild",
+              "TestExportWorkerUsesSandboxAndExternalCustody"
+            ],
+            "passed": [
+              "TestExportWorkerCancellationReapsSandboxAndReservations",
+              "TestExportWorkerCrashAcrossLocalCommit",
+              "TestExportWorkerCrashAcrossLocalCommit/after",
+              "TestExportWorkerCrashAcrossLocalCommit/before",
+              "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+              "TestExportWorkerSourceQuotaRevocationReapsChild",
+              "TestExportWorkerUsesSandboxAndExternalCustody"
+            ],
+            "skipped": [],
+            "failed": [],
+            "package_passes": 1,
+            "test_harness_race_instrumented": true,
+            "cli_child_race_instrumented": false,
+            "test_binary_sha256": {
+              "before_sha256": "962693e03604968845a3688679503b8a30c0d212a744649054eb7aa236fb4e87",
+              "after_sha256": "962693e03604968845a3688679503b8a30c0d212a744649054eb7aa236fb4e87"
+            },
+            "cli_binary_sha256": {
+              "before_sha256": "8bd5277f695711bb4abad1c9cf1ed49d1e6dc58b4f0230906ef8420db9fd908c",
+              "after_sha256": "8bd5277f695711bb4abad1c9cf1ed49d1e6dc58b4f0230906ef8420db9fd908c"
+            },
+            "sandbox_binary_sha256": {
+              "before_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+              "after_sha256": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c"
+            }
+          }
+        },
+        "race_child_scope": "The race fixture instruments the cluster test harness. Both fixture profiles launch the same ordinary CLI binary and C sandbox; those child binaries are not race-instrumented.",
+        "ordinary_package_runs_keep_these_roots_excluded": true
+      },
+      "automated_review": {
+        "status": "passed",
+        "binding_complete": true,
+        "problem_count": 0
+      },
+      "independent_completion": {
+        "receipt_sha256": "7a0f07160241e1c59b9715e4851849236810bdad75db288f5ce348f5a522fdc9",
+        "source_files_rechecked": 1171,
+        "pinned_tools_rechecked": 14,
+        "unchanged_test_binaries": 6,
+        "fresh_hashed_artifacts": 59,
+        "runner_and_stage_identities_absent": 27,
+        "process_groups_empty": 25
       }
     }
   ],
@@ -459,6 +885,126 @@
     "A structural fixture-parent PASS does not validate its skipped fixture children.",
     "Resource samples include compilation and tests; they are not runtime memory footprints or throughput benchmarks.",
     "A sampled disk floor is not a workspace quota.",
-    "Broker, contained-worker and live-provider fixture coverage is excluded here; those gates remain separate."
-  ]
+    "Broker and live-provider coverage remain separate. The export fixture requires only its five named roots; other contained-worker fixtures remain excluded.",
+    "The race fixture instruments the cluster test harness. Both fixture profiles launch the same ordinary CLI binary and C sandbox; those child binaries are not race-instrumented."
+  ],
+  "previous_public_evidence_sha256": "c54f21fed7a0d34f458cb3f3cbeeb0916578fbc542b9e50f17b5a20189095056",
+  "original_failed_ci": {
+    "schema_version": 1,
+    "status": "retained_failed_ci_not_accepted_for_merge",
+    "pull_request": 131,
+    "run_id": 37280473087,
+    "run_url": "https://github.com/SYNEHQ/kelvo-go/actions/runs/37280473087",
+    "source_revision": "f01daaedccc7988d5d26641b3f84db18075b69d4",
+    "synthetic_merge_revision": "c0da7b961153936f7d4245accf07e22c6eefe8c3",
+    "source_tree": "22a4ebcbc4e7e5e285353fcb491567414dcad2bd",
+    "source_file_count": 1171,
+    "step_counts": {
+      "federation": {
+        "success": 13,
+        "failure": 1,
+        "skipped": 6
+      },
+      "validate": {
+        "success": 53
+      }
+    },
+    "failed_step": "Verify export child cancellation, quota and crash recovery",
+    "failed_export_roots": [
+      "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+      "TestExportWorkerSourceQuotaRevocationReapsChild"
+    ],
+    "passed_export_roots": [
+      "TestExportWorkerCancellationReapsSandboxAndReservations",
+      "TestExportWorkerCrashAcrossLocalCommit",
+      "TestExportWorkerUsesSandboxAndExternalCustody"
+    ],
+    "passed_crash_leaves": [
+      "TestExportWorkerCrashAcrossLocalCommit/after",
+      "TestExportWorkerCrashAcrossLocalCommit/before"
+    ],
+    "failure": {
+      "observed_error": "invalid export request or state",
+      "observed_at": "addRuntimeExportRequest, before either source-quota assertion",
+      "fixture_cause": "exportWorkerCSVSource changed the constructed runtime policy after construction. The detached store retained its original grants and rejected the newly requested sales source.",
+      "correction_revision": "740ab49d1eb9147fa45b7309f47cc323c9d95fdc",
+      "correction_files": [
+        "internal/cluster/export_fault_linux_test.go",
+        "internal/cluster/export_worker_linux_test.go"
+      ],
+      "correction": "Configure the CSV catalog and principal grant before creating the worker and export runtime. Keep production policy detachment unchanged.",
+      "correction_validation": "Tracked in the separate corrected-revision VM and CI evidence; this failed run does not validate the fix."
+    },
+    "skipped_job_steps": [
+      "Fetch checksum-pinned export brokers",
+      "Verify protected-object containment evidence controls",
+      "Verify authenticated queries through protected storage",
+      "Verify authenticated exports from protected storage",
+      "Verify export lifecycle with restricted broker roles",
+      "Post Run actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff"
+    ],
+    "unrun_suite_families": [
+      "Authenticated protected-object queries",
+      "Authenticated protected-object exports",
+      "Export ACL, lifecycle and dispatch matrix on NATS 2.14.7 and 2.15.0"
+    ],
+    "missing_artifacts": [
+      "containment-protected-evidence",
+      "containment-protected-export-evidence"
+    ],
+    "available_artifacts": [
+      {
+        "name": "acceptance-evidence",
+        "id": 11332773103,
+        "sha256": "6fab10fc7843f06b9e3e0006377176657498aa09976b04ddb11f57e30e173a9e",
+        "files": 6
+      },
+      {
+        "name": "export-broker-evidence",
+        "id": 11332277194,
+        "sha256": "6aae608a334166db25d0072c0ac4776f9b749b62b133990c302373d9bc7f126b",
+        "files": 1
+      }
+    ],
+    "extracted_files_rehashed": 7,
+    "notebooks": {
+      "count": 15,
+      "code_cells": 73,
+      "scope": "CI local binary/helper override; no public installer or managed Colab claim"
+    },
+    "other_report_hashes": {
+      "operational-ci.json": {
+        "reported_passed": true,
+        "sha256": "7942f3f35fb601c67da860ef85db54bb05bae2a07ee9da143304ba3237af141f"
+      },
+      "gateway-key-rotation-ci.json": {
+        "reported_passed": true,
+        "sha256": "c906c8fe03dcdffc2397b9b7a288ee703b84d5cb2083369c614486fb86ed118a"
+      },
+      "process-loss-ci.json": {
+        "reported_passed": true,
+        "sha256": "52d7cf7833f4a8a24b1c2e44453bcbfe3bb355e6b07f08a23baf0850734dbafe"
+      },
+      "containment-ci.json": {
+        "reported_passed": true,
+        "sha256": "2f1858485c633b2f771894f14549518f444e8c2dac25a8726816d1506bf73cf5"
+      },
+      "release-upgrades-ci.json": {
+        "reported_passed": true,
+        "sha256": "1896674eaf8c72782ef8d32427f593bb3cfa12ffc2dbe340aa4116d081510d5b"
+      }
+    },
+    "job_log_hashes": {
+      "federation": "e7f24df9dd2e9c184ddc5457154bb9dda76671dc439c7ddc7b79c45b7bf0632f",
+      "validate": "8cff2e0045c7440b4b7a89c4e47c7c801d17e785b48b64c4424c1a3f304f23cb"
+    },
+    "independent_failure_receipt_sha256": "923331804416361d368269906e242f5c1ed33b9f0ab3a12e7e858622aa765abf",
+    "limits": [
+      "This run is not accepted for merge despite successful validation job and notebooks.",
+      "Protected query/export containment and both-version restricted broker lifecycle suites did not execute in this run.",
+      "No separate access to ephemeral CI host; cleanup is limited to retained test and job reports.",
+      "No production, release, provider, throughput or memory claim."
+    ]
+  },
+  "original_failed_ci_record_sha256": "03486c8bf120bd3f5d1114ff5d657ce4380643f29a5ae381dd0229de175d260b"
 }
