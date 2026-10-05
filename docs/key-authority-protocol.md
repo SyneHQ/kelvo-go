@@ -1,6 +1,6 @@
 # Key-authority protocol
 
-`internal/authfence` checks a fixed fleet's key-document authority through NATS. It is an internal protocol: gateway authentication does not use it yet.
+`internal/authfence` checks a fixed fleet's key-document authority through NATS. The opt-in [shared gateway authority](gateway-key-authority.md) uses it with local durable admission and final freshness checks. File-only authentication is unchanged.
 
 ## Operations
 
@@ -14,7 +14,7 @@ A scope fixes its ID, tenants and gateways. Canonical YAML binds that membership
 | `Advance` | Checks the caller's expected document revision, then conditionally publishes a higher revision. |
 | `Check` | Reports `current_verified` only after a fresh control witness. |
 
-Witness proofs check reply correlation, stream, authority sequence, scope, document and original attempt. Gateway adoption still needs local durable admission and final freshness checks.
+Witness proofs check reply correlation, stream, authority sequence, scope, document and original attempt. Gateway integration also requires local durable admission before publishing keys; its acceptance is tracked separately from the protocol gates below.
 
 ## Broker and credentials
 

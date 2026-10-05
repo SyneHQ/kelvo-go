@@ -37,6 +37,8 @@ Symlinks, hardlinks, unsafe ancestors/modes, in-place changes, duplicate keys/fi
 
 ## Rotate and revoke
 
+These steps cover file-only authentication. With shared authority enabled, use the [authority-first rotation sequence](gateway-key-authority.md#4-rotate-keys).
+
 1. Publish a complete higher revision containing old and new keys: fsync a private staged file, then atomically rename it onto the live path.
 2. Verify the new key on **every replica**, then switch clients.
 3. Publish another higher revision removing the old key. Verify old-key `401`, new-key access and readiness on every replica; remove stale/unreachable replicas from service.
@@ -44,9 +46,11 @@ Symlinks, hardlinks, unsafe ancestors/modes, in-place changes, duplicate keys/fi
 
 Changed bytes, including whitespace, require a higher revision. By default, revision and retired-key history are in memory; restarting with an old `min_revision` and file can restore revoked keys. Enable [persistent authentication state](gateway-auth-state.md) to retain both across restarts. A higher revision can reintroduce a key for the same identity. The 8,192-binding limit rejects new ownership without eviction. Never reuse keys for another identity.
 
-Propagation is operator-managed. A replica with its old valid file can continue accepting old keys; revocation is not globally atomic. An exact valid current file can recover a replica after I/O or permission failure.
+File-only propagation is operator-managed: a replica with its old valid file can continue accepting old keys. [Shared key authority](gateway-key-authority.md) adds fresh broker verification and a three-second local lease; rollout still needs per-replica checks and is not globally atomic. A valid current file can recover file-only authentication after I/O or permission failure.
 
 ## Failure and cancellation semantics
+
+These are the file-only defaults. Shared authority adds [fixed renewal and cleanup rules](gateway-key-authority.md#failure-and-recovery).
 
 | Condition | Behavior |
 | --- | --- |
@@ -61,7 +65,7 @@ Unchanged keys retain request contexts during overlap. Authentication requests d
 
 Revocation cannot recall delivered bytes, undo durable success or guarantee immediate remote database cancellation. Require normal complete HTTP/Arrow/EOS checks. With version-1 keys, durable jobs remain tenant-owned: another current tenant key can retrieve/cancel an unconsumed handle. [Version-2 principal keys](principal-access.md) restrict handles to their submitting principal. Cancellation before a parked request claims results leaves the handle unclaimed.
 
-Version 1 does not implement per-user access. Neither version implements row policies, tenant creation, TLS rotation or distributed authorization epochs.
+Version 1 does not implement per-user access. Key documents alone do not define row policies, create tenants or rotate TLS identities. Version 2 can opt in to [shared document authority](gateway-key-authority.md); policy changes still require a drained rollout.
 
 ## Run the two-gateway acceptance gate
 

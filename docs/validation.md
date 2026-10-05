@@ -30,7 +30,13 @@ The first VM run passed regular checks but its monitor interrupted race validati
 
 [Linux evidence](evidence/key-authority-protocol.json) on `c39f637` passed seven stages: ordinary and race builds/tests, three-node TLS fault tests in both profiles, and vet. Each profile passed all 30 ordinary roots and 15 R3 paths across NATS 2.14.7/2.15.0. Source, binary, broker and cleanup receipts were independently checked.
 
-The failed first trial remains recorded: recovery assertions preceded later elections; the fault proxy could intercept an error ACK. Test-only corrections require witnessed recovery and a successful ACK before fault injection. Gateway adoption, revocation bounds and capacity remain separate. [Protocol and reproduction](key-authority-protocol.md).
+The failed first trial remains recorded: recovery assertions preceded later elections; the fault proxy could intercept an error ACK. Test-only corrections require witnessed recovery and a successful ACK before fault injection. Gateway integration has a separate gate below; deployment revocation bounds and capacity remain separate. [Protocol and reproduction](key-authority-protocol.md).
+
+## Shared gateway authority
+
+[Linux acceptance](evidence/gateway-key-authority.json) on `84b6d20` passed all 24 stages: 369 ordinary roots and 27 authority fixture paths in each regular/race profile across NATS 2.14.7/2.15.0. The 29 ordinary fixture exclusions remain explicit. Four independently checked fixture receipts cover 12 reaped brokers, eight joined proxies, 44 absent listener endpoints and removed credentials.
+
+The gate uses production authentication with fixture job stores and upstream Arrow responses. Source execution, sandboxed workers, exports/downloads and deployment capacity remain separate. The race profile instruments gateway/helper code, not external broker release binaries. [Setup and limits](gateway-key-authority.md).
 
 ## Policy ownership isolation
 

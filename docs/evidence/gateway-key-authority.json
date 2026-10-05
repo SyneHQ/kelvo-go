@@ -1,0 +1,772 @@
+{
+  "schema_version": 1,
+  "organization": "SYNEHQ",
+  "issue": 132,
+  "name": "Shared gateway key authority",
+  "accepted": true,
+  "status": "passed",
+  "scope": "Fixed-fleet gateway authentication and broker authority; ordinary/race package checks plus two-version TLS fixtures.",
+  "revision": "84b6d20b359ae5bbf86a9d7e61ffb0de2c806a96",
+  "tree": "a71888d5e66325845149c4fd00e4af07c8ef0db1",
+  "source_files": 1186,
+  "required_counts": {
+    "stages": 24,
+    "observations": 12,
+    "ordinary_roots_per_profile": 369,
+    "excluded_fixture_roots_per_ordinary_profile": 29,
+    "authority_paths_per_profile": 27,
+    "terminal_fixture_receipts": 4
+  },
+  "ordinary_exclusions": {
+    "internal/cluster": {
+      "excluded_fixture_roots": [
+        "TestCatalogBindingActualGuardedSnapshot",
+        "TestCatalogBindingActualNodeAndExportExecution",
+        "TestContainedProtectedObjectExports",
+        "TestContainedProtectedObjectQueries",
+        "TestExportClusterActualWorkerLifecycle",
+        "TestExportWorkerCancellationReapsSandboxAndReservations",
+        "TestExportWorkerConstructorBindsKernelContainment",
+        "TestExportWorkerCrashAcrossLocalCommit",
+        "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+        "TestExportWorkerSourceQuotaRevocationReapsChild",
+        "TestExportWorkerUsesSandboxAndExternalCustody",
+        "TestGatewayAuthorityR3",
+        "TestNATSAccountIsolation",
+        "TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
+        "TestNATSExportRetainedLifecycleAndProvisioning",
+        "TestNATSExportRuntimeACLAndAccountIsolation",
+        "TestNATSRefreshQueueProvisionDedupRetry",
+        "TestNATSRefreshStatusDurabilityResetAndBudget",
+        "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+        "TestNATSStoreAdmissionCASAndReuse",
+        "TestNATSStoreCorruptJobFailsClosed",
+        "TestNATSStoreQueueAndWorkerLease",
+        "TestNATSStoreReconcileFailsStaleAssigned",
+        "TestNATSStoreRejectsMetadataMismatch",
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS",
+        "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+        "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS"
+      ],
+      "excluded_structural_pass_roots": [
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS"
+      ],
+      "required_skip_paths": [
+        "TestCatalogBindingActualGuardedSnapshot",
+        "TestCatalogBindingActualNodeAndExportExecution",
+        "TestContainedProtectedObjectExports",
+        "TestContainedProtectedObjectQueries",
+        "TestExportClusterActualWorkerLifecycle",
+        "TestExportWorkerCancellationReapsSandboxAndReservations",
+        "TestExportWorkerConstructorBindsKernelContainment",
+        "TestExportWorkerCrashAcrossLocalCommit",
+        "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+        "TestExportWorkerSourceQuotaRevocationReapsChild",
+        "TestExportWorkerUsesSandboxAndExternalCustody",
+        "TestGatewayAuthorityR3",
+        "TestNATSAccountIsolation",
+        "TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
+        "TestNATSExportRetainedLifecycleAndProvisioning",
+        "TestNATSExportRuntimeACLAndAccountIsolation",
+        "TestNATSRefreshQueueProvisionDedupRetry",
+        "TestNATSRefreshStatusDurabilityResetAndBudget",
+        "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+        "TestNATSStoreAdmissionCASAndReuse",
+        "TestNATSStoreCorruptJobFailsClosed",
+        "TestNATSStoreQueueAndWorkerLease",
+        "TestNATSStoreReconcileFailsStaleAssigned",
+        "TestNATSStoreRejectsMetadataMismatch",
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/multipart",
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/single",
+        "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission",
+        "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS"
+      ]
+    },
+    "internal/authfence": {
+      "excluded_fixture_roots": [
+        "TestAuthFenceR3"
+      ],
+      "excluded_structural_pass_roots": [],
+      "required_skip_paths": [
+        "TestAuthFenceR3"
+      ]
+    },
+    "internal/access": {
+      "excluded_fixture_roots": [],
+      "excluded_structural_pass_roots": [],
+      "required_skip_paths": []
+    },
+    "cmd/kelvo": {
+      "excluded_fixture_roots": [
+        "TestContainedNodeStartupPlacement"
+      ],
+      "excluded_structural_pass_roots": [],
+      "required_skip_paths": [
+        "TestContainedNodeStartupPlacement"
+      ]
+    },
+    "internal/testutil/authoritybroker": {
+      "excluded_fixture_roots": [],
+      "excluded_structural_pass_roots": [],
+      "required_skip_paths": []
+    }
+  },
+  "started_at": "2026-10-05T08:42:21.190539+00:00",
+  "finished_at": "2026-10-05T08:46:56.668873+00:00",
+  "final_report_present": true,
+  "stages": [
+    {
+      "name": "build-internal-cluster-regular",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 10.019,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-internal-cluster-regular",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 74.31,
+      "log_sha256": "39b3c3b6e250aa39011495a486d4fa8b9ab9036192baa8c351472cc33beda5ca"
+    },
+    {
+      "name": "build-internal-authfence-regular",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 1.516,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-internal-authfence-regular",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 0.268,
+      "log_sha256": "042bb904b1b025264df77113ec69a25cb7d819ac1a42e2fbf4d47b5de7037a6f"
+    },
+    {
+      "name": "build-internal-access-regular",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 1.517,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-internal-access-regular",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 0.268,
+      "log_sha256": "789a4075f83a69f715cc62713899f17421afc4aec78ccde18c8c08a0cacabe66"
+    },
+    {
+      "name": "build-cmd-kelvo-regular",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 10.523,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-cmd-kelvo-regular",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 0.52,
+      "log_sha256": "e440d5917ae10e42438525508fd8a6aa977975c4db67b917cac2e2dd9b7655f9"
+    },
+    {
+      "name": "build-internal-testutil-authoritybroker-regular",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 0.766,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-internal-testutil-authoritybroker-regular",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 0.269,
+      "log_sha256": "50621b1dc84af991d2bd11b1cbf5c4c5350f2f4b5de89fa70c64146b35c5fb51"
+    },
+    {
+      "name": "build-internal-cluster-race",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 14.024,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-internal-cluster-race",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 79.064,
+      "log_sha256": "da98d08c1e990165e0c7357b625d4515a90a1a792555b0e695aa79089541ea68"
+    },
+    {
+      "name": "build-internal-authfence-race",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 2.018,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-internal-authfence-race",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 1.77,
+      "log_sha256": "08f289a495bb96dc5887063f9df666aa65c53e640ed9364c21e6d513e9a0397a"
+    },
+    {
+      "name": "build-internal-access-race",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 2.017,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-internal-access-race",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 1.268,
+      "log_sha256": "7d796a3b3993b9ce355cebc5b1dd90659d72e4f289334461a4a1c1d16ce7f1a8"
+    },
+    {
+      "name": "build-cmd-kelvo-race",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 12.525,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-cmd-kelvo-race",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 1.77,
+      "log_sha256": "973a06772e899fd2db149ff3da70e79eabf49b3a0e8faf4a02110edf90c95429"
+    },
+    {
+      "name": "build-internal-testutil-authoritybroker-race",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 0.767,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-internal-testutil-authoritybroker-race",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 1.268,
+      "log_sha256": "c0c64f8fb822cc87c6425dd74c316f1c745d7cbf54863b3fbc87742f84351bb4"
+    },
+    {
+      "name": "vet",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 2.77,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "cli-build",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 5.522,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "authority-fixture-regular",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 17.525,
+      "log_sha256": "43e628baf1d1c80b104c57c367d170f927e0a1b1fe4bd2995ea4fbe4d8d9c1b8"
+    },
+    {
+      "name": "authority-fixture-race",
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 23.032,
+      "log_sha256": "93847e24b3287e6c02e9a05013fe305b81287365508ae8146646c081a2eb377a"
+    }
+  ],
+  "unrun_stages": [],
+  "profiles": {
+    "regular": {
+      "ordinary": {
+        "internal/cluster": {
+          "required_functional_roots": 269,
+          "pass_paths": 770,
+          "skip_paths": 28,
+          "binary_sha256": {
+            "before_sha256": "3347642bcd4fd1b6292eea8755a539b8cef5107923636cf2acba33007aad6917",
+            "after_sha256": "3347642bcd4fd1b6292eea8755a539b8cef5107923636cf2acba33007aad6917"
+          }
+        },
+        "internal/authfence": {
+          "required_functional_roots": 31,
+          "pass_paths": 163,
+          "skip_paths": 1,
+          "binary_sha256": {
+            "before_sha256": "d0637f60a1ded5d857755928eeba11d7cc042cee89424fb0bb82ffa65373f7a8",
+            "after_sha256": "d0637f60a1ded5d857755928eeba11d7cc042cee89424fb0bb82ffa65373f7a8"
+          }
+        },
+        "internal/access": {
+          "required_functional_roots": 19,
+          "pass_paths": 48,
+          "skip_paths": 0,
+          "binary_sha256": {
+            "before_sha256": "caeee66808cfef7aa935165dc0a4a746cb30ca22dac33117598d26c9051cb251",
+            "after_sha256": "caeee66808cfef7aa935165dc0a4a746cb30ca22dac33117598d26c9051cb251"
+          }
+        },
+        "cmd/kelvo": {
+          "required_functional_roots": 48,
+          "pass_paths": 106,
+          "skip_paths": 1,
+          "binary_sha256": {
+            "before_sha256": "ddb8333457e8504f6d0fb51eae5cd0c06a392c2587e51d4f278a5a85e4620bc8",
+            "after_sha256": "ddb8333457e8504f6d0fb51eae5cd0c06a392c2587e51d4f278a5a85e4620bc8"
+          }
+        },
+        "internal/testutil/authoritybroker": {
+          "required_functional_roots": 2,
+          "pass_paths": 2,
+          "skip_paths": 0,
+          "binary_sha256": {
+            "before_sha256": "1360f22a6e6276f4694350421d3aa952c9a42134903cdef1c1e0c4646d9ce193",
+            "after_sha256": "1360f22a6e6276f4694350421d3aa952c9a42134903cdef1c1e0c4646d9ce193"
+          }
+        }
+      },
+      "authority_fixture": {
+        "required_paths": [
+          "TestGatewayAuthorityR3",
+          "TestGatewayAuthorityR3/2.14.7",
+          "TestGatewayAuthorityR3/2.14.7/Cleanup",
+          "TestGatewayAuthorityR3/2.14.7/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.14.7/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.14.7/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.14.7/TenantHandlesAndWriterOwnership",
+          "TestGatewayAuthorityR3/2.15.0",
+          "TestGatewayAuthorityR3/2.15.0/Cleanup",
+          "TestGatewayAuthorityR3/2.15.0/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.15.0/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.15.0/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.15.0/TenantHandlesAndWriterOwnership"
+        ],
+        "ran": [
+          "TestGatewayAuthorityR3",
+          "TestGatewayAuthorityR3/2.14.7",
+          "TestGatewayAuthorityR3/2.14.7/Cleanup",
+          "TestGatewayAuthorityR3/2.14.7/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.14.7/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.14.7/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.14.7/TenantHandlesAndWriterOwnership",
+          "TestGatewayAuthorityR3/2.15.0",
+          "TestGatewayAuthorityR3/2.15.0/Cleanup",
+          "TestGatewayAuthorityR3/2.15.0/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.15.0/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.15.0/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.15.0/TenantHandlesAndWriterOwnership"
+        ],
+        "passed": [
+          "TestGatewayAuthorityR3",
+          "TestGatewayAuthorityR3/2.14.7",
+          "TestGatewayAuthorityR3/2.14.7/Cleanup",
+          "TestGatewayAuthorityR3/2.14.7/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.14.7/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.14.7/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.14.7/TenantHandlesAndWriterOwnership",
+          "TestGatewayAuthorityR3/2.15.0",
+          "TestGatewayAuthorityR3/2.15.0/Cleanup",
+          "TestGatewayAuthorityR3/2.15.0/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.15.0/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.15.0/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.15.0/TenantHandlesAndWriterOwnership"
+        ],
+        "skipped": [],
+        "failed": [],
+        "binary_sha256": {
+          "before_sha256": "3347642bcd4fd1b6292eea8755a539b8cef5107923636cf2acba33007aad6917",
+          "after_sha256": "3347642bcd4fd1b6292eea8755a539b8cef5107923636cf2acba33007aad6917"
+        },
+        "gateway_and_helper_race_instrumented": false,
+        "external_brokers_race_instrumented": false
+      }
+    },
+    "race": {
+      "ordinary": {
+        "internal/cluster": {
+          "required_functional_roots": 269,
+          "pass_paths": 770,
+          "skip_paths": 28,
+          "binary_sha256": {
+            "before_sha256": "360337d7657ead7a2f5542408fb36e176f9da0295cdd326abd5fc970bfd8073e",
+            "after_sha256": "360337d7657ead7a2f5542408fb36e176f9da0295cdd326abd5fc970bfd8073e"
+          }
+        },
+        "internal/authfence": {
+          "required_functional_roots": 31,
+          "pass_paths": 163,
+          "skip_paths": 1,
+          "binary_sha256": {
+            "before_sha256": "50c174a054b036c28b01d0979340a18a7a6d49b218228c2930f308161774e431",
+            "after_sha256": "50c174a054b036c28b01d0979340a18a7a6d49b218228c2930f308161774e431"
+          }
+        },
+        "internal/access": {
+          "required_functional_roots": 19,
+          "pass_paths": 48,
+          "skip_paths": 0,
+          "binary_sha256": {
+            "before_sha256": "6b9fd71398319bd16851d061ab2d7c29b6b0783cad1a61f0481d061b0054b9da",
+            "after_sha256": "6b9fd71398319bd16851d061ab2d7c29b6b0783cad1a61f0481d061b0054b9da"
+          }
+        },
+        "cmd/kelvo": {
+          "required_functional_roots": 48,
+          "pass_paths": 106,
+          "skip_paths": 1,
+          "binary_sha256": {
+            "before_sha256": "f1fe3070a324fc02a97d973004c1c1d2730ac3506f657a0b5a9af31023e4b85c",
+            "after_sha256": "f1fe3070a324fc02a97d973004c1c1d2730ac3506f657a0b5a9af31023e4b85c"
+          }
+        },
+        "internal/testutil/authoritybroker": {
+          "required_functional_roots": 2,
+          "pass_paths": 2,
+          "skip_paths": 0,
+          "binary_sha256": {
+            "before_sha256": "4476fb664cf734581759e38560ea5e5a537cb5ea1370743b7dc27c88570a9e48",
+            "after_sha256": "4476fb664cf734581759e38560ea5e5a537cb5ea1370743b7dc27c88570a9e48"
+          }
+        }
+      },
+      "authority_fixture": {
+        "required_paths": [
+          "TestGatewayAuthorityR3",
+          "TestGatewayAuthorityR3/2.14.7",
+          "TestGatewayAuthorityR3/2.14.7/Cleanup",
+          "TestGatewayAuthorityR3/2.14.7/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.14.7/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.14.7/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.14.7/TenantHandlesAndWriterOwnership",
+          "TestGatewayAuthorityR3/2.15.0",
+          "TestGatewayAuthorityR3/2.15.0/Cleanup",
+          "TestGatewayAuthorityR3/2.15.0/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.15.0/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.15.0/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.15.0/TenantHandlesAndWriterOwnership"
+        ],
+        "ran": [
+          "TestGatewayAuthorityR3",
+          "TestGatewayAuthorityR3/2.14.7",
+          "TestGatewayAuthorityR3/2.14.7/Cleanup",
+          "TestGatewayAuthorityR3/2.14.7/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.14.7/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.14.7/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.14.7/TenantHandlesAndWriterOwnership",
+          "TestGatewayAuthorityR3/2.15.0",
+          "TestGatewayAuthorityR3/2.15.0/Cleanup",
+          "TestGatewayAuthorityR3/2.15.0/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.15.0/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.15.0/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.15.0/TenantHandlesAndWriterOwnership"
+        ],
+        "passed": [
+          "TestGatewayAuthorityR3",
+          "TestGatewayAuthorityR3/2.14.7",
+          "TestGatewayAuthorityR3/2.14.7/Cleanup",
+          "TestGatewayAuthorityR3/2.14.7/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.14.7/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.14.7/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.14.7/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.14.7/TenantHandlesAndWriterOwnership",
+          "TestGatewayAuthorityR3/2.15.0",
+          "TestGatewayAuthorityR3/2.15.0/Cleanup",
+          "TestGatewayAuthorityR3/2.15.0/PartitionExpiresLocalLease",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentAttempt",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentDocument",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/DifferentScope",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/ExactProofAndReplay",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/FreshWitnessRetainsAuthoritySequence",
+          "TestGatewayAuthorityR3/2.15.0/ProofPublication/PublicationLockCannotExtendDeadline",
+          "TestGatewayAuthorityR3/2.15.0/RestoredLocalStateCannotAdmitStaleKeys",
+          "TestGatewayAuthorityR3/2.15.0/RotationFencesStaleGateway",
+          "TestGatewayAuthorityR3/2.15.0/TenantHandlesAndWriterOwnership"
+        ],
+        "skipped": [],
+        "failed": [],
+        "binary_sha256": {
+          "before_sha256": "360337d7657ead7a2f5542408fb36e176f9da0295cdd326abd5fc970bfd8073e",
+          "after_sha256": "360337d7657ead7a2f5542408fb36e176f9da0295cdd326abd5fc970bfd8073e"
+        },
+        "gateway_and_helper_race_instrumented": true,
+        "external_brokers_race_instrumented": false
+      }
+    }
+  },
+  "fixture_receipts": [
+    {
+      "profile": "regular",
+      "version": "2.14.7",
+      "receipt_sha256": "ff4d374e587c3508ab8b5dbbe4cf70d1b57c54d6b537ecb249296615ef2555e2",
+      "archive_sha256": "e5c20b1cb2c0566b54c544312e91e011f9e130c5c80f16a14f4cf28ef30b8be2",
+      "broker_binary_sha256": "667bfa7d71ac190ab745e00bd1f9a037338b719b3293cda25bd44aef24b457fa",
+      "broker_log_sha256": {
+        "node-0.log": "1f8e04f85db7527b45eb6bcbe963b579bc9f0f6fc634ae1f6da1607850c8be44",
+        "node-1.log": "c0e74c3eb4c7619a2be19de3ad439296283642d7c1e6051254eb57ca1757f1c6",
+        "node-2.log": "ff8d9298d2d2e8054c80ab4df235f50e556c8bcedce0753d0851bd991b9a09bc"
+      },
+      "brokers": 3,
+      "proxies": 2,
+      "ready": true,
+      "cleanup_passed": true,
+      "credentials_removed": true,
+      "sockets_absent": true,
+      "credential_paths_independently_absent": 6,
+      "listener_addresses_independently_absent": 11,
+      "all_brokers_reaped": true,
+      "all_broker_groups_absent": true,
+      "forced_kills": 0,
+      "all_proxy_listeners_joined": true,
+      "all_proxy_connections_joined": true
+    },
+    {
+      "profile": "regular",
+      "version": "2.15.0",
+      "receipt_sha256": "b1992787d339f514804fc4b3a4c342943d502fe8ebfb3158b872c8f841c310f6",
+      "archive_sha256": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+      "broker_binary_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+      "broker_log_sha256": {
+        "node-0.log": "b367b1350aadfe124b90d230e59d961231268f47a2eacb25f3a7791c50ea642d",
+        "node-1.log": "b56e086a71db7502c3531d3c532859895bff9f1124a99ad846b8442fd092a16b",
+        "node-2.log": "e56b74a4d6fd2a250006a9a18a28b60f91daf1841bec8f90ef5362a1f6e2d594"
+      },
+      "brokers": 3,
+      "proxies": 2,
+      "ready": true,
+      "cleanup_passed": true,
+      "credentials_removed": true,
+      "sockets_absent": true,
+      "credential_paths_independently_absent": 6,
+      "listener_addresses_independently_absent": 11,
+      "all_brokers_reaped": true,
+      "all_broker_groups_absent": true,
+      "forced_kills": 0,
+      "all_proxy_listeners_joined": true,
+      "all_proxy_connections_joined": true
+    },
+    {
+      "profile": "race",
+      "version": "2.14.7",
+      "receipt_sha256": "04b2c19201ed6a586444d75f3b19240df19e3a60f52934ee0b2094242c193d5b",
+      "archive_sha256": "e5c20b1cb2c0566b54c544312e91e011f9e130c5c80f16a14f4cf28ef30b8be2",
+      "broker_binary_sha256": "667bfa7d71ac190ab745e00bd1f9a037338b719b3293cda25bd44aef24b457fa",
+      "broker_log_sha256": {
+        "node-0.log": "da4d67d720e06c62e7254a6cab2f576a6134daa6797b99750ddc4d8f09a1e119",
+        "node-1.log": "d9b81798a9df53d60b4c439b9b7226ab8790d9a069b6b4bb38480ab222ca11ee",
+        "node-2.log": "23dc6746bbbb5ef1c0de367bc3daa528c2a26f22e57c52a40f64a4c1b9fd1770"
+      },
+      "brokers": 3,
+      "proxies": 2,
+      "ready": true,
+      "cleanup_passed": true,
+      "credentials_removed": true,
+      "sockets_absent": true,
+      "credential_paths_independently_absent": 6,
+      "listener_addresses_independently_absent": 11,
+      "all_brokers_reaped": true,
+      "all_broker_groups_absent": true,
+      "forced_kills": 0,
+      "all_proxy_listeners_joined": true,
+      "all_proxy_connections_joined": true
+    },
+    {
+      "profile": "race",
+      "version": "2.15.0",
+      "receipt_sha256": "b74e9f0c2d266761f15970a52fd626f26f806689d0df45c41171c11ec1cc0173",
+      "archive_sha256": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92",
+      "broker_binary_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+      "broker_log_sha256": {
+        "node-0.log": "6e735758a69010f74f3f782ef03822d399164fa28030aa4399540fd03784fbf4",
+        "node-1.log": "bdcee6349901529c71e588c943b848fde030ac335206235991a097230ba12d69",
+        "node-2.log": "4a583e15a8c4be39e6a900f8f38f1cd5ea5b1cfc09a7795f2654dd1cc71dc8de"
+      },
+      "brokers": 3,
+      "proxies": 2,
+      "ready": true,
+      "cleanup_passed": true,
+      "credentials_removed": true,
+      "sockets_absent": true,
+      "credential_paths_independently_absent": 6,
+      "listener_addresses_independently_absent": 11,
+      "all_brokers_reaped": true,
+      "all_broker_groups_absent": true,
+      "forced_kills": 0,
+      "all_proxy_listeners_joined": true,
+      "all_proxy_connections_joined": true
+    }
+  ],
+  "cli_binary_sha256": "04d6cf38d8b9ad7e93ccad8fddb936261f092e8a7eba30199c7d2917554a4f49",
+  "cli_build_metadata_sha256": "632e3db806972e726f2c494b57a21e6c235812e8b6a8d6547f506e50ea121fc3",
+  "broker_archive_sha256": {
+    "before": {
+      "2.14.7": "e5c20b1cb2c0566b54c544312e91e011f9e130c5c80f16a14f4cf28ef30b8be2",
+      "2.15.0": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92"
+    },
+    "after": {
+      "2.14.7": "e5c20b1cb2c0566b54c544312e91e011f9e130c5c80f16a14f4cf28ef30b8be2",
+      "2.15.0": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92"
+    }
+  },
+  "toolchain": {
+    "go": "go version go1.26.8 linux/amd64",
+    "selected_tools_sha256": {
+      "go": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+      "compile": "ef107d98e82bd89096c64a50dbe0ddbaba3c898880616376835416bbb69ae21b",
+      "link": "6d7bee86e8d035f4220a4be15e85554ef5558267d58bdba5efdcb0bd63681924",
+      "asm": "28bab01b519bb3c6089c0b12d5bd7894c282ef271c05b4e1dbaa3e83e26df52f",
+      "vet": "332f2354d95c1fc029be66d7e37288528047f3451914636139163e51aee00124",
+      "cgo": "55b62c0f62c5b65ff399e77d3441a87281b0968ff024ca3e2d459179f23f7ace",
+      "test2json": "a1dcebc6f4fa3377049b0b55582afd4e179cadb4d1f4b98e2278498e7d8bdb63",
+      "x86_64-linux-gnu-gcc-12": "75e997ec62297a6484f491bae28ab0ccb489daba23e398fd10fe68e9e6f0def8",
+      "x86_64-linux-gnu-g++-12": "dd91977c184e327710578363ad93ebb175c3a457b6236b874fd3911b7c055c65",
+      "cc1": "18a3506428fe238a6c14c9a39251a11c7203245d632df40ddb8e9d3bf2d387d8",
+      "x86_64-linux-gnu-as": "41fe4f5a03389ea5cf7c92d6753fa1ecc69b45b12534fd8713c53bba0e2d7e17",
+      "x86_64-linux-gnu-ld.bfd": "f6d71a1bcd45764550a42dfaa179bc43b63ee879ec6f875bfd39fca013515da7",
+      "collect2": "06c070d6b746da665041ea6f2e7d30faf9ef4e1f87cb9c932f963953e32aeec2",
+      "cc1plus": "323f308b79cab3005857c1f3a103fd690eb1e8f044159929bad4e8526daee2bf"
+    },
+    "offline_dependencies": true
+  },
+  "configured_limits": {
+    "cpu_percent": 200,
+    "memory_bytes": 8589934592,
+    "swap_bytes": 0,
+    "tasks": 512,
+    "service_seconds": 2700,
+    "stop_seconds": 30,
+    "per_file_bytes": 2147483648,
+    "minimum_sampled_free_disk_bytes": 12884901888,
+    "sampling_interval_seconds": 0.5
+  },
+  "measured": {
+    "peak_sampled_memory_bytes": 1973399552,
+    "peak_sampled_tasks": 38,
+    "minimum_sampled_free_disk_bytes": 121564528640,
+    "sample_count": 551,
+    "max_sample_gap_seconds": 0.5008889370365068,
+    "memory_events_before": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+    "memory_events_after": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+  },
+  "cleanup": {
+    "cleanup_verified": true,
+    "unit_absent": true,
+    "cgroup_absent": true,
+    "original_runner_absent": true,
+    "original_stages_absent": true,
+    "forced_interruption": false
+  },
+  "review_problem_codes": [],
+  "hashes": {
+    "plan": "af83fa332845b644a646e4146fc50d0a73cc561a5b60f09270716e4e705313ac",
+    "source_archive": "e072029f0720c8963e75c9fcf5f0969ea40c9fe5a91e99dacaff80566d9ed5fc",
+    "source_manifest": "8b5a6d2d45a51fa59d1fd384ca91417a65691cd739765395ae90e0e442653e0a",
+    "requirements": "feec840864c8112f6bd44f6b1e1e2332ddbeec834b5f858b1b2207f4ec109b71",
+    "collection": "187bf151395c9dd9ba3e8ac97a90cd8a6d1e10fd00fe13a1d83197e013423cdb",
+    "automated_review": "15a5dac2c4ee54ca616b792b03eafd17c4a280e0b8b07cf2135c7df6c1f3b149",
+    "manual_review": "e10d20194d0c44ff559adb745907ac28b512cf40be84a0d5a6f083a76769a05d",
+    "fresh_completion_readback": "4c5f338472c558562fe74a01b7c323dc5d20acf27fa2f0c9631187dec664c414",
+    "validation_report": "a2ac99b8f742ce01797d43bffe6950e7271ef14072bb2157e3cee853af77f038",
+    "reviewed_helpers": {
+      "vm_runner.py": "59a0e62a99780da10c330c0d318224f86b1184f0932279658040f12b2073e8d7",
+      "packet.py": "8f74890c3089cbdd5ae6b1c33da2ca75e2032c4312775e5389553d32032cd39e",
+      "collect.py": "d9463a645d6cd0b30ffd0b936148a33eaaf6dbc9e3b2ae85b39d94f8eea05cad",
+      "review_result.py": "e440ceec93f13fcdfc6cfc53edb805cd98de4e36e9140ada9e15c8fc45f9b0d8",
+      "prepare_requirements.py": "eecff4d11f8088aa1d89bd8182364655efad5e252721888e271b2ecd95729f8b",
+      "tools-pinned.json": "3d31173232fc26256c58de6c853139b2ead08415fd714edfbe834b22b7f91ae9"
+    }
+  },
+  "limits": [
+    "The race profile instruments gateway and fixture-helper code; pinned external NATS release binaries are not race-instrumented.",
+    "Job stores and upstream Arrow responses are fixtures; source-query execution, sandboxed workers, exports and downloads require separate acceptance.",
+    "Ordinary fixture exclusions remain excluded; structural-parent PASS does not validate skipped children.",
+    "No global retired-token ledger, automatic enrollment, simultaneous broker/local-state rollback protection or atomic export-revocation claim.",
+    "Resource samples include builds and tests; they do not measure deployment footprint or throughput.",
+    "Selected executable hashes do not exhaustively attest compiler libraries or shared module-cache contents."
+  ]
+}
