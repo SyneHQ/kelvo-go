@@ -649,7 +649,7 @@ class ContainmentControls(unittest.TestCase):
 
     def test_unowned_service_fails_with_retained_missing_gate_report(self):
         with tempfile.TemporaryDirectory() as temporary:
-            args = SimpleNamespace(artifact=temporary, unit="kelvo-containment-testfixture", protected_objects=False)
+            args = SimpleNamespace(artifact=temporary, unit="kelvo-containment-testfixture", protected_objects=False, protected_queries=False)
             with mock.patch.object(Path, "read_text", return_value="0::/user.slice/unrelated.service\n"), \
                     mock.patch.object(fixture, "run") as run:
                 self.assertEqual(fixture.inside(args), 1)
@@ -660,7 +660,7 @@ class ContainmentControls(unittest.TestCase):
 
     def test_unowned_protected_service_retains_its_required_gate_and_mode(self):
         with tempfile.TemporaryDirectory() as temporary:
-            args = SimpleNamespace(artifact=temporary, unit="kelvo-containment-testfixture", protected_objects=True)
+            args = SimpleNamespace(artifact=temporary, unit="kelvo-containment-testfixture", protected_objects=True, protected_queries=False)
             with mock.patch.object(Path, "read_text", return_value="0::/user.slice/unrelated.service\n"), \
                     mock.patch.object(fixture, "run") as run:
                 self.assertEqual(fixture.inside(args), 1)
