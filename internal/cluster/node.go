@@ -71,7 +71,12 @@ func NewNode(cfg NodeConfig, store Store, executor *worker.Executor) (*Node, err
 	if runtime.GOOS != "linux" || executor == nil || executor.SandboxPath == "" {
 		return nil, errors.New("cluster nodes require the Linux sandbox launcher")
 	}
-	executor, err := bindCatalogExecutor(cfg.Policy, executor)
+	policy, err := clonePolicy(cfg.Policy)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Policy = policy
+	executor, err = bindCatalogExecutor(cfg.Policy, executor)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +93,11 @@ func NewNode(cfg NodeConfig, store Store, executor *worker.Executor) (*Node, err
 }
 
 func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error) {
+	policy, err := clonePolicy(cfg.Policy)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Policy = policy
 	if err := validateNodeAudit(cfg); err != nil {
 		return nil, err
 	}
