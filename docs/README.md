@@ -20,6 +20,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Store larger generations | [Multipart snapshots](multipart-acceleration.md) |
 | Allow schema changes | [Schema evolution](schema-evolution.md) |
 | Use S3, R2, GCS or Azure Blob | [Object storage](object-storage.md) · [Protected readers](protected-object-readers.md) · [Writer shutdown](object-writer-shutdown.md) |
+| Verify protected snapshots | [Budgets and inventory](protected-verification.md) |
 | Back up or migrate snapshots | [Backup and recovery](snapshot-backup.md) |
 | Restore or reset failed refreshes | [Generation restore](acceleration.md#schema-contracts-and-generation-recovery) · [Refresh recovery](operations.md#source-refresh-failures-and-recovery) |
 
