@@ -21,7 +21,6 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
-	"go.yaml.in/yaml/v3"
 )
 
 type refreshOptions struct {
@@ -101,15 +100,17 @@ func runAcceleration(args []string) (resultErr error) {
 	if args[0] == "backup" && c.Acceleration != nil && c.Acceleration.ObjectStorage != nil {
 		return query.NewError("UNSUPPORTED", "Snapshot backup requires local acceleration storage")
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	objectRuntime, runtimeErr := acceleration.OpenObjectRuntime(c)
+	var closeManager func() error
+	var closeRuntime func(context.Context) error
+	var publish func() error
+	if objectRuntime != nil {
+		closeRuntime = objectRuntime.Close
+	}
 	defer func() {
-		if objectRuntime != nil {
-			cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := objectRuntime.Close(cleanup); err != nil {
-				resultErr = errors.Join(resultErr, query.NewError("UNAVAILABLE", "Protected object runtime shutdown remains uncertain"))
-			}
-		}
+		resultErr = finishAccelerationCommand(ctx, resultErr, closeManager, closeRuntime, publish)
 	}()
 	if runtimeErr != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Protected object runtime is unavailable")
@@ -118,9 +119,7 @@ func runAcceleration(args []string) (resultErr error) {
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Acceleration store cannot be opened")
 	}
-	defer m.Close()
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	closeManager = m.Close
 	if args[0] == "watch" {
 		err := m.Run(ctx, func(id string, err error) { fmt.Fprintln(os.Stderr, "Dataset "+id+": "+query.PublicError(err).Message) })
 		if errors.Is(err, context.Canceled) {
@@ -137,17 +136,21 @@ func runAcceleration(args []string) (resultErr error) {
 			// Even a populated snapshot cannot certify uncertain durability.
 			return backupCLIError(snapshot, err)
 		}
-		return yaml.NewEncoder(os.Stdout).Encode(struct {
-			Verified bool                  `yaml:"verified"`
-			Snapshot acceleration.Snapshot `yaml:"snapshot"`
-		}{true, snapshot})
+		publish = func() error {
+			return encodeAccelerationResult(os.Stdout, struct {
+				Verified bool                  `yaml:"verified"`
+				Snapshot acceleration.Snapshot `yaml:"snapshot"`
+			}{true, snapshot})
+		}
+		return nil
 	}
 	if args[0] == "inventory" {
 		generations, err := m.Inventory(ctx, *id)
 		if err != nil {
 			return err
 		}
-		return yaml.NewEncoder(os.Stdout).Encode(generations)
+		publish = func() error { return encodeAccelerationResult(os.Stdout, generations) }
+		return nil
 	}
 	var snapshot acceleration.Snapshot
 	if args[0] == "verify" {
@@ -168,10 +171,13 @@ func runAcceleration(args []string) (resultErr error) {
 	}
 	d, _ := c.Dataset(*id)
 	fingerprint, _ := c.DatasetFingerprint(*id)
-	return yaml.NewEncoder(os.Stdout).Encode(struct {
-		Ready    bool                  `yaml:"ready"`
-		Snapshot acceleration.Snapshot `yaml:"snapshot"`
-	}{snapshot.Fingerprint == fingerprint && snapshot.Age() <= d.MaxAge, snapshot})
+	publish = func() error {
+		return encodeAccelerationResult(os.Stdout, struct {
+			Ready    bool                  `yaml:"ready"`
+			Snapshot acceleration.Snapshot `yaml:"snapshot"`
+		}{snapshot.Fingerprint == fingerprint && snapshot.Age() <= d.MaxAge, snapshot})
+	}
+	return nil
 }
 
 // Put the sanitized operator message first so PublicError cannot select a raw
