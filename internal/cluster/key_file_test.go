@@ -2,6 +2,7 @@
 package cluster
 
 import (
+	"crypto/sha256"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,6 +70,55 @@ func TestGatewayKeyDocumentBoundedExactTenantPolicy(t *testing.T) {
 				t.Fatal("invalid private key document accepted", err)
 			}
 		})
+	}
+}
+
+func TestGatewayKeyDocumentPreservesVersionProvenance(t *testing.T) {
+	tenants := map[string]bool{"a": true, "b": true}
+	for _, tc := range []struct {
+		name                      string
+		document                  gatewayKeyDocument
+		activeKeys, principalKeys int
+		principal                 string
+	}{
+		{"tenant keys", gatewayKeyDocument{Version: 1, Revision: 7, Tenants: map[string][]string{"a": {rotationOld}, "b": {}}}, 1, 0, ""},
+		{"disabled tenant keys", gatewayKeyDocument{Version: 1, Revision: 7, Tenants: map[string][]string{"a": {}, "b": {}}}, 0, 0, ""},
+		{"principal keys", gatewayKeyDocument{Version: 2, Revision: 7, Principals: map[string]map[string][]string{"a": {"analyst": {rotationOld}}, "b": {}}}, 1, 1, "analyst"},
+		{"disabled principal keys", gatewayKeyDocument{Version: 2, Revision: 7, Principals: map[string]map[string][]string{"a": {"analyst": {}}, "b": {}}}, 0, 0, ""},
+		{"empty principal maps", gatewayKeyDocument{Version: 2, Revision: 7, Principals: map[string]map[string][]string{"a": {}, "b": {}}}, 0, 0, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := yaml.Marshal(tc.document)
+			if err != nil {
+				t.Fatal(err)
+			}
+			set, err := parseGatewayKeys(raw, tenants, 7)
+			if err != nil || set.version != tc.document.Version || set.revision != 7 || set.digest != sha256.Sum256(raw) {
+				t.Fatal("key document lost its original version, revision or digest", err)
+			}
+			if len(set.keys) != tc.activeKeys || len(set.principals) != tc.principalKeys {
+				t.Fatal("version provenance changed parsed key ownership")
+			}
+			if tc.activeKeys != 0 {
+				key := sha256.Sum256([]byte(rotationOld))
+				if set.keys[key] != "a" || set.principals[key] != tc.principal {
+					t.Fatal("parsed key owner changed")
+				}
+			}
+		})
+	}
+}
+
+func TestGatewayRejectedKeyDocumentHasNoVersionProvenance(t *testing.T) {
+	for _, raw := range []string{
+		"version: 3\nrevision: 7\nprincipals: {a: {}, b: {}}\n",
+		"version: 2\nrevision: 7\nprincipals: {a: null, b: {}}\n",
+		"version: 2\nrevision: 7\nprincipals: {a: {}, b: {}}\ntenants: {a: [], b: []}\n",
+	} {
+		set, err := parseGatewayKeys([]byte(raw), map[string]bool{"a": true, "b": true}, 7)
+		if err != errGatewayAuthUnavailable || set.version != 0 || set.revision != 0 || set.digest != ([32]byte{}) || set.keys != nil || set.principals != nil {
+			t.Fatal("rejected document retained usable provenance or key data", err)
+		}
 	}
 }
 

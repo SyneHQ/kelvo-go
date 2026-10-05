@@ -72,6 +72,7 @@ func validateGatewayAuthentication(c *GatewayConfig) error {
 }
 
 type gatewayKeySet struct {
+	version    int // Preserve provenance even when every configured key is disabled.
 	revision   uint64
 	digest     [32]byte
 	keys       map[[32]byte]string
@@ -119,7 +120,7 @@ func parseGatewayKeys(raw []byte, tenants map[string]bool, minimum uint64) (gate
 	if decoder.Decode(&document) != nil || decoder.Decode(new(any)) != io.EOF || (document.Version != 1 && document.Version != 2) || document.Revision == 0 || document.Revision < minimum {
 		return bad()
 	}
-	result := gatewayKeySet{revision: document.Revision, digest: sha256.Sum256(raw), keys: make(map[[32]byte]string), principals: make(map[[32]byte]string)}
+	result := gatewayKeySet{version: document.Version, revision: document.Revision, digest: sha256.Sum256(raw), keys: make(map[[32]byte]string), principals: make(map[[32]byte]string)}
 	if document.Version == 2 {
 		return parsePrincipalKeys(document, tenants, result)
 	}
