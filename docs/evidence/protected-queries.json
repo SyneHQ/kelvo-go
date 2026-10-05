@@ -16,6 +16,20 @@
     "go_mod_sha256": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
     "go_sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
   },
+  "hosted_ci_correction": {
+    "failed_run": "https://github.com/SYNEHQ/kelvo-go/actions/runs/37263436405",
+    "failed_head": "54144d3147d84ca9e5f9ff514e5899930cadc944",
+    "failure": "An older export-fixture assertion expected three broker prefixes; the new query fixture makes four. Later federation gates did not run in this attempt.",
+    "failed_job_log_sha256": "72975b8fc70a0b7193c6caf256659e93ee06ec6cea39b561210a57b633d5be6f",
+    "corrected_file": "scripts/test_nats_export_permissions.py",
+    "corrected_file_sha256": "55e7a3606a655adfde6ce062bcbd59eb72564821e32cd9c20c60c4e9cb6625b7",
+    "vm_controls_passed": {"export_permissions": 12, "export_diagnostics": 6, "query_broker": 19},
+    "independent_review_sha256": "a9010258c15916c645440fec22e886340346e3cd467d310183190dd1eb73ecc7",
+    "scope": "Only the corrected Python controls were rerun on the VM. The 11-stage implementation result above remains at its recorded revision.",
+    "limits": {"cpus": 1, "memory_bytes": 536870912, "tasks": 64, "runtime_seconds": 120, "swap_bytes": 0},
+    "source_unchanged": true,
+    "unit_cgroup_original_pid_and_temporary_scratch_removed": true
+  },
   "toolchain": {
     "go": "go version go1.26.8 linux/amd64",
     "duckdb": "v1.5.6",
