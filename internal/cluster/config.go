@@ -48,6 +48,9 @@ func LoadGateway(path string) (GatewayConfig, error) {
 	}
 	if c.Authentication != nil {
 		c.Authentication.KeysFile = relativePath(base, c.Authentication.KeysFile)
+		if c.Authentication.Authority != nil {
+			resolveNATS(base, &c.Authentication.Authority.NATS)
+		}
 	}
 	if err := validateGatewayAuthentication(&c); err != nil {
 		return c, err

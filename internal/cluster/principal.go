@@ -24,6 +24,7 @@ type PrincipalPolicy struct {
 	Revision       uint64                    `json:"revision" yaml:"revision"`
 	Principals     map[string]PrincipalGrant `json:"principals" yaml:"principals"`
 	CatalogBinding *CatalogBinding           `json:"catalog_binding,omitempty" yaml:"catalog_binding,omitempty"`
+	KeyAuthority   *KeyAuthorityBinding      `json:"key_authority,omitempty" yaml:"key_authority,omitempty"`
 }
 
 type PrincipalGrant struct {
@@ -55,7 +56,7 @@ func validatePrincipalPolicy(p *PrincipalPolicy) error {
 		return nil
 	}
 	bad := errors.New("invalid principal source policy")
-	if !validCatalogBinding(p.CatalogBinding) {
+	if !validCatalogBinding(p.CatalogBinding) || !validKeyAuthorityBinding(p.KeyAuthority) {
 		return bad
 	}
 	if p.Revision == 0 || len(p.Principals) == 0 || len(p.Principals) > 64 {

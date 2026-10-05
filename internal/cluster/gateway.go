@@ -70,6 +70,10 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 	if err := validateGatewayAuthentication(&cfg); err != nil {
 		return nil, err
 	}
+	authority, err := bindGatewayKeyAuthority(cfg)
+	if err != nil {
+		return nil, err
+	}
 	gctx, cancel := context.WithCancel(context.Background())
 	g := &Gateway{tenants: map[string]gatewayTenant{}, tokens: map[[32]byte]string{}, permits: make(chan struct{}, cfg.MaxHTTPRequests), resultWaiters: make(chan struct{}, cfg.MaxHTTPRequests), ctx: gctx, cancel: cancel, reconcileOK: map[string]bool{}}
 	if cfg.WorkerTLS.IdentityFile != "" {
@@ -172,7 +176,7 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 			identities[tenant] = true
 		}
 		var err error
-		g.auth, err = newGatewayAuthenticator(*cfg.Authentication, identities, nil)
+		g.auth, err = newGatewayAuthenticatorWithAuthority(*cfg.Authentication, identities, nil, openGatewayAuthState, authority)
 		if err != nil {
 			cancel()
 			for _, tenant := range g.tenants {
