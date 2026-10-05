@@ -482,6 +482,7 @@ func (backend *objectBackend) Prune(ctx context.Context, dataset string, keep in
 }
 
 type objectTransaction struct {
+	pointer         *pointerWriterState
 	readerReference *readerlease.Reference
 	schemaHash      string
 	finishMu        sync.Mutex
@@ -552,49 +553,10 @@ func (backend *objectBackend) Begin(ctx context.Context, dataset string) (Refres
 		}
 		tx.readerReference = &ref
 	}
-	for {
-		if err := context.Cause(tx.ctx); err != nil {
-			return nil, err
-		}
-		state, err := backend.readState(tx.ctx, dataset, client)
-		if err != nil && !errors.Is(err, ErrNotFound) {
-			return nil, err
-		}
-		if writer := state.manifest.Writer; writer != nil && writer.ExpiresAt.After(state.now()) {
-			wait := min(backend.pollInterval, writer.ExpiresAt.Sub(state.now()))
-			if wait <= 0 {
-				continue
-			}
-			timer := time.NewTimer(wait)
-			select {
-			case <-tx.ctx.Done():
-				timer.Stop()
-				return nil, context.Cause(tx.ctx)
-			case <-timer.C:
-			}
-			continue
-		}
-		manifest := state.manifest
-		manifest.Writer = tx.writerLease(state.now().Add(backend.leaseDuration))
-		// A transport failure might still have acquired the lease. Cleanup checks
-		// this owner before clearing anything, including an ambiguous first claim.
-		tx.owned = true
-		tx.state, err = backend.writeState(tx.ctx, client, state, manifest)
-		if errors.Is(err, objectstore.ErrConflict) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		// Normalize against the successful claim's server clock before extraction.
-		if err := tx.renew(tx.ctx); err != nil {
-			return nil, err
-		}
-		break
+	if err := tx.claimWriter(client, true); err != nil {
+		return nil, err
 	}
-	renewCtx, stop := context.WithCancel(tx.ctx)
-	tx.stopRenew, tx.renewDone = stop, make(chan struct{})
-	go tx.renewLoop(renewCtx)
+	tx.startRenewal()
 	if tx.readerReference != nil {
 		if err := backend.runtime.registry.Stage(tx.ctx, *tx.readerReference, tx.owner); err != nil {
 			return nil, err
@@ -605,6 +567,58 @@ func (backend *objectBackend) Begin(ctx context.Context, dataset string) (Refres
 	}
 	success = true
 	return tx, nil
+}
+
+// claimWriter shares the refresh writer fence without choosing a staging mode.
+// Restore requires an existing root and meters its metadata reader separately.
+func (tx *objectTransaction) claimWriter(reader objectstore.Client, allowMissing bool) error {
+	for {
+		if err := context.Cause(tx.ctx); err != nil {
+			return err
+		}
+		state, err := tx.backend.readState(tx.ctx, tx.dataset, reader)
+		if err != nil && (!allowMissing || !errors.Is(err, ErrNotFound)) {
+			return err
+		}
+		if writer := state.manifest.Writer; writer != nil && writer.ExpiresAt.After(state.now()) {
+			wait := min(tx.backend.pollInterval, writer.ExpiresAt.Sub(state.now()))
+			if wait <= 0 {
+				continue
+			}
+			timer := time.NewTimer(wait)
+			select {
+			case <-tx.ctx.Done():
+				timer.Stop()
+				return context.Cause(tx.ctx)
+			case <-timer.C:
+			}
+			continue
+		}
+		manifest := state.manifest
+		manifest.Writer = tx.writerLease(state.now().Add(tx.backend.leaseDuration))
+		// A transport failure might still have acquired the lease. Cleanup checks
+		// this owner before clearing anything, including an ambiguous first claim.
+		tx.owned = true
+		tx.state, err = tx.backend.writeState(tx.ctx, tx.client, state, manifest)
+		if errors.Is(err, objectstore.ErrConflict) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		// Normalize against the successful claim's server clock before extraction.
+		if err := tx.renew(tx.ctx); err != nil {
+			return err
+		}
+		break
+	}
+	return nil
+}
+
+func (tx *objectTransaction) startRenewal() {
+	renewCtx, stop := context.WithCancel(tx.ctx)
+	tx.stopRenew, tx.renewDone = stop, make(chan struct{})
+	go tx.renewLoop(renewCtx)
 }
 
 func (tx *objectTransaction) Context() context.Context { return tx.ctx }
