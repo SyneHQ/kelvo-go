@@ -28,7 +28,7 @@ ACCEPTANCE_TESTS = {
     "dispatch": "TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
 }
 FIXTURE_PREFIXES = {"acl": "KELVO_TEST_EXPORT_ACL", "lifecycle": "KELVO_TEST_EXPORT_E2E_NATS",
-                    "dispatch": "KELVO_TEST_EXPORT_DISPATCH_NATS"}
+                    "dispatch": "KELVO_TEST_EXPORT_DISPATCH_NATS", "query": "KELVO_TEST_QUERY_NATS"}
 SCOPES = {
     "acl": "single broker; exact runtime and initializer ACLs in two separate tenant accounts",
     "lifecycle": "single broker; actual sandboxed worker and gateway lifecycle using separate restricted broker roles",
@@ -50,9 +50,10 @@ class ExportBrokerFixture:
         self.binary = Path(binary).absolute()
         self.binary_sha256, self.version = binary_sha256, version
         self.process, self.log = None, None
+        self.forced_kill = False
         self.environment = {}
         self.created = False
-        if mode not in ACCEPTANCE_TESTS:
+        if mode not in (*ACCEPTANCE_TESTS, "query"):
             raise ValueError("unknown export broker acceptance mode")
         self.mode = mode
 
@@ -92,16 +93,18 @@ class ExportBrokerFixture:
             reservation.bind(("127.0.0.1", 0))
             port = reservation.getsockname()[1]
         accounts = {}
-        for tenant in (("a", "b") if self.mode == "acl" else ("a",)):
+        for tenant in (("a", "b") if self.mode in ("acl", "query") else ("a",)):
             users = []
-            roles = [("initializer", True), ("gateway", True), ("worker", True)]
+            roles = [(role, self.mode != "query") for role in ("initializer", "gateway", "worker")]
             if self.mode == "acl":
                 roles.append(("gateway", False))
             for role, exports in roles:
-                label = role if exports else "base"
+                label = role if exports or self.mode == "query" else "base"
                 user, password = tenant + "-" + label, secrets.token_hex(32)
                 prefix = ("KELVO_TEST_EXPORT_ACL_" + tenant.upper() + "_" + label.upper() if self.mode == "acl" else
                           FIXTURE_PREFIXES[self.mode] + ("" if role == "initializer" else "_" + role.upper()))
+                if self.mode == "query":
+                    prefix = FIXTURE_PREFIXES[self.mode] + "_" + tenant.upper() + "_" + role.upper()
                 self.environment[prefix + "_USER"] = user
                 self.environment[prefix + "_PASSWORD"] = password
                 users.append({"user": user, "password": password, "permissions": tenant_permissions(role, exports)})
@@ -110,6 +113,9 @@ class ExportBrokerFixture:
         config = {"host": "127.0.0.1", "port": port, "accounts": accounts,
                   "jetstream": {"store_dir": str(self.directory / "state"), "max_mem_store": 32 << 20, "max_file_store": 128 << 20},
                   "tls": {"cert_file": str(cert), "key_file": str(key), "min_version": "1.3", "timeout": 2}}
+        if self.mode == "query":
+            config.update(max_payload=1 << 20, max_connections=32, max_subscriptions=256,
+                          max_pending=4 << 20, debug=False, trace=False)
         config_path = self.directory / "broker.conf"
         config_path.write_text(json.dumps(config, indent=2) + "\n")
         prefix = FIXTURE_PREFIXES[self.mode]
@@ -117,6 +123,7 @@ class ExportBrokerFixture:
         (self.directory / "environment.json").write_text(json.dumps(self.environment, indent=2) + "\n")
         self.log = (self.directory / "broker.log").open("w")
         self.process = subprocess.Popen([str(self.binary), "-c", str(config_path)], stdout=self.log, stderr=subprocess.STDOUT)
+        self.record_start()
         deadline = time.monotonic() + 10
         try:
             while True:
@@ -132,12 +139,16 @@ class ExportBrokerFixture:
             raise
         return self
 
+    def record_start(self):
+        """A contained fixture may retain process identity before readiness."""
+
     def close(self):
         if self.process is not None and self.process.poll() is None:
             self.process.terminate()
             try:
                 self.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
+                self.forced_kill = True
                 self.process.kill()
                 self.process.wait(timeout=5)
         if self.log is not None:
