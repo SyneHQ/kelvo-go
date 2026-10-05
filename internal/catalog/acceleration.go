@@ -39,8 +39,23 @@ type SchemaEvolution struct {
 	SafeWidening       bool `json:"safe_widening" yaml:"safe_widening"`
 }
 
+// VerificationLimits bounds one protected verification operation, including
+// metadata, payload checksums and repeated footer reads across retained history.
+// It does not change snapshot identity or grant an unbounded history scan.
+type VerificationLimits struct {
+	MaxBytes int64 `json:"max_bytes" yaml:"max_bytes"`
+}
+
+func (v VerificationLimits) Validate() error {
+	if v.MaxBytes < 1 || v.MaxBytes > 1<<45 {
+		return errors.New("verification max_bytes must be between 1 byte and 32 TiB")
+	}
+	return nil
+}
+
 type Dataset struct {
 	Scan                 *SnapshotScanLimits `json:"scan,omitempty" yaml:"scan,omitempty"`
+	Verification         *VerificationLimits `json:"verification,omitempty" yaml:"verification,omitempty"`
 	SchemaEvolution      *SchemaEvolution    `json:"schema_evolution,omitempty" yaml:"schema_evolution,omitempty"`
 	Multipart            *MultipartConfig    `json:"multipart,omitempty" yaml:"multipart,omitempty"`
 	ID                   string              `json:"id" yaml:"id"`
@@ -49,6 +64,40 @@ type Dataset struct {
 	MaxAge               time.Duration       `json:"max_age" yaml:"max_age"`
 	AuthorizationVersion string              `json:"authorization_version" yaml:"authorization_version"`
 	Limits               query.Limits        `json:"limits" yaml:"limits"`
+}
+
+// EffectiveVerificationLimits deliberately supplies no default. Operators must
+// opt in to an aggregate allowance before Verify or Inventory reads any objects.
+func (d Dataset) EffectiveVerificationLimits() (VerificationLimits, error) {
+	if d.Verification == nil {
+		return VerificationLimits{}, query.NewError("CONFIGURATION_ERROR", "Protected verification requires explicit verification.max_bytes")
+	}
+	limits := *d.Verification
+	if err := limits.Validate(); err != nil {
+		return VerificationLimits{}, query.NewError("CONFIGURATION_ERROR", err.Error())
+	}
+	return limits, nil
+}
+
+func (a AccelerationConfig) validateVerification(d Dataset) error {
+	if d.Verification == nil {
+		return nil
+	}
+	if a.ObjectStorage == nil || a.ObjectStorage.ReaderRegistry == nil {
+		return errors.New("verification limits require protected object storage")
+	}
+	return d.Verification.Validate()
+}
+
+// ValidateVerification also protects programmatic constructors that do not load
+// YAML or create a complete catalog authority snapshot.
+func (a AccelerationConfig) ValidateVerification() error {
+	for _, dataset := range a.Datasets {
+		if err := a.validateVerification(dataset); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 var tenantName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
@@ -104,6 +153,9 @@ func (c *Config) validateAcceleration(base string) error {
 	}
 	for i := range a.Datasets {
 		d := &a.Datasets[i]
+		if err := a.validateVerification(*d); err != nil {
+			return err
+		}
 		if !ValidID(d.ID) || seen[d.ID] {
 			return errors.New("dataset IDs must be unique source identifiers")
 		}
