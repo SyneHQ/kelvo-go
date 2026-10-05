@@ -2,7 +2,8 @@
 
 Check current and retained snapshots without querying the source database. Use a
 [protected object namespace](protected-object-readers.md) and explicit read budget.
-Runtime acceptance is tracked in [#119](https://github.com/SYNEHQ/kelvo-go/issues/119).
+[Linux acceptance](evidence/protected-verification.json) passed on `c8e4199`, including
+race checks and Verify/Inventory over the local TLS fixture.
 
 ## Enable
 

@@ -12,6 +12,10 @@ The [first `b1a0ea5` attempt](evidence/node-capacity-b1a0ea5-preflight-refusal.j
 
 ## Protected object snapshots
 
+[Verify/Inventory acceptance](evidence/protected-verification.json) on `c8e4199` passed all ten Linux stages. Each ordinary/race run passed 170 required roots; each native run passed 188, including all 33 new roots. All eight contained TLS cases passed. Optional fixture skips, binary hashes and independent source/cleanup checks are recorded.
+
+Verification covers single-file and descriptor layouts over TLS, with actual multi-part payload checks in the backend suite. No source queries, remote deletion, cloud-provider certification or performance claim. [Configuration and limits](protected-verification.md).
+
 [Linux acceptance](evidence/protected-object-readers.json) on `c8bae34` passed all ten stages: 36 runner controls, ordinary/race/native checks, vet, build and contained execution. All seven protected worker cases passed, including exact CTE results, role separation, cancellation and lease loss after the last batch. Preactivation also passed 27 parser controls and 18 workspace-monitor controls. Source and both-unit cleanup were independently checked; the outer bridge was rehashed and the child bridge has the runner's before/after attestation.
 
 The receipt retains an initial SSH setup denial and two rejected runtime trials: a helper misclassified the expected skip outside a contained service, then Python added a bytecode file to the source tree. The accepted run corrected both harness defects. This TLS fixture uses deterministic Arrow refresh input; it establishes neither cloud IAM/signatures, throughput/footprint nor the full protected gateway/export lifecycle. [Setup and limits](protected-object-readers.md).
