@@ -1,0 +1,385 @@
+{
+  "schema_version": 1,
+  "issue": 125,
+  "organization": "SYNEHQ",
+  "name": "Protected-source export acceptance",
+  "scope": "One disposable Linux node; actual protected snapshots, public gateway, separate tenant broker accounts, contained workers, durable local export parts and repeat downloads.",
+  "accepted": true,
+  "selected_trial": "r3",
+  "independent_final_review": "accepted",
+  "source": {
+    "revision": "dfe788c6a522936e874b1858b968ff6075064b31",
+    "tree": "cf6f9e18df53d0dffe1fe594a57df24464d7311c",
+    "archive_sha256": "670be3251b07cdec1c9f83e45953a59cf6c43de80b65817a005845ddd5830854",
+    "manifest_sha256": "bd226fff2232be5bd7a1b40379d2c0532abe121d735a7963e957a2cbb416043b",
+    "file_count": 1152,
+    "go_mod_sha256": "4fb4a17a36bcbe31cf3d05e81c0e4b91534a2199c5ad571df27c51ac90aade7d",
+    "go_sum_sha256": "e506caa4db0f1aaba2701976b70582a93a2bd3e6229ed9a4ca62b3be12a42dbb"
+  },
+  "toolchain": {
+    "go": "go version go1.26.8 linux/amd64",
+    "duckdb": "v1.5.6",
+    "driver": "v2.10506.0",
+    "module_sum": "h1:mcZjUQ/kSNeZdtGCqyj5/JEDUdj7/kvILfIOUTzQIu0=",
+    "bridge_source_sha256": "1fadcbe9e69e1470f9093b6bcde08daf477d729c449e59a807f45c346622099b",
+    "driver_patch_sha256": "9bbba0992a87c0cf07b41eae9e19a7f369627ea0a3a5d760a0f52a249c726485",
+    "tags": "duckdb_arrow,duckbridge",
+    "nats": "2.15.0",
+    "nats_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+    "offline_dependencies": true
+  },
+  "binary": {
+    "sha256": "cdbb5066294ef7fe4d1a24e91035dfb92bcb1bc29cb13584c21ddaee83b79769",
+    "bytes": 159993280
+  },
+  "containment_binaries_sha256": {
+    "query": {
+      "containment.test": "784c3ef2906164054b48a32aae1f75c7201a020ad7400b754c1f5868383941c7",
+      "worker.test": "d9a68e5bb3c03c5b01cc738ca7bc88763c7f4aa5ec219242238faaa33eae0d59",
+      "startup.test": "08c609f1c69b74339594da0d9e3cc35b89dbaf3517640a598c8e5ba2232d1387",
+      "export.test": "4e73a17b95b432b9a811f2aebdf32faef694fa3d34ec4f3167d44de0be3d8ad9",
+      "kelvo": "45d07287c5a3f097a5610b815960f6f1f2974f5b27ba3633d35f18b98379a21c",
+      "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+      "sandbox-runtime": "d356e26f1a4be434cb0e1ca125eba8c02437bafdb5d6600f6ffb94ad256f457e",
+      "nats-server": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341"
+    },
+    "export": {
+      "containment.test": "6c48887ec42fbc17b0666fd82c61aa1f22c6cb51f4e199e27f16e9b2d8ac82e4",
+      "worker.test": "c796b5dd3974cbee9254f2bb89c9cd7ba8c010708ce4052b159a6a8e0ac15958",
+      "startup.test": "d0159e00a9d43b3c0c1e687e52a06bda4d05c0607696c3312e438e71625a2221",
+      "export.test": "7d3d79696f0642053cbb161b2efc545688f3138e136e4bc2963f365e19fbef07",
+      "kelvo": "5d6b564e43464676f5e25d3c52ab8b85b809e7e50f200b86ac7bfd058937cfec",
+      "kelvo-landlock": "4df0e390ae250806a3830dd335c3d333bfc34034796f354c7f48e6954541431c",
+      "sandbox-runtime": "d356e26f1a4be434cb0e1ca125eba8c02437bafdb5d6600f6ffb94ad256f457e",
+      "nats-server": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341"
+    }
+  },
+  "required_counts": {
+    "ordinary_roots": 199,
+    "native_roots": 217,
+    "restore_roots": 27,
+    "restore_descendants": 55,
+    "restore_tls_subprocesses_per_go_stage": 4,
+    "containment_gates_per_invocation": 21,
+    "worker_leaves_per_invocation": 8,
+    "query_leaves": 10,
+    "export_leaves": 12,
+    "unique_process_markers_per_brokered_gate": 3,
+    "runner_controls": 43,
+    "query_broker_controls": 19,
+    "export_broker_controls": 3,
+    "export_permission_controls": 12,
+    "export_diagnostic_controls": 6,
+    "parser_controls": 92,
+    "monitor_controls": 18
+  },
+  "export_cases": [
+    "publish-real-single-and-two-part",
+    "exact-principal-fills-and-repeat-downloads",
+    "foreign-handles-and-hidden-columns",
+    "forged-stale-and-unsupported-before-io",
+    "revocation-before-ready",
+    "revocation-none-chunked",
+    "revocation-none-length",
+    "revocation-lz4-chunked",
+    "revocation-lz4-length",
+    "lost-completion-is-not-replayed",
+    "cancelled-range-retains-custody",
+    "stalled-registry-retains-custody"
+  ],
+  "verified_behaviors": [
+    "Two tenants use real single-file and two-part protected snapshots for filtered CTE joins and aggregates; actual Arrow values and durable part digests are checked.",
+    "Foreign handles are denied. Hidden datasets, forged requests, stale authority and unsupported requests reject before source work; hidden-column fills produce ExportFailed and no downloadable result.",
+    "Repeated Ready downloads, including a replacement key for the same principal, return identical stored bytes without another SQL execution or protected-source read.",
+    "Revocation before Ready withholds publication; revocation during download withholds final public completion across requested none/LZ4 and length/chunked framing.",
+    "A lost completion response is not replayed; actual local parts and receipt remain retained while gateway status is Cancelled.",
+    "Cancellation during a source range and a 50 ms drain during stalled registry release preserve custody until cleanup completes."
+  ],
+  "ordinary_protected_skips": {
+    "reason": "Worker, query and export protected roots run separately in delegated containment; no required restore root or descendant was skipped.",
+    "roots": [
+      "github.com/SYNEHQ/kelvo-go/internal/worker:TestContainedWorkerProtectedObjects",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster:TestContainedProtectedObjectQueries",
+      "github.com/SYNEHQ/kelvo-go/internal/cluster:TestContainedProtectedObjectExports"
+    ]
+  },
+  "configured_limits": {
+    "outer": {
+      "cpu_percent": 200,
+      "memory_bytes": 8589934592,
+      "swap_bytes": 0,
+      "tasks": 512,
+      "runtime_seconds": 1800,
+      "stop_seconds": 30,
+      "max_file_bytes": 5368709120
+    },
+    "each_delegated_sibling": {
+      "cpu_percent": 100,
+      "memory_bytes": 1073741824,
+      "swap_bytes": 0,
+      "tasks": 256,
+      "runtime_seconds": 600,
+      "stop_seconds": 30,
+      "max_file_bytes": 5368709120
+    },
+    "query_and_export_siblings_run_sequentially": true,
+    "broker_shares_its_sibling_limit": true,
+    "maximum_planned_concurrent": {
+      "cpu_percent": 300,
+      "memory_bytes": 9663676416,
+      "tasks": 768
+    },
+    "sampled_workspace_ceiling_bytes": 12884901888,
+    "minimum_free_disk_bytes": 12884901888
+  },
+  "trials": [
+    {
+      "trial": "r1",
+      "accepted": false,
+      "revision": "6a23317a14b19cb9d3a9762831fc810f666cb712",
+      "failed_stage": "runner-controls",
+      "failure": "A mock-heavy control exceeded Python's static block-nesting limit before any control test ran.",
+      "correction": "A test-only ExitStack refactor preserved all mock order, bindings and assertions.",
+      "unrun_stages": [
+        "query-runner-controls",
+        "export-runner-controls",
+        "export-permission-controls",
+        "export-diagnostic-controls",
+        "regular",
+        "race",
+        "provision-bridge",
+        "native-regular",
+        "native-race",
+        "vet",
+        "build",
+        "protected-containment",
+        "protected-export-containment"
+      ],
+      "containment_or_brokers_started": false,
+      "cleanup_verified": true,
+      "validation_sha256": "12af90efab9abc62c603a1e78854b995a442a362147442b87e2af15fc2f853ab",
+      "cleanup_sha256": "a99e9f4a55d3ff3f219b7214b4a5a9fe575e8ccba9865e5fa280646a2121fbdb",
+      "independent_review_sha256": "337b0dde9ee76142b6b80a7be7001536b01fb12413a343acf3ff39712998170c"
+    },
+    {
+      "trial": "r2",
+      "accepted": false,
+      "revision": "5ac988c4b968761e6ada9fbdc72319d8f42e898c",
+      "failed_stage": "regular",
+      "failure": "A workspace scan took 12.812 seconds and the existing supervisor guard interrupted ordinary tests. The timeout budget check occurred at ./tmp; the blocking operation and underlying cause remain unknown.",
+      "passed_control_suites": {
+        "runner-controls": 43,
+        "query-runner-controls": 19,
+        "export-runner-controls": 3,
+        "export-permission-controls": 12,
+        "export-diagnostic-controls": 6
+      },
+      "partial_regular_test_pass_events": 2117,
+      "regular_stage_accepted": false,
+      "unrun_stages": [
+        "race",
+        "provision-bridge",
+        "native-regular",
+        "native-race",
+        "vet",
+        "build",
+        "protected-containment",
+        "protected-export-containment"
+      ],
+      "containment_or_brokers_started": false,
+      "cleanup_verified": true,
+      "validation_sha256": "8a35f23b1f978e26e2fe31967cd3030d72a8fe1c910c0c7f00b54470f02d22de",
+      "cleanup_sha256": "f1f72a23ae733f4aa52bc264127fe54f0ea8f8633aaaeb37a607cadbd664a951",
+      "independent_review_sha256": "4164370ee624a49d28924b5751ff7f418cd0e8645dcc4fd702d9087138e4572d"
+    },
+    {
+      "trial": "r3",
+      "accepted": true,
+      "revision": "dfe788c6a522936e874b1858b968ff6075064b31",
+      "same_source_tree_and_nine_helpers_as_r2": true,
+      "monitor_and_resource_limits_unchanged": true,
+      "started_at": "2026-10-05T05:53:53.736053+00:00",
+      "finished_at": "2026-10-05T06:04:37.836274+00:00",
+      "stages": [
+        {
+          "name": "go-version",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "7e35a947feee25f89c2649aa041942db786be35c3d6c484ab2ba2da849e3dc00",
+          "seconds": 0.2
+        },
+        {
+          "name": "runner-controls",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "38d4afe30bceade002e549b78f08ad31baecd7eaedd166270c0ea2f40d9d6ac5",
+          "seconds": 0.401
+        },
+        {
+          "name": "query-runner-controls",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "59b9e3aaf4f6ac964533572d3c644b595667b41f5446b197c3f8da3cda3f8f57",
+          "seconds": 0.2
+        },
+        {
+          "name": "export-runner-controls",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "e52254e9dc3be1b04333c1757f0230427b08167fa046b93d18a97d44a4f1f41a",
+          "seconds": 0.201
+        },
+        {
+          "name": "export-permission-controls",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "df7024a71c65e03f81fef78ac04a138d45f324cd0101b22b6d9a5220dc617a90",
+          "seconds": 0.2
+        },
+        {
+          "name": "export-diagnostic-controls",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "f580a18793aad964ff26090242e9a512ed18b69811254caf6fee086c6b5ec47b",
+          "seconds": 0.201
+        },
+        {
+          "name": "regular",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "a34bda68756171ea0a0f4575cf58c54b6674e404cb6999169397aef042e631b1",
+          "seconds": 127.578,
+          "required_roots": 199,
+          "passing_test_events": 3128,
+          "optional_skipped_test_events": 50,
+          "required_skips_or_missing": 0,
+          "restore_tls_subprocesses": 4
+        },
+        {
+          "name": "race",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "3514eeb3e320ea2c0c95c37083098e7ee90cd1d9327a19ec68582b98d469e90c",
+          "seconds": 175.623,
+          "required_roots": 199,
+          "passing_test_events": 3128,
+          "optional_skipped_test_events": 50,
+          "required_skips_or_missing": 0,
+          "restore_tls_subprocesses": 4
+        },
+        {
+          "name": "provision-bridge",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "1520f13713fa554639c26254feffde02658d616775c85a4617df69c4854b6732",
+          "seconds": 1.601
+        },
+        {
+          "name": "native-regular",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "f1cfced31e9dddf60c21150a21fd05510ad9dcd960ced4b16e505aa7056ce364",
+          "seconds": 105.102,
+          "required_roots": 217,
+          "passing_test_events": 619,
+          "optional_skipped_test_events": 0,
+          "required_skips_or_missing": 0,
+          "restore_tls_subprocesses": 4
+        },
+        {
+          "name": "native-race",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "0e5ad666354393230cbe8131ea8147e6b7f99f283a58cddf04241a4ba32b25bd",
+          "seconds": 128.922,
+          "required_roots": 217,
+          "passing_test_events": 619,
+          "optional_skipped_test_events": 0,
+          "required_skips_or_missing": 0,
+          "restore_tls_subprocesses": 4
+        },
+        {
+          "name": "vet",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "seconds": 3.205
+        },
+        {
+          "name": "build",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "seconds": 5.804
+        },
+        {
+          "name": "protected-containment",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "978983bf5bf1584799f2400327130bdf1ad261b6ad0dc33cc6d3047e8a0a2b14",
+          "seconds": 48.225
+        },
+        {
+          "name": "protected-export-containment",
+          "passed": true,
+          "exit_code": 0,
+          "log_sha256": "013fb7395ed04c9c48307e049de3a7b0fb9f9e8df48d093ef777879795383f61",
+          "seconds": 44.824
+        }
+      ]
+    }
+  ],
+  "cleanup": {
+    "all_three_units_absent": true,
+    "all_three_cgroups_absent": true,
+    "original_driver_and_both_containment_processes_absent": true,
+    "owned_processes_absent": true,
+    "launch_closed": true,
+    "both_brokers": {
+      "original_identity_absent": true,
+      "pid_absent": true,
+      "reaped": true,
+      "alive_before_stop": true,
+      "returncode": 0,
+      "forced_kill": false,
+      "private_files_absent": true
+    },
+    "source_files_independently_rehashed": 1152,
+    "outer_bridge_files_independently_rehashed": 1449,
+    "collected_evidence_files_rehashed": 140,
+    "remote_artifact_files_rehashed": 139,
+    "contained_binary_files_rehashed": 16
+  },
+  "receipts_sha256": {
+    "plan.json": "15af60c860f53cefd132802d6963ebb91291a1d32a331379d384dece00e74303",
+    "source-manifest.json": "bd226fff2232be5bd7a1b40379d2c0532abe121d735a7963e957a2cbb416043b",
+    "output/validation.json": "436b1b66f6a2fec3abd511a69e63897a735eb23e711eae9933b21fd71fb1376f",
+    "output/protected-containment.json": "7c95e615235a9ef13721ba025c0322a9dade3b83e355063037f86ed61b232dd5",
+    "output/protected-export-containment.json": "6b35fce90df9344ffe2a0aa6dd895b2b606bf1f53360f24a2938cd73a835b1da",
+    "cleanup-receipt.json": "94207ced3a70b932f7661c55ad5c8145da9525c25a87627df68be710d5088cf1",
+    "final-exit.json": "fa5aa5a5f67c749a898237beb91c3c75fcf747970607eef8476874b23859fbe8",
+    "collection-observation.json": "cf1150f216dec9e5334ad5e5901f6e75022e00b5239ad49b6659c6075f46bd12",
+    "containment/worker.test.log": "f6faee4ec5a34ba9d44d5b612de43053e4a89e762a222a8a8c8744ebac562709",
+    "containment/protected-query.test.log": "fbf4fec122043c98522845c7b28dcb75b7529720f7696549caeaa00a785100ef",
+    "containment/query-broker-ownership.json": "5c525887f99551d91ae9759b8430b8b0eb2afbb3ab8dbf239e445e926778798c",
+    "export-containment/worker.test.log": "a6f39beda037f6a991c8ed320bba46e0d3d56aaedc624ff155764b4db118572e",
+    "export-containment/protected-export.test.log": "f0d755fc21211649dc5cd66d749bb366f3a94a50f282da7ddc96aa1c549d2fa1",
+    "export-containment/export-broker-ownership.json": "885d08518adaf690b9a7986d52181cd5c44fb59a06d3db0bb308fd7fa284b5aa",
+    "artifact_manifest": "d1aae5893b935693b90cfd72b66916edbdb25b4983329dbcb682beac9369cbf1",
+    "independent_vm_review": "ea059627e6314a9e1cee521ff85756363d689aecdde3109968077164e9b5111b",
+    "independent_remote_readback": "4e3809c38ed3bf281d2c15867676f915c7eeb1f9d88c501b8000e5557f547d27",
+    "r1_failed_review": "337b0dde9ee76142b6b80a7be7001536b01fb12413a343acf3ff39712998170c",
+    "r2_failed_review": "4164370ee624a49d28924b5751ff7f418cd0e8645dcc4fd702d9087138e4572d"
+  },
+  "redactions": [
+    "VM addresses, usernames, private paths, process identifiers and fixture credentials are excluded; raw logs and exact identities remain in the private packet."
+  ],
+  "limitations": [
+    "VM acceptance covers the stated source; hosted CI, merged cargo, release and deployment require separate evidence. No throughput, RSS, whole-node memory or production capacity claim.",
+    "Local TLS fixtures verify tenant roles, object identity, CAS and reader pins. They do not certify live cloud IAM, signatures or vendor behavior; dedicated provider gates remain separate.",
+    "Ready downloads read local durable parts. Revocation is local to the tested gateway, does not revoke an authorized replacement key and cannot recall delivered bytes.",
+    "Final-byte barriers use complete actual stored Arrow parts; they do not simulate client Body.Close or prove earlier partial delivery. The registry-drain proof covers the recorded 50 ms interval.",
+    "LZ4 gates check requested durable codec, decoded values, digests and framing; they do not independently inspect physical IPC compression metadata.",
+    "Outer bridge files are independently rehashed; child bridge inputs retain runner before/after provenance. Workspace scans are sampled logical storage, not RSS or a filesystem quota."
+  ]
+}

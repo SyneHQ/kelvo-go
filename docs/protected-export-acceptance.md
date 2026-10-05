@@ -1,7 +1,10 @@
 # Protected export acceptance
 
 This Linux gate follows protected snapshots through authenticated export fill,
-durable local parts and repeat downloads. VM acceptance is pending.
+durable local parts and repeat downloads. [Linux acceptance](evidence/protected-exports.json)
+passed all 15 stages on `dfe788c`, with independent source, binary and cleanup checks.
+The evidence retains a corrected Python control failure and a later monitor stall
+whose cause remains unknown; the accepted run used unchanged resource guards.
 
 | Check | What the gate verifies |
 | --- | --- |
