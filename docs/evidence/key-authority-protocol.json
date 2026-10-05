@@ -1,0 +1,367 @@
+{
+  "schema_version": 1,
+  "organization": "SYNEHQ",
+  "issue": 127,
+  "name": "Key authority protocol acceptance",
+  "accepted": true,
+  "selected_trial": "r2",
+  "scope": "One disposable Linux node with a contained three-broker TLS fixture, tested sequentially on NATS 2.14.7 and 2.15.0 in ordinary and race profiles. This is a protocol candidate; gateway authentication adoption remains separate.",
+  "source": {
+    "revision": "c39f637525c0840281687cc635899ae775d29b79",
+    "tree": "b4a0364ae2843ca002d9aeaff8a8cd668b2d758f",
+    "file_count": 1165,
+    "archive_sha256": "51e65f77cebbaba18e5f1598115a489c3adb23b47cc9947e95d42a1cce3df903",
+    "manifest_sha256": "4037deaf905df9f940617f71c13e0d09adfb74d29d3212e5085e38e890b56a88"
+  },
+  "toolchain": {
+    "go": "go version go1.26.8 linux/amd64",
+    "offline_dependencies": true,
+    "selected_tools_sha256": {
+      "go": "d9a2fa19c7ef8b57f420012c21f49f235c46f08a68c12077d9c753dbb6ccdc34",
+      "compile": "ef107d98e82bd89096c64a50dbe0ddbaba3c898880616376835416bbb69ae21b",
+      "link": "6d7bee86e8d035f4220a4be15e85554ef5558267d58bdba5efdcb0bd63681924",
+      "asm": "28bab01b519bb3c6089c0b12d5bd7894c282ef271c05b4e1dbaa3e83e26df52f",
+      "vet": "332f2354d95c1fc029be66d7e37288528047f3451914636139163e51aee00124",
+      "test2json": "a1dcebc6f4fa3377049b0b55582afd4e179cadb4d1f4b98e2278498e7d8bdb63"
+    },
+    "broker_archive_sha256": {
+      "2.14.7": "e5c20b1cb2c0566b54c544312e91e011f9e130c5c80f16a14f4cf28ef30b8be2",
+      "2.15.0": "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92"
+    }
+  },
+  "test_binary_sha256": {
+    "regular": "331447be8caaa82633cbbb6311f5961070763527c4fb7c6b8f2e4e55b6c83ffa",
+    "race": "133ae3dda75b1c21dfb40ef966b20d16e9a88c6ff4ccc0ff2d30eb08872e5bca"
+  },
+  "required_counts": {
+    "ordinary_roots_per_profile": 30,
+    "r3_exact_test_paths_per_profile": 15,
+    "r3_versions_per_profile": 2,
+    "cases_per_version": 6,
+    "r3_fixtures_total": 4,
+    "maximum_concurrent_brokers": 3,
+    "broker_processes_across_all_fixtures": 12
+  },
+  "verified_behaviors": [
+    "Guarded witnesses and explicit compare-and-swap preserve the expected authority document and sequence.",
+    "An isolated former leader and a cluster without quorum cannot produce an accepted fresh guarded witness. A deliberately replayed stale GET still requires a real fresh witness.",
+    "Concurrent controller advances and gateway witnesses preserve sequence ordering across eight rounds per fixture.",
+    "Dropped, delayed, misrouted, retired-inbox and duplicate responses after actual successful broker ACKs remain unknown outcomes; a separate check verifies committed storage.",
+    "Restricted broker roles reject forbidden publication, subscription and management operations; bounded witness pressure preserves the authority record.",
+    "Cancellation, late transport cleanup and completed-result handling retain operation ownership; uncertain cleanup permanently fences the client."
+  ],
+  "configured_limits": {
+    "service_cpu_percent": 200,
+    "service_memory_bytes": 2147483648,
+    "service_swap_bytes": 0,
+    "service_tasks": 256,
+    "service_runtime_seconds": 1500,
+    "stop_timeout_seconds": 30,
+    "per_file_bytes": 268435456,
+    "minimum_sampled_free_disk_bytes": 12884901888,
+    "sampling_interval_seconds": 1,
+    "protocol_attempt_max_seconds": 2,
+    "fixture_recovery_budget_seconds": 15
+  },
+  "measured_during_r2": {
+    "sampled_service_memory_max_bytes": 619749376,
+    "sampled_service_tasks_max": 41,
+    "service_memory_limit_events": {
+      "before": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n",
+      "after": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n"
+    },
+    "scope": "The service sample includes compilation and test processes. Fixture RSS/FD samples cover the three brokers at recorded sample points; they are not continuous peaks or production sizing."
+  },
+  "trials": [
+    {
+      "trial": "r1",
+      "accepted": false,
+      "revision": "9b3c6528f29651dc7a969d1a2b6376e7c3d78115",
+      "tree": "359923d43ca746bd8541534d2d5517a2039595be",
+      "passed_stages": [
+        "build-regular",
+        "regular"
+      ],
+      "ordinary_required_roots_passed": 30,
+      "failed_stage": "r3-regular",
+      "passed_r3_paths": [
+        "TestAuthFenceR3/2.14.7/Cleanup",
+        "TestAuthFenceR3/2.14.7/GuardedWitnessAndCAS",
+        "TestAuthFenceR3/2.15.0/Cleanup",
+        "TestAuthFenceR3/2.15.0/GuardedWitnessAndCAS",
+        "TestAuthFenceR3/2.15.0/RetentionAndACLPressure"
+      ],
+      "failed_r3_paths": [
+        "TestAuthFenceR3",
+        "TestAuthFenceR3/2.14.7",
+        "TestAuthFenceR3/2.14.7/ConcurrentAdvanceWitness",
+        "TestAuthFenceR3/2.14.7/FormerLeaderAndQuorumLoss",
+        "TestAuthFenceR3/2.14.7/ResponseCorrelationAndUnknown",
+        "TestAuthFenceR3/2.14.7/RetentionAndACLPressure",
+        "TestAuthFenceR3/2.15.0",
+        "TestAuthFenceR3/2.15.0/ConcurrentAdvanceWitness",
+        "TestAuthFenceR3/2.15.0/FormerLeaderAndQuorumLoss",
+        "TestAuthFenceR3/2.15.0/ResponseCorrelationAndUnknown"
+      ],
+      "unrun_stages": [
+        "build-race",
+        "race",
+        "r3-race",
+        "vet"
+      ],
+      "finding": "Both versions failed FormerLeaderAndQuorumLoss with a recovery ErrConflict, then failed ConcurrentAdvanceWitness and ResponseCorrelationAndUnknown. RetentionAndACLPressure additionally failed on 2.14.7 and passed on 2.15.0. Basic guarded CAS and Cleanup passed on both versions. The specific ErrConflict origin is not established by this trial.",
+      "cleanup_verified": true,
+      "all_six_brokers_cleanly_reaped": true,
+      "review_sha256": "eb2fb5d84e6223fcbefab9a051df3ba6c12dc66556def2d8fc04042459e277ff"
+    },
+    {
+      "trial": "r2",
+      "accepted": true,
+      "revision": "c39f637525c0840281687cc635899ae775d29b79",
+      "tree": "b4a0364ae2843ca002d9aeaff8a8cd668b2d758f",
+      "fixture_only_changes": [
+        "internal/authfence/r3_protocol_linux_test.go",
+        "internal/authfence/r3_proxy_linux_test.go"
+      ],
+      "production_client_unchanged": true,
+      "all_four_validation_helpers_unchanged": true,
+      "resource_limits_and_required_paths_unchanged": true,
+      "recovery_correction": "Require bounded fresh Verify and Read agreement on the original authority document and sequence through all three endpoints after recovery. Every attempt keeps its original deadline and joins client custody. Fault injection now requires a real successful ACK.",
+      "started_at": "2026-10-05T06:58:27.835543+00:00",
+      "finished_at": "2026-10-05T07:00:11.343502+00:00",
+      "stages": [
+        {
+          "name": "build-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 2.001,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 1.003,
+          "log_sha256": "82f2de60ad7ffae2f84dfa01235d3d5c8199808e4bf3851d166b8759d470859c"
+        },
+        {
+          "name": "r3-regular",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 41.013,
+          "log_sha256": "5812ed551e03fc61bf6ae34e2e40a901328ddd8860829c967ebbb253e1ebd451"
+        },
+        {
+          "name": "build-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 3.001,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 2.003,
+          "log_sha256": "d0c1b665c197de8c1d5a6ee5b89333342987661745446c916dbbfe059fb91669"
+        },
+        {
+          "name": "r3-race",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 53.017,
+          "log_sha256": "2c374a491d5f803adcdeef0118e4a8d534508d6e856bbbb2d61289399a761bf7"
+        },
+        {
+          "name": "vet",
+          "passed": true,
+          "exit_code": 0,
+          "seconds": 1.001,
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "r3_fixtures": [
+        {
+          "profile": "race",
+          "version": "2.14.7",
+          "cases": [
+            {
+              "name": "GuardedWitnessAndCAS",
+              "passed": true
+            },
+            {
+              "name": "FormerLeaderAndQuorumLoss",
+              "passed": true
+            },
+            {
+              "name": "ConcurrentAdvanceWitness",
+              "passed": true
+            },
+            {
+              "name": "ResponseCorrelationAndUnknown",
+              "passed": true
+            },
+            {
+              "name": "RetentionAndACLPressure",
+              "passed": true
+            },
+            {
+              "name": "Cleanup",
+              "passed": true
+            }
+          ],
+          "broker_binary_sha256": "667bfa7d71ac190ab745e00bd1f9a037338b719b3293cda25bd44aef24b457fa",
+          "sampled_three_broker_rss_max_bytes": 83148800,
+          "sampled_three_broker_fd_max": 50,
+          "receipt_sha256": "db825eb81e0cd4094090b1782c98de2bc82ec6b2e108831029749bb4d880dad6",
+          "three_brokers_cleanly_reaped": true,
+          "forced_kill": false,
+          "credentials_removed": true
+        },
+        {
+          "profile": "race",
+          "version": "2.15.0",
+          "cases": [
+            {
+              "name": "GuardedWitnessAndCAS",
+              "passed": true
+            },
+            {
+              "name": "FormerLeaderAndQuorumLoss",
+              "passed": true
+            },
+            {
+              "name": "ConcurrentAdvanceWitness",
+              "passed": true
+            },
+            {
+              "name": "ResponseCorrelationAndUnknown",
+              "passed": true
+            },
+            {
+              "name": "RetentionAndACLPressure",
+              "passed": true
+            },
+            {
+              "name": "Cleanup",
+              "passed": true
+            }
+          ],
+          "broker_binary_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+          "sampled_three_broker_rss_max_bytes": 80719872,
+          "sampled_three_broker_fd_max": 50,
+          "receipt_sha256": "859af427dc0c9eec54985fde01acaa2690e54cbc0d51b54c19420dc8260b0490",
+          "three_brokers_cleanly_reaped": true,
+          "forced_kill": false,
+          "credentials_removed": true
+        },
+        {
+          "profile": "regular",
+          "version": "2.14.7",
+          "cases": [
+            {
+              "name": "GuardedWitnessAndCAS",
+              "passed": true
+            },
+            {
+              "name": "FormerLeaderAndQuorumLoss",
+              "passed": true
+            },
+            {
+              "name": "ConcurrentAdvanceWitness",
+              "passed": true
+            },
+            {
+              "name": "ResponseCorrelationAndUnknown",
+              "passed": true
+            },
+            {
+              "name": "RetentionAndACLPressure",
+              "passed": true
+            },
+            {
+              "name": "Cleanup",
+              "passed": true
+            }
+          ],
+          "broker_binary_sha256": "667bfa7d71ac190ab745e00bd1f9a037338b719b3293cda25bd44aef24b457fa",
+          "sampled_three_broker_rss_max_bytes": 83722240,
+          "sampled_three_broker_fd_max": 50,
+          "receipt_sha256": "2e43189780fae6777227a58f96edbb2a6acd7f64b0cdb9449508bb1d18ba6c18",
+          "three_brokers_cleanly_reaped": true,
+          "forced_kill": false,
+          "credentials_removed": true
+        },
+        {
+          "profile": "regular",
+          "version": "2.15.0",
+          "cases": [
+            {
+              "name": "GuardedWitnessAndCAS",
+              "passed": true
+            },
+            {
+              "name": "FormerLeaderAndQuorumLoss",
+              "passed": true
+            },
+            {
+              "name": "ConcurrentAdvanceWitness",
+              "passed": true
+            },
+            {
+              "name": "ResponseCorrelationAndUnknown",
+              "passed": true
+            },
+            {
+              "name": "RetentionAndACLPressure",
+              "passed": true
+            },
+            {
+              "name": "Cleanup",
+              "passed": true
+            }
+          ],
+          "broker_binary_sha256": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341",
+          "sampled_three_broker_rss_max_bytes": 78532608,
+          "sampled_three_broker_fd_max": 50,
+          "receipt_sha256": "194c864b1acbe3fa1c249de2c99886c043425c730842c16523ba3d0507fbb3e5",
+          "three_brokers_cleanly_reaped": true,
+          "forced_kill": false,
+          "credentials_removed": true
+        }
+      ]
+    }
+  ],
+  "cleanup": {
+    "runner_unit_cgroup_and_owned_processes_absent": true,
+    "all_twelve_recorded_brokers_and_groups_absent": true,
+    "all_brokers_graceful_zero_exit": true,
+    "forced_kills": 0,
+    "forced_interruption": false,
+    "generated_private_credentials_removed": true,
+    "source_files_rehashed": 1165,
+    "collected_files_rehashed": 35
+  },
+  "receipts_sha256": {
+    "plan": "f569376fb99d6877cb0a3c6b37c4ac592b0de8d99a2c02666e5ddca263d383cd",
+    "input_archive": "b93699e7d236812dc88c2715e42895535c8ce98f7bb69f5d8789bdab4a297a00",
+    "collection": "70963d00a178c6eb347b962176f05e952ad0cfedcbac867d714f1e46e57cf64e",
+    "validation": "0a0c29cbd7018e142f2d0c5ccc97af506ffe48ccf7373420e1a0def58e559cf9",
+    "cleanup": "a76785290ae28341fcb067e2911c52d4b5253ffdd5385da7b8fdf0c5818deec3",
+    "independent_result_review": "1c35b690ab79902f5f29aa19a2e84731cf94169a875318e3854a4216ab936942",
+    "independent_final_readback": "67b1a2dc7b295f94d41a48d6a2adff8a93a09a16f8df0219ed694501bd8917a3",
+    "r1_failed_review": "eb2fb5d84e6223fcbefab9a051df3ba6c12dc66556def2d8fc04042459e277ff",
+    "independent_final_review": "1034f1f75c33713b1d5c22eb88444f2ee6d6ba11a98e3dc4358141912bb185d3"
+  },
+  "limitations": [
+    "Isolated protocol candidate; no gateway authentication adoption, local durable key admission, release or deployment acceptance",
+    "R1 remains failed and retained; the exact origin of its recovery ErrConflict is unproven",
+    "R2 only strengthens fixture recovery and verifies real success ACKs before injecting faults; production client bytes are unchanged from R1",
+    "Thirty ordinary roots and observed descendants are checked; exact fifteen R3 paths are required per profile",
+    "Service memory/tasks are sampled during builds and tests; broker RSS/FD samples describe three brokers at sampled points, not production footprint or throughput",
+    "Six selected Go tools and all source/test/broker binaries are independently checked; shared dependency cache entries are not exhaustively rehashed",
+    "The bounded recovery loop belongs to the test fixture; it does not add automatic retries to the protocol client.",
+    "Tests do not establish cross-node deployment capacity, live cloud/provider behavior, complete dependency-cache integrity, throughput or whole-process continuous peak memory.",
+    "No public CI, merged-head, release or deployment claim follows from this VM run."
+  ]
+}

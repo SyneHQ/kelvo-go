@@ -26,6 +26,12 @@ The receipt retains an initial SSH setup denial and two rejected runtime trials:
 
 The first VM run passed regular checks but its monitor interrupted race validation; vet/build never ran. Its cause remains unknown. The fresh run used a corrected monitor with 18 passing controls; source hashes and final cleanup were independently verified. Optional fixture skips remain in the evidence. This proves local gateway history, not shared-replica revocation or throughput. [Setup and recovery](gateway-auth-state.md).
 
+## Key-authority protocol
+
+[Linux evidence](evidence/key-authority-protocol.json) on `c39f637` passed seven stages: ordinary and race builds/tests, three-node TLS fault tests in both profiles, and vet. Each profile passed all 30 ordinary roots and 15 R3 paths across NATS 2.14.7/2.15.0. Source, binary, broker and cleanup receipts were independently checked.
+
+The failed first trial remains recorded: recovery assertions preceded later elections; the fault proxy could intercept an error ACK. Test-only corrections require witnessed recovery and a successful ACK before fault injection. Gateway adoption, revocation bounds and capacity remain separate. [Protocol and reproduction](key-authority-protocol.md).
+
 ## Catalog authority
 
 [Linux acceptance](evidence/catalog-authority.json) on `bcbb3dc` passed nine stages, including all 34 required correctness/race/stub controls and 11 real sandboxed query/export/snapshot controls. It verifies legacy policy compatibility, stale-authority refusal, detached execution definitions and exact Arrow results after attempted source retargeting. Source/bridge inputs and independent cleanup checks passed; fixture-dependent skips remain in the record. No provider or capacity claim.

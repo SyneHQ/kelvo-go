@@ -49,6 +49,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Telemetry cost and tracing correctness | [Paired measurements](telemetry-overhead.md) · [OTLP acceptance](tracing-acceptance.md) |
 | Native export benchmark | [ClickHouse runner](benchmarking.md) |
 | Mixed load and fault recovery | [Operational acceptance](operational-acceptance.md) · [Process loss](process-loss-acceptance.md) |
+| Key-authority protocol and fault gates | [Quorum witnesses](key-authority-protocol.md) (gateway adoption pending) |
 | Storage and version compatibility | [Storage gates](storage-conformance.md) · [Snapshot upgrades](release-upgrades.md) · [Rolling applications](rolling-upgrades.md) |
 
 Reports link [raw evidence](evidence/), exact revisions, failures and reproduction commands.
