@@ -26,7 +26,7 @@ Admission reserves budgets; optional containment enforces native process-tree li
 
 | Available | Still needed |
 | --- | --- |
-| Immutable local/remote full refresh, fenced publication, local pins and opt-in [protected object readers](protected-object-readers.md) | Protected maintenance readers, legacy cutover and live-provider gates |
+| Immutable local/remote full refresh, fenced publication, local pins and opt-in [protected object readers](protected-object-readers.md) | Protected restore/migration, legacy cutover and live-provider gates |
 | Strict schemas, optional nullable additions and conservative widening | Separate proof for any broader evolution policy |
 | Multipart snapshots and over-4-GiB development gates | Selective replacement, part reuse and incremental checkpoints |
 | Verified inventory and restore for local and legacy object snapshots, local backup and legacy remote-to-local migration | Remote-destination recovery, cross-host cutover and measured RTO/RPO |
@@ -34,7 +34,7 @@ Admission reserves budgets; optional containment enforces native process-tree li
 
 [Object writer shutdown](object-writer-shutdown.md) joins pending factories, transactions and owned client cleanup; 45 focused race tests and vet passed on `997157e`. Protected-reader acceptance is recorded below; remote deletion remains disabled.
 
-The [protected-runtime fixture](evidence/protected-object-readers.json) passed all ten Linux stages on `c8bae34`, including contained queries and late lease-loss checks. [#119](https://github.com/SYNEHQ/kelvo-go/issues/119) tracks verification and inventory. Full protected gateway/export and live-provider acceptance remain separate. Protected v5 requires a fresh namespace; legacy v4 still needs coordinated reader/writer upgrades. Remote pruning deletes nothing. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
+The [protected-runtime fixture](evidence/protected-object-readers.json) passed all ten Linux stages on `c8bae34`, including contained queries and late lease-loss checks. [Protected verification and inventory](protected-verification.md) passed [all ten Linux stages](evidence/protected-verification.json) on `c8e4199`. [Historical restore (#121)](https://github.com/SYNEHQ/kelvo-go/issues/121) and migration remain open. Full protected gateway/export and live-provider acceptance remain separate. Protected v5 requires a fresh namespace; legacy v4 still needs coordinated reader/writer upgrades. Remote pruning deletes nothing. [Storage guide](storage-conformance.md) · [Recovery](snapshot-backup.md)
 
 ## Results and interoperability
 

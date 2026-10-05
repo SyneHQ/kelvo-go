@@ -31,7 +31,7 @@ All three identities load in the parent runtime, including on query nodes. Provi
 | Status and previous-schema comparison | Read under a lease and check ownership before returning |
 | `accelerate refresh`, `watch`, `status` | Runtime-aware operator commands; contained node refresh is the managed path |
 | Standalone `query` / `serve` | Refused; use a contained node |
-| Verify and inventory | [Explicit byte budget](protected-verification.md); one pinned selection and deadline; acceptance tracked in #119 |
+| Verify and inventory | [Explicit byte budget](protected-verification.md); one pinned selection and deadline; [Linux acceptance](evidence/protected-verification.json) passed |
 | Historical restore and migration backup | Refused before generation access; integration remains pending |
 | Remote pruning or garbage collection | Disabled |
 
@@ -57,6 +57,6 @@ Data and registry traffic use separate transports. These bounds describe admissi
 
 The worker checks include catalog-bound executor copies and externally owned export reservations. A complete protected gateway/export lifecycle still needs separate acceptance.
 
-[#119](https://github.com/SYNEHQ/kelvo-go/issues/119) tracks acceptance of [protected verification and inventory](protected-verification.md). [#14](https://github.com/SYNEHQ/kelvo-go/issues/14) retains the other maintenance readers, legacy cutover and provider acceptance. No lease expiry, empty registry or node restart permits deletion. Retirement needs a separate protocol.
+[Protected verification and inventory](protected-verification.md) also passed [Linux acceptance](evidence/protected-verification.json) on `c8e4199`. [Historical restore (#121)](https://github.com/SYNEHQ/kelvo-go/issues/121), migration, legacy cutover and provider acceptance remain under [#14](https://github.com/SYNEHQ/kelvo-go/issues/14). No lease expiry, empty registry or node restart permits deletion. Retirement needs a separate protocol.
 
 [Registry contract](durable-reader-registry.md) · [Reader ownership](reader-owner.md) · [Production checklist](production-status.md)
