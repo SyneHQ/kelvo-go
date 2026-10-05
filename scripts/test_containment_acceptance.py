@@ -27,14 +27,16 @@ def live_service(parent=None):
     return {"verified": True, "properties": properties}
 
 
-def valid_report(protected=False):
-    files = {name: "a" * 64 for name in fixture.SOURCE_REQUIRED | (fixture.PROTECTED_SOURCE_REQUIRED if protected else set())}
+def valid_report(protected=False, queries=False):
+    protected = protected or queries
+    files = {name: "a" * 64 for name in fixture.SOURCE_REQUIRED | (fixture.PROTECTED_SOURCE_REQUIRED if protected else set())
+             | (fixture.protected_query.SOURCE_REQUIRED if queries else set())}
     canonical = json.dumps(files, sort_keys=True, separators=(",", ":")).encode()
     report = {
         "schema": 3, "owned_unit": TEST_UNIT, "service_description": TEST_DESCRIPTION,
         "service_user": TEST_USER, "parent_unit": None, "live_service": live_service(),
-        "mode": fixture.PROTECTED_MODE if protected else fixture.BASE_MODE,
-        "gates": {name: "pass" for name in fixture.required_gates(protected)},
+        "mode": fixture.QUERY_MODE if queries else fixture.PROTECTED_MODE if protected else fixture.BASE_MODE,
+        "gates": {name: "pass" for name in fixture.required_gates(protected, queries)},
         "non_root": True, "capability_sets_zero": True,
         "source": {"verified": True, "file_count": len(files), "files": files,
                    "sha256": hashlib.sha256(canonical).hexdigest(), "base_revision": "c" * 40,
@@ -51,6 +53,14 @@ def valid_report(protected=False):
         report["bridge_inputs_unchanged"] = True
         report["resource_limits"] = dict(fixture.RESOURCE_LIMITS)
         report["protected_gates"] = {name: "pass" for name in ("outer", "inner", *fixture.PROTECTED_LEAVES)}
+    if queries:
+        report["binary_sha256"]["nats-server"] = "b" * 64
+        report["broker_binary"] = {"version": fixture.protected_query.VERSION, "sha256": "b" * 64, "bytes": 1000}
+        report["broker_binary_unchanged"] = True
+        report["protected_query_gates"] = {name: "pass" for name in ("outer", "inner", *fixture.protected_query.LEAVES)}
+        report["broker_custody"] = {"created_pid": 23, "started": True, "reaped": True, "pid_absent": True, "alive_before_stop": True,
+            "returncode": 0, "forced_kill": False, "identity": {"pid": 23, "start_ticks": 111, "cgroup": "/system.slice/" + TEST_UNIT + ".service/supervisor",
+                                         "argv_sha256": "c" * 64}}
     return report
 
 
@@ -67,6 +77,7 @@ class ContainmentControls(unittest.TestCase):
             runner = root / "containment_acceptance.py"
             runner.write_bytes(Path(fixture.__file__).read_bytes())
             (root / "provision_duckbridge.py").write_text("# Import-only fixture; help must not provision anything.\n")
+            (root / "protected_query_acceptance.py").write_text("# Import-only fixture; help must not start a broker.\n")
             env = {key: value for key, value in fixture.os.environ.items() if not key.startswith("PYTHON")}
             result = subprocess.run([fixture.sys.executable, str(runner), "--help"],
                                     env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
@@ -255,6 +266,46 @@ class ContainmentControls(unittest.TestCase):
         report["protected_gates"][root + "/unexpected"] = "pass"
         self.assertFalse(fixture.reconcile(report))
 
+    def test_query_gate_requires_exact_children_and_broker_custody(self):
+        root, leaves = fixture.protected_query.ROOT, fixture.protected_query.LEAVES
+        output = "".join(f"        --- PASS: {name} (0s)\n" for name in leaves) + f"    --- PASS: {root} (0s)\n--- PASS: {root} (0s)\n"
+        self.assertEqual(fixture.gates(output, [root]), {root: "pass"})
+        self.assertTrue(fixture.reconcile(valid_report(queries=True)))
+        for line in output.splitlines(keepends=True):
+            for changed in (output.replace(line, ""), output + line, output.replace(line, line.replace("PASS", "SKIP"))):
+                self.assertEqual(fixture.gates(changed, [root]), {root: "fail"})
+        for suffix in ("unknown", "revocation-none-length/hidden-skip"):
+            self.assertEqual(fixture.gates(output + f"    --- SKIP: {root}/{suffix} (0s)\n", [root]), {root: "fail"})
+        for key in ("broker_custody", "broker_binary", "broker_binary_unchanged", "protected_query_gates"):
+            report = valid_report(queries=True)
+            del report[key]
+            self.assertFalse(fixture.reconcile(report), key)
+        for key in ("started", "reaped", "pid_absent", "alive_before_stop"):
+            report = valid_report(queries=True)
+            report["broker_custody"][key] = False
+            self.assertFalse(fixture.reconcile(report), key)
+        for code in (None, True, 1, -9):
+            report = valid_report(queries=True)
+            report["broker_custody"]["returncode"] = code
+            self.assertFalse(fixture.reconcile(report), code)
+
+    def test_query_evidence_cannot_be_downgraded_or_retargeted(self):
+        for mode in (fixture.BASE_MODE, fixture.PROTECTED_MODE, None):
+            report = valid_report(queries=True)
+            report["mode"] = mode
+            self.assertFalse(fixture.reconcile(report), mode)
+        for value in ("/unrelated", "/system.slice/" + TEST_UNIT + ".service", ""):
+            report = valid_report(queries=True)
+            report["broker_custody"]["identity"]["cgroup"] = value
+            self.assertFalse(fixture.reconcile(report), value)
+        for key, value in (("version", "unknown"), ("sha256", "f" * 64), ("bytes", 0), ("bytes", True)):
+            report = valid_report(queries=True)
+            report["broker_binary"][key] = value
+            self.assertFalse(fixture.reconcile(report), (key, value))
+        report = valid_report(queries=True)
+        report["broker_custody"]["identity"]["pid"] += 1
+        self.assertFalse(fixture.reconcile(report))
+
     def test_protected_report_requires_pinned_unchanged_bridge_provenance(self):
         for field in ("bridge", "bridge_inputs_unchanged"):
             report = valid_report(protected=True)
@@ -294,10 +345,15 @@ class ContainmentControls(unittest.TestCase):
 
     def test_protected_environment_is_explicit_and_cannot_inherit_child_bypass(self):
         with mock.patch.dict(fixture.os.environ, {"KELVO_TEST_PROTECTED_OBJECTS": "1", "KELVO_PROTECTED_FIXTURE_CHILD": "1",
+                                                  "KELVO_TEST_PROTECTED_QUERIES": "1", "KELVO_PROTECTED_QUERY_CHILD": "1",
+                                                  "KELVO_TEST_QUERY_NATS_A_GATEWAY_PASSWORD": "fixture",
                                                   "KELVO_SOURCE_REGISTRY_SECRET": "fixture", "AWS_SECRET_ACCESS_KEY": "fixture", "LD_PRELOAD": "/fixture"}):
             for protected in (False, True):
                 env = fixture.test_environment(Path("/owned/fixture"), "/owned/jobs", "/owned/state", protected)
                 self.assertNotIn("KELVO_PROTECTED_FIXTURE_CHILD", env)
+                self.assertNotIn("KELVO_PROTECTED_QUERY_CHILD", env)
+                self.assertNotIn("KELVO_TEST_PROTECTED_QUERIES", env)
+                self.assertNotIn("KELVO_TEST_QUERY_NATS_A_GATEWAY_PASSWORD", env)
                 self.assertEqual(env.get("KELVO_TEST_PROTECTED_OBJECTS"), "1" if protected else None)
                 for name in ("KELVO_SOURCE_REGISTRY_SECRET", "AWS_SECRET_ACCESS_KEY", "LD_PRELOAD"):
                     self.assertNotIn(name, env)

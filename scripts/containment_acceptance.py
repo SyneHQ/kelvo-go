@@ -22,6 +22,7 @@ import uuid
 # Direct invocation must not write a cache before the source identity is sampled.
 sys.dont_write_bytecode = True
 import provision_duckbridge as bridge
+import protected_query_acceptance as protected_query
 
 KERNEL_GATES = [
     "TestKernelPrestartMembershipAndControls", "TestKernelNativeMemoryOOM",
@@ -47,6 +48,7 @@ PROTECTED_LEAVES = [PROTECTED_GATE + "/" + name for name in (
     "immutable-runtime-refuses-retargeting", "cancellation-joins-ranges-and-child",
     "binding-loss-after-last-batch-refuses-completion")]
 BASE_MODE, PROTECTED_MODE = "containment", "protected-objects"
+QUERY_MODE = "protected-queries"
 BRIDGE_TAGS = "duckdb_arrow,duckbridge"
 BRIDGE_HASHES = {"driver_patch_sha256", "headers_sha256", "driver_tree_sha256", "modfile_sha256", "sumfile_sha256"}
 BINARIES = ["containment.test", "worker.test", "startup.test", "export.test", "kelvo", "kelvo-landlock", "sandbox-runtime"]
@@ -96,25 +98,30 @@ def gates(output, expected):
     for status, name in re.findall(r"^--- (PASS|FAIL|SKIP): (\w+)\b", output, re.M):
         if name in expected:
             observed[name] = "duplicate" if name in observed else status.lower()
-    if PROTECTED_GATE in expected:
-        children = protected_gates(output)
-        if set(children) != {"outer", "inner", *PROTECTED_LEAVES} or not all(value == "pass" for value in children.values()):
-            observed[PROTECTED_GATE] = "fail"
+    for root, leaves in ((PROTECTED_GATE, PROTECTED_LEAVES), (protected_query.ROOT, protected_query.LEAVES)):
+        if root in expected:
+            children = child_gates(output, root, leaves)
+            if set(children) != {"outer", "inner", *leaves} or not all(value == "pass" for value in children.values()):
+                observed[root] = "fail"
     return {name: observed.get(name, "missing") for name in expected}
 
 
-def required_gates(protected=False):
-    return REQUIRED + ([PROTECTED_GATE] if protected else [])
+def required_gates(protected=False, queries=False):
+    return REQUIRED + ([PROTECTED_GATE] if protected else []) + ([protected_query.ROOT] if queries else [])
 
 
 def protected_gates(output):
+    return child_gates(output, PROTECTED_GATE, PROTECTED_LEAVES)
+
+
+def child_gates(output, root, leaves):
     # Child output is indented by t.Log. Require both terminal root records and
     # every frozen leaf: an outer PASS cannot hide a skip or truncated capture.
-    expected = ["outer", "inner", *PROTECTED_LEAVES]
+    expected = ["outer", "inner", *leaves]
     observed = {}
     for indent, status, name in re.findall(
-            r"^([ \t]*)--- (PASS|FAIL|SKIP): (" + PROTECTED_GATE + r"(?:/[^\s]+)?)\s", output, re.M):
-        key = ("inner" if indent else "outer") if name == PROTECTED_GATE else name
+            r"^([ \t]*)--- (PASS|FAIL|SKIP): (" + re.escape(root) + r"(?:/[^\s]+)?)\s", output, re.M):
+        key = ("inner" if indent else "outer") if name == root else name
         observed[key] = "duplicate" if key in observed else status.lower()
     return {name: observed.get(name, "missing") for name in expected} | {
         name: value for name, value in observed.items() if name not in expected}
@@ -380,9 +387,9 @@ def reconcile(report):
     if not isinstance(source, dict) or not isinstance(binaries, dict) or not isinstance(report.get("gates"), dict):
         return False
     mode = report.get("mode", BASE_MODE) # Existing schema-2 reports describe the baseline gate only.
-    if mode not in (BASE_MODE, PROTECTED_MODE):
+    if mode not in (BASE_MODE, PROTECTED_MODE, QUERY_MODE):
         return False
-    protected = mode == PROTECTED_MODE
+    queries, protected = mode == QUERY_MODE, mode in (PROTECTED_MODE, QUERY_MODE)
     schema = report.get("schema", 2)
     if type(schema) is not int or schema not in (2, 3):
         return False
@@ -390,18 +397,31 @@ def reconcile(report):
         if not valid_live_service(report.get("live_service"), report.get("owned_unit"), report.get("service_description"),
                                   report.get("service_user"), report.get("parent_unit")):
             return False
-    required = required_gates(protected)
+    required = required_gates(protected, queries)
     if protected:
         expected = {"outer", "inner", *PROTECTED_LEAVES}
         children = report.get("protected_gates")
         if not isinstance(children, dict) or set(children) != expected or any(value != "pass" for value in children.values()):
             return False
+    if queries:
+        children = report.get("protected_query_gates")
+        broker = report.get("broker_binary")
+        if (not isinstance(children, dict) or set(children) != {"outer", "inner", *protected_query.LEAVES}
+                or any(value != "pass" for value in children.values()) or not isinstance(broker, dict)
+                or broker.get("version") != protected_query.VERSION or broker.get("sha256") != binaries.get("nats-server")
+                or type(broker.get("bytes")) is not int or not 0 < broker["bytes"] <= protected_query.MAX_BINARY
+                or report.get("broker_binary_unchanged") is not True
+                or not protected_query.SOURCE_REQUIRED.issubset(source.get("files", {}))
+                or not protected_query.valid_broker(report.get("broker_custody"), "/system.slice/" + report["owned_unit"] + ".service/supervisor")):
+            return False
+    elif any(key in report for key in ("protected_query_gates", "broker_binary", "broker_custody", "broker_binary_unchanged")):
+        return False
     return (set(report["gates"]) == set(required)
             and all(report["gates"][name] == "pass" for name in required)
             and (valid_bridge_provenance(report) if protected else "bridge" not in report)
             and report.get("non_root") is True and report.get("capability_sets_zero") is True
             and report.get("source_unchanged") is True and valid_source_identity(source)
-            and set(binaries) == set(BINARIES)
+            and set(binaries) == set(BINARIES + (["nats-server"] if queries else []))
             and all(isinstance(value, str) and HEX_SHA256.fullmatch(value) for value in binaries.values())
             and all(type(report.get(key)) is int and report[key] == 0
                     for key in ("remaining_job_groups", "remaining_ownership_records", "service_exit_code"))
@@ -438,11 +458,13 @@ def wait_for_file(path, process=None, timeout=30):
 
 def inside(args):
     artifact = Path(args.artifact)
-    protected = args.protected_objects
-    report = {"mode": PROTECTED_MODE if protected else BASE_MODE,
-              "gates": {name: "missing" for name in required_gates(protected) if name != OUTSIDE_GATE}, "observations": {}}
+    protected, queries = args.protected_objects, args.protected_queries
+    report = {"mode": QUERY_MODE if queries else PROTECTED_MODE if protected else BASE_MODE,
+              "gates": {name: "missing" for name in required_gates(protected, queries) if name != OUTSIDE_GATE}, "observations": {}}
     if protected:
         report["protected_gates"] = protected_gates("")
+    if queries:
+        report["protected_query_gates"] = child_gates("", protected_query.ROOT, protected_query.LEAVES)
     try:
         relative = Path("/proc/self/cgroup").read_text().strip().split(":", 2)[2]
         if relative != "/system.slice/" + args.unit + ".service":
@@ -477,6 +499,22 @@ def inside(args):
                 match = re.search(r"\b" + key + r"=(\d+)", result.stdout)
                 if match:
                     report["observations"][key] = int(match[1])
+        if queries:
+            identity = json.loads((artifact / "broker-binary.json").read_text())
+            broker = protected_query.QueryBroker(artifact / "query-broker", artifact / "nats-server", identity["sha256"], relative + "/supervisor")
+            try:
+                with broker:
+                    env.update(broker.environment, KELVO_TEST_PROTECTED_QUERIES="1")
+                    result = run_logged([str(artifact / "export.test"), "-test.v", "-test.run=^" + protected_query.ROOT + "$", "-test.timeout=330s"],
+                                        artifact / "protected-query.test.log", env=env, timeout=340)
+                    report["gates"].update(gates(result.stdout, [protected_query.ROOT]))
+                    report["protected_query_gates"] = child_gates(result.stdout, protected_query.ROOT, protected_query.LEAVES)
+                    if result.returncode:
+                        report["execution_failed"] = True
+            finally:
+                report["broker_custody"] = broker.receipt
+            if not protected_query.valid_broker(broker.receipt, relative + "/supervisor"):
+                raise RuntimeError("owned broker cleanup incomplete")
         report["remaining_job_groups"] = sum(item.is_dir() for item in jobs.iterdir())
         report["remaining_ownership_records"] = sum(item.name != ".kelvo-containment.lock" for item in state.iterdir())
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
@@ -534,6 +572,9 @@ def main():
     parser.add_argument("--go", default="go")
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--protected-objects", action="store_true", help="require native protected-object refresh/query acceptance using the pinned bridge")
+    parser.add_argument("--protected-queries", action="store_true", help="also require authenticated protected queries through a private local TLS broker")
+    parser.add_argument("--nats-server", type=Path, help="existing cached NATS binary; never downloaded")
+    parser.add_argument("--nats-sha256", help="exact SHA-256 of the cached NATS binary")
     parser.add_argument("--bridge-archive", type=Path, help="checksum-pinned cached DuckDB source archive; protected mode only")
     parser.add_argument("--artifact-root", type=Path, help="fresh absolute artifact directory beneath a private owned parent")
     parser.add_argument("--parent-unit", help="active kelvo-protected-readers-validation-<12 hex digits>.service containing this runner")
@@ -547,6 +588,12 @@ def main():
         parser.error("unit must be kelvo-containment- followed by 12 lowercase hex digits")
     if args.bridge_archive is not None and not args.protected_objects:
         parser.error("--bridge-archive requires --protected-objects")
+    if args.protected_queries and not args.protected_objects:
+        parser.error("--protected-queries requires --protected-objects")
+    if (args.nats_server is not None or args.nats_sha256 is not None) and not args.protected_queries:
+        parser.error("broker inputs require --protected-queries")
+    if args.protected_queries and not args.inside and (args.nats_server is None or args.nats_sha256 is None):
+        parser.error("protected queries require the cached broker and its SHA-256")
     if args.parent_unit is not None and not PARENT_PATTERN.fullmatch(args.parent_unit):
         parser.error("invalid validation parent service name")
     if args.inside:
@@ -565,9 +612,9 @@ def main():
     description = "Kelvo containment acceptance " + uuid.uuid4().hex
     (artifact / "run.json").write_text(json.dumps({"unit": unit, "description": description, "parent_unit": args.parent_unit,
         "artifact": str(artifact), "resource_limits": RESOURCE_LIMITS}, indent=2) + "\n")
-    report = {"schema": 3, "mode": PROTECTED_MODE if args.protected_objects else BASE_MODE,
+    report = {"schema": 3, "mode": QUERY_MODE if args.protected_queries else PROTECTED_MODE if args.protected_objects else BASE_MODE,
               "scope": "single Linux node process-tree containment and query/refresh custody",
-              "passed": False, "gates": {name: "missing" for name in required_gates(args.protected_objects)}, "limitations": [
+              "passed": False, "gates": {name: "missing" for name in required_gates(args.protected_objects, args.protected_queries)}, "limitations": [
                   "No hostile native escape reproduction was executed.",
                   "Native charged memory is not parent RSS or whole-node memory.",
                   "Stale root identity rejection is tested; arbitrary host reboot recovery is not promised.",
@@ -577,6 +624,9 @@ def main():
     if args.protected_objects:
         report["protected_gates"] = protected_gates("")
         report["limitations"].append("Protected objects use a local TLS fixture; live S3, R2, Azure Blob and GCS certification is separate.")
+    if args.protected_queries:
+        report["protected_query_gates"] = child_gates("", protected_query.ROOT, protected_query.LEAVES)
+        report["limitations"].append("The private broker shares the delegated service cap; revocation is local to the gateway replica and cannot recall delivered bytes.")
     started, stage, process = time.monotonic(), "source", None
     try:
         os.chdir(repo)
@@ -607,6 +657,11 @@ def main():
             if result.returncode:
                 raise RuntimeError("bounded build failed")
         report["binary_sha256"] = {name: digest(artifact / name) for name in BINARIES}
+        if args.protected_queries:
+            stage = "cached-broker"
+            report["broker_binary"] = protected_query.seed_binary(args.nats_server, artifact, args.nats_sha256)
+            report["binary_sha256"]["nats-server"] = digest(artifact / "nats-server")
+            (artifact / "broker-binary.json").write_text(json.dumps(report["broker_binary"]) + "\n")
         account = pwd.getpwuid(os.geteuid()).pw_name
         report["service_user"] = account
         require_fresh_unit(unit)
@@ -623,12 +678,14 @@ def main():
                    "--unit", unit, "--report", str(args.report)]
         if args.protected_objects:
             command.append("--protected-objects")
+        if args.protected_queries:
+            command.append("--protected-queries")
         stage = "kernel-service"
         with (artifact / "service.log").open("w") as log:
             process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
             report["gates"][OUTSIDE_GATE] = checked_outside_probe(artifact, unit, process, report,
                 description=description, user=account, parent=args.parent_unit, protected=args.protected_objects)
-            report["service_exit_code"] = process.wait(timeout=330)
+            report["service_exit_code"] = process.wait(timeout=550 if args.protected_queries else 330)
         if (artifact / "inside.json").exists():
             inner = json.loads((artifact / "inside.json").read_text())
             if inner.get("mode") != report["mode"]:
@@ -658,6 +715,11 @@ def main():
                 report["bridge_inputs_unchanged"] = bridge_provenance(repo, artifact) == report.get("bridge")
             except (OSError, RuntimeError, ValueError):
                 report["bridge_inputs_unchanged"] = False
+        if args.protected_queries:
+            try:
+                report["broker_binary_unchanged"] = digest(artifact / "nats-server") == report.get("broker_binary", {}).get("sha256")
+            except OSError:
+                report["broker_binary_unchanged"] = False
         report["passed"] = reconcile(report)
         report["duration_seconds"] = round(time.monotonic() - started, 3)
         args.report.parent.mkdir(parents=True, exist_ok=True)
