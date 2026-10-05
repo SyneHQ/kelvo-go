@@ -41,7 +41,8 @@ OUTSIDE_GATE = "StartupPlacementOutsideDelegation"
 REQUIRED = KERNEL_GATES + WORKER_GATES + [STARTUP_GATE, EXPORT_GATE, OUTSIDE_GATE]
 PROTECTED_GATE = "TestContainedWorkerProtectedObjects"
 PROTECTED_LEAVES = [PROTECTED_GATE + "/" + name for name in (
-    "publish-single-and-multipart", "resolved-child-catalog-has-no-provider-identity",
+    "publish-single-and-multipart", "verify-and-inventory-single-and-descriptor-layouts",
+    "resolved-child-catalog-has-no-provider-identity",
     "cte-join-types-policy-and-shared-manager", "hidden-column-and-uncontained-refusal",
     "immutable-runtime-refuses-retargeting", "cancellation-joins-ranges-and-child",
     "binding-loss-after-last-batch-refuses-completion")]
