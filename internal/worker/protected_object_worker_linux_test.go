@@ -4,6 +4,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,9 +27,10 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/decimal128"
 )
 
-type protectedFixtureRows struct{}
+type protectedFixtureRows struct{ calls *atomic.Int64 }
 
-func (protectedFixtureRows) Execute(ctx context.Context, _ query.Request, sink query.Sink) (query.Stats, error) {
+func (r protectedFixtureRows) Execute(ctx context.Context, _ query.Request, sink query.Sink) (query.Stats, error) {
+	r.calls.Add(1)
 	if err := ctx.Err(); err != nil {
 		return query.Stats{}, err
 	}
@@ -80,7 +83,8 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"orders_single", "orders_multi"} {
-		dataset := catalog.Dataset{ID: id, Query: query.Request{Mode: "federated", Sources: []string{"source"}, SQL: "SELECT * FROM source"}, MaxAge: time.Hour, AuthorizationVersion: "fixture-v1", Limits: executor.Limits}
+		dataset := catalog.Dataset{ID: id, Query: query.Request{Mode: "federated", Sources: []string{"source"}, SQL: "SELECT * FROM source"}, MaxAge: time.Hour, AuthorizationVersion: "fixture-v1", Limits: executor.Limits,
+			Verification: &catalog.VerificationLimits{MaxBytes: 32 << 20}}
 		if id == "orders_multi" {
 			dataset.Multipart = &catalog.MultipartConfig{MaxPartBytes: 1 << 20, MaxParts: 4}
 		}
@@ -109,7 +113,11 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 			t.Error("runtime retained local work after fixture cleanup")
 		}
 	})
-	manager, err := acceleration.NewManagerWithRuntime(config, func(catalog.Config, query.Limits) (query.Executor, error) { return protectedFixtureRows{}, nil }, runtime)
+	var sourceFactories, sourceExecutions atomic.Int64
+	manager, err := acceleration.NewManagerWithRuntime(config, func(catalog.Config, query.Limits) (query.Executor, error) {
+		sourceFactories.Add(1)
+		return protectedFixtureRows{calls: &sourceExecutions}, nil
+	}, runtime)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,18 +179,75 @@ func TestContainedWorkerProtectedObjects(t *testing.T) {
 			t.Fatal("query retained scratch or native process")
 		}
 	}
+	published := make(map[string]acceleration.Snapshot)
 	t.Run("publish-single-and-multipart", func(t *testing.T) {
 		for _, id := range request.Sources {
 			snapshot, err := manager.Refresh(context.Background(), id, false)
 			if err != nil || snapshot.Rows != 4 || snapshot.Generation == "" || (id == "orders_multi" && len(snapshot.Parts) == 0) {
 				t.Fatal("protected refresh failed", id, err)
 			}
+			published[id] = snapshot
 			status, err := runtime.Status(context.Background(), id)
 			if err != nil || status.Generation != snapshot.Generation || !status.RefreshedAt.Equal(snapshot.RefreshedAt) {
 				t.Fatal("guarded status changed publication identity", id, err)
 			}
 		}
 		clean(t)
+	})
+	if t.Failed() {
+		return
+	}
+	t.Run("verify-and-inventory-single-and-descriptor-layouts", func(t *testing.T) {
+		// This small descriptor-layout fixture may contain one physical part.
+		// Two-part byte/schema verification has separate acceleration-package tests.
+		sameSnapshot := func(got, want acceleration.Snapshot) bool {
+			// Ignore only process-local clock observations; every exported field,
+			// including exact object versions, ordered parts and refresh time, matches.
+			left, leftErr := json.Marshal(got)
+			right, rightErr := json.Marshal(want)
+			return leftErr == nil && rightErr == nil && bytes.Equal(left, right)
+		}
+		for _, id := range request.Sources {
+			prior := published[id]
+			current, err := manager.Refresh(context.Background(), id, false)
+			if err != nil || current.Generation == prior.Generation || current.Rows != 4 || current.Bytes <= 0 || (id == "orders_multi" && len(current.Parts) == 0) {
+				t.Fatal("second protected generation did not publish", id, err)
+			}
+			clean(t)
+			beforeFactories, beforeExecutions := sourceFactories.Load(), sourceExecutions.Load()
+			service.mu.Lock()
+			rootKey := "/fixtures/cache/tenant-a/" + id + "/current.yaml"
+			beforeRoot := service.objects[rootKey]
+			beforeRoot.data = bytes.Clone(beforeRoot.data)
+			beforeViolations, beforeRanges := service.violations, service.ranges
+			service.mu.Unlock()
+			verified, err := manager.Verify(context.Background(), id)
+			if err != nil || !sameSnapshot(verified, current) {
+				t.Fatal("TLS verification changed the exact current snapshot", id, err)
+			}
+			clean(t)
+			inventory, err := manager.Inventory(context.Background(), id)
+			if err != nil || len(inventory) != 2 {
+				t.Fatal("TLS inventory did not retain both generations", id, err, len(inventory))
+			}
+			for index, want := range []acceleration.Snapshot{current, prior} {
+				entry := inventory[index]
+				if !entry.Verified || entry.Active != (index == 0) || entry.CatalogScope != "retained_manifest" || entry.CatalogTruncated || !sameSnapshot(entry.Snapshot, want) {
+					t.Fatal("TLS inventory changed exact history or verification status", id, index)
+				}
+			}
+			clean(t)
+			service.mu.Lock()
+			afterRoot := service.objects[rootKey]
+			violations, ranges := service.violations, service.ranges
+			service.mu.Unlock()
+			if sourceFactories.Load() != beforeFactories || sourceExecutions.Load() != beforeExecutions {
+				t.Fatal("maintenance invoked the source executor", id)
+			}
+			if beforeViolations != 0 || violations != 0 || ranges <= beforeRanges || !reflect.DeepEqual(beforeRoot, afterRoot) {
+				t.Fatal("TLS maintenance changed the root, violated roles/read ordering, or skipped footer reads", id)
+			}
+		}
 	})
 	if t.Failed() {
 		return
