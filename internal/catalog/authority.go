@@ -144,7 +144,7 @@ func boundedAuthority(c Config) bool {
 		}
 	}
 	for _, d := range a.Datasets {
-		if !authorityName(names, d.ID) || !budget.text(d.ID, 63) || !budget.text(d.AuthorizationVersion, 128) ||
+		if a.validateVerification(d) != nil || !authorityName(names, d.ID) || !budget.text(d.ID, 63) || !budget.text(d.AuthorizationVersion, 128) ||
 			!budget.text(d.Limits.ResultCompression, 16) || !budget.request(d.Query) {
 			return false
 		}
