@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Negative controls for kernel acceptance, source identity and owned cleanup."""
+from contextlib import ExitStack
 import hashlib
 import json
 from pathlib import Path
@@ -113,23 +114,25 @@ class ContainmentControls(unittest.TestCase):
                 process.wait.return_value = 0
                 process.poll.return_value = 0
                 identity = valid_report(protected, queries, exports)["source"]
-                with mock.patch.object(fixture.sys, "argv", args), \
-                        mock.patch.object(fixture.sys, "platform", "linux"), \
-                        mock.patch.object(fixture.os, "geteuid", return_value=1000), \
-                        mock.patch.object(fixture.os, "chdir"), \
-                        mock.patch.object(fixture.pwd, "getpwuid", return_value=SimpleNamespace(pw_name=TEST_USER)), \
-                        mock.patch.object(fixture, "prepare_artifact", return_value=artifact), \
-                        mock.patch.object(fixture, "require_fresh_unit"), \
-                        mock.patch.object(fixture, "source_manifest", return_value=identity), \
-                        mock.patch.object(fixture, "bridge_provenance", return_value={}), \
-                        mock.patch.object(fixture.protected_query, "seed_binary", return_value={"sha256": "a" * 64}), \
-                        mock.patch.object(fixture, "digest", return_value="a" * 64), \
-                        mock.patch.object(fixture, "run", return_value=subprocess.CompletedProcess([], 0, "go fixture\n")), \
-                        mock.patch.object(fixture, "run_logged", return_value=subprocess.CompletedProcess([], 0, "")) as logged, \
-                        mock.patch.object(fixture.subprocess, "Popen", return_value=process) as launch, \
-                        mock.patch.object(fixture, "checked_outside_probe", return_value="pass"), \
-                        mock.patch.object(fixture, "cleanup_owned", return_value={"owned_service_removed": True, "owned_cgroup_removed": True}), \
-                        mock.patch.object(fixture, "reconcile", return_value=True), mock.patch("builtins.print"):
+                with ExitStack() as stack:
+                    stack.enter_context(mock.patch.object(fixture.sys, "argv", args))
+                    stack.enter_context(mock.patch.object(fixture.sys, "platform", "linux"))
+                    stack.enter_context(mock.patch.object(fixture.os, "geteuid", return_value=1000))
+                    stack.enter_context(mock.patch.object(fixture.os, "chdir"))
+                    stack.enter_context(mock.patch.object(fixture.pwd, "getpwuid", return_value=SimpleNamespace(pw_name=TEST_USER)))
+                    stack.enter_context(mock.patch.object(fixture, "prepare_artifact", return_value=artifact))
+                    stack.enter_context(mock.patch.object(fixture, "require_fresh_unit"))
+                    stack.enter_context(mock.patch.object(fixture, "source_manifest", return_value=identity))
+                    stack.enter_context(mock.patch.object(fixture, "bridge_provenance", return_value={}))
+                    stack.enter_context(mock.patch.object(fixture.protected_query, "seed_binary", return_value={"sha256": "a" * 64}))
+                    stack.enter_context(mock.patch.object(fixture, "digest", return_value="a" * 64))
+                    stack.enter_context(mock.patch.object(fixture, "run", return_value=subprocess.CompletedProcess([], 0, "go fixture\n")))
+                    logged = stack.enter_context(mock.patch.object(fixture, "run_logged", return_value=subprocess.CompletedProcess([], 0, "")))
+                    launch = stack.enter_context(mock.patch.object(fixture.subprocess, "Popen", return_value=process))
+                    stack.enter_context(mock.patch.object(fixture, "checked_outside_probe", return_value="pass"))
+                    stack.enter_context(mock.patch.object(fixture, "cleanup_owned", return_value={"owned_service_removed": True, "owned_cgroup_removed": True}))
+                    stack.enter_context(mock.patch.object(fixture, "reconcile", return_value=True))
+                    stack.enter_context(mock.patch("builtins.print"))
                     self.assertEqual(fixture.main(), 0)
                 delegated = launch.call_args.args[0]
                 python = delegated.index(fixture.sys.executable)
