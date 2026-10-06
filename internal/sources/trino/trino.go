@@ -5,6 +5,7 @@ package trino
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -33,6 +34,38 @@ var safeSegment = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 var safeContext = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]{0,127}$`)
 
 func New(config catalog.Config, limits query.Limits) (*Engine, error) {
+	return newEngine(config, limits, cloudapi.New, func(source catalog.Source) (string, error) {
+		for _, name := range []string{source.URLEnv, source.TokenEnv, source.UsernameEnv} {
+			if name == "" || catalog.ValidateEnvironment(name) != nil {
+				return "", query.NewError("CONFIGURATION_ERROR", "Trino/Presto requires URL, token and username environment references")
+			}
+		}
+		return os.Getenv(source.UsernameEnv), nil
+	})
+}
+
+// NewResolved binds the saved username and token to one source. Empty values
+// are errors; no process environment supplies a fallback.
+func NewResolved(config catalog.Config, limits query.Limits, credentials cloudapi.Credentials, username string) (*Engine, error) {
+	return newEngine(config, limits, func(source catalog.Source, l query.Limits) (*cloudapi.Client, error) {
+		return cloudapi.NewResolved(source, l, credentials)
+	}, func(catalog.Source) (string, error) { return username, nil })
+}
+
+// NewResolvedBasic preserves saved password authentication without treating a password as an OAuth token.
+func NewResolvedBasic(config catalog.Config, limits query.Limits, credentials cloudapi.Credentials, username, password string) (*Engine, error) {
+	if username == "" || password == "" || strings.ContainsAny(username, ":\r\n\x00") || strings.ContainsAny(password, "\r\n\x00") || len(username) > 256 || len(password) > 4096 {
+		return nil, query.NewError("CONFIGURATION_ERROR", "Trino/Presto requires explicit basic credentials")
+	}
+	credentials.Token = base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	e, err := NewResolved(config, limits, credentials, username)
+	if err == nil {
+		e.headers["Authorization"] = "Basic " + credentials.Token
+	}
+	return e, err
+}
+
+func newEngine(config catalog.Config, limits query.Limits, open cloudapi.Factory, user func(catalog.Source) (string, error)) (*Engine, error) {
 	var source catalog.Source
 	count := 0
 	for _, candidate := range config.Sources {
@@ -44,12 +77,10 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 	if count != 1 || !catalog.ValidID(source.ID) {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Trino/Presto requires one selected source")
 	}
-	for _, name := range []string{source.URLEnv, source.TokenEnv, source.UsernameEnv} {
-		if name == "" || catalog.ValidateEnvironment(name) != nil {
-			return nil, query.NewError("CONFIGURATION_ERROR", "Trino/Presto requires URL, token and username environment references")
-		}
+	username, err := user(source)
+	if err != nil {
+		return nil, err
 	}
-	username := os.Getenv(source.UsernameEnv)
 	if username == "" || len(username) > 256 || strings.TrimSpace(username) != username || strings.ContainsAny(username, "\r\n\x00\t") {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Trino/Presto username is unavailable or invalid")
 	}
@@ -71,7 +102,7 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 			headers[prefix+"Schema"] = value
 		}
 	}
-	client, err := cloudapi.New(source, limits)
+	client, err := open(source, limits)
 	if err != nil {
 		return nil, err
 	}
