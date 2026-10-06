@@ -212,8 +212,9 @@ type sessionAttributes struct {
 	TimestampUTC *bool `json:"timestampUtcEnabled"`
 }
 type result struct {
-	Kind string     `json:"resultType"`
-	Set  *resultSet `json:"resultSet"`
+	Kind     string     `json:"resultType"`
+	Set      *resultSet `json:"resultSet"`
+	RowCount *int64     `json:"rowCount"`
 }
 type resultSet struct {
 	Handle        *int64                 `json:"resultSetHandle"`
