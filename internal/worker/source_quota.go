@@ -31,7 +31,15 @@ func (e *Executor) acquireSourceQuota(ctx context.Context, r query.Request) (con
 		// A snapshot read does not contact the dataset's original source. Do not
 		// resolve the refresh SQL here or accidentally consume its source's quota.
 		if source.Type != "accelerated" {
-			selected = append(selected, source.ID)
+			id := source.ID
+			if e.connectionSourceIDs != nil {
+				var ok bool
+				id, ok = e.connectionSourceIDs[source.ID]
+				if !ok {
+					return nil, nil, delegatedDenied()
+				}
+			}
+			selected = append(selected, id)
 		}
 	}
 	return e.SourceAdmission.Acquire(ctx, selected)

@@ -43,6 +43,9 @@ type Input struct {
 // ExecutionContext validates the trusted envelope before any child engine is
 // opened. Parent checks are repeated because worker stdin is a separate boundary.
 func (in Input) ExecutionContext(ctx context.Context) (context.Context, error) {
+	if in.Request.Delegation != "" {
+		return nil, query.NewError("PERMISSION_DENIED", "Delegated authority cannot enter the query process")
+	}
 	if in.Access != nil {
 		var err error
 		ctx, err = access.WithPolicy(ctx, *in.Access)
@@ -85,6 +88,10 @@ type Executor struct {
 	SourceHealth          *telemetry.SourceHealth
 	SourceAdmission       SourceAdmitter
 	Secrets               SecretResolver
+	// ConnectionResolvers are parent-only clients selected by authenticated
+	// delegation issuer. No resolver identity or proof enters child stdin.
+	connectionResolvers map[string]*ConnectionResolver
+	connectionSourceIDs map[string]string
 }
 
 type boundCatalog struct {
@@ -177,6 +184,15 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 			return stats, query.NewError("PERMISSION_DENIED", "Query catalog authority does not match")
 		}
 	}
+	execution, dynamic, err := delegatedExecution(ctx, r)
+	if err != nil {
+		return stats, err
+	}
+	if dynamic {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, time.Unix(execution.Claims.ExpiresAt, 0))
+		defer cancel()
+	}
 	if e.catalogBinding != nil {
 		bound := *e
 		bound.Config = e.catalogBinding.config
@@ -186,6 +202,12 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 }
 
 func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink) (stats query.Stats, resultErr error) {
+	execution, dynamic, err := delegatedExecution(ctx, r)
+	if err != nil {
+		return stats, err
+	}
+	resolverRequest := r // The delegation digest preserves the original mode.
+	var connectionValidUntil int64
 	parent := ctx
 	start := time.Now()
 	var admissionWait time.Duration
@@ -203,11 +225,13 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	if err := query.ValidateRequest(r); err != nil {
 		return stats, err
 	}
-	if err := access.ValidateRequest(ctx, e.Config, r); err != nil {
-		return stats, err
-	}
-	if err := e.ValidateObjectRuntime(); err != nil {
-		return stats, err
+	if !dynamic {
+		if err := access.ValidateRequest(ctx, e.Config, r); err != nil {
+			return stats, err
+		}
+		if err := e.ValidateObjectRuntime(); err != nil {
+			return stats, err
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.Limits.Timeout)
 	defer cancel()
@@ -243,6 +267,18 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		// resources are released before a competing job can take this reservation.
 		custody, _ = containment.NewCustody(reservation.Release)
 		defer custody.Complete()
+	}
+	if dynamic {
+		// Network/metadata resolution consumes the same bounded reservation as
+		// query execution; queued requests retain no source credentials.
+		e, connectionValidUntil, err = e.resolveConnections(ctx, execution, resolverRequest)
+		if err != nil {
+			return stats, err
+		}
+		r.Delegation = ""
+		if err := access.ValidateRequest(ctx, e.Config, r); err != nil {
+			return stats, err
+		}
 	}
 	executionCtx := ctx // retain the deadline even if a quota child cancels first
 	if e.SourceAdmission != nil {
@@ -397,6 +433,11 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		}()
 	}
 	// Allocate pipes only once every fallible preparation step is complete.
+	// The resolver receipt authorizes credential delivery, not a five-second
+	// query. Grant expiry and live node custody bound the full execution.
+	if dynamic && connectionValidUntil <= time.Now().Unix() {
+		return stats, connectionUnavailable()
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return stats, err

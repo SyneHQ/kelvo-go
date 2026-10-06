@@ -78,6 +78,10 @@ func testWorkerMain() int {
 		if !objectWorkerEnvironmentMatches(in) {
 			return 2
 		}
+	} else if in.Request.SQL == "SELECT dynamic_source_environment" {
+		if !dynamicConnectionChildMatches(in) {
+			return 2
+		}
 	} else if in.Request.SQL == "SELECT source_environment" || in.Request.SQL == "SELECT aws_environment" {
 		if in.Request.Mode != "native" || in.Request.ConnectionID != "selected" || len(in.Config.Sources) != 1 || in.Config.Sources[0].ID != "selected" {
 			return 2
