@@ -1,0 +1,17 @@
+[
+  {
+    "name": "connection",
+    "canonical_json": "{\"version\":1,\"kind\":\"connection.test\",\"connection\":{\"id\":\"saved-connection\",\"database\":\"app\"},\"idempotency_key\":\"probe-1\",\"spec\":{}}",
+    "sha256": "de83bde1950d14ebbe468bb65b812af5e7dfac88d741b1ca80a93eacb06f3fb4"
+  },
+  {
+    "name": "large-integer",
+    "canonical_json": "{\"version\":1,\"kind\":\"query.read\",\"connection\":{\"id\":\"saved-connection\",\"database\":\"app\"},\"idempotency_key\":\"read-1\",\"spec\":{\"query\":{\"sql\":\"SELECT $1, $2\",\"parameters\":[{\"type\":\"uint64\",\"value\":18446744073709551615},{\"type\":\"decimal128\",\"value\":\"9007199254740993.01\"}]}}}",
+    "sha256": "67b640680c19f2fceadd3e71fa7958a35ba1a897d18c07d1c567342d8b3082fc"
+  },
+  {
+    "name": "escaped-sql",
+    "canonical_json": "{\"version\":1,\"kind\":\"query.read\",\"connection\":{\"id\":\"saved-connection\"},\"idempotency_key\":\"read-2\",\"spec\":{\"query\":{\"sql\":\"SELECT 1 \\u003c 2\"}}}",
+    "sha256": "5073b1cd559e687ab58b982ceadcaf80b8fee753e996c8ee55314a5ec93a1683"
+  }
+]
