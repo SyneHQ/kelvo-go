@@ -142,6 +142,25 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		return stats, e.sourceError(ctx, err, "Source rejected query")
 	}
 	defer rows.Close()
+	prepareNS := time.Since(started).Nanoseconds()
+	delivered, err := StreamRows(ctx, rows, e.dialect, e.limits, sink)
+	stats.PrepareNS = prepareNS + delivered.PrepareNS
+	stats.Rows, stats.Bytes, stats.Batches = delivered.Rows, delivered.Bytes, delivered.Batches
+	return stats, err
+}
+
+// StreamRows converts an already authorized relational result into bounded,
+// synchronous Arrow batches. The caller owns rows and its read-only transaction
+// and must create them with the same cancellable context. No connection is opened.
+func StreamRows(ctx context.Context, rows *sql.Rows, dialect Dialect, limits query.Limits, sink query.Sink) (stats query.Stats, err error) {
+	if ctx == nil || rows == nil || sink == nil || limits.Validate() != nil || dialect.SourceType == "" {
+		return stats, query.NewError("INVALID_ARGUMENT", "Invalid relational result stream")
+	}
+	if err := ctx.Err(); err != nil {
+		return stats, query.PublicError(err)
+	}
+	started := time.Now()
+	e := &Engine{dialect: dialect, limits: limits}
 	columns, err := rows.ColumnTypes()
 	if err != nil {
 		return stats, e.sourceError(ctx, err, "Source returned an invalid result")
@@ -219,6 +238,14 @@ func arrowType(c *sql.ColumnType, dialect Dialect) (arrow.DataType, error) {
 		return mysqlType(c, t)
 	}
 	switch {
+	case dialect.SourceType == "oracle" && t == "LONG":
+		return arrow.BinaryTypes.String, nil
+	case dialect.SourceType == "oracle" && (t == "TIMESTAMPTZ" || t == "TIMESTAMPTZ_DTY"):
+		return &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"}, nil
+	case dialect.SourceType == "oracle" && (t == "TIMESTAMPLTZ_DTY" || t == "TIMESTAMPELTZ"):
+		return nil, errors.New("Oracle local timezone decoding requires verified session semantics")
+	case dialect.SourceType == "oracle" && t == "IBFLOAT":
+		return arrow.PrimitiveTypes.Float32, nil
 	case strings.Contains(t, "BOOL") || t == "BIT":
 		return arrow.FixedWidthTypes.Boolean, nil
 	case t == "BYTEA":

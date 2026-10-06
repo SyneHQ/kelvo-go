@@ -29,6 +29,17 @@ var component = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 var sessionID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,256}$`)
 
 func New(c catalog.Config, limits query.Limits) (*Engine, error) {
+	return newEngine(c, limits, cloudapi.New)
+}
+
+// NewResolved opens one request-owned source without reading ambient credentials.
+func NewResolved(c catalog.Config, limits query.Limits, credentials cloudapi.Credentials) (*Engine, error) {
+	return newEngine(c, limits, func(s catalog.Source, l query.Limits) (*cloudapi.Client, error) {
+		return cloudapi.NewResolved(s, l, credentials)
+	})
+}
+
+func newEngine(c catalog.Config, limits query.Limits, open cloudapi.Factory) (*Engine, error) {
 	source, err := cloudapi.SingleSource(c, "spanner")
 	if err != nil {
 		return nil, err
@@ -43,7 +54,7 @@ func New(c catalog.Config, limits query.Limits) (*Engine, error) {
 			return nil, query.NewError("CONFIGURATION_ERROR", "Unknown Spanner option")
 		}
 	}
-	client, err := cloudapi.New(source, limits)
+	client, err := open(source, limits)
 	if err != nil {
 		return nil, err
 	}
