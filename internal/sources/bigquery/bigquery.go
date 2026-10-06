@@ -30,6 +30,17 @@ type Engine struct {
 var component = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
 func New(c catalog.Config, l query.Limits) (*Engine, error) {
+	return newEngine(c, l, cloudapi.New)
+}
+
+// NewResolved opens one request-owned source without reading ambient credentials.
+func NewResolved(c catalog.Config, l query.Limits, credentials cloudapi.Credentials) (*Engine, error) {
+	return newEngine(c, l, func(s catalog.Source, limits query.Limits) (*cloudapi.Client, error) {
+		return cloudapi.NewResolved(s, limits, credentials)
+	})
+}
+
+func newEngine(c catalog.Config, l query.Limits, open cloudapi.Factory) (*Engine, error) {
 	s, err := cloudapi.SingleSource(c, "bigquery")
 	if err != nil {
 		return nil, err
@@ -52,7 +63,7 @@ func New(c catalog.Config, l query.Limits) (*Engine, error) {
 			return nil, query.NewError("CONFIGURATION_ERROR", "Unknown BigQuery option")
 		}
 	}
-	client, err := cloudapi.New(s, l)
+	client, err := open(s, l)
 	if err != nil {
 		return nil, err
 	}

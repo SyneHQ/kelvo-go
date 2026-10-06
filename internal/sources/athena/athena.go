@@ -30,7 +30,14 @@ type Engine struct {
 var workgroupName = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,128}$`)
 var executionID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
 
-func New(c catalog.Config, l query.Limits) (*Engine, error) {
+func New(c catalog.Config, l query.Limits) (*Engine, error) { return newEngine(c, l, awsapi.New) }
+
+func NewResolved(c catalog.Config, l query.Limits, credentials awsapi.Credentials) (*Engine, error) {
+	return newEngine(c, l, func(s catalog.Source, l query.Limits, service string) (*awsapi.Client, error) {
+		return awsapi.NewResolved(s, l, service, credentials)
+	})
+}
+func newEngine(c catalog.Config, l query.Limits, open awsapi.Factory) (*Engine, error) {
 	s, err := cloudapi.SingleSource(c, "athena")
 	if err != nil {
 		return nil, err
@@ -39,7 +46,7 @@ func New(c catalog.Config, l query.Limits) (*Engine, error) {
 	if !workgroupName.MatchString(s.Options["workgroup"]) || s.Options["database"] == "" || len(s.Options["database"]) > 255 || strings.ContainsAny(s.Options["database"], "\r\n\x00") || parseErr != nil || output.Scheme != "s3" || output.Hostname() == "" || output.User != nil || output.RawQuery != "" || output.Fragment != "" || len(s.Options["output_location"]) > 1024 {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Athena requires workgroup, database and an S3 output_location")
 	}
-	client, err := awsapi.New(s, l, "athena")
+	client, err := open(s, l, "athena")
 	if err != nil {
 		return nil, err
 	}
