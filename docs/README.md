@@ -10,6 +10,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Choose a database connector | [Coverage matrix](source-coverage.md) · [Source setup guides](usage.md#source-guides) |
 | Understand execution and isolation | [Architecture](architecture.md) · [Security](../SECURITY.md) |
 | Join live sources | [Federation](federation.md) · [Adapter SDK](federation-adapters.md) |
+| Execute saved-connection reads, writes and jobs | [Database operations](database-operations.md) · [Go adapters](../adapters/go/README.md) · [JDBC runtimes](jdbc-runtime.md) |
 | Tune output and CSV memory | [LZ4 and limits](usage.md#opt-in-result-compression) · [CSV buffers](csv-memory.md) |
 
 ## Accelerate and recover datasets

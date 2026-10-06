@@ -12,6 +12,8 @@
 
 Kelvo is an open-source Go analytics gateway by [SYNEHQ](https://synehq.com). Query databases directly, join supported sources with DuckDB, or reuse Parquet snapshots. Send typed Arrow results to notebooks, dashboards, agents and APIs.
 
+Application gateways can also delegate [saved-connection operations](docs/database-operations.md): supported writes, metadata, migrations, ingestion and watchers run in contained adapters with fresh credentials.
+
 **Developer preview.** Check [source coverage](docs/source-coverage.md), [validation](docs/validation.md) and [delivery status](docs/production-roadmap.md#delivery-status) before choosing a deployment.
 
 ## Quick start
@@ -72,7 +74,7 @@ Use [local storage](docs/acceleration.md) or opt into [S3, R2, GCS or Azure Blob
 
 ## Security and cluster operation
 
-`serve` has one trust domain. Shared deployments need tenant-bound worker pools, separate NATS accounts, mTLS, read-only database grants and host/container isolation.
+`serve` has one trust domain. Shared deployments need tenant-bound worker pools, separate NATS accounts, mTLS and host/container isolation. Use read-only grants for analytics; writes require separate signed operation authority and source permissions.
 
 Configure [admission, source quotas and drain](docs/operations.md), then validate your workload. DuckDB completes execution before Arrow delivery; output limits and compression do not cap process memory. [Deploy workers](deploy/README.md) · [Cluster lifecycle](docs/cluster.md)
 

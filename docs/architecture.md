@@ -51,6 +51,17 @@ The Linux [backup command](snapshot-backup.md) verifies and copies a current gen
 
 Verify recovery, test a query, then change service configuration explicitly. Stale data remains stale. Retained-generation restore is a separate operation; backup scheduling and failover belong to the operator.
 
+## Saved-connection operations
+
+An application gateway keeps user authentication, connection lookup and decryption. Kelvo owns customer execution through its contained [Go adapters](../adapters/go/README.md) and optional [JDBC runtime](jdbc-runtime.md).
+
+1. The gateway signs an exact request with the saved connection ID.
+2. A worker claims the operation and fetches current credentials over private mTLS.
+3. The adapter receives credentials on stdin and executes within its resource limits.
+4. Kelvo retains the outcome receipt and bounded Arrow result. Status reads never rerun the operation.
+
+Credentials stay out of the queue, ledger, argv and child environment. A lost write acknowledgement requires reconciliation. See [database operations](database-operations.md) for supported capabilities, admission and retry rules.
+
 ## Worker operations
 
 - [Metrics and diagnostics](operations.md#diagnostics): protected aggregate state; no SQL, parameters or secrets.
