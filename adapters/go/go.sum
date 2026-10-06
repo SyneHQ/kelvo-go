@@ -14,8 +14,8 @@ github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 h1:XRzhVemXdgv
 github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0/go.mod h1:HKpQxkWaGLJ+D/5H8QRpyQXA1eKjxkFlOMwck5+33Jk=
 github.com/DATA-DOG/go-sqlmock v1.4.1 h1:ThlnYciV1iM/V0OSF/dtkqWb6xo5qITT1TJBG1MRDJM=
 github.com/DATA-DOG/go-sqlmock v1.4.1/go.mod h1:f/Ixk793poVmq4qj/V1dPUg2JEAKC73Q5eFN3EC/SaM=
-github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261006192755-063c8afbc8e6 h1:pIM24Z8VAjzmDNTOLkB0V51XI9y13gy9o5gqjWTGtV0=
-github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261006192755-063c8afbc8e6/go.mod h1:lDWa9N3a+qL91VWbXplYwuis0IBUk67Y8iCUF56YIRw=
+github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261006195007-50bdc3d8b7a2 h1:MRpjp+mFs/SFZ3aCZp1FyNWV9qFmp94Z0oKmBZr6yT0=
+github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261006195007-50bdc3d8b7a2/go.mod h1:lDWa9N3a+qL91VWbXplYwuis0IBUk67Y8iCUF56YIRw=
 github.com/andybalholm/brotli v1.2.3 h1:8H1qwOkl2LPfjf3YezB90JnCliZb6SInJ/OJkEbA5NQ=
 github.com/andybalholm/brotli v1.2.3/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/apache/arrow-go/v18 v18.5.1 h1:yaQ6zxMGgf9YCYw4/oaeOU3AULySDlAYDOcnr4LdHdI=
