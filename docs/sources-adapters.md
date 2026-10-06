@@ -1,6 +1,6 @@
 # Optional external adapters
 
-Connect an unsupported engine through a separately operated Flight SQL or `db.api.go` service. Configure the route explicitly; Kelvo does not bundle that service, its drivers, or an automatic fallback.
+Use [contained operation adapters](database-operations.md) when an application gateway delegates customer execution to Kelvo. This guide covers the separate case of querying an independently operated Flight SQL or compatible HTTP service.
 
 ## Arrow Flight SQL
 
@@ -40,4 +40,4 @@ A complete response must contain `results` and a matching `rowCount`; null resul
 
 The response cap is the smallest of 32 MiB, the output-byte limit and one quarter of query memory. Batches contain at most 1,024 documents. These are buffer limits; enforce process memory separately. Use native or typed Arrow routes for large exports.
 
-Cancellation closes the local HTTP request; this gateway contract has no remote cancel operation. TLS fixtures verify the adapter contract, not every backend. The two SAP entries in [source coverage](source-coverage.md) need a custom adapter because the reference gateway lacks complete connection builders.
+Cancellation closes the local HTTP request; this gateway contract has no remote cancel operation. TLS fixtures verify the adapter contract, not every backend. For SAP and other JDBC systems, see the [operator-provisioned runtime](jdbc-runtime.md).

@@ -18,7 +18,7 @@ Use this matrix to choose a query route. Query support does not imply metadata b
 | `oracle` | Native; opt-in DuckDB bridge federation |
 | `dynamodb` | Native read-only PartiQL; lossless AttributeValue documents |
 | `trino` | Native HTTPS statement protocol |
-| `clickhouse_lambda` | External adapter |
+| `clickhouse_lambda` | [Optional Go operation adapter](sources-clickhouse-lambda.md); external adapter for catalog queries |
 | `alloydb` | Native protocol-family |
 | `presto` | Native HTTPS statement protocol |
 | `athena` | Native signed HTTPS query API |
@@ -79,13 +79,15 @@ Snapshots can be queried or joined as aliases backed by local Parquet or opt-in 
 
 MongoDB refresh accepts restricted SQL or read-only pipelines in YAML, rejecting `$out`/`$merge`. D1's inferred schema can yield unsupported Null columns for empty/all-NULL results, even with a source cast. Other unsupported snapshot types include zoned nanosecond timestamps, nested values and dictionaries. Choose an explicit supported representation or query the source directly.
 
-**Incremental refresh and CDC are not implemented for any connector.** Benchmark snapshots against the workload before making latency or cost claims.
+**Incremental snapshot refresh is not implemented.** Operation adapters can run supported source watchers, but those events do not automatically maintain acceleration snapshots. Benchmark snapshots against the workload before making latency or cost claims.
 
 ## External adapters
 
-Configure `adapter: flightsql` for a real Flight SQL service or `adapter: dbapi` for the connection-ID gateway API. Routes are explicit; there is no automatic fallback. See [setup and limits](sources-adapters.md).
+Trusted application gateways can submit [saved-connection operations](database-operations.md) to Kelvo's contained [Go adapters](../adapters/go/README.md) or [JDBC runtime](jdbc-runtime.md). These cover queries, supported writes and metadata; lifecycle features remain engine-specific. The gateway keeps authentication and connection lookup, while Kelvo executes customer operations.
 
-Flight SQL preserves typed Arrow results. The compatibility route buffers bounded JSON objects in Arrow Binary and cannot restore precision lost upstream. Neither service nor its proprietary drivers are bundled. The SAP entries require custom services because the reference gateway's connection builders are incomplete.
+For an independently operated query service, configure `adapter: flightsql` or the legacy `adapter: dbapi` HTTP contract. Routes are explicit; there is no automatic fallback. See [setup and limits](sources-adapters.md).
+
+Flight SQL preserves typed Arrow results. HTTP compatibility buffers bounded JSON objects in Arrow Binary and cannot restore precision lost upstream. Proprietary JDBC drivers require explicit operator provisioning and licensing.
 
 ## Validation boundaries
 
