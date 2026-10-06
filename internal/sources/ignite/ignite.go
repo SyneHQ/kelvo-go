@@ -26,6 +26,12 @@ type Engine struct {
 }
 
 func New(c catalog.Config, limits query.Limits) (*Engine, error) {
+	return newEngine(c, limits, newClient)
+}
+func NewResolved(c catalog.Config, limits query.Limits, credentials Credentials) (*Engine, error) {
+	return newEngine(c, limits, func(s catalog.Source, l query.Limits) (*client, error) { return newResolvedClient(s, l, credentials) })
+}
+func newEngine(c catalog.Config, limits query.Limits, open func(catalog.Source, query.Limits) (*client, error)) (*Engine, error) {
 	source, err := cloudapi.SingleSource(c, "ignite")
 	if err != nil {
 		return nil, err
@@ -43,7 +49,7 @@ func New(c catalog.Config, limits query.Limits) (*Engine, error) {
 	if cache == "" {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Ignite requires cache_name")
 	}
-	cl, err := newClient(source, limits)
+	cl, err := open(source, limits)
 	if err != nil {
 		return nil, err
 	}
