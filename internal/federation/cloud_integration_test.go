@@ -197,22 +197,33 @@ func (f *cloudFixture) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	page := false
 	if r.Method == http.MethodPost && r.URL.Path == endpoint {
 		var body struct {
-			SQL         string            `json:"statement"`
-			Format      string            `json:"format"`
-			Disposition string            `json:"disposition"`
-			Warehouse   string            `json:"warehouse_id"`
-			Parameters  map[string]string `json:"parameters"`
+			SQL         string          `json:"statement"`
+			Format      string          `json:"format"`
+			Disposition string          `json:"disposition"`
+			Warehouse   string          `json:"warehouse_id"`
+			Parameters  json.RawMessage `json:"parameters"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			f.t.Error(err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if f.kind == "snowflake" && (body.Parameters["MULTI_STATEMENT_COUNT"] != "1" || r.URL.Query().Get("async") != "true" || r.URL.Query().Get("requestId") == "") {
-			f.t.Error("Snowflake submission lost its single-statement contract")
-		}
-		if f.kind == "databricks" && (body.Format != "JSON_ARRAY" || body.Disposition != "INLINE" || body.Warehouse != "fixture-warehouse") {
-			f.t.Error("Databricks submission lost its warehouse or result format")
+		switch f.kind {
+		case "snowflake":
+			var parameters map[string]string
+			if err := json.Unmarshal(body.Parameters, &parameters); err != nil || parameters["MULTI_STATEMENT_COUNT"] != "1" || r.URL.Query().Get("async") != "true" || r.URL.Query().Get("requestId") == "" {
+				f.t.Error("Snowflake submission lost its single-statement contract")
+			}
+		case "databricks":
+			// Databricks parameters are a list of named bindings. Federation
+			// renders these fixture predicates into SQL, so the list is empty.
+			var parameters []json.RawMessage
+			if err := json.Unmarshal(body.Parameters, &parameters); err != nil || parameters == nil || len(parameters) != 0 {
+				f.t.Error("Databricks submission changed its unbound parameter array")
+			}
+			if body.Format != "JSON_ARRAY" || body.Disposition != "INLINE" || body.Warehouse != "fixture-warehouse" {
+				f.t.Error("Databricks submission lost its warehouse or result format")
+			}
 		}
 		job = f.submit(body.SQL, "", nil)
 	} else if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, endpoint+"/") {
