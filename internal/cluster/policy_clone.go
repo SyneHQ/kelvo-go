@@ -14,6 +14,10 @@ import (
 func clonePolicy(p Policy) (Policy, error) {
 	p.Workers = maps.Clone(p.Workers)
 	p.SourceQuotas = maps.Clone(p.SourceQuotas)
+	if p.Operations != nil {
+		operations := *p.Operations
+		p.Operations = &operations
+	}
 	if p.Exports != nil {
 		exports := *p.Exports
 		p.Exports = &exports
@@ -33,6 +37,11 @@ func clonePolicy(p Policy) (Policy, error) {
 		principal.KeyAuthority = &binding
 	}
 	for id, grant := range principal.Principals {
+		grant.Operations = slices.Clone(grant.Operations)
+		if grant.DelegatedResolver != nil {
+			resolver := *grant.DelegatedResolver
+			grant.DelegatedResolver = &resolver
+		}
 		grant.NativeSources = slices.Clone(grant.NativeSources)
 		grant.FederatedSources = slices.Clone(grant.FederatedSources)
 		if grant.RowColumnPolicy != nil {
