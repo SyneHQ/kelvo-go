@@ -4,6 +4,7 @@ package elasticsearch
 
 import (
 	"context"
+	"encoding/base64"
 	"math"
 	"net/http"
 	"strconv"
@@ -26,6 +27,30 @@ type Engine struct {
 }
 
 func New(c catalog.Config, l query.Limits) (*Engine, error) {
+	return newEngine(c, l, cloudapi.New)
+}
+
+// NewResolved opens one request-owned source without reading ambient credentials.
+func NewResolved(c catalog.Config, l query.Limits, credentials cloudapi.Credentials) (*Engine, error) {
+	return newEngine(c, l, func(s catalog.Source, limits query.Limits) (*cloudapi.Client, error) {
+		return cloudapi.NewResolved(s, limits, credentials)
+	})
+}
+
+// NewResolvedBasic keeps basic authentication distinct from API-key and bearer modes.
+func NewResolvedBasic(c catalog.Config, l query.Limits, credentials cloudapi.Credentials, username, password string) (*Engine, error) {
+	if username == "" || password == "" || strings.ContainsAny(username, ":\r\n\x00") || strings.ContainsAny(password, "\r\n\x00") || len(username) > 4096 || len(password) > 4096 {
+		return nil, query.NewError("CONFIGURATION_ERROR", "Elasticsearch requires explicit basic credentials")
+	}
+	credentials.Token = base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	e, err := NewResolved(c, l, credentials)
+	if err == nil {
+		e.auth = "Basic"
+	}
+	return e, err
+}
+
+func newEngine(c catalog.Config, l query.Limits, open cloudapi.Factory) (*Engine, error) {
 	s, err := cloudapi.SingleSource(c, "elasticsearch")
 	if err != nil {
 		return nil, err
@@ -37,7 +62,7 @@ func New(c catalog.Config, l query.Limits) (*Engine, error) {
 		}
 		auth = v
 	}
-	client, err := cloudapi.New(s, l)
+	client, err := open(s, l)
 	if err != nil {
 		return nil, err
 	}

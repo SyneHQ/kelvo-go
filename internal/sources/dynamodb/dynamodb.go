@@ -24,12 +24,19 @@ type Engine struct {
 	c *awsapi.Client
 }
 
-func New(c catalog.Config, l query.Limits) (*Engine, error) {
+func New(c catalog.Config, l query.Limits) (*Engine, error) { return newEngine(c, l, awsapi.New) }
+
+func NewResolved(c catalog.Config, l query.Limits, credentials awsapi.Credentials) (*Engine, error) {
+	return newEngine(c, l, func(s catalog.Source, l query.Limits, service string) (*awsapi.Client, error) {
+		return awsapi.NewResolved(s, l, service, credentials)
+	})
+}
+func newEngine(c catalog.Config, l query.Limits, open awsapi.Factory) (*Engine, error) {
 	s, err := cloudapi.SingleSource(c, "dynamodb")
 	if err != nil {
 		return nil, err
 	}
-	client, err := awsapi.New(s, l, "dynamodb")
+	client, err := open(s, l, "dynamodb")
 	if err != nil {
 		return nil, err
 	}

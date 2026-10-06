@@ -16,6 +16,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/sources/cloudapi"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/rowarrow"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/sqlguard"
+	"github.com/SYNEHQ/kelvo-go/operations"
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
@@ -30,14 +31,30 @@ type Engine struct {
 }
 
 func New(config catalog.Config, limits query.Limits) (*Engine, error) {
+	return newEngine(config, limits, func(s catalog.Source, l query.Limits) (*cloudapi.Client, error) {
+		if catalog.ValidateEnvironment(s.URLEnv) != nil || catalog.ValidateEnvironment(s.TokenEnv) != nil {
+			return nil, query.NewError("CONFIGURATION_ERROR", "D1 requires permitted credential references")
+		}
+		return cloudapi.New(s, l)
+	})
+}
+
+// NewResolved opens one request-owned source without reading ambient credentials.
+func NewResolved(config catalog.Config, limits query.Limits, credentials cloudapi.Credentials) (*Engine, error) {
+	return newEngine(config, limits, func(s catalog.Source, l query.Limits) (*cloudapi.Client, error) {
+		return cloudapi.NewResolved(s, l, credentials)
+	})
+}
+
+func newEngine(config catalog.Config, limits query.Limits, open cloudapi.Factory) (*Engine, error) {
 	source, err := cloudapi.SingleSource(config, "d1")
 	if err != nil {
 		return nil, err
 	}
-	if !catalog.ValidID(source.ID) || !accountID.MatchString(source.Options["account_id"]) || !databaseID.MatchString(source.Options["database_id"]) || catalog.ValidateEnvironment(source.URLEnv) != nil || catalog.ValidateEnvironment(source.TokenEnv) != nil {
+	if !catalog.ValidID(source.ID) || !accountID.MatchString(source.Options["account_id"]) || !databaseID.MatchString(source.Options["database_id"]) {
 		return nil, query.NewError("CONFIGURATION_ERROR", "D1 requires a source ID, account ID, database ID and permitted credential references")
 	}
-	client, err := cloudapi.New(source, limits)
+	client, err := open(source, limits)
 	if err != nil {
 		return nil, err
 	}
@@ -63,20 +80,32 @@ type response struct {
 	} `json:"result"`
 }
 
-func (e *Engine) Execute(parent context.Context, request query.Request, sink query.Sink) (stats query.Stats, err error) {
+func (e *Engine) Execute(parent context.Context, request query.Request, sink query.Sink) (query.Stats, error) {
+	if err := query.ValidateRequest(request); err != nil {
+		return query.Stats{}, err
+	}
+	return e.ExecuteBound(parent, request, cloudapi.OperationParameters(request.Parameters), sink)
+}
+
+func (e *Engine) ExecuteBound(parent context.Context, request query.Request, parameters []operations.Parameter, sink query.Sink) (stats query.Stats, err error) {
 	started := time.Now()
 	stats.Backend = "d1"
 	// The API returns a bounded JSON result before Arrow delivery starts.
 	stats.EngineStreaming = false
 	defer func() { stats.DurationNS = time.Since(started).Nanoseconds() }()
+	request.Parameters = nil
 	if err := query.ValidateRequest(request); err != nil {
 		return stats, err
 	}
 	if request.Mode != "native" || request.ConnectionID != e.sourceID || sink == nil {
 		return stats, query.NewError("PERMISSION_DENIED", "Requested source is unavailable")
 	}
-	if request.Mongo != nil || len(request.Parameters) != 0 {
-		return stats, query.NewError("UNSUPPORTED", "D1 native queries currently require SQL without parameters")
+	if request.Mongo != nil {
+		return stats, query.NewError("UNSUPPORTED", "D1 native queries require SQL")
+	}
+	bound, err := cloudapi.D1Parameters(parameters)
+	if err != nil {
+		return stats, err
 	}
 	sql, err := sqlguard.ReadOnly(request.SQL)
 	if err != nil {
@@ -86,7 +115,11 @@ func (e *Engine) Execute(parent context.Context, request query.Request, sink que
 	defer cancel()
 	boundedSQL := "SELECT * FROM (" + sql + "\n) AS kelvo_result LIMIT " + strconv.FormatInt(e.limits.MaxRows+1, 10)
 	var result response
-	_, wire, err := e.client.Do(ctx, http.MethodPost, e.path, map[string]string{"sql": boundedSQL}, nil, &result)
+	body := map[string]any{"sql": boundedSQL}
+	if len(bound) != 0 {
+		body["params"] = bound
+	}
+	_, wire, err := e.client.Do(ctx, http.MethodPost, e.path, body, nil, &result)
 	stats.WireBytes = wire
 	if err != nil {
 		return stats, query.PublicError(err)

@@ -35,11 +35,27 @@ var positiveInteger = regexp.MustCompile(`^[1-9][0-9]*$`)
 var chargeNumber = regexp.MustCompile(`^[0-9]+(?:\.[0-9]{1,6})?$`)
 
 func New(c catalog.Config, limits query.Limits) (*Engine, error) {
+	return newEngine(c, limits, cloudapi.New)
+}
+func NewResolved(c catalog.Config, limits query.Limits, credentials cloudapi.Credentials) (*Engine, error) {
+	return newEngine(c, limits, func(s catalog.Source, l query.Limits) (*cloudapi.Client, error) {
+		return cloudapi.NewResolved(s, l, credentials)
+	})
+}
+func NewDiscoveryResolved(c catalog.Config, limits query.Limits, credentials cloudapi.Credentials) (*Engine, error) {
+	return newConfigured(c, limits, func(s catalog.Source, l query.Limits) (*cloudapi.Client, error) {
+		return cloudapi.NewResolved(s, l, credentials)
+	}, false)
+}
+func newEngine(c catalog.Config, limits query.Limits, open cloudapi.Factory) (*Engine, error) {
+	return newConfigured(c, limits, open, true)
+}
+func newConfigured(c catalog.Config, limits query.Limits, open cloudapi.Factory, requireContainer bool) (*Engine, error) {
 	source, err := cloudapi.SingleSource(c, "cosmosdb")
 	if err != nil {
 		return nil, err
 	}
-	if !component.MatchString(source.Options["database"]) || !component.MatchString(source.Options["container"]) {
+	if !component.MatchString(source.Options["database"]) || (requireContainer || source.Options["container"] != "") && !component.MatchString(source.Options["container"]) {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Cosmos DB requires valid database and container options")
 	}
 	if source.Options["auth"] != "aad" && source.Options["auth"] != "master_key" {
@@ -67,7 +83,7 @@ func New(c catalog.Config, limits query.Limits) (*Engine, error) {
 			return nil, query.NewError("CONFIGURATION_ERROR", "Unknown Cosmos DB option")
 		}
 	}
-	client, err := cloudapi.New(source, limits)
+	client, err := open(source, limits)
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +106,9 @@ type queryPage struct {
 }
 
 func (e *Engine) Execute(parent context.Context, request query.Request, sink query.Sink) (stats query.Stats, err error) {
+	if !component.MatchString(e.source.Options["container"]) {
+		return stats, query.NewError("INVALID_ARGUMENT", "Cosmos query requires a selected container")
+	}
 	started := time.Now()
 	defer func() { stats.Backend = "cosmosdb"; stats.DurationNS = time.Since(started).Nanoseconds() }()
 	if request.Mode != "native" || request.ConnectionID != e.source.ID || len(request.Sources) != 0 || sink == nil {
