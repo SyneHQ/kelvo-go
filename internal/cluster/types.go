@@ -12,6 +12,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/secrets"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/tracing"
+	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
 
 const (
@@ -144,30 +145,31 @@ type GatewayConfig struct {
 }
 
 type NodeConfig struct {
-	Exports             *ExportNodeConfig             `yaml:"exports,omitempty"`
-	RuntimeExportStore  ExportStore                   `yaml:"-"`
-	Metrics             *MetricsConfig                `yaml:"metrics,omitempty"`
-	Audit               *ServiceAuditConfig           `yaml:"audit,omitempty"`
-	RuntimeAudit        *ServiceAudit                 `yaml:"-"`
-	Containment         *ContainmentConfig            `yaml:"containment,omitempty"`
-	ScratchDirectory    string                        `yaml:"scratch_directory,omitempty"`
-	SourceHealth        *telemetry.SourceHealthConfig `yaml:"source_health,omitempty"`
-	RuntimeSourceHealth *telemetry.SourceHealth       `yaml:"-"`
-	Tracing             *tracing.Config               `yaml:"tracing,omitempty"`
-	RuntimeTracing      *tracing.Recorder             `yaml:"-"`
-	RequiredDatasets    []string                      `yaml:"required_datasets,omitempty"`
-	RuntimeDatasets     *DatasetReporter              `yaml:"-"`
-	History             *telemetry.HistoryConfig      `yaml:"history,omitempty"`
-	RuntimeHistory      *telemetry.History            `yaml:"-"`
-	Secrets             *secrets.Config               `yaml:"secrets,omitempty"`
-	RuntimeResources    *admission.Pool               `yaml:"-"`
-	Resources           *ResourceConfig               `yaml:"resources,omitempty"`
-	RuntimeMetrics      *telemetry.Registry           `yaml:"-"`
-	Listen              string                        `yaml:"listen"`
-	TLS                 TLSConfig                     `yaml:"tls"`
-	NATS                NATSConfig                    `yaml:"nats"`
-	Policy              Policy                        `yaml:"policy"`
-	WorkerID            string                        `yaml:"worker_id"`
-	CatalogFile         string                        `yaml:"catalog_file"`
-	SandboxPath         string                        `yaml:"sandbox_path"`
+	ConnectionResolvers map[string]worker.ConnectionResolverConfig `yaml:"connection_resolvers,omitempty"`
+	Exports             *ExportNodeConfig                          `yaml:"exports,omitempty"`
+	RuntimeExportStore  ExportStore                                `yaml:"-"`
+	Metrics             *MetricsConfig                             `yaml:"metrics,omitempty"`
+	Audit               *ServiceAuditConfig                        `yaml:"audit,omitempty"`
+	RuntimeAudit        *ServiceAudit                              `yaml:"-"`
+	Containment         *ContainmentConfig                         `yaml:"containment,omitempty"`
+	ScratchDirectory    string                                     `yaml:"scratch_directory,omitempty"`
+	SourceHealth        *telemetry.SourceHealthConfig              `yaml:"source_health,omitempty"`
+	RuntimeSourceHealth *telemetry.SourceHealth                    `yaml:"-"`
+	Tracing             *tracing.Config                            `yaml:"tracing,omitempty"`
+	RuntimeTracing      *tracing.Recorder                          `yaml:"-"`
+	RequiredDatasets    []string                                   `yaml:"required_datasets,omitempty"`
+	RuntimeDatasets     *DatasetReporter                           `yaml:"-"`
+	History             *telemetry.HistoryConfig                   `yaml:"history,omitempty"`
+	RuntimeHistory      *telemetry.History                         `yaml:"-"`
+	Secrets             *secrets.Config                            `yaml:"secrets,omitempty"`
+	RuntimeResources    *admission.Pool                            `yaml:"-"`
+	Resources           *ResourceConfig                            `yaml:"resources,omitempty"`
+	RuntimeMetrics      *telemetry.Registry                        `yaml:"-"`
+	Listen              string                                     `yaml:"listen"`
+	TLS                 TLSConfig                                  `yaml:"tls"`
+	NATS                NATSConfig                                 `yaml:"nats"`
+	Policy              Policy                                     `yaml:"policy"`
+	WorkerID            string                                     `yaml:"worker_id"`
+	CatalogFile         string                                     `yaml:"catalog_file"`
+	SandboxPath         string                                     `yaml:"sandbox_path"`
 }

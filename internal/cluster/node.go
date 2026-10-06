@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
+	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
@@ -76,6 +77,13 @@ func NewNode(cfg NodeConfig, store Store, executor *worker.Executor) (*Node, err
 		return nil, err
 	}
 	cfg.Policy = policy
+	if cfg.Policy.Access != nil {
+		for _, grant := range cfg.Policy.Access.Principals {
+			if resolver := grant.DelegatedResolver; resolver != nil && !executor.HasConnectionResolver(resolver.Issuer, resolver.URL) {
+				return nil, errors.New("delegated worker resolver does not match tenant policy")
+			}
+		}
+	}
 	executor, err = bindCatalogExecutor(cfg.Policy, executor)
 	if err != nil {
 		return nil, err
@@ -693,6 +701,8 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var request query.Request
 	var authority *JobAuthority
 	var carrier tracing.Carrier
+	var delegatedClaims delegation.Claims
+	var executionBinding delegation.ExecutionBinding
 	err := n.mutate(r.Context(), id, func(j *Job) error {
 		if j.State != Claimed || len(claim) != 32 || subtle.ConstantTimeCompare([]byte(j.Claim), []byte(claim)) != 1 {
 			return ErrConflict
@@ -708,6 +718,14 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		request = j.Request
 		authority = j.Authority
 		carrier = jobTrace(j.Trace)
+		if request.Delegation != "" {
+			_, claims, err := delegatedAuthority(n.cfg.Policy, *authority, request, time.Now())
+			if err != nil {
+				return err
+			}
+			delegatedClaims = claims
+			executionBinding = delegation.ExecutionBinding{JobID: j.ID, WorkerID: j.WorkerID, Owner: j.Owner, Claim: j.Claim}
+		}
 		return nil
 	})
 	if err != nil {
@@ -715,7 +733,11 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "query is unavailable or already consumed", http.StatusConflict)
 		return
 	}
-	ctx, cancel := context.WithTimeout(reserved.ctx, n.cfg.Policy.Limits.Timeout)
+	executionDeadline := time.Now().Add(n.cfg.Policy.Limits.Timeout)
+	if request.Delegation != "" {
+		executionDeadline = minTime(executionDeadline, time.Unix(delegatedClaims.ExpiresAt, 0))
+	}
+	ctx, cancel := context.WithDeadline(reserved.ctx, executionDeadline)
 	ctx = tracing.WithCarrier(ctx, carrier)
 	if authority != nil {
 		ctx = context.WithValue(ctx, jobAuthorityKey{}, *authority)
@@ -739,6 +761,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var stats query.Stats
 	executionCtx, err := executionAuthorityContext(ctx, n.cfg.Policy, authority, request)
 	if err == nil {
+		if request.Delegation != "" {
+			executionCtx = delegation.WithExecution(executionCtx, delegatedClaims, request.Delegation, executionBinding)
+		}
 		stats, err = n.executor.Execute(executionCtx, request, sink)
 	}
 	if err == nil {
