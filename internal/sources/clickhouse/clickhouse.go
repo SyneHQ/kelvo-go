@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -39,6 +40,7 @@ type Engine struct {
 	compression map[string]string
 	limits      query.Limits
 	client      *http.Client
+	resolved    map[string]ResolvedSource
 }
 
 func New(config catalog.Config, limits query.Limits) (*Engine, error) {
@@ -87,6 +89,58 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 	}, nil
 }
 
+// ResolvedSource is private one-operation connection material. Callers must
+// authorize and resolve it before construction; never put it in a queue or log.
+type ResolvedSource struct {
+	ID          string
+	URL         string
+	Username    string
+	Password    string
+	Compression string
+	TLS         *tls.Config
+}
+
+// NewResolved reuses the bounded native Arrow reader with transient credentials.
+// It accepts only verified HTTPS and ignores all proxy/credential environment.
+func NewResolved(source ResolvedSource, limits query.Limits) (*Engine, error) {
+	if limits.Validate() != nil || !catalog.ValidID(source.ID) || source.Username == "" || source.Password == "" || len(source.Username) > 32<<10 || len(source.Password) > 32<<10 || strings.ContainsAny(source.Username, ":\x00\r\n") || strings.ContainsAny(source.Password, "\x00\r\n") {
+		return nil, query.NewError("INVALID_ARGUMENT", "Invalid resolved ClickHouse source")
+	}
+	endpoint, err := parseSourceURL(source.URL)
+	if err != nil || endpoint.Scheme != "https" || (endpoint.Path != "" && endpoint.Path != "/") || endpoint.Query().Get("database") == "" {
+		return nil, query.NewError("INVALID_ARGUMENT", "Resolved ClickHouse source requires an HTTPS origin and database")
+	}
+	codec := source.Compression
+	if codec == "" {
+		codec = "none"
+	}
+	if codec != "none" && codec != "lz4_frame" {
+		return nil, query.NewError("INVALID_ARGUMENT", "Invalid Arrow compression")
+	}
+	config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: endpoint.Hostname()}
+	if source.TLS != nil {
+		config = source.TLS.Clone()
+	}
+	if config.InsecureSkipVerify || config.MaxVersion != 0 && config.MaxVersion < tls.VersionTLS12 {
+		return nil, query.NewError("INVALID_ARGUMENT", "Verified TLS 1.2 or newer is required")
+	}
+	if config.MinVersion < tls.VersionTLS12 {
+		config.MinVersion = tls.VersionTLS12
+	}
+	if config.ServerName == "" {
+		config.ServerName = endpoint.Hostname()
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.TLSClientConfig = config
+	transport.DisableCompression = true
+	transport.MaxConnsPerHost = 1
+	transport.MaxIdleConns = 1
+	transport.MaxIdleConnsPerHost = 1
+	source.TLS = nil
+	return &Engine{sources: map[string]catalog.Source{source.ID: {ID: source.ID, Type: "clickhouse"}}, compression: map[string]string{source.ID: codec}, resolved: map[string]ResolvedSource{source.ID: source}, limits: limits, client: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+}
+
 // Close releases pooled idle HTTP connections. Active execution is cancelled by
 // the context supplied to Execute.
 func (e *Engine) Close() error {
@@ -112,11 +166,17 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	if !found {
 		return stats, query.NewError("PERMISSION_DENIED", "Requested source is unavailable")
 	}
-	endpoint, err := sourceURL(source)
-	if err != nil {
-		return stats, err
+	var endpoint *url.URL
+	var username, password string
+	if resolved, ok := e.resolved[source.ID]; ok {
+		endpoint, err = parseSourceURL(resolved.URL)
+		username, password = resolved.Username, resolved.Password
+	} else {
+		endpoint, err = sourceURL(source)
+		if err == nil {
+			username, password, err = credentials(source)
+		}
 	}
-	username, password, err := credentials(source)
 	if err != nil {
 		return stats, err
 	}
@@ -221,7 +281,9 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 }
 
 func sourceURL(source catalog.Source) (*url.URL, error) {
-	raw := os.Getenv(source.URLEnv)
+	return parseSourceURL(os.Getenv(source.URLEnv))
+}
+func parseSourceURL(raw string) (*url.URL, error) {
 	endpoint, err := url.Parse(raw)
 	if err != nil || raw == "" || endpoint == nil || (endpoint.Scheme != "https" && endpoint.Scheme != "http") || endpoint.Hostname() == "" || endpoint.User != nil || endpoint.Fragment != "" || endpoint.Opaque != "" {
 		return nil, query.NewError("INVALID_ARGUMENT", "ClickHouse source URL is unavailable or invalid")

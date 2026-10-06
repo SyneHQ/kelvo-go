@@ -35,7 +35,30 @@ type Client struct {
 
 var regionName = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)+-[0-9]+$`)
 
+type Credentials struct {
+	URL, AccessKeyID, SecretAccessKey, SessionToken string
+	TLS                                             *tls.Config
+}
+type Factory func(catalog.Source, query.Limits, string) (*Client, error)
+
 func New(s catalog.Source, l query.Limits, service string) (*Client, error) {
+	for _, name := range []string{s.URLEnv, s.UsernameEnv, s.PasswordEnv} {
+		if len(name) > 256 || catalog.ValidateEnvironment(name) != nil {
+			return nil, query.NewError("CONFIGURATION_ERROR", "AWS source requires dedicated source environment references")
+		}
+	}
+	if s.TokenEnv != "" && (len(s.TokenEnv) > 256 || catalog.ValidateEnvironment(s.TokenEnv) != nil) {
+		return nil, query.NewError("CONFIGURATION_ERROR", "AWS source requires a dedicated session-token environment reference")
+	}
+
+	if s.URLEnv == "" || s.UsernameEnv == "" || s.PasswordEnv == "" || s.TokenEnv != "" && os.Getenv(s.TokenEnv) == "" {
+		return nil, query.NewError("CONFIGURATION_ERROR", "AWS source credentials are unavailable")
+	}
+	return NewResolved(s, l, service, Credentials{URL: os.Getenv(s.URLEnv), AccessKeyID: os.Getenv(s.UsernameEnv), SecretAccessKey: os.Getenv(s.PasswordEnv), SessionToken: os.Getenv(s.TokenEnv)})
+}
+
+// NewResolved never consults the environment or the SDK credential chain.
+func NewResolved(s catalog.Source, l query.Limits, service string, credentials Credentials) (*Client, error) {
 	if err := l.Validate(); err != nil {
 		return nil, err
 	}
@@ -45,37 +68,38 @@ func New(s catalog.Source, l query.Limits, service string) (*Client, error) {
 	if s.DSNEnv != "" || s.Path != "" || s.Adapter != "" {
 		return nil, query.NewError("CONFIGURATION_ERROR", "AWS source has conflicting connection settings")
 	}
-	for _, name := range []string{s.URLEnv, s.UsernameEnv, s.PasswordEnv} {
-		if len(name) > 256 || catalog.ValidateEnvironment(name) != nil {
-			return nil, query.NewError("CONFIGURATION_ERROR", "AWS source requires dedicated source environment references")
-		}
-	}
-	if s.TokenEnv != "" && (len(s.TokenEnv) > 256 || catalog.ValidateEnvironment(s.TokenEnv) != nil) {
-		return nil, query.NewError("CONFIGURATION_ERROR", "AWS source requires a dedicated session-token environment reference")
-	}
 	for key, value := range s.Options {
 		allowed := key == "region" || (service == "athena" && (key == "workgroup" || key == "database" || key == "output_location"))
 		if !allowed || len(value) > 4096 {
 			return nil, query.NewError("CONFIGURATION_ERROR", "AWS source has an unsupported option")
 		}
 	}
-	u, err := url.Parse(os.Getenv(s.URLEnv))
-	if s.URLEnv == "" || err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
+	u, err := url.Parse(credentials.URL)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" {
 		return nil, query.NewError("CONFIGURATION_ERROR", "AWS source requires an HTTPS origin")
 	}
 	region := s.Options["region"]
 	if len(region) > 64 || !regionName.MatchString(region) {
 		return nil, query.NewError("CONFIGURATION_ERROR", "AWS source requires a valid region")
 	}
-	id, secret := os.Getenv(s.UsernameEnv), os.Getenv(s.PasswordEnv)
-	token := os.Getenv(s.TokenEnv)
-	if s.UsernameEnv == "" || s.PasswordEnv == "" || id == "" || secret == "" || (s.TokenEnv != "" && token == "") || len(id) > 1024 || len(secret) > 4096 || len(token) > 16384 || strings.ContainsAny(id+secret+token, "\r\n\x00") {
+	id, secret, token := credentials.AccessKeyID, credentials.SecretAccessKey, credentials.SessionToken
+	if id == "" || secret == "" || len(id) > 1024 || len(secret) > 4096 || len(token) > 16384 || strings.ContainsAny(id+secret+token, "\r\n\x00") {
 		return nil, query.NewError("CONFIGURATION_ERROR", "AWS source credentials are unavailable")
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.Proxy = nil
 	tr.DisableCompression = true
 	tr.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	if credentials.TLS != nil {
+		if credentials.TLS.InsecureSkipVerify || credentials.TLS.MaxVersion != 0 && credentials.TLS.MaxVersion < tls.VersionTLS12 {
+			return nil, query.NewError("CONFIGURATION_ERROR", "AWS requires verified TLS")
+		}
+		tr.TLSClientConfig = credentials.TLS.Clone()
+		tr.TLSClientConfig.MinVersion = max(tls.VersionTLS12, tr.TLSClientConfig.MinVersion)
+		if credentials.TLS.RootCAs != nil {
+			tr.TLSClientConfig.RootCAs = credentials.TLS.RootCAs.Clone()
+		}
+	}
 	tr.TLSHandshakeTimeout = 5 * time.Second
 	tr.ResponseHeaderTimeout = l.Timeout
 	tr.MaxConnsPerHost = 2
@@ -104,6 +128,7 @@ func (c *Client) Do(ctx context.Context, target string, body any, out any) (int6
 	if err != nil {
 		return 0, query.NewError("QUERY_FAILED", "Cannot prepare AWS request")
 	}
+	r.GetBody = nil
 	contentType := "application/x-amz-json-1.0"
 	if c.Service == "athena" {
 		contentType = "application/x-amz-json-1.1"
@@ -154,7 +179,7 @@ func (c *Client) Do(ctx context.Context, target string, body any, out any) (int6
 }
 func (c *Client) allowedTarget(target string) bool {
 	if c.Service == "dynamodb" {
-		return target == "DynamoDB_20120810.ExecuteStatement"
+		return target == "DynamoDB_20120810.ExecuteStatement" || target == "DynamoDB_20120810.ListTables" || target == "DynamoDB_20120810.DescribeTable"
 	}
 	if c.Service == "athena" {
 		switch target {
