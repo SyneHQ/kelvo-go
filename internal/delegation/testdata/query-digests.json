@@ -1,0 +1,68 @@
+[
+  {
+    "name": "native-exact-int",
+    "request": {
+      "mode": "native",
+      "sql": "SELECT ? AS exact",
+      "parameters": [
+        {
+          "type": "int64",
+          "value": "9007199254740993"
+        }
+      ],
+      "sources": [],
+      "connection_id": "source_1"
+    },
+    "canonical": "{\"connection_id\":\"source_1\",\"mode\":\"native\",\"parameters\":[{\"type\":\"int64\",\"value\":\"9007199254740993\"}],\"sources\":[],\"sql\":\"SELECT ? AS exact\"}",
+    "sha256": "9dd3e613b3e40165f116489169804bc347ddf3365d3245eaf6cd6ac5d0d13ce9"
+  },
+  {
+    "name": "federated-order",
+    "request": {
+      "mode": "federated",
+      "sql": "SELECT a.id FROM a JOIN b USING (id)",
+      "parameters": [],
+      "sources": [
+        "a",
+        "b"
+      ],
+      "connection_id": ""
+    },
+    "canonical": "{\"connection_id\":\"\",\"mode\":\"federated\",\"parameters\":[],\"sources\":[\"a\",\"b\"],\"sql\":\"SELECT a.id FROM a JOIN b USING (id)\"}",
+    "sha256": "ecd7bd686a80d37a9d8bc753fcae5ca1e80cbca215bcd3a3827b521f7db0ecc3"
+  },
+  {
+    "name": "null-parameter",
+    "request": {
+      "mode": "native",
+      "sql": "SELECT ? AS empty_value",
+      "parameters": [
+        {
+          "type": "null",
+          "value": null
+        }
+      ],
+      "sources": [],
+      "connection_id": "source_1"
+    },
+    "canonical": "{\"connection_id\":\"source_1\",\"mode\":\"native\",\"parameters\":[{\"type\":\"null\",\"value\":null}],\"sources\":[],\"sql\":\"SELECT ? AS empty_value\"}",
+    "sha256": "b279c0ffeb56a58d8f57658b413986e342a1224f474afec38e6e82d11f7b6801"
+  },
+  {
+    "name": "numeric-parameter",
+    "request": {
+      "mode": "native",
+      "sql": "SELECT ? AS amount",
+      "parameters": [
+        {
+          "type": "uint64",
+          "value": 18446744073709551615
+        }
+      ],
+      "sources": [],
+      "connection_id": "source_1"
+    },
+    "canonical": "{\"connection_id\":\"source_1\",\"mode\":\"native\",\"parameters\":[{\"type\":\"uint64\",\"value\":18446744073709551615}],\"sources\":[],\"sql\":\"SELECT ? AS amount\"}",
+    "sha256": "014e2ad305d99eb39146646466a47ab1e32b240f8590cb348cfb1e58d7935b8e"
+  }
+]

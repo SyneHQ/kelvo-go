@@ -16,6 +16,7 @@ import (
 )
 
 type Request struct {
+	Delegation      string        `json:"delegation,omitempty" yaml:"-"`
 	ScanDiagnostics bool          `json:"scan_diagnostics,omitempty" yaml:"scan_diagnostics,omitempty"`
 	SQL             string        `json:"sql" yaml:"sql"`
 	Mode            string        `json:"mode,omitempty" yaml:"mode,omitempty"`
