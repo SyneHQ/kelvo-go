@@ -30,8 +30,9 @@ import (
 // Engine creates a fresh DuckDB database instance for every execution. It is a
 // single-trust-domain developer-preview adapter, not a SQL sandbox.
 type Engine struct {
-	config catalog.Config
-	limits query.Limits
+	config       catalog.Config
+	limits       query.Limits
+	fileSnapshot bool
 }
 
 func New(config catalog.Config, limits query.Limits) (*Engine, error) {
@@ -165,8 +166,14 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		if err := configure(ctx, raw, e.config.ExtensionDirectory, tempDir, e.limits); err != nil {
 			return err
 		}
-		if err := attachSources(ctx, raw, sources, e.config.ExtensionDirectory, tempDir); err != nil {
-			return err
+		var attachErr error
+		if e.fileSnapshot {
+			attachErr = attachFileSnapshot(ctx, raw, sources[0])
+		} else {
+			attachErr = attachSources(ctx, raw, sources, e.config.ExtensionDirectory, tempDir)
+		}
+		if attachErr != nil {
+			return attachErr
 		}
 		if err := bindings.attach(ctx, raw, sources, e.limits); err != nil {
 			return err
@@ -337,7 +344,7 @@ func lockSourceAccess(ctx context.Context, raw any, sources []catalog.Source, te
 			continue
 		}
 		switch source.Type {
-		case "csv", "parquet", "duckdb", "sqlite":
+		case "csv", "parquet", "duckdb", "sqlite", "json", "jsonl":
 			if len(source.Ranges) > 0 {
 				for _, r := range source.Ranges {
 					paths = append(paths, r.URL)

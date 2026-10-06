@@ -15,6 +15,9 @@ type Engine struct{}
 func New(catalog.Config, query.Limits) (*Engine, error) {
 	return nil, query.NewError("UNAVAILABLE", "DuckDB Arrow support requires the duckdb_arrow build tag")
 }
+func NewFileSnapshot(catalog.Source, query.Limits) (*Engine, error) {
+	return nil, query.NewError("UNAVAILABLE", "DuckDB Arrow support requires the duckdb_arrow build tag")
+}
 func (*Engine) Execute(context.Context, query.Request, query.Sink) (query.Stats, error) {
 	return query.Stats{}, query.NewError("UNAVAILABLE", "DuckDB Arrow support requires the duckdb_arrow build tag")
 }

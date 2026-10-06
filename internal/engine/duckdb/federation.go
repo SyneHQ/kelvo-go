@@ -6,6 +6,7 @@ package duckdb
 import (
 	"context"
 	"database/sql/driver"
+	"strings"
 
 	"github.com/SYNEHQ/kelvo-go/internal/access"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
@@ -42,6 +43,9 @@ func (b *federationBindings) callbackError(fallback error) error {
 func (b *federationBindings) attach(ctx context.Context, raw any, sources []catalog.Source, limits query.Limits) error {
 	// Bound catalog discovery and outcome metadata before resolving credentials
 	// or making any source request; per-source limits alone are insufficient.
+	if err := validateFederationNamespaces(sources); err != nil {
+		return err
+	}
 	tables := 0
 	for _, source := range sources {
 		if access.GuardedSnapshot(ctx, source) {
@@ -90,7 +94,10 @@ func (b *federationBindings) attach(ctx context.Context, raw any, sources []cata
 		if !ok {
 			return query.NewError("CONFIGURATION_ERROR", "Trusted federation setup is unavailable")
 		}
-		if _, err := exec.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+quoteIdentifier(source.ID), nil); err != nil {
+		if _, err := exec.ExecContext(ctx, "ATTACH ':memory:' AS "+quoteIdentifier(source.ID), nil); err != nil {
+			return err
+		}
+		if _, err := exec.ExecContext(ctx, "USE "+quoteIdentifier(source.ID)+".main", nil); err != nil {
 			return err
 		}
 		for _, selected := range source.Federation.Tables {
@@ -101,12 +108,84 @@ func (b *federationBindings) attach(ctx context.Context, raw any, sources []cata
 			if err != nil {
 				return err
 			}
-			if err := b.register(ctx, conn, table, source.ID, selected.Name, source.ID); err != nil {
+			if err := b.register(ctx, conn, table, source.ID, selected.Name, "main"); err != nil {
 				return err
+			}
+			if err := exposeFederationNamespace(ctx, exec, source.ID, selected); err != nil {
+				return err
+			}
+		}
+		// Keep unqualified file sources and later bindings in the query database.
+		if _, err := exec.ExecContext(ctx, "USE memory.main", nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func federationNamespace(table catalog.FederationTable) string {
+	if table.Schema != "" {
+		return table.Schema
+	}
+	return table.Database
+}
+
+func reservedFederationNamespace(name string) bool {
+	switch strings.ToLower(name) {
+	case "memory", "system", "temp", "information_schema", "pg_catalog":
+		return true
+	}
+	return false
+}
+
+// Each catalog contains modern main.Name and optional legacy namespace.Table
+// names. Validate the complete namespace before any remote schema discovery.
+func validateFederationNamespaces(sources []catalog.Source) error {
+	aliases := make(map[string]bool, len(sources))
+	for _, source := range sources {
+		alias := strings.ToLower(source.ID)
+		if aliases[alias] {
+			return query.NewError("CONFIGURATION_ERROR", "Federation source aliases collide")
+		}
+		aliases[alias] = true
+		if source.Federation == nil {
+			continue
+		}
+		if reservedFederationNamespace(alias) || alias == "main" {
+			return query.NewError("CONFIGURATION_ERROR", "Federation source alias is reserved")
+		}
+		views := make(map[string]int)
+		for i, table := range source.Federation.Tables {
+			namespace := federationNamespace(table)
+			if namespace != "" && (!catalog.ValidID(namespace) || reservedFederationNamespace(namespace)) {
+				return query.NewError("CONFIGURATION_ERROR", "Federation table namespace is reserved or invalid")
+			}
+			keys := []string{"main." + strings.ToLower(table.Name)}
+			if namespace != "" {
+				keys = append(keys, strings.ToLower(namespace)+"."+strings.ToLower(table.Table))
+			}
+			for _, key := range keys {
+				if previous, exists := views[key]; exists && previous != i {
+					return query.NewError("CONFIGURATION_ERROR", "Federation table aliases collide")
+				}
+				views[key] = i
 			}
 		}
 	}
 	return nil
+}
+
+func exposeFederationNamespace(ctx context.Context, exec driver.ExecerContext, source string, table catalog.FederationTable) error {
+	namespace := federationNamespace(table)
+	if namespace == "" || (strings.EqualFold(namespace, "main") && strings.EqualFold(table.Name, table.Table)) {
+		return nil
+	}
+	base := quoteIdentifier(source) + "." + quoteIdentifier(namespace)
+	if _, err := exec.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+base, nil); err != nil {
+		return err
+	}
+	_, err := exec.ExecContext(ctx, "CREATE VIEW "+base+"."+quoteIdentifier(table.Table)+" AS SELECT * FROM "+quoteIdentifier(source)+".main."+quoteIdentifier(table.Name), nil)
+	return err
 }
 
 // Ownership is recorded before native registration, including partial failures.
