@@ -1,5 +1,7 @@
 # On-demand connections
 
+This guide covers analytical queries. For supported writes, metadata and background jobs, use the separate [database operation protocol](database-operations.md).
+
 Use a trusted resolver when your application discovers tenant connections at
 request time. Configure deployment trust once; queries select saved IDs.
 The resolver owns metadata authorization and credential decryption.

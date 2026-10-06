@@ -36,7 +36,7 @@ Origins reject credentials, paths, queries and fragments. Resource IDs preserve 
 
 AAD uses encoded `type=aad&ver=1.0&sig=...` authorization. Master-key requests use HMAC-SHA256 over the dated `docs` query and case-preserved `dbs/<database>/colls/<container>`; the raw key is never sent.
 
-Only conservative single SELECT projections/filters are admitted. Parameters, writes, admin commands, multiple statements and MongoDB pipelines are rejected. Every POST targets the configured container with an empty parameter array; no interpolation or retries occur.
+The analytics query endpoint admits conservative single SELECT projections/filters. Parameters, writes, admin commands, multiple statements and MongoDB pipelines are rejected there. Every query POST targets the configured container with an empty parameter array; no interpolation or retries occur.
 
 ORDER BY, GROUP BY, DISTINCT, aggregates, TOP, OFFSET/LIMIT, ranking, joins, set operators, WITH and subqueries are refused before HTTP execution. Those words are also rejected as unquoted property names; use bracket quoting such as `c["count"]`. Kelvo does not implement SDK plan discovery, partition fan-out, global sorting or partial-aggregate merging.
 
@@ -56,3 +56,24 @@ Results use non-null Binary `document` with `source_type=cosmosdb`, `native_type
 ## Validation
 
 TLS fixtures cover authentication/signatures, source binding, continuation/session tokens, exact values, errors and budgets. Live Azure acceptance and throughput remain unverified. See [worker cancellation limits](usage.md#native-cancellation-and-remote-cleanup).
+
+## Authorized writes
+
+The optional Go operation adapter translates a small mutation grammar to [document REST calls](https://learn.microsoft.com/en-us/rest/api/cosmos-db/documents); it never sends mutation SQL to the query API. The resolver supplies current credentials after a worker leases the operation.
+
+```sql
+INSERT INTO Events (id,tenant,total) VALUES ('ride-1','team-a',123.45)
+UPSERT INTO Events (id,tenant,total) VALUES ('ride-1','team-a',125.00)
+UPDATE Events SET total=130.00 WHERE id='ride-1' AND tenant='team-a'
+DELETE FROM Events WHERE id='ride-1' AND tenant='team-a'
+CREATE COLLECTION Events WITH PK=/tenant WITH RU=400
+DROP COLLECTION IF EXISTS Events
+```
+
+- Point writes require a selected container and an explicit string `id`. UPDATE uses atomic PATCH, with up to 10 top-level fields; it cannot change `id` or partition fields.
+- Each point write reads the container's partition definition. WHERE must contain only `id` and every partition key; extra filters fail. Hierarchical keys and nested paths such as `tenant.name` are supported.
+- Values accept single-quoted strings, JSON numbers/booleans/null and JSON objects/arrays. Legacy double-quoted JSON envelopes remain supported. Numbers retain their spelling before the provider processes them.
+- CREATE/DROP COLLECTION (alias TABLE) stays inside the saved database and selected container, when present. CREATE/DROP DATABASE requires database-level selection and can affect only that saved database. CREATE supports `IF NOT EXISTS`, `WITH PK`, and one of `WITH RU` or `WITH MAXRU`.
+- Transactions, placeholders, computed assignments, automatic IDs, unique-key DDL and ALTER throughput are unsupported. These require explicit APIs; none are silently approximated.
+
+Writes use verified TLS and no automatic retries. An expected success status confirms the mutation even if its optional document body is missing; a lost acknowledgement remains an unknown outcome. The metadata RU budget is checked before dispatch. A committed write's final RU charge cannot be undone or used as a reason to replay it. TLS fixtures cover this contract; live Azure write acceptance remains an open gate.
