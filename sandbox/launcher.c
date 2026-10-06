@@ -350,14 +350,101 @@ static char *canonical_path(const char *path) {
 	return resolved;
 }
 
+// The operation parent hashes an open executable and passes that exact inode
+// as fd 5. Do not realpath this path back to an operator filename that could be
+// atomically replaced between verification and exec. Other worker paths retain
+// the existing canonical path rules.
+static void add_operation_binary_rule(int ruleset) {
+	struct stat st;
+	int flags = fcntl(5, F_GETFL);
+	if (flags < 0 || (flags & O_ACCMODE) != O_RDONLY || (flags & O_PATH) != 0 ||
+	    fstat(5, &st) != 0 || !S_ISREG(st.st_mode) ||
+	    (st.st_mode & 0111) == 0 || (st.st_mode & 0022) != 0)
+		die("operation executable descriptor is invalid");
+	struct kelvo_landlock_path_beneath_attr attr = {
+		.allowed_access = LL_READ_FILE | LL_EXECUTE,
+		.parent_fd = 5,
+	};
+	if (syscall(SYS_landlock_add_rule, ruleset, LANDLOCK_RULE_PATH_BENEATH,
+		    &attr, 0) != 0)
+		die_errno("operation executable rule failed");
+}
+
+static void add_operation_source_rule(int ruleset) {
+	struct stat st;
+	int flags = fcntl(6, F_GETFL);
+	if (flags < 0 || (flags & O_ACCMODE) != O_RDONLY || fstat(6, &st) != 0 ||
+	    !S_ISREG(st.st_mode) || st.st_nlink != 0 || st.st_size < 1 ||
+	    st.st_size > 50 * 1024 * 1024 || (st.st_mode & 0377) != 0)
+		die("operation source descriptor is invalid");
+	struct kelvo_landlock_path_beneath_attr attr = {
+		.allowed_access = LL_READ_FILE,
+		.parent_fd = 6,
+	};
+	if (syscall(SYS_landlock_add_rule, ruleset, LANDLOCK_RULE_PATH_BENEATH,
+		    &attr, 0) != 0)
+		die_errno("operation source rule failed");
+}
+
+static void add_operation_jdbc_rules(int ruleset, int jars) {
+	/* The Go shim is still the only launcher entrypoint. Its child JVM may
+	 * execute only the pinned JRE inode/tree and read the ordered pinned JARs. */
+	for (int fd = 7; fd < 8 + jars; ++fd) {
+		struct stat st;
+		int flags = fcntl(fd, F_GETFL);
+		if (flags < 0 || (flags & O_ACCMODE) != O_RDONLY ||
+		    (flags & O_PATH) != 0 || fstat(fd, &st) != 0 ||
+		    !S_ISREG(st.st_mode) || st.st_uid != 0 ||
+		    (st.st_mode & 0022) != 0 || st.st_size < 1 ||
+		    st.st_size > 1024LL * 1024 * 1024 ||
+		    (fd == 7 && (st.st_mode & 0111) == 0))
+			die("JDBC runtime descriptor is invalid");
+		struct kelvo_landlock_path_beneath_attr attr = {
+			.allowed_access = LL_READ_FILE | (fd == 7 ? LL_EXECUTE : 0),
+			.parent_fd = fd,
+		};
+		if (syscall(SYS_landlock_add_rule, ruleset, LANDLOCK_RULE_PATH_BENEATH,
+			    &attr, 0) != 0)
+			die_errno("JDBC artifact rule failed");
+	}
+	int fd = 8 + jars;
+	struct stat st;
+	int flags = fcntl(fd, F_GETFL);
+	if (flags < 0 || (flags & O_PATH) == 0 || fstat(fd, &st) != 0 ||
+	    !S_ISDIR(st.st_mode) || st.st_uid != 0 || (st.st_mode & 0022) != 0)
+		die("JDBC runtime directory descriptor is invalid");
+	struct kelvo_landlock_path_beneath_attr attr = {
+		.allowed_access = fs_runtime,
+		.parent_fd = fd,
+	};
+	if (syscall(SYS_landlock_add_rule, ruleset, LANDLOCK_RULE_PATH_BENEATH,
+		    &attr, 0) != 0)
+		die_errno("JDBC runtime directory rule failed");
+	add_path_rule(ruleset, "/dev/urandom", LL_READ_FILE, 0, 0);
+	add_path_rule(ruleset, "/dev/random", LL_READ_FILE, 0, 0);
+}
+
 int main(int argc, char **argv) {
+	/* Observe inherited fd6 before opening a ruleset or any runtime file. */
+	int has_operation_source = fcntl(6, F_GETFD) >= 0;
 	const char *reads[1024];
 	size_t read_count = 0;
 	const char *read_execs[64];
 	size_t read_exec_count = 0;
 	const char *write = NULL;
+	int jdbc_jars = 0;
 	int i = 1;
 	for (; i < argc && strcmp(argv[i], "--") != 0; ++i) {
+		if (strcmp(argv[i], "--operation-jdbc") == 0) {
+			if (++i == argc || jdbc_jars != 0 || argv[i][0] < '1' || argv[i][0] > '9')
+				die("invalid JDBC runtime argument");
+			char *end;
+			long count = strtol(argv[i], &end, 10);
+			if (*end != '\0' || count < 1 || count > 32)
+				die("invalid JDBC runtime argument");
+			jdbc_jars = (int)count;
+			continue;
+		}
 		if (strcmp(argv[i], "--read") == 0) {
 			if (++i == argc || read_count == sizeof(reads) / sizeof(reads[0]))
 				die("invalid --read argument");
@@ -384,6 +471,8 @@ int main(int argc, char **argv) {
 		die("worker executable must be absolute");
 	if (strcmp(argv[i + 2], "worker") != 0 || i + 3 != argc)
 		die("launcher may only exec the kelvo worker entrypoint");
+	if (jdbc_jars && (has_operation_source || strcmp(argv[i + 1], "/proc/self/fd/5") != 0))
+		die("JDBC runtime requires the pinned operation entrypoint");
 
 	int ruleset = create_ruleset();
 	add_runtime_paths(ruleset);
@@ -401,8 +490,18 @@ int main(int argc, char **argv) {
 	char *jobdir = canonical_path(write);
 	add_path_rule(ruleset, jobdir, fs_write, 0, 1);
 	free(jobdir);
-	char *worker = canonical_path(argv[i + 1]);
-	add_path_rule(ruleset, worker, fs_read | LL_EXECUTE, 1, 0);
+	char *worker;
+	if (strcmp(argv[i + 1], "/proc/self/fd/5") == 0) {
+		add_operation_binary_rule(ruleset);
+		if (has_operation_source)
+			add_operation_source_rule(ruleset);
+		if (jdbc_jars)
+			add_operation_jdbc_rules(ruleset, jdbc_jars);
+		worker = argv[i + 1];
+	} else {
+		worker = canonical_path(argv[i + 1]);
+		add_path_rule(ruleset, worker, fs_read | LL_EXECUTE, 1, 0);
+	}
 
 	if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0)
 		die_errno("cannot set no_new_privs");
