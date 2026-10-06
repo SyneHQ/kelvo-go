@@ -14,6 +14,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/sources/cloudapi"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/rowarrow"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/sqlguard"
+	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
 type Engine struct {
@@ -27,6 +28,17 @@ var statementID = regexp.MustCompile(`^[A-Za-z0-9-]{1,128}$`)
 const endpoint = "/api/2.0/sql/statements"
 
 func New(c catalog.Config, l query.Limits) (*Engine, error) {
+	return newEngine(c, l, cloudapi.New)
+}
+
+// NewResolved opens one request-owned source without reading ambient credentials.
+func NewResolved(c catalog.Config, l query.Limits, credentials cloudapi.Credentials) (*Engine, error) {
+	return newEngine(c, l, func(s catalog.Source, limits query.Limits) (*cloudapi.Client, error) {
+		return cloudapi.NewResolved(s, limits, credentials)
+	})
+}
+
+func newEngine(c catalog.Config, l query.Limits, open cloudapi.Factory) (*Engine, error) {
 	s, err := cloudapi.SingleSource(c, "databricks")
 	if err != nil {
 		return nil, err
@@ -34,7 +46,7 @@ func New(c catalog.Config, l query.Limits) (*Engine, error) {
 	if !statementID.MatchString(s.Options["warehouse_id"]) {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Databricks requires warehouse_id")
 	}
-	client, err := cloudapi.New(s, l)
+	client, err := open(s, l)
 	if err != nil {
 		return nil, err
 	}
@@ -72,21 +84,36 @@ type response struct {
 	Result chunk `json:"result"`
 }
 
-func (e *Engine) Execute(parent context.Context, r query.Request, sink query.Sink) (stats query.Stats, err error) {
+func (e *Engine) Execute(parent context.Context, r query.Request, sink query.Sink) (query.Stats, error) {
+	if err := query.ValidateRequest(r); err != nil {
+		return query.Stats{}, err
+	}
+	return e.ExecuteBound(parent, r, cloudapi.OperationParameters(r.Parameters), sink)
+}
+
+func (e *Engine) ExecuteBound(parent context.Context, r query.Request, parameters []operations.Parameter, sink query.Sink) (stats query.Stats, err error) {
 	started := time.Now()
 	if r.Mode != "native" || r.ConnectionID != e.source.ID || len(r.Sources) != 0 {
 		return stats, query.NewError("PERMISSION_DENIED", "Requested source is unavailable")
 	}
-	if r.Mongo != nil || len(r.Parameters) > 0 {
-		return stats, query.NewError("UNSUPPORTED", "Databricks native queries currently require SQL without parameters")
+	if r.Mongo != nil || sink == nil {
+		return stats, query.NewError("UNSUPPORTED", "Databricks native queries require SQL")
 	}
-	sql, err := sqlguard.ReadOnly(r.SQL)
+	bound, err := cloudapi.DatabricksParameters(parameters)
+	if err != nil {
+		return stats, err
+	}
+	statement, err := cloudapi.DatabricksStatement(r.SQL, len(parameters))
+	if err != nil {
+		return stats, err
+	}
+	sql, err := sqlguard.ReadOnly(statement)
 	if err != nil {
 		return stats, err
 	}
 	ctx, cancel := context.WithTimeout(parent, e.limits.Timeout)
 	defer cancel()
-	body := map[string]any{"statement": sql, "warehouse_id": e.source.Options["warehouse_id"], "format": "JSON_ARRAY", "disposition": "INLINE", "wait_timeout": "0s", "row_limit": e.limits.MaxRows + 1, "byte_limit": min(int64(25<<20), e.limits.MaxBytes, e.client.Limit)}
+	body := map[string]any{"statement": sql, "parameters": bound, "warehouse_id": e.source.Options["warehouse_id"], "format": "JSON_ARRAY", "disposition": "INLINE", "wait_timeout": "0s", "row_limit": e.limits.MaxRows + 1, "byte_limit": min(int64(25<<20), e.limits.MaxBytes, e.client.Limit)}
 	for _, key := range []string{"catalog", "schema"} {
 		if v := e.source.Options[key]; v != "" {
 			body[key] = v
