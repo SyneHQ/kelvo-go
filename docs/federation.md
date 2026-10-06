@@ -42,6 +42,8 @@ Only listed tables become views. Names are plain SQL identifiers, with at most 3
 | BigQuery | `database` is data project; `schema` is dataset |
 | Flight SQL | `schema`; omit `database`; explicit ANSI profile |
 
+`source.name` uses the configured table alias. `source.schema.table` also resolves the same selected table; MySQL/ClickHouse use `source.database.table`. Each source gets a private catalog. Reserved or case-insensitive name collisions fail before source discovery.
+
 Use exact remote names, without search-path inference. See the [three-source example](../examples/federation-relational.yml) and [additional configurations](federation-adapters.md#configure-exact-remote-names).
 
 PostgreSQL/MySQL require their [native verified-TLS connection formats](sources-relational.md), which differ from signed-extension strings. Without a `federation` section, their existing signed-extension route remains available. File/object snapshots use Parquet.
