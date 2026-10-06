@@ -14,6 +14,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
+	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
 // PrincipalPolicy grants source access and optional callback-federation row
@@ -28,12 +29,13 @@ type PrincipalPolicy struct {
 }
 
 type PrincipalGrant struct {
-	DelegatedResolver   *ResolverTrust `json:"delegated_resolver,omitempty" yaml:"delegated_resolver,omitempty"`
-	RowColumnPolicy     *access.Policy `json:"row_column_policy,omitempty" yaml:"row_column_policy,omitempty"`
-	Kind                string         `json:"kind" yaml:"kind"`
-	NativeSources       []string       `json:"native_sources,omitempty" yaml:"native_sources,omitempty"`
-	FederatedSources    []string       `json:"federated_sources,omitempty" yaml:"federated_sources,omitempty"`
-	AllowLiteralQueries bool           `json:"allow_literal_queries,omitempty" yaml:"allow_literal_queries,omitempty"`
+	Operations          []operations.Kind `json:"operations,omitempty" yaml:"operations,omitempty"`
+	DelegatedResolver   *ResolverTrust    `json:"delegated_resolver,omitempty" yaml:"delegated_resolver,omitempty"`
+	RowColumnPolicy     *access.Policy    `json:"row_column_policy,omitempty" yaml:"row_column_policy,omitempty"`
+	Kind                string            `json:"kind" yaml:"kind"`
+	NativeSources       []string          `json:"native_sources,omitempty" yaml:"native_sources,omitempty"`
+	FederatedSources    []string          `json:"federated_sources,omitempty" yaml:"federated_sources,omitempty"`
+	AllowLiteralQueries bool              `json:"allow_literal_queries,omitempty" yaml:"allow_literal_queries,omitempty"`
 }
 
 // JobAuthority is attached by the authenticated gateway, never decoded from
@@ -74,6 +76,16 @@ func validatePrincipalPolicy(p *PrincipalPolicy) error {
 		}
 		if g.DelegatedResolver != nil && (g.Kind != "service" || validateResolverTrust(*g.DelegatedResolver) != nil || g.RowColumnPolicy != nil) {
 			return bad
+		}
+		if len(g.Operations) > 16 || (len(g.Operations) != 0 && (g.Kind != "service" || g.DelegatedResolver == nil)) {
+			return bad
+		}
+		seenOperations := map[operations.Kind]bool{}
+		for _, kind := range g.Operations {
+			if !kind.Valid() || seenOperations[kind] {
+				return bad
+			}
+			seenOperations[kind] = true
 		}
 		if g.RowColumnPolicy != nil {
 			if access.Validate(*g.RowColumnPolicy) != nil {

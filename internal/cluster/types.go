@@ -39,6 +39,7 @@ var (
 // Static tenant budgets partition cluster capacity; there is no shared mutable
 // quota counter. One durable KV slot atomically contains admission AND job state.
 type Policy struct {
+	Operations    *OperationPolicy `json:"operations,omitempty" yaml:"operations,omitempty"`
 	Exports       *ExportPolicy    `json:"exports,omitempty" yaml:"exports,omitempty"`
 	Access        *PrincipalPolicy `json:"access,omitempty" yaml:"access,omitempty"`
 	SourceQuotas  map[string]int   `json:"source_quotas,omitempty" yaml:"source_quotas,omitempty"`
@@ -130,6 +131,7 @@ type TenantConfig struct {
 }
 
 type GatewayConfig struct {
+	Operations          *GatewayOperationConfig      `yaml:"operations,omitempty"`
 	Tracing             *tracing.Config              `yaml:"tracing,omitempty"`
 	Exports             *GatewayExportConfig         `yaml:"exports,omitempty"`
 	RuntimeExportStores map[string]ExportStore       `yaml:"-"`
@@ -145,6 +147,7 @@ type GatewayConfig struct {
 }
 
 type NodeConfig struct {
+	Operations          *OperationNodeConfig                       `yaml:"operations,omitempty"`
 	ConnectionResolvers map[string]worker.ConnectionResolverConfig `yaml:"connection_resolvers,omitempty"`
 	Exports             *ExportNodeConfig                          `yaml:"exports,omitempty"`
 	RuntimeExportStore  ExportStore                                `yaml:"-"`
