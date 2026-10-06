@@ -5,7 +5,7 @@ Kelvo is a developer preview. Report vulnerabilities through [GitHub private rep
 ## Deploy with these boundaries
 
 1. Give each tenant its own worker pool, container identity, snapshot namespace and NATS account. Do not mix unrelated tenants in one `serve` catalog.
-2. Use read-only database accounts, restricted mounts and outbound network policy. SQL functions can access more than tables.
+2. Use read-only accounts for analytics and separate, scoped permissions for authorized writes. Restrict mounts and outbound network access; SQL functions can access more than tables.
 3. Enforce host/container CPU, memory, PID and disk limits. Admission reservations and Arrow output limits do not cap process memory.
 4. Protect broker storage and backups: NATS contains SQL, parameters and job metadata. It excludes database credentials and Arrow results.
 
@@ -27,6 +27,14 @@ See the [deployment checklist](deploy/README.md) and [cluster model](docs/cluste
 | TLS | [Identity](docs/tls-identity-rotation.md) and [trust](docs/tls-trust-rotation.md) rotation require operator propagation; trust policy also needs a configured restart floor. |
 
 Native relational connectors require verified TLS and operator-provisioned CA trust. Unsupported private wallets/CA paths are rejected. Legacy PostgreSQL/MySQL attachments use temporary redacted DuckDB secrets.
+
+## Saved-connection operations
+
+[Database operations](docs/database-operations.md) require separate signed authority;
+ordinary query grants cannot authorize writes. A leased worker fetches current
+credentials over private mTLS and sends them to its verified adapter through stdin.
+Credentials stay out of broker records, argv and child environment. Unknown write
+outcomes require reconciliation; status reads never replay source operations.
 
 ## Protect accelerated copies
 
