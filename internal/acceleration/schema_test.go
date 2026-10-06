@@ -122,6 +122,42 @@ func TestReadSchemaRejectsCorruptAndOversizedFooter(t *testing.T) {
 	}
 }
 
+func TestReadSchemaRejectsOverlongParquetVarint(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{{Name: "id", Type: arrow.PrimitiveTypes.Int64}}, nil)
+	var out bytes.Buffer
+	sink := NewParquetSink(&out, query.DefaultLimits())
+	if err := sink.Schema(schema); err != nil {
+		t.Fatal(err)
+	}
+	if err := sink.Finish(); err != nil {
+		t.Fatal(err)
+	}
+	data := out.Bytes()
+	if got, err := ReadParquetSchema(bytes.NewReader(data), int64(len(data))); err != nil || !SchemaEqual(schema, got) {
+		t.Fatalf("valid fixture schema: %v", err)
+	}
+	footerSize := int(binary.LittleEndian.Uint32(data[len(data)-8:]))
+	footerStart := len(data) - 8 - footerSize
+	// FileMetaData begins with field 1 (i32 version) in compact Thrift. Keep
+	// its value and every other field intact; only the varint encoding changes.
+	if footerStart < 4 || footerSize < 2 || data[footerStart] != 0x15 || data[footerStart+1]&0x80 != 0 {
+		t.Fatal("unexpected Parquet fixture version encoding")
+	}
+	malformed := make([]byte, 0, len(data)+10)
+	malformed = append(malformed, data[:footerStart+1]...)
+	malformed = append(malformed, data[footerStart+1]|0x80)
+	malformed = append(malformed, bytes.Repeat([]byte{0x80}, 9)...)
+	malformed = append(malformed, 0)
+	malformed = append(malformed, data[footerStart+2:]...)
+	binary.LittleEndian.PutUint32(malformed[len(malformed)-8:], uint32(footerSize+10))
+	// This stays below the footer byte limit. Schema inspection must reject
+	// the eleven-byte varint before accepting the otherwise valid metadata.
+	got, err := ReadParquetSchema(bytes.NewReader(malformed), int64(len(malformed)))
+	if got != nil || !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("overlong Parquet varint: schema returned=%t, err=%v", got != nil, err)
+	}
+}
+
 func TestParquetSinkRejectsMetadataChangeWithinRefresh(t *testing.T) {
 	var out bytes.Buffer
 	sink := NewParquetSink(&out, query.DefaultLimits())
