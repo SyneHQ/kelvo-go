@@ -53,6 +53,45 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 	dialer := &websocket.Dialer{Proxy: nil, NetDialContext: (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}, HandshakeTimeout: min(limits.Timeout, 5*time.Second), EnableCompression: false}
 	return &Engine{source: source, config: parsed, limits: limits, dialer: dialer, responseLimit: min(32<<20, int64(limits.MemoryMB)<<18), maxPages: 100000}, nil
 }
+
+type Credentials struct {
+	URL, Username, Password, Schema string
+	TLS                             *tls.Config
+}
+
+func NewResolved(config catalog.Config, limits query.Limits, credentials Credentials) (*Engine, error) {
+	if err := limits.Validate(); err != nil {
+		return nil, err
+	}
+	source, err := cloudapi.SingleSource(config, "exasol")
+	if err != nil {
+		return nil, err
+	}
+	u, err := url.Parse(credentials.URL)
+	port := 0
+	if err == nil {
+		port, _ = strconv.Atoi(u.Port())
+	}
+	if err != nil || u.Scheme != "wss" || !hostname.MatchString(u.Hostname()) || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || u.ForceQuery || port < 1 || port > 65535 || credentials.Username == "" || credentials.Password == "" || len(credentials.Username) > 4096 || len(credentials.Password) > 4096 || len(credentials.Schema) > 4096 || strings.ContainsAny(credentials.Username+credentials.Password+credentials.Schema, "\x00\r\n") {
+		return nil, query.NewError("CONFIGURATION_ERROR", "Exasol requires explicit verified connection details")
+	}
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
+	if credentials.TLS != nil {
+		if credentials.TLS.InsecureSkipVerify || credentials.TLS.MaxVersion != 0 && credentials.TLS.MaxVersion < tls.VersionTLS12 {
+			return nil, query.NewError("CONFIGURATION_ERROR", "Exasol requires verified TLS")
+		}
+		tlsConfig = credentials.TLS.Clone()
+		tlsConfig.MinVersion = max(tls.VersionTLS12, tlsConfig.MinVersion)
+		if tlsConfig.RootCAs != nil {
+			tlsConfig.RootCAs = tlsConfig.RootCAs.Clone()
+		}
+	}
+	encryption, verification, compression := true, true, false
+	parsed := &dsn.DSNConfig{Host: u.Hostname(), Port: port, User: credentials.Username, Password: credentials.Password, Schema: credentials.Schema, Encryption: &encryption, ValidateServerCertificate: &verification, Compression: &compression, FetchSize: 1024}
+	dialer := &websocket.Dialer{Proxy: nil, NetDialContext: (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext, TLSClientConfig: tlsConfig, HandshakeTimeout: min(limits.Timeout, 5*time.Second), EnableCompression: false}
+	return &Engine{source: source, config: parsed, limits: limits, dialer: dialer, responseLimit: min(32<<20, int64(limits.MemoryMB)<<18), maxPages: 100000}, nil
+}
+
 func parseDSN(raw string) (*dsn.DSNConfig, error) {
 	bad := func() (*dsn.DSNConfig, error) {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Exasol requires explicit credentials and verified encrypted TLS in a supported DSN")

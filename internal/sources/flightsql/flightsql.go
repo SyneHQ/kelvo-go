@@ -28,7 +28,9 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/arrowipc"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/cloudapi"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/sqlguard"
+	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
 const maxTokenBytes = 16 << 10
@@ -37,6 +39,7 @@ type Engine struct {
 	sources   map[string]catalog.Source
 	limits    query.Limits
 	tlsConfig func(endpoint) *tls.Config
+	resolved  *cloudapi.Credentials
 }
 
 type endpoint struct{ address, host string }
@@ -63,9 +66,54 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 	}
 	return &Engine{sources: sources, limits: limits, tlsConfig: defaultTLSConfig}, nil
 }
-func (e *Engine) Close() error { return nil }
 
-func (e *Engine) Execute(parent context.Context, req query.Request, sink query.Sink) (stats query.Stats, err error) {
+// NewResolved pins one source and never reads its environment references.
+func NewResolved(config catalog.Config, limits query.Limits, value cloudapi.Credentials) (*Engine, error) {
+	if err := limits.Validate(); err != nil {
+		return nil, err
+	}
+	source, err := cloudapi.SingleSource(config, "arrow_flight")
+	if err != nil {
+		return nil, err
+	}
+	if !catalog.ValidID(source.ID) || source.Options["protocol"] != "flightsql" || len(source.Options) != 1 {
+		return nil, query.NewError("CONFIGURATION_ERROR", "Flight SQL requires an explicit protocol")
+	}
+	ep, err := parseEndpoint(value.URL)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = validToken(value.Token); err != nil {
+		return nil, err
+	}
+	cfg := defaultTLSConfig(ep)
+	if value.TLS != nil {
+		if value.TLS.InsecureSkipVerify || value.TLS.MaxVersion != 0 && value.TLS.MaxVersion < tls.VersionTLS12 {
+			return nil, query.NewError("CONFIGURATION_ERROR", "Flight SQL requires verified TLS")
+		}
+		cfg = value.TLS.Clone()
+		cfg.MinVersion = max(tls.VersionTLS12, cfg.MinVersion)
+		if cfg.ServerName == "" {
+			cfg.ServerName = ep.host
+		}
+		if cfg.RootCAs != nil {
+			cfg.RootCAs = cfg.RootCAs.Clone()
+		}
+	}
+	value.TLS = nil
+	return &Engine{sources: map[string]catalog.Source{source.ID: source}, limits: limits, resolved: &value, tlsConfig: func(endpoint) *tls.Config { return cfg.Clone() }}, nil
+}
+func (e *Engine) Close() error {
+	if e.resolved != nil {
+		*e.resolved = cloudapi.Credentials{}
+	}
+	return nil
+}
+
+func (e *Engine) Execute(parent context.Context, req query.Request, sink query.Sink) (query.Stats, error) {
+	return e.execute(parent, req, sink, nil)
+}
+func (e *Engine) execute(parent context.Context, req query.Request, sink query.Sink, discovery *operations.MetadataSpec) (stats query.Stats, err error) {
 	stats.Backend, stats.EngineStreaming = "flightsql", true
 	started := time.Now()
 	defer func() { stats.DurationNS = time.Since(started).Nanoseconds() }()
@@ -79,15 +127,26 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	if !ok {
 		return stats, query.NewError("PERMISSION_DENIED", "Requested source is unavailable")
 	}
-	sql, err := sqlguard.ReadOnly(req.SQL)
-	if err != nil {
-		return stats, err
+	sql := req.SQL
+	if discovery == nil {
+		sql, err = sqlguard.ReadOnly(req.SQL)
+		if err != nil {
+			return stats, err
+		}
 	}
-	ep, err := parseEndpointEnv(source.URLEnv)
-	if err != nil {
-		return stats, err
+	var ep endpoint
+	var token string
+	if e.resolved != nil {
+		ep, err = parseEndpoint(e.resolved.URL)
+		if err == nil {
+			token, err = validToken(e.resolved.Token)
+		}
+	} else {
+		ep, err = parseEndpointEnv(source.URLEnv)
+		if err == nil {
+			token, err = tokenEnv(source.TokenEnv)
+		}
 	}
-	token, err := tokenEnv(source.TokenEnv)
 	if err != nil {
 		return stats, err
 	}
@@ -100,7 +159,31 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		return stats, sourceError(ctx, allocator)
 	}
 	defer client.Client.Close()
-	info, err := client.Execute(ctx, sql)
+	var info *flight.FlightInfo
+	if discovery == nil {
+		info, err = client.Execute(ctx, sql)
+	} else {
+		var catalogName, schemaName, tableName *string
+		if discovery.Target.Catalog != "" {
+			catalogName = &discovery.Target.Catalog
+		}
+		if discovery.Target.Schema != "" {
+			schemaName = &discovery.Target.Schema
+		}
+		if discovery.Target.Name != "" {
+			tableName = &discovery.Target.Name
+		}
+		switch discovery.Object {
+		case "catalogs", "databases":
+			info, err = client.GetCatalogs(ctx)
+		case "schemas":
+			info, err = client.GetDBSchemas(ctx, &flightSQL.GetDBSchemasOpts{Catalog: catalogName, DbSchemaFilterPattern: schemaName})
+		case "tables", "columns":
+			info, err = client.GetTables(ctx, &flightSQL.GetTablesOpts{Catalog: catalogName, DbSchemaFilterPattern: schemaName, TableNameFilterPattern: tableName, IncludeSchema: discovery.Object == "columns"})
+		default:
+			return stats, query.NewError("UNSUPPORTED", "Flight SQL metadata object is unsupported")
+		}
+	}
 	if err != nil {
 		return stats, sourceError(ctx, allocator)
 	}
@@ -197,8 +280,8 @@ func parseEndpoint(raw string) (endpoint, error) {
 	}
 	return endpoint{address: u.Host, host: u.Hostname()}, nil
 }
-func tokenEnv(name string) (string, error) {
-	token := os.Getenv(name)
+func tokenEnv(name string) (string, error) { return validToken(os.Getenv(name)) }
+func validToken(token string) (string, error) {
 	if token == "" || len(token) > maxTokenBytes || strings.ContainsAny(token, "\r\n\x00") {
 		return "", query.NewError("QUERY_FAILED", "Flight SQL source credentials are unavailable")
 	}
