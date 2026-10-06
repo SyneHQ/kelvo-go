@@ -36,28 +36,48 @@ func validText(value string) bool {
 	return utf8.ValidString(value) && !strings.ContainsAny(value, "\x00\r\n")
 }
 
+type Credentials struct {
+	URL, Username, Password string
+	TLS                     *tls.Config
+}
+
 func newClient(source catalog.Source, limits query.Limits) (*client, error) {
-	if err := limits.Validate(); err != nil {
-		return nil, err
-	}
 	for _, name := range []string{source.URLEnv, source.UsernameEnv, source.PasswordEnv} {
 		if name == "" || catalog.ValidateEnvironment(name) != nil {
 			return nil, query.NewError("CONFIGURATION_ERROR", "Ignite requires explicit URL, username and password environment references")
 		}
 	}
-	origin, err := url.Parse(os.Getenv(source.URLEnv))
+
+	return newResolvedClient(source, limits, Credentials{URL: os.Getenv(source.URLEnv), Username: os.Getenv(source.UsernameEnv), Password: os.Getenv(source.PasswordEnv)})
+}
+func newResolvedClient(_ catalog.Source, limits query.Limits, credentials Credentials) (*client, error) {
+	if err := limits.Validate(); err != nil {
+		return nil, err
+	}
+	origin, err := url.Parse(credentials.URL)
 	if err != nil || origin.Scheme != "https" || origin.Hostname() == "" || origin.User != nil || origin.Opaque != "" || (origin.Path != "" && origin.Path != "/") || origin.RawPath != "" || origin.RawQuery != "" || origin.ForceQuery || origin.Fragment != "" {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Ignite requires a verified HTTPS origin")
 	}
-	username, password := os.Getenv(source.UsernameEnv), os.Getenv(source.PasswordEnv)
+	username, password := credentials.Username, credentials.Password
 	if username == "" || password == "" || len(username) > 16<<10 || len(password) > 16<<10 || !validText(username) || !validText(password) {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Ignite credentials are unavailable")
+	}
+	config := &tls.Config{MinVersion: tls.VersionTLS12}
+	if credentials.TLS != nil {
+		if credentials.TLS.InsecureSkipVerify || credentials.TLS.MaxVersion != 0 && credentials.TLS.MaxVersion < tls.VersionTLS12 {
+			return nil, query.NewError("CONFIGURATION_ERROR", "Ignite requires verified TLS")
+		}
+		config = credentials.TLS.Clone()
+		config.MinVersion = max(tls.VersionTLS12, config.MinVersion)
+		if config.RootCAs != nil {
+			config.RootCAs = config.RootCAs.Clone()
+		}
 	}
 	origin.Path = "/ignite"
 	transport := &http.Transport{
 		Proxy:                  nil,
 		DialContext:            (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
-		TLSClientConfig:        &tls.Config{MinVersion: tls.VersionTLS12},
+		TLSClientConfig:        config,
 		TLSHandshakeTimeout:    5 * time.Second,
 		ResponseHeaderTimeout:  limits.Timeout,
 		IdleConnTimeout:        30 * time.Second,

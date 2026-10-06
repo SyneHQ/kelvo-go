@@ -29,6 +29,17 @@ var handlePattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,128}$`)
 const endpoint = "/api/v2/statements"
 
 func New(c catalog.Config, l query.Limits) (*Engine, error) {
+	return newEngine(c, l, cloudapi.New)
+}
+
+// NewResolved opens one request-owned source without reading ambient credentials.
+func NewResolved(c catalog.Config, l query.Limits, credentials cloudapi.Credentials) (*Engine, error) {
+	return newEngine(c, l, func(s catalog.Source, limits query.Limits) (*cloudapi.Client, error) {
+		return cloudapi.NewResolved(s, limits, credentials)
+	})
+}
+
+func newEngine(c catalog.Config, l query.Limits, open cloudapi.Factory) (*Engine, error) {
 	s, err := cloudapi.SingleSource(c, "snowflake")
 	if err != nil {
 		return nil, err
@@ -40,7 +51,7 @@ func New(c catalog.Config, l query.Limits) (*Engine, error) {
 	if typ != "OAUTH" && typ != "KEYPAIR_JWT" && typ != "PROGRAMMATIC_ACCESS_TOKEN" {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Unsupported Snowflake token_type")
 	}
-	client, err := cloudapi.New(s, l)
+	client, err := open(s, l)
 	if err != nil {
 		return nil, err
 	}
