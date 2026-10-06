@@ -28,6 +28,7 @@ type PrincipalPolicy struct {
 }
 
 type PrincipalGrant struct {
+	DelegatedResolver   *ResolverTrust `json:"delegated_resolver,omitempty" yaml:"delegated_resolver,omitempty"`
 	RowColumnPolicy     *access.Policy `json:"row_column_policy,omitempty" yaml:"row_column_policy,omitempty"`
 	Kind                string         `json:"kind" yaml:"kind"`
 	NativeSources       []string       `json:"native_sources,omitempty" yaml:"native_sources,omitempty"`
@@ -38,9 +39,14 @@ type PrincipalGrant struct {
 // JobAuthority is attached by the authenticated gateway, never decoded from
 // the public query request. It is immutable across every durable transition.
 type JobAuthority struct {
-	PrincipalID   string `json:"principal_id"`
-	PrincipalKind string `json:"principal_kind"`
-	PolicyVersion string `json:"policy_version"`
+	PrincipalID      string `json:"principal_id"`
+	PrincipalKind    string `json:"principal_kind"`
+	PolicyVersion    string `json:"policy_version"`
+	DelegationSHA256 string `json:"delegation_sha256,omitempty"`
+	ApplicationTeam  string `json:"application_team,omitempty"`
+	SubjectKind      string `json:"subject_kind,omitempty"`
+	SubjectID        string `json:"subject_id,omitempty"`
+	SubjectJobID     string `json:"subject_job_id,omitempty"`
 }
 
 type jobAuthorityKey struct{}
@@ -64,6 +70,9 @@ func validatePrincipalPolicy(p *PrincipalPolicy) error {
 	}
 	for id, g := range p.Principals {
 		if !clusterID.MatchString(id) || (g.Kind != "user" && g.Kind != "service") {
+			return bad
+		}
+		if g.DelegatedResolver != nil && (g.Kind != "service" || validateResolverTrust(*g.DelegatedResolver) != nil || g.RowColumnPolicy != nil) {
 			return bad
 		}
 		if g.RowColumnPolicy != nil {
@@ -124,9 +133,13 @@ func sameAuthority(a, b *JobAuthority) bool {
 }
 
 func validateJobAuthority(p Policy, a *JobAuthority, request query.Request) error {
+	return validateJobAuthorityAt(p, a, request, time.Now())
+}
+
+func validateJobAuthorityAt(p Policy, a *JobAuthority, request query.Request, now time.Time) error {
 	denied := query.NewError("PERMISSION_DENIED", "Query access denied")
 	if p.Access == nil {
-		if a != nil {
+		if a != nil || request.Delegation != "" {
 			return denied
 		}
 		return nil
@@ -135,13 +148,23 @@ func validateJobAuthority(p Policy, a *JobAuthority, request query.Request) erro
 		return denied
 	}
 	current, ok := authorityForPrincipal(p, a.PrincipalID)
-	if !ok || current != *a {
+	if !ok || current != baseJobAuthority(*a) {
 		return denied
 	}
 	if query.ValidateRequest(request) != nil {
 		return denied
 	}
 	grant := p.Access.Principals[a.PrincipalID]
+	if request.Delegation != "" {
+		bound, _, err := delegatedAuthority(p, current, request, now)
+		if err != nil || bound != *a {
+			return denied
+		}
+		return nil
+	}
+	if current != *a {
+		return denied
+	}
 	includes := func(allowed []string, id string) bool {
 		for _, source := range allowed {
 			if source == id {
@@ -176,6 +199,20 @@ func submissionAuthority(ctx context.Context, p Policy, request query.Request) (
 	if ok {
 		result = &a
 	}
+	header, _ := ctx.Value(delegationHeaderKey{}).(string)
+	if header != request.Delegation {
+		return nil, query.NewError("PERMISSION_DENIED", "Query access denied")
+	}
+	if request.Delegation != "" {
+		if !ok {
+			return nil, query.NewError("PERMISSION_DENIED", "Query access denied")
+		}
+		bound, _, err := delegatedAuthority(p, a, request, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		result = &bound
+	}
 	if err := validateJobAuthority(p, result, request); err != nil {
 		return nil, err
 	}
@@ -196,13 +233,28 @@ func principalSnapshot(ctx context.Context, t gatewayTenant, id string) (Snapsho
 		return Snapshot{}, err
 	}
 	a, ok := jobAuthorityFromContext(ctx)
+	now := time.Now()
+	if grace, allowed := ctx.Value(delegationCancelKey{}).(bool); allowed && grace {
+		now = now.Add(-5 * time.Second)
+	}
+	header, _ := ctx.Value(delegationHeaderKey{}).(string)
+	if header != s.Job.Request.Delegation {
+		return Snapshot{}, ErrNotFound
+	}
 	if t.store.Policy().Access == nil {
 		if ok || s.Job.Authority != nil {
 			return Snapshot{}, ErrNotFound
 		}
 		return s, nil
 	}
-	if !ok || s.Job.Authority == nil || a != *s.Job.Authority || validateJobAuthority(t.store.Policy(), &a, s.Job.Request) != nil {
+	if ok && s.Job.Request.Delegation != "" {
+		bound, _, err := delegatedAuthority(t.store.Policy(), a, s.Job.Request, now)
+		if err != nil {
+			return Snapshot{}, ErrNotFound
+		}
+		a = bound
+	}
+	if !ok || s.Job.Authority == nil || a != *s.Job.Authority || validateJobAuthorityAt(t.store.Policy(), &a, s.Job.Request, now) != nil {
 		return Snapshot{}, ErrNotFound
 	}
 	return s, nil

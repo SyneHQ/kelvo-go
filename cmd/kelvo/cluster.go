@@ -150,6 +150,11 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	if err != nil {
 		return err
 	}
+	executor, closeResolvers, err := configureConnectionResolvers(cfg, executor)
+	if err != nil {
+		return query.NewError("CONFIGURATION_ERROR", err.Error())
+	}
+	defer closeResolvers()
 	executor.SandboxPath = cfg.SandboxPath
 	if cfg.ScratchDirectory != "" {
 		executor.ScratchRoot, err = worker.OpenScratchRoot(cfg.ScratchDirectory)

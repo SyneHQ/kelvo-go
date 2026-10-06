@@ -172,6 +172,15 @@ func LoadNode(path string) (NodeConfig, error) {
 		_ = provider.Close()
 	}
 	c.CatalogFile = relativePath(base, c.CatalogFile)
+	for issuer, resolver := range c.ConnectionResolvers {
+		resolver.CAFile = relativePath(base, resolver.CAFile)
+		resolver.CertFile = relativePath(base, resolver.CertFile)
+		resolver.KeyFile = relativePath(base, resolver.KeyFile)
+		if err := resolver.Validate(); err != nil {
+			return c, err
+		}
+		c.ConnectionResolvers[issuer] = resolver
+	}
 	c.SandboxPath = relativePath(base, c.SandboxPath)
 	if err = ValidatePolicy(c.Policy); err != nil {
 		return c, err

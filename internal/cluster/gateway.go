@@ -380,8 +380,19 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.err(w, 401, "UNAUTHENTICATED", "Authentication required")
 		return
 	}
+	delegatedContext, stopDelegation, delegatedErr := delegatedHTTPContext(r, policy)
+	if delegatedErr != nil {
+		g.err(w, 403, "PERMISSION_DENIED", "Query access denied")
+		return
+	}
+	defer stopDelegation()
+	r = r.WithContext(delegatedContext)
 	p := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	if len(p) >= 2 && p[0] == "v1" && p[1] == "exports" {
+		if r.Header.Get("X-Kelvo-Delegation") != "" {
+			g.err(w, 403, "PERMISSION_DENIED", "Delegated exports are unavailable")
+			return
+		}
 		g.serveExportHTTP(w, r, tenant, p)
 		return
 	}
@@ -410,6 +421,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(p) == 4 && p[3] == "results" && r.Method == "GET" {
 		g.results(w, r, g.tenants[tenant], p[2], &admission)
+		return
+	}
+	if len(p) == 4 && p[3] == "connection-lease" && r.Method == http.MethodPost {
+		g.connectionLease(w, r, g.tenants[tenant], p[2])
 		return
 	}
 	g.err(w, 404, "NOT_FOUND", "Not found")
