@@ -10,6 +10,9 @@ import (
 var sourceName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 
 func ValidateRequest(r Request) error {
+	if len(r.Delegation) > 32768 || (r.Delegation != "" && (r.Mongo != nil || r.ScanDiagnostics)) {
+		return NewError("INVALID_ARGUMENT", "Invalid delegated query")
+	}
 	if (strings.TrimSpace(r.SQL) == "" && r.Mongo == nil) || len(r.SQL) > 64<<10 || len(r.Parameters) > 1024 || len(r.Sources) > 64 {
 		return NewError("INVALID_ARGUMENT", "Query exceeds its request limits")
 	}
