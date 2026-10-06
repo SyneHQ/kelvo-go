@@ -27,17 +27,31 @@ type Client struct {
 	Limit  int64
 }
 
+// Credentials is owned by one admitted request. NewResolved never reads
+// environment variables or credential files.
+type Credentials struct {
+	URL   string
+	Token string
+	TLS   *tls.Config
+}
+
+type Factory func(catalog.Source, query.Limits) (*Client, error)
+
 func New(source catalog.Source, limits query.Limits) (*Client, error) {
+	return NewResolved(source, limits, Credentials{URL: os.Getenv(source.URLEnv), Token: os.Getenv(source.TokenEnv)})
+}
+
+func NewResolved(_ catalog.Source, limits query.Limits, credentials Credentials) (*Client, error) {
 	if err := limits.Validate(); err != nil {
 		return nil, err
 	}
-	raw := os.Getenv(source.URLEnv)
+	raw := credentials.URL
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.Opaque != "" || len(raw) > 8192 || strings.ContainsAny(raw, "\\\x00\r\n\t ") {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Cloud source requires an HTTPS origin")
 	}
-	token := os.Getenv(source.TokenEnv)
-	if token == "" || len(token) > 16<<10 || strings.ContainsAny(token, "\r\n") {
+	token := credentials.Token
+	if token == "" || len(token) > 16<<10 || !utf8.ValidString(token) || strings.ContainsAny(token, "\x00\r\n") {
 		return nil, query.NewError("CONFIGURATION_ERROR", "Cloud source token is unavailable")
 	}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
@@ -46,6 +60,16 @@ func New(source catalog.Source, limits query.Limits) (*Client, error) {
 	// Managed database endpoints vary in TLS 1.3 support. Require verified
 	// TLS 1.2 or newer and let the handshake negotiate the newest common version.
 	tr.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	if credentials.TLS != nil {
+		if credentials.TLS.InsecureSkipVerify || credentials.TLS.MaxVersion != 0 && credentials.TLS.MaxVersion < tls.VersionTLS12 {
+			return nil, query.NewError("CONFIGURATION_ERROR", "Cloud source requires verified TLS")
+		}
+		tr.TLSClientConfig = credentials.TLS.Clone()
+		tr.TLSClientConfig.MinVersion = max(tls.VersionTLS12, tr.TLSClientConfig.MinVersion)
+		if credentials.TLS.RootCAs != nil {
+			tr.TLSClientConfig.RootCAs = credentials.TLS.RootCAs.Clone()
+		}
+	}
 	tr.TLSHandshakeTimeout = 5 * time.Second
 	tr.ResponseHeaderTimeout = limits.Timeout
 	tr.MaxConnsPerHost = 2
@@ -86,6 +110,11 @@ func (c *Client) do(ctx context.Context, method, path string, input io.Reader, c
 	r, err := http.NewRequestWithContext(ctx, method, u.String(), input)
 	if err != nil {
 		return 0, 0, query.NewError("QUERY_FAILED", "Cannot prepare cloud request")
+	}
+	// Transport-level replay is unsafe when this client backs an explicitly
+	// authorized mutation. Idempotent operation recovery belongs to the ledger.
+	if method != http.MethodGet && method != http.MethodHead {
+		r.GetBody = nil
 	}
 	r.Header.Set("Authorization", "Bearer "+c.Token)
 	r.Header.Set("Content-Type", contentType)
