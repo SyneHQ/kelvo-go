@@ -76,6 +76,11 @@ func runCluster(args []string) error {
 					return query.NewError("CONFIGURATION_ERROR", "Export dispatch could not be initialized")
 				}
 			}
+			if tenant.Policy.Operations != nil {
+				if _, err = s.OpenOperations(ctx, true); err != nil {
+					return query.NewError("CONFIGURATION_ERROR", "Operation receipts could not be initialized")
+				}
+			}
 		}
 	}
 	if args[0] == "cluster-init" {
@@ -96,6 +101,12 @@ func runCluster(args []string) error {
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
+	stopOperationInputs, err := serveOperationInputs(cfg, gateway)
+	if err != nil {
+		_ = gateway.Close()
+		return err
+	}
+	defer stopOperationInputs()
 
 	var closeErr error
 	closed := make(chan struct{})
@@ -434,7 +445,7 @@ func serveCluster(ctx context.Context, ln net.Listener, tc *tls.Config, handler 
 	// Signal cancellation starts drain; it must not cancel active HTTP requests.
 	requests, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s := &http.Server{Handler: handler, TLSConfig: tc, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10, BaseContext: func(net.Listener) context.Context { return requests }}
+	s := &http.Server{Handler: handler, TLSConfig: tc, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 64 << 10, BaseContext: func(net.Listener) context.Context { return requests }}
 	done := make(chan error, 1)
 	go func() { done <- s.ServeTLS(ln, "", "") }()
 	fmt.Fprintln(os.Stderr, "Kelvo cluster HTTPS listening on "+ln.Addr().String())

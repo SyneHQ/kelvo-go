@@ -37,6 +37,7 @@ type workerEndpoint struct {
 	client *http.Client
 }
 type Gateway struct {
+	operations        map[string]*gatewayOperations
 	exports           map[string]ExportStore
 	exportSupervisors chan struct{}
 	exportDownloads   chan struct{}
@@ -87,6 +88,7 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 	started := false
 	defer func() {
 		if !started {
+			_ = g.closeOperations()
 			_ = g.audit.CloseBounded()
 			_ = g.closeTracing()
 			if g.workerIdentity != nil {
@@ -214,6 +216,18 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 		}
 		return nil, err
 	}
+	if err := g.initOperations(cfg); err != nil {
+		cancel()
+		if g.auth != nil {
+			err = errors.Join(err, g.auth.close())
+		}
+		for _, tenant := range g.tenants {
+			for _, endpoint := range tenant.workers {
+				endpoint.client.CloseIdleConnections()
+			}
+		}
+		return nil, err
+	}
 	for tenant := range g.tenants {
 		g.wg.Add(1)
 		go g.reconcile(tenant)
@@ -255,7 +269,7 @@ func (g *Gateway) Close() error {
 		}
 		g.handlers.Wait()
 		g.wg.Wait()
-		g.closeErr = errors.Join(authCloseErr, g.audit.CloseBounded(), g.closeTracing())
+		g.closeErr = errors.Join(authCloseErr, g.closeOperations(), g.audit.CloseBounded(), g.closeTracing())
 		for _, t := range g.tenants {
 			for _, endpoint := range t.workers {
 				endpoint.client.CloseIdleConnections()
@@ -274,6 +288,11 @@ func (g *Gateway) reconcile(tenant string) {
 		if err == nil && g.exports[tenant] != nil {
 			ctx, stop := context.WithTimeout(g.ctx, g.tenants[tenant].store.Policy().LeaseDuration)
 			err = g.exports[tenant].ReconcileExports(ctx)
+			stop()
+		}
+		if err == nil && g.operations[tenant] != nil {
+			ctx, stop := context.WithTimeout(g.ctx, 5*time.Second)
+			err = g.reconcileOperations(ctx, tenant)
 			stop()
 		}
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -378,6 +397,23 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else if principalID != "" {
 		g.audit.authenticationDenied()
 		g.err(w, 401, "UNAUTHENTICATED", "Authentication required")
+		return
+	}
+	operationParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(operationParts) >= 2 && operationParts[0] == "v1" && operationParts[1] == "operation-inputs" {
+		g.serveOperationUpload(w, r, tenant)
+		return
+	}
+	if len(r.Header.Values(operationInputGrantHeader)) != 0 {
+		g.err(w, 403, "PERMISSION_DENIED", "Input grants cannot authorize operations or queries")
+		return
+	}
+	if len(operationParts) >= 2 && operationParts[0] == "v1" && operationParts[1] == "operations" {
+		g.serveOperationHTTP(w, r, tenant, operationParts)
+		return
+	}
+	if len(r.Header.Values(operationGrantHeader)) != 0 {
+		g.err(w, 403, "PERMISSION_DENIED", "Operation grants cannot authorize queries")
 		return
 	}
 	delegatedContext, stopDelegation, delegatedErr := delegatedHTTPContext(r, policy)

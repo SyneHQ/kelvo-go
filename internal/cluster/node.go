@@ -35,27 +35,29 @@ type reservation struct {
 }
 
 type Node struct {
-	exports        *ExportRuntime
-	audit          *ServiceAudit
-	ownAudit       bool
-	closeErr       error
-	cfg            NodeConfig
-	store          Store
-	executor       query.Executor
-	owner          string
-	ctx            context.Context
-	cancel         context.CancelFunc
-	dispatchCtx    context.Context
-	dispatchCancel context.CancelFunc
-	dispatchDone   chan struct{}
-	leaseFailure   chan struct{}
-	draining       bool // guarded by mu
-	permits        chan struct{}
-	mu             sync.Mutex
-	jobs           map[string]*reservation
-	wg             sync.WaitGroup
-	streams        sync.WaitGroup
-	once           sync.Once
+	operations            *nodeOperations
+	closeOperationRuntime func()
+	exports               *ExportRuntime
+	audit                 *ServiceAudit
+	ownAudit              bool
+	closeErr              error
+	cfg                   NodeConfig
+	store                 Store
+	executor              query.Executor
+	owner                 string
+	ctx                   context.Context
+	cancel                context.CancelFunc
+	dispatchCtx           context.Context
+	dispatchCancel        context.CancelFunc
+	dispatchDone          chan struct{}
+	leaseFailure          chan struct{}
+	draining              bool // guarded by mu
+	permits               chan struct{}
+	mu                    sync.Mutex
+	jobs                  map[string]*reservation
+	wg                    sync.WaitGroup
+	streams               sync.WaitGroup
+	once                  sync.Once
 }
 
 func randomToken() (string, error) {
@@ -101,6 +103,11 @@ func NewNode(cfg NodeConfig, store Store, executor *worker.Executor) (*Node, err
 }
 
 func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error) {
+	if cfg.Operations != nil {
+		copy := *cfg.Operations
+		copy.Adapter = cfg.Operations.Adapter.Clone()
+		cfg.Operations = &copy
+	}
 	policy, err := clonePolicy(cfg.Policy)
 	if err != nil {
 		return nil, err
@@ -113,6 +120,9 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 		return nil, err
 	}
 	if err := validateNodeExports(cfg); err != nil {
+		return nil, err
+	}
+	if err := validateNodeOperations(cfg); err != nil {
 		return nil, err
 	}
 	if store == nil || executor == nil || !reflect.DeepEqual(store.Policy(), cfg.Policy) || cfg.Policy.Workers[cfg.WorkerID] < 1 {
@@ -141,10 +151,24 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 	}
 	started := false
 	defer func() {
+		if !started && n.closeOperationRuntime != nil {
+			n.closeOperationRuntime()
+		}
 		if !started && n.ownAudit {
 			_ = n.audit.CloseBounded()
 		}
 	}()
+	if cfg.Operations != nil {
+		prepare, stop := context.WithTimeout(ctx, 30*time.Second)
+		prepared, closeRuntime, err := cfg.Operations.Adapter.PrepareRuntime(prepare)
+		stop()
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+		n.cfg.Operations.Adapter = prepared
+		n.closeOperationRuntime = closeRuntime
+	}
 	n.dispatchCtx, n.dispatchCancel = context.WithCancel(ctx)
 	n.dispatchDone = make(chan struct{})
 	probe, stop := context.WithTimeout(ctx, 10*time.Second)
@@ -193,6 +217,25 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 			return nil, err
 		}
 		context.AfterFunc(n.ctx, n.exports.Stop)
+	}
+	if err := n.initOperations(probe); err != nil {
+		cancel()
+		if n.exports != nil {
+			_ = n.exports.Close()
+		}
+		return nil, err
+	}
+	if n.operations != nil {
+		if err := n.operations.worker.Start(n.ctx); err != nil {
+			cancel()
+			_ = n.operations.close(context.Background())
+			if n.exports != nil {
+				_ = n.exports.Close()
+			}
+			return nil, err
+		}
+		n.wg.Add(1)
+		go n.cleanupOperationResults()
 	}
 	n.wg.Add(2)
 	go n.dispatch()
@@ -524,12 +567,20 @@ func (n *Node) BeginDrain() {
 	if n.exports != nil {
 		n.exports.BeginDrain()
 	}
+	if n.operations != nil {
+		n.operations.worker.BeginDrain()
+	}
 }
 
 // Drain waits for reservations, including unclaimed results, to finish. The
 // caller must invoke Close after the grace period to cancel remaining work.
 func (n *Node) Drain(ctx context.Context) error {
 	n.BeginDrain()
+	if n.operations != nil {
+		if err := n.operations.worker.Drain(ctx); err != nil {
+			return err
+		}
+	}
 	select {
 	case <-n.dispatchDone:
 	case <-ctx.Done():
@@ -565,8 +616,12 @@ func (n *Node) Close() error {
 		n.mu.Unlock()
 		n.wg.Wait()
 		n.streams.Wait()
+		n.closeErr = errors.Join(n.closeErr, n.operations.close(context.Background()))
+		if n.closeOperationRuntime != nil {
+			n.closeOperationRuntime()
+		}
 		if n.exports != nil {
-			n.closeErr = n.exports.Close()
+			n.closeErr = errors.Join(n.closeErr, n.exports.Close())
 		}
 		if n.ownAudit {
 			n.closeErr = errors.Join(n.closeErr, n.audit.CloseBounded())
@@ -633,6 +688,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if ready && n.exports != nil {
 			ready = n.exports.Ready()
 		}
+		if ready && n.operations != nil {
+			ready = !n.operations.failed.Load() && n.operations.worker.input.ready()
+		}
 		if ready && !n.cfg.RuntimeDatasets.hasRequired(n.cfg.RequiredDatasets) {
 			ready = false
 		}
@@ -647,6 +705,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if n.exports != nil && n.exports.ServeHTTP(w, r) {
+		return
+	}
+	if n.serveOperationResult(w, r) {
 		return
 	}
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")

@@ -37,6 +37,9 @@ func LoadGateway(path string) (GatewayConfig, error) {
 	}
 	resolveTLS(base, &c.TLS)
 	resolveTLS(base, &c.WorkerTLS)
+	if c.Operations != nil {
+		resolveTLS(base, &c.Operations.TLS)
+	}
 	if c.TLS.Trust != nil {
 		return c, errors.New("TLS trust rotation requires an mTLS listener")
 	}
@@ -89,6 +92,9 @@ func LoadGateway(path string) (GatewayConfig, error) {
 		return c, errors.New("tenant budgets exceed the configured cluster capacity")
 	}
 	if err := validateGatewayExports(c); err != nil {
+		return c, err
+	}
+	if err := validateGatewayOperations(c); err != nil {
 		return c, err
 	}
 	return c, nil
@@ -182,10 +188,17 @@ func LoadNode(path string) (NodeConfig, error) {
 		c.ConnectionResolvers[issuer] = resolver
 	}
 	c.SandboxPath = relativePath(base, c.SandboxPath)
+	if c.Operations != nil {
+		resolveTLS(base, &c.Operations.TLS)
+		c.Operations.Adapter.Binary = relativePath(base, c.Operations.Adapter.Binary)
+	}
 	if err = ValidatePolicy(c.Policy); err != nil {
 		return c, err
 	}
 	if err = validateNodeExports(c); err != nil {
+		return c, err
+	}
+	if err = validateNodeOperations(c); err != nil {
 		return c, err
 	}
 	if c.Listen == "" || c.Policy.Workers[c.WorkerID] < 1 || c.CatalogFile == "" || c.SandboxPath == "" {
@@ -199,6 +212,9 @@ func LoadNode(path string) (NodeConfig, error) {
 }
 
 func ValidatePolicy(p Policy) error {
+	if err := validateOperationPolicy(p); err != nil {
+		return err
+	}
 	if err := validatePrincipalPolicy(p.Access); err != nil {
 		return err
 	}
