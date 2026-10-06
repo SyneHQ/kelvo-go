@@ -29,7 +29,7 @@ jobs:
       - name: Verify analytical evidence reconciliation
         run: python3 scripts/test_analytics_evidence.py --campaign docs/evidence/analytics-azure-snapshot.json --validation docs/evidence/analytics-validation-measured.json
       - run: go test -tags duckdb_arrow ./...
-      - run: go test -race ./internal/authfence ./internal/authstate ./internal/audit ./internal/access ./internal/containment ./internal/admission ./internal/telemetry ./internal/tracing ./internal/secrets ./federation ./internal/federation ./cmd/kelvo ./internal/httpstream ./internal/transport/httpapi ./internal/sources/... ./internal/cluster ./internal/worker ./internal/acceleration ./internal/catalog ./internal/objectstore ./internal/exports
+      - run: go test -race ./internal/authfence ./internal/authstate ./internal/audit ./internal/access ./internal/containment ./internal/admission ./internal/telemetry ./internal/tracing ./internal/secrets ./internal/delegation ./federation ./internal/federation ./cmd/kelvo ./internal/httpstream ./internal/transport/httpapi ./internal/sources/... ./internal/cluster ./internal/worker ./internal/acceleration ./internal/catalog ./internal/objectstore ./internal/exports
       - name: Race-check schema and multipart object consumers
         run: go test -p 2 -race -tags duckdb_arrow ./internal/acceleration ./internal/engine/duckdb -run 'Test(SchemaEvolution|ObjectDescriptor|ObjectRange|ObjectMultipart(Commit|Empty|Seal|Descriptor|Lease|Ambiguous|Options|Root|Canceled)|MultipartRanges|MultipartObject|ExecuteMultipart)' -count=1 -timeout=10m
       - run: go vet -tags duckdb_arrow ./...

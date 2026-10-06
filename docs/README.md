@@ -29,6 +29,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Task | Guide |
 | --- | --- |
 | Deploy tenant workers | [Deployment](../deploy/README.md) · [Cluster lifecycle](cluster.md) |
+| Resolve saved connections at query time | [On-demand connections](on-demand-connections.md) |
 | Enforce native process-tree limits | [Linux containment](process-containment.md) |
 | Configure budgets, probes, quotas and drain | [Operations](operations.md) |
 | Restrict users and services | [Principal keys](principal-access.md) · [Row/column policies](row-column-access.md) · [Snapshot policies](guarded-snapshots.md) |
