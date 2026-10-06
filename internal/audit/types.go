@@ -96,16 +96,21 @@ type Binding struct {
 type Kind string
 
 const (
-	Authentication   Kind = "authentication"
-	QuerySubmit      Kind = "query_submit"
-	QueryCancel      Kind = "query_cancel"
-	QueryResults     Kind = "query_results"
-	QueryExecution   Kind = "query_execution"
-	ExportSubmit     Kind = "export_submit"
-	ExportCancel     Kind = "export_cancel"
-	ExportResults    Kind = "export_results"
-	ExportExecution  Kind = "export_execution"
-	RefreshExecution Kind = "refresh_execution"
+	Authentication       Kind = "authentication"
+	QuerySubmit          Kind = "query_submit"
+	QueryCancel          Kind = "query_cancel"
+	QueryResults         Kind = "query_results"
+	QueryExecution       Kind = "query_execution"
+	ExportSubmit         Kind = "export_submit"
+	ExportCancel         Kind = "export_cancel"
+	ExportResults        Kind = "export_results"
+	ExportExecution      Kind = "export_execution"
+	RefreshExecution     Kind = "refresh_execution"
+	OperationSubmit      Kind = "operation_submit"
+	OperationInputUpload Kind = "operation_input_upload"
+	OperationCancel      Kind = "operation_cancel"
+	OperationExecution   Kind = "operation_execution"
+	OperationResults     Kind = "operation_results"
 )
 
 type Outcome string
@@ -155,7 +160,7 @@ type Page struct {
 func validKind(kind Kind) bool {
 	switch kind {
 	case Authentication, QuerySubmit, QueryCancel, QueryResults, QueryExecution, RefreshExecution,
-		ExportSubmit, ExportCancel, ExportResults, ExportExecution:
+		ExportSubmit, ExportCancel, ExportResults, ExportExecution, OperationSubmit, OperationInputUpload, OperationCancel, OperationExecution, OperationResults:
 		return true
 	}
 	return false
