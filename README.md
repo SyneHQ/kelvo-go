@@ -51,7 +51,7 @@ Analytics overview. One query runs on one worker. Add workers to run more indepe
 
 ## Use Kelvo behind your API
 
-In cluster mode, configure deployment trust once, then select saved connection IDs at request time. Customer connections do not need individual entries in Kelvo YAML.
+Any application can use the [HTTP API](docs/usage.md#http-api) with configured sources. In cluster mode, your own authorization and credential resolver can also supply saved connections on demand, without individual entries in Kelvo YAML.
 
 1. Your API authenticates the caller, authorizes the saved connection and signs the request.
 2. The assigned worker resolves current credentials over private mTLS when execution starts.
@@ -59,7 +59,7 @@ In cluster mode, configure deployment trust once, then select saved connection I
 
 Credentials stay out of query payloads and NATS. Contained Go/JDBC adapters support reads, writes, metadata and selected migration, ingestion and watcher jobs. Capabilities differ by engine; reconcile uncertain writes before retrying.
 
-Start with [on-demand queries](docs/on-demand-connections.md), [database operations](docs/database-operations.md) and [validation coverage](docs/database-operations-validation.md). On-demand analytical queries do not yet support acceleration or durable exports.
+Start with [on-demand queries](docs/on-demand-connections.md), [database operations](docs/database-operations.md) and [validation coverage](docs/database-operations-validation.md). The advanced on-demand path still needs a custom resolver; a complete public SDK and standalone integration example remain [open work](docs/on-demand-connections.md#integration-status). On-demand analytical queries do not yet support acceleration or durable exports.
 
 ## Execution and sources
 

@@ -5,11 +5,12 @@ This guide covers analytical queries. For supported writes, metadata and backgro
 Use a trusted resolver when your application discovers tenant connections at
 request time. Configure deployment trust once; queries select saved IDs.
 The resolver owns metadata authorization and credential decryption.
+Your application chooses its identity provider, connection store and secret store.
 
 ```mermaid
 sequenceDiagram
     participant App as Application / scheduled job
-    participant API as db.api.go
+    participant API as Your application API
     participant Gateway as Kelvo gateway
     participant Worker as Assigned worker
     participant DB as Customer databases
@@ -27,6 +28,17 @@ sequenceDiagram
     API-->>App: Arrow or bounded JSON
 ```
 
+## Integration status
+
+The configured-source [CLI and HTTP API](usage.md) work independently. The
+on-demand path currently requires a custom authority service implementing Kelvo's
+resolver and worker-custody protocol.
+
+Public [operation requests and grant helpers](../operations/) are available.
+Analytical signing and resolver payload types still live under Go `internal/`
+packages. A complete public SDK, callback specification and standalone example
+remain open work. This guide covers the deployment trust and execution boundaries.
+
 ## Configure trust
 
 The tenant service principal explicitly permits one resolver. Include this in
@@ -36,12 +48,12 @@ the immutable policy used by the initializer, gateways and workers:
 access:
   revision: 1
   principals:
-    dbapi:
+    application:
       kind: service
       delegated_resolver:
-        issuer: db-api
+        issuer: app-gateway
         audience: kelvo-production
-        url: https://db-api.internal:9443/internal/kelvo/resolve
+        url: https://gateway.internal:9443/internal/kelvo/resolve
         public_key: BASE64_ED25519_PUBLIC_KEY
 ```
 
@@ -49,8 +61,8 @@ Add the matching worker transport configuration:
 
 ```yaml
 connection_resolvers:
-  db-api:
-    url: https://db-api.internal:9443/internal/kelvo/resolve
+  app-gateway:
+    url: https://gateway.internal:9443/internal/kelvo/resolve
     ca_file: /etc/kelvo/resolver-ca.pem
     cert_file: /etc/kelvo/worker.pem
     key_file: /etc/kelvo/worker-key.pem
@@ -63,8 +75,9 @@ Worker certificates require client-auth usage and the URI
 settings. Restart workers to reload resolver TLS files; policy updates require
 the existing drained cutover.
 
-The [gateway guide](https://github.com/SyneHQ/db.api.go/blob/sudo/docs/kelvo-analytics.md)
-covers requests, API configuration and saved-connection compatibility.
+Principal names, issuers and hostnames are operator choices. The query resolver
+must implement the `/internal/kelvo/resolve` endpoint and verify current worker
+custody before returning credentials.
 
 ## Execution boundary
 
