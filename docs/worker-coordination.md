@@ -6,11 +6,17 @@ A supervisor can start a new owner after shutdown; the old owner cannot resume.
 
 The gateway's `/ready` also requires at least one healthy configured worker for
 every tenant, plus healthy reconciliation, authentication and audit state.
-It checks workers over their verified mTLS connections every five seconds, with
-at most eight probes in flight and a two-second deadline per probe. Public
+It checks workers over their verified mTLS connections in one background sweep,
+starting every five seconds or after the previous sweep finishes. At most eight
+probes run at once, each with a two-second deadline. Public
 readiness requests read the cache only and reveal no tenant or worker identities.
-Success expires within seven seconds or sooner at certificate expiry; startup,
-drain and shutdown fail closed. This is a **health snapshot, not a capacity
+For up to eight configured endpoints, success expires seven seconds after the
+probe starts. Larger fleets use `W = ceil(endpoints / 8) * 2s` and a freshness
+bound of `max(5s, W) + W` (32 seconds for 64 endpoints). This covers a worker
+probed early, then late in consecutive sweeps. Larger fleets trade slower failure
+detection for bounded probe overhead. Certificate expiry can shorten this bound;
+stalled sweeps still expire. Startup, drain and shutdown fail closed.
+This is a **health snapshot, not a capacity
 reservation**: a subsequent query can still queue or be rejected.
 
 The CLI emits a bounded diagnostic before its usual terminal error:
