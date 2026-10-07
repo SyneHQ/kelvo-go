@@ -27,26 +27,10 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/operations"
 	"github.com/SYNEHQ/kelvo-go/provider"
+	"github.com/SYNEHQ/kelvo-go/resolver"
 )
 
-type operationResolutionRequest struct {
-	Grant       string             `json:"grant"`
-	Operation   operations.Request `json:"operation"`
-	OperationID string             `json:"operation_id"`
-	WorkerID    string             `json:"worker_id"`
-	Owner       string             `json:"owner"`
-	Claim       string             `json:"claim"`
-}
-
-type operationResolution struct {
-	Version        int               `json:"version"`
-	GrantSHA256    string            `json:"grant_sha256"`
-	RequestSHA256  string            `json:"request_sha256"`
-	SourceRevision string            `json:"source_revision"`
-	ValidUntil     int64             `json:"valid_until"`
-	Source         catalog.Source    `json:"source"`
-	Secrets        map[string]string `json:"secrets"`
-}
+type operationResolutionRequest = resolver.OperationRequest
 
 // ResolveOperationSource is called only by an admitted Running operation. The
 // private resolver independently verifies the signed request and current worker
@@ -251,7 +235,7 @@ func (r *ConnectionResolver) resolveOperation(ctx context.Context, record operat
 			out = operationResolution{}
 		}
 	}()
-	if r == nil || r.client == nil || r.slots == nil || !strings.HasSuffix(r.url, "/internal/kelvo/resolve") {
+	if r == nil || r.client == nil || r.slots == nil || !strings.HasSuffix(r.url, resolver.QueryPath) {
 		return out, connectionUnavailable()
 	}
 	select {
@@ -261,11 +245,11 @@ func (r *ConnectionResolver) resolveOperation(ctx context.Context, record operat
 		return out, ctx.Err()
 	}
 	raw, err := json.Marshal(operationResolutionRequest{Grant: record.AuthorityToken, Operation: request, OperationID: record.ID, WorkerID: record.Binding.WorkerID, Owner: record.Binding.Owner, Claim: record.Binding.Claim})
-	if err != nil || len(raw) > operations.MaxRequestBytes+operations.MaxGrantBytes+4096 {
+	if err != nil || len(raw) > resolver.MaxOperationRequestBytes {
 		return out, connectionUnavailable()
 	}
 	defer clear(raw)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(r.url, "/resolve")+"/resolve-operation", bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(r.url, resolver.QueryPath)+resolver.OperationPath, bytes.NewReader(raw))
 	if err != nil {
 		return out, connectionUnavailable()
 	}
@@ -287,12 +271,14 @@ func (r *ConnectionResolver) resolveOperation(ctx context.Context, record operat
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxConnectionResponseBytes+1))
 	defer clear(data)
-	if err != nil || len(data) > maxConnectionResponseBytes || operations.DecodeStrict(data, &out, maxConnectionResponseBytes) != nil {
+	var wire resolver.OperationResponse
+	if err != nil || len(data) > maxConnectionResponseBytes || operations.DecodeStrict(data, &wire, maxConnectionResponseBytes) != nil {
 		return out, connectionUnavailable()
 	}
+	out = resolvedOperation(wire)
 	now := time.Now()
 	peerUntil, ok := resolverCertificateExpiry(resp.TLS, now)
-	if !ok || ctx.Err() != nil || out.Version != 1 || out.GrantSHA256 != record.AuthoritySHA256 || out.RequestSHA256 != record.RequestSHA256 || !operations.ValidDigest(out.SourceRevision) || out.ValidUntil <= now.Unix() || out.ValidUntil > now.Unix()+5 || out.ValidUntil > record.AuthorityUntil.Unix() {
+	if !ok || ctx.Err() != nil || out.Version != resolver.Version || out.GrantSHA256 != record.AuthoritySHA256 || out.RequestSHA256 != record.RequestSHA256 || !operations.ValidDigest(out.SourceRevision) || out.ValidUntil <= now.Unix() || out.ValidUntil > now.Unix()+5 || out.ValidUntil > record.AuthorityUntil.Unix() {
 		return out, connectionUnavailable()
 	}
 	out.ValidUntil = min(out.ValidUntil, peerUntil.Unix())

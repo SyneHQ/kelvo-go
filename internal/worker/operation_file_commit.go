@@ -15,6 +15,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/filesnapshot"
 	operationstore "github.com/SYNEHQ/kelvo-go/internal/operations"
 	"github.com/SYNEHQ/kelvo-go/operations"
+	resolverapi "github.com/SYNEHQ/kelvo-go/resolver"
 )
 
 type OperationFilePublisher func(context.Context, adapter.ProcessRequest, filesnapshot.Descriptor, io.Reader) (bool, error)
@@ -35,7 +36,7 @@ func (e *Executor) PublishOperationFile(ctx context.Context, record operationsto
 	ctx, cancel := context.WithDeadline(ctx, record.ExecuteBefore)
 	defer cancel()
 	resolver := e.connectionResolvers[record.Scope.Issuer]
-	if resolver == nil || resolver.client == nil || resolver.slots == nil || !strings.HasSuffix(resolver.url, "/internal/kelvo/resolve") {
+	if resolver == nil || resolver.client == nil || resolver.slots == nil || !strings.HasSuffix(resolver.url, resolverapi.QueryPath) {
 		return false, connectionUnavailable()
 	}
 	select {
@@ -44,25 +45,20 @@ func (e *Executor) PublishOperationFile(ctx context.Context, record operationsto
 	case <-ctx.Done():
 		return false, ctx.Err()
 	}
-	body := struct {
-		operationResolutionRequest
-		SourceRevision string                   `json:"source_revision"`
-		Snapshot       filesnapshot.Descriptor  `json:"snapshot"`
-		Publication    filesnapshot.Publication `json:"publication"`
-	}{operationResolutionRequest{Grant: record.AuthorityToken, Operation: request, OperationID: record.ID, WorkerID: record.Binding.WorkerID, Owner: record.Binding.Owner, Claim: record.Binding.Claim}, revision, p.Original, p}
+	body := resolverapi.FileCommitRequest{OperationRequest: operationResolutionRequest{Grant: record.AuthorityToken, Operation: request, OperationID: record.ID, WorkerID: record.Binding.WorkerID, Owner: record.Binding.Owner, Claim: record.Binding.Claim}, SourceRevision: revision, Snapshot: p.Original, Publication: p}
 	raw, err := json.Marshal(body)
-	if err != nil || len(raw) > operations.MaxRequestBytes+operations.MaxGrantBytes+4096 {
+	if err != nil || len(raw) > resolverapi.MaxOperationRequestBytes {
 		return false, connectionUnavailable()
 	}
 	defer clear(raw)
 	var size [4]byte
 	binary.BigEndian.PutUint32(size[:], uint32(len(raw)))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(resolver.url, "/resolve")+"/operation-file-commit", io.MultiReader(bytes.NewReader(size[:]), bytes.NewReader(raw), source))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(resolver.url, resolverapi.QueryPath)+resolverapi.FileCommitPath, io.MultiReader(bytes.NewReader(size[:]), bytes.NewReader(raw), source))
 	if err != nil {
 		return false, connectionUnavailable()
 	}
 	req.GetBody = nil
-	req.Header.Set("Content-Type", "application/vnd.kelvo.file-update")
+	req.Header.Set("Content-Type", resolverapi.FileCommitMediaType)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Accept-Encoding", "identity")
 	client := *resolver.client

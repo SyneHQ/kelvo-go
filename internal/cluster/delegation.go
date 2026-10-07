@@ -16,6 +16,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/resolver"
 )
 
 // ResolverTrust is operator authority, included in the immutable tenant policy.
@@ -29,7 +30,7 @@ type ResolverTrust struct {
 func validateResolverTrust(t ResolverTrust) error {
 	key, err := base64.StdEncoding.Strict().DecodeString(t.PublicKey)
 	u, e := url.Parse(t.URL)
-	if err != nil || len(key) != ed25519.PublicKeySize || base64.StdEncoding.EncodeToString(key) != t.PublicKey || !clusterID.MatchString(t.Issuer) || t.Audience == "" || len(t.Audience) > 128 || strings.ContainsAny(t.Audience, "\x00\r\n") || e != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Opaque != "" || u.RawQuery != "" || u.Fragment != "" || u.Path != "/internal/kelvo/resolve" || u.RawPath != "" {
+	if err != nil || len(key) != ed25519.PublicKeySize || base64.StdEncoding.EncodeToString(key) != t.PublicKey || !clusterID.MatchString(t.Issuer) || t.Audience == "" || len(t.Audience) > 128 || strings.ContainsAny(t.Audience, "\x00\r\n") || e != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Opaque != "" || u.RawQuery != "" || u.Fragment != "" || u.Path != resolver.QueryPath || u.RawPath != "" {
 		return errors.New("invalid delegated connection resolver authority")
 	}
 	return nil
@@ -111,11 +112,7 @@ func delegatedHTTPContext(r *http.Request, p Policy) (context.Context, context.C
 	return ctx, cancel, nil
 }
 
-type connectionLeaseRequest struct {
-	WorkerID string `json:"worker_id"`
-	Owner    string `json:"owner"`
-	Claim    string `json:"claim"`
-}
+type connectionLeaseRequest = resolver.Binding
 type workerLeaseReader interface {
 	WorkerLease(context.Context, string, string) (time.Time, error)
 }
@@ -166,7 +163,7 @@ func (g *Gateway) connectionLease(w http.ResponseWriter, r *http.Request, t gate
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	g.json(w, 200, map[string]int64{"valid_until": until.Unix()})
+	g.json(w, 200, resolver.LeaseResponse{ValidUntil: until.Unix()})
 }
 
 // WorkerLease reads the existing worker ownership record without renewing it.

@@ -19,6 +19,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	operationstore "github.com/SYNEHQ/kelvo-go/internal/operations"
 	"github.com/SYNEHQ/kelvo-go/operations"
+	resolverapi "github.com/SYNEHQ/kelvo-go/resolver"
 )
 
 type OperationFileResolver func(context.Context, adapter.ProcessRequest, io.Writer) (int64, error)
@@ -55,7 +56,7 @@ func (e *Executor) FetchOperationFile(ctx context.Context, record operationstore
 	ctx, cancel := context.WithDeadline(ctx, record.ExecuteBefore)
 	defer cancel()
 	resolver := e.connectionResolvers[record.Scope.Issuer]
-	if resolver == nil || resolver.client == nil || resolver.slots == nil || !strings.HasSuffix(resolver.url, "/internal/kelvo/resolve") {
+	if resolver == nil || resolver.client == nil || resolver.slots == nil || !strings.HasSuffix(resolver.url, resolverapi.QueryPath) {
 		return 0, connectionUnavailable()
 	}
 	select {
@@ -64,17 +65,13 @@ func (e *Executor) FetchOperationFile(ctx context.Context, record operationstore
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	}
-	body := struct {
-		operationResolutionRequest
-		SourceRevision string                  `json:"source_revision"`
-		Snapshot       filesnapshot.Descriptor `json:"snapshot"`
-	}{operationResolutionRequest{Grant: record.AuthorityToken, Operation: request, OperationID: record.ID, WorkerID: record.Binding.WorkerID, Owner: record.Binding.Owner, Claim: record.Binding.Claim}, revision, snapshot}
+	body := resolverapi.FileReadRequest{OperationRequest: operationResolutionRequest{Grant: record.AuthorityToken, Operation: request, OperationID: record.ID, WorkerID: record.Binding.WorkerID, Owner: record.Binding.Owner, Claim: record.Binding.Claim}, SourceRevision: revision, Snapshot: snapshot}
 	raw, err := json.Marshal(body)
-	if err != nil || len(raw) > operations.MaxRequestBytes+operations.MaxGrantBytes+8192 {
+	if err != nil || len(raw) > resolverapi.MaxFileReadRequestBytes {
 		return 0, connectionUnavailable()
 	}
 	defer clear(raw)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(resolver.url, "/resolve")+"/operation-file", bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(resolver.url, resolverapi.QueryPath)+resolverapi.FileReadPath, bytes.NewReader(raw))
 	if err != nil {
 		return 0, connectionUnavailable()
 	}
@@ -92,13 +89,13 @@ func (e *Executor) FetchOperationFile(ctx context.Context, record operationstore
 	}
 	defer resp.Body.Close()
 	media, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if err != nil || media != "application/octet-stream" || resp.StatusCode != http.StatusOK || resp.ContentLength != -1 || resp.Header.Get("Content-Encoding") != "" || len(resp.Header.Values("X-Kelvo-File-SHA256")) != 1 || resp.Header.Get("X-Kelvo-File-SHA256") != snapshot.SHA256 || resp.Header.Get("X-Kelvo-File-Verified") != "" || resp.Header.Get("X-Kelvo-Source-Valid-Until") != "" {
+	if err != nil || media != "application/octet-stream" || resp.StatusCode != http.StatusOK || resp.ContentLength != -1 || resp.Header.Get("Content-Encoding") != "" || len(resp.Header.Values(resolverapi.FileSHA256Header)) != 1 || resp.Header.Get(resolverapi.FileSHA256Header) != snapshot.SHA256 || resp.Header.Get(resolverapi.FileVerifiedTrailer) != "" || resp.Header.Get(resolverapi.SourceValidUntilTrailer) != "" {
 		return 0, connectionUnavailable()
 	}
-	if _, ok := resp.Trailer[http.CanonicalHeaderKey("X-Kelvo-File-Verified")]; !ok {
+	if _, ok := resp.Trailer[http.CanonicalHeaderKey(resolverapi.FileVerifiedTrailer)]; !ok {
 		return 0, connectionUnavailable()
 	}
-	if _, ok := resp.Trailer[http.CanonicalHeaderKey("X-Kelvo-Source-Valid-Until")]; !ok {
+	if _, ok := resp.Trailer[http.CanonicalHeaderKey(resolverapi.SourceValidUntilTrailer)]; !ok {
 		return 0, connectionUnavailable()
 	}
 	hash := sha256.New()
@@ -108,8 +105,8 @@ func (e *Executor) FetchOperationFile(ctx context.Context, record operationstore
 	}
 	now := time.Now()
 	peerUntil, ok := resolverCertificateExpiry(resp.TLS, now)
-	until, err := strconv.ParseInt(resp.Trailer.Get("X-Kelvo-Source-Valid-Until"), 10, 64)
-	if !ok || err != nil || len(resp.Trailer.Values("X-Kelvo-File-Verified")) != 1 || len(resp.Trailer.Values("X-Kelvo-Source-Valid-Until")) != 1 || resp.Trailer.Get("X-Kelvo-File-Verified") != snapshot.SHA256 || strconv.FormatInt(until, 10) != resp.Trailer.Get("X-Kelvo-Source-Valid-Until") || until <= now.Unix() || until > now.Unix()+5 || until > record.AuthorityUntil.Unix() {
+	until, err := strconv.ParseInt(resp.Trailer.Get(resolverapi.SourceValidUntilTrailer), 10, 64)
+	if !ok || err != nil || len(resp.Trailer.Values(resolverapi.FileVerifiedTrailer)) != 1 || len(resp.Trailer.Values(resolverapi.SourceValidUntilTrailer)) != 1 || resp.Trailer.Get(resolverapi.FileVerifiedTrailer) != snapshot.SHA256 || strconv.FormatInt(until, 10) != resp.Trailer.Get(resolverapi.SourceValidUntilTrailer) || until <= now.Unix() || until > now.Unix()+5 || until > record.AuthorityUntil.Unix() {
 		return 0, connectionUnavailable()
 	}
 	until = min(until, peerUntil.Unix(), record.ExecuteBefore.Unix())

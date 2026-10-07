@@ -17,12 +17,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/resolver"
 )
 
-const maxConnectionResponseBytes = 1 << 20
+const maxConnectionResponseBytes = resolver.MaxResponseBytes
 
 // ConnectionResolverConfig belongs to the operator, never a query. Resolver
 // URLs are also pinned into the authenticated principal's immutable policy.
@@ -37,7 +37,7 @@ type ConnectionResolverConfig struct {
 
 func (c ConnectionResolverConfig) Validate() error {
 	u, err := url.Parse(c.URL)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || u.RawPath != "" || u.Path != "/internal/kelvo/resolve" ||
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || u.RawPath != "" || u.Path != resolver.QueryPath ||
 		c.CAFile == "" || c.CertFile == "" || c.KeyFile == "" || c.Timeout < time.Second || c.Timeout > 30*time.Second || c.MaxConcurrent < 1 || c.MaxConcurrent > 64 {
 		return errors.New("invalid on-demand connection resolver configuration")
 	}
@@ -130,22 +130,7 @@ func (r *ConnectionResolver) Close() {
 	}
 }
 
-type connectionResolutionRequest struct {
-	Delegation string        `json:"delegation"`
-	Query      query.Request `json:"query"`
-	JobID      string        `json:"job_id"`
-	WorkerID   string        `json:"worker_id"`
-	Owner      string        `json:"owner"`
-	Claim      string        `json:"claim"`
-}
-
-type connectionResolution struct {
-	Version          int               `json:"version"`
-	DelegationSHA256 string            `json:"delegation_sha256"`
-	ValidUntil       int64             `json:"valid_until"`
-	Sources          []catalog.Source  `json:"sources"`
-	Secrets          map[string]string `json:"secrets"`
-}
+type connectionResolutionRequest = resolver.QueryRequest
 
 func connectionUnavailable() error {
 	return query.NewError("UNAVAILABLE", "On-demand connection resolution is unavailable")
@@ -167,7 +152,7 @@ func (r *ConnectionResolver) resolve(ctx context.Context, execution delegation.E
 		Delegation: execution.Token, Query: request, JobID: execution.Binding.JobID,
 		WorkerID: execution.Binding.WorkerID, Owner: execution.Binding.Owner, Claim: execution.Binding.Claim,
 	})
-	if err != nil || len(body) > 256<<10 {
+	if err != nil || len(body) > resolver.MaxQueryRequestBytes {
 		return out, connectionUnavailable()
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.url, bytes.NewReader(body))
@@ -195,12 +180,14 @@ func (r *ConnectionResolver) resolve(ctx context.Context, execution delegation.E
 	if err != nil || len(data) > maxConnectionResponseBytes {
 		return out, connectionUnavailable()
 	}
-	if delegation.StrictJSONLimit(data, &out, maxConnectionResponseBytes) != nil {
+	var wire resolver.QueryResponse
+	if delegation.StrictJSONLimit(data, &wire, maxConnectionResponseBytes) != nil {
 		return connectionResolution{}, connectionUnavailable()
 	}
+	out = resolvedQuery(wire)
 	now := time.Now()
 	certificateExpiry, verified := resolverCertificateExpiry(resp.TLS, now)
-	if !verified || out.Version != 1 || out.DelegationSHA256 != delegation.Digest(execution.Token) || out.ValidUntil > execution.Claims.ExpiresAt || out.ValidUntil <= now.Unix() {
+	if !verified || out.Version != resolver.Version || out.DelegationSHA256 != delegation.Digest(execution.Token) || out.ValidUntil > execution.Claims.ExpiresAt || out.ValidUntil <= now.Unix() {
 		return connectionResolution{}, connectionUnavailable()
 	}
 	// The handshake may precede slow response delivery. Keep the receipt bound

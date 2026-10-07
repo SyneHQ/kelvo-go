@@ -12,17 +12,10 @@ import (
 
 	operationstore "github.com/SYNEHQ/kelvo-go/internal/operations"
 	"github.com/SYNEHQ/kelvo-go/operations"
+	"github.com/SYNEHQ/kelvo-go/resolver"
 )
 
-type operationCompletion struct {
-	Version       int    `json:"version"`
-	OperationID   string `json:"operation_id"`
-	RequestSHA256 string `json:"request_sha256"`
-	GrantSHA256   string `json:"grant_sha256"`
-	WorkerID      string `json:"worker_id"`
-	Owner         string `json:"owner"`
-	Claim         string `json:"claim"`
-}
+type operationCompletion = resolver.CompletionRequest
 
 // CompleteOperationCleanup reports physical cleanup to the source-authorizing
 // service. Caller must possess the observed cgroup/scratch cleanup proof; ledger
@@ -32,7 +25,7 @@ func (e *Executor) CompleteOperationCleanup(ctx context.Context, record operatio
 		return connectionUnavailable()
 	}
 	r := e.connectionResolvers[record.Scope.Issuer]
-	if r == nil || r.client == nil || r.slots == nil || !strings.HasSuffix(r.url, "/internal/kelvo/resolve") {
+	if r == nil || r.client == nil || r.slots == nil || !strings.HasSuffix(r.url, resolver.QueryPath) {
 		return connectionUnavailable()
 	}
 	select {
@@ -41,13 +34,13 @@ func (e *Executor) CompleteOperationCleanup(ctx context.Context, record operatio
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	raw, err := json.Marshal(operationCompletion{Version: 1, OperationID: record.ID, RequestSHA256: record.RequestSHA256,
+	raw, err := json.Marshal(operationCompletion{Version: resolver.Version, OperationID: record.ID, RequestSHA256: record.RequestSHA256,
 		GrantSHA256: record.AuthoritySHA256, WorkerID: record.Binding.WorkerID, Owner: record.Binding.Owner, Claim: record.Binding.Claim})
 	if err != nil {
 		return connectionUnavailable()
 	}
 	defer clear(raw)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(r.url, "/resolve")+"/complete-operation", bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(r.url, resolver.QueryPath)+resolver.CompletionPath, bytes.NewReader(raw))
 	if err != nil {
 		return connectionUnavailable()
 	}
