@@ -97,3 +97,54 @@ func TestResultCompressionConfigurationRoundTripAndOmittedDefault(t *testing.T) 
 		})
 	}
 }
+
+func TestRowBatchTargetLimits(t *testing.T) {
+	for _, target := range []int64{0, 1024, 1 << 20, 64 << 20} {
+		limits := query.DefaultLimits()
+		limits.RowBatchTargetBytes = target
+		if err := limits.Validate(); err != nil {
+			t.Fatalf("target %d: %v", target, err)
+		}
+	}
+	for _, target := range []int64{-1, 1, 1023, (64 << 20) + 1, math.MaxInt64} {
+		limits := query.DefaultLimits()
+		limits.RowBatchTargetBytes = target
+		if err := limits.Validate(); err == nil || query.PublicError(err).Code != "INVALID_ARGUMENT" {
+			t.Fatalf("accepted invalid target %d: %v", target, err)
+		}
+	}
+	limits := query.DefaultLimits()
+	limits.RowBatchTargetBytes = 1 << 20
+	limits.MaxBytes = 1023
+	if err := limits.Validate(); err == nil {
+		t.Fatal("batch target relaxed result limits")
+	}
+}
+
+func TestRowBatchTargetConfigurationRoundTrip(t *testing.T) {
+	for name, encoding := range map[string]struct {
+		marshal   func(any) ([]byte, error)
+		unmarshal func([]byte, any) error
+	}{
+		"json": {json.Marshal, json.Unmarshal},
+		"yaml": {yaml.Marshal, yaml.Unmarshal},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, target := range []int64{0, 1024, 64 << 20} {
+				limits := query.DefaultLimits()
+				limits.RowBatchTargetBytes = target
+				encoded, err := encoding.marshal(limits)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(encoded), "row_batch_target_bytes") != (target != 0) {
+					t.Fatalf("default field omission changed: %s", encoded)
+				}
+				var decoded query.Limits
+				if err := encoding.unmarshal(encoded, &decoded); err != nil || decoded != limits {
+					t.Fatalf("limits did not round trip: %+v, %v", decoded, err)
+				}
+			}
+		})
+	}
+}

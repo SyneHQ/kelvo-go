@@ -103,6 +103,10 @@ type Limits struct {
 	Threads           int           `json:"threads" yaml:"threads"`
 	MaxTempMB         int           `json:"max_temp_mb" yaml:"max_temp_mb"`
 	ResultCompression string        `json:"result_compression,omitempty" yaml:"result_compression,omitempty"`
+	// RowBatchTargetBytes opts row-backed adapters into byte-target batching.
+	// Zero keeps 1,024-row batches. The target uses estimated decoded bytes,
+	// stays within existing memory/result limits, and has no timed flush.
+	RowBatchTargetBytes int64 `json:"row_batch_target_bytes,omitempty" yaml:"row_batch_target_bytes,omitempty"`
 }
 
 // DefaultLimits returns the gateway's default query resource limits.
@@ -114,6 +118,9 @@ func DefaultLimits() Limits {
 func (l Limits) Validate() error {
 	if l.MaxRows < 1 || l.MaxRows > 100000000 || l.MaxBytes < 1024 || l.MaxBytes > 1<<40 || l.Timeout <= 0 || l.Timeout > time.Hour || l.MemoryMB < 16 || l.MemoryMB > 1048576 || l.Threads < 1 || l.Threads > 1024 || l.MaxTempMB < 1 || l.MaxTempMB > 1048576 {
 		return NewError("INVALID_ARGUMENT", "Invalid query resource limits")
+	}
+	if l.RowBatchTargetBytes != 0 && (l.RowBatchTargetBytes < 1024 || l.RowBatchTargetBytes > 64<<20) {
+		return NewError("INVALID_ARGUMENT", "Row batch target must be zero or between 1024 and 67108864 bytes")
 	}
 	return validateResultCompression(l.ResultCompression)
 }
