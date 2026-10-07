@@ -104,7 +104,7 @@ func OpenStore(parent context.Context, c NATSConfig, p Policy, initialize bool) 
 	}
 	nc, err := nats.Connect(c.URL, opts...)
 	if err != nil {
-		return nil, errors.New("NATS connection failed")
+		return nil, coordinationUnavailable("nats_connect", err)
 	}
 	fail := func(e error) (*NATSStore, error) { nc.Close(); return nil, e }
 	js, err := jetstream.New(nc)
@@ -576,8 +576,12 @@ func (s *NATSStore) HeartbeatWorker(ctx context.Context, id, owner string) error
 	return s.worker(ctx, id, owner, false)
 }
 func (s *NATSStore) worker(ctx context.Context, id, owner string, claim bool) error {
+	stage := "worker_renew"
+	if claim {
+		stage = "worker_claim"
+	}
 	if !clusterID.MatchString(id) || s.policy.Workers[id] < 1 || !validOwner(owner) {
-		return ErrConflict
+		return coordinationFailure(stage, "invalid_identity")
 	}
 	key := "worker." + id
 	now := time.Now().UTC()
@@ -588,27 +592,28 @@ func (s *NATSStore) worker(ctx context.Context, id, owner string, claim bool) er
 				return nil
 			}
 			if errors.Is(err, jetstream.ErrKeyExists) {
-				return ErrConflict
+				return coordinationFailure(stage+"_write", "revision_conflict")
 			}
+			return coordinationUnavailable(stage+"_write", err)
 		}
-		return errors.New("worker store unavailable")
+		return coordinationUnavailable(stage+"_read", err)
 	}
 	var prior workerLease
 	if json.Unmarshal(entry.Value(), &prior) != nil {
-		return errors.New("worker store unavailable")
+		return coordinationFailure(stage+"_read", "invalid_lease")
 	}
 	expired := now.Sub(prior.HeartbeatAt) > s.policy.LeaseDuration
 	if prior.Owner != owner && (!claim || !expired) {
-		return ErrConflict
+		return coordinationFailure(stage, "owner_conflict")
 	}
 	if prior.Owner == owner && expired && !claim {
-		return ErrConflict
+		return coordinationFailure(stage, "lease_expired")
 	}
 	if _, err = s.kv.Update(ctx, key, enc(workerLease{owner, now}), entry.Revision()); err != nil {
 		if errors.Is(err, jetstream.ErrKeyRevisionMismatch) {
-			return ErrConflict
+			return coordinationFailure(stage+"_write", "revision_conflict")
 		}
-		return errors.New("worker store unavailable")
+		return coordinationUnavailable(stage+"_write", err)
 	}
 	return nil
 }

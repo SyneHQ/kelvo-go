@@ -61,6 +61,7 @@ func runCluster(args []string) error {
 		s, err := cluster.OpenStore(ctx, tenant.NATS, tenant.Policy, args[0] == "cluster-init")
 		if err != nil {
 			reportStoreMetadataDiagnostic(err)
+			reportStoreCoordinationDiagnostic(err)
 			return query.NewError("CONFIGURATION_ERROR", err.Error())
 		}
 		stores[tenant.Policy.TenantID] = s
@@ -283,6 +284,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	store, err := cluster.OpenStore(ctx, cfg.NATS, cfg.Policy, false)
 	if err != nil {
 		reportStoreMetadataDiagnostic(err)
+		reportStoreCoordinationDiagnostic(err)
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
 	defer store.Close()
@@ -342,6 +344,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	defer ln.Close()
 	node, err := cluster.NewNode(cfg, store, executor)
 	if err != nil {
+		reportStoreCoordinationDiagnostic(err)
 		return query.NewError("CONFIGURATION_ERROR", err.Error())
 	}
 	runCtx, stop := context.WithCancel(ctx)
@@ -413,6 +416,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	case <-node.LeaseFailure():
 		// Do not expose the broker error, identity or lease payload. A nonzero
 		// exit lets restart-on-failure supervision create a fresh fenced owner.
+		reportCoordinationFailure(node.LeaseFailureCause())
 		return workerLeaseFailure()
 	default:
 	}
@@ -537,4 +541,14 @@ func reportStoreMetadataDiagnostic(err error) {
 	if diagnostic, ok := cluster.StoreMetadataDiagnostic(err); ok {
 		fmt.Fprintln(os.Stderr, "KELVO_CLUSTER_METADATA "+diagnostic)
 	}
+}
+
+func reportStoreCoordinationDiagnostic(err error) {
+	if diagnostic, ok := cluster.CoordinationDiagnostic(err); ok {
+		reportCoordinationFailure(diagnostic)
+	}
+}
+
+func reportCoordinationFailure(failure cluster.CoordinationFailure) {
+	fmt.Fprintln(os.Stderr, "KELVO_COORDINATION "+failure.Diagnostic())
 }

@@ -51,7 +51,8 @@ type Node struct {
 	dispatchCancel        context.CancelFunc
 	dispatchDone          chan struct{}
 	leaseFailure          chan struct{}
-	draining              bool // guarded by mu
+	leaseFailureCause     CoordinationFailure // guarded by mu; fixed after fencing
+	draining              bool                // guarded by mu
 	permits               chan struct{}
 	mu                    sync.Mutex
 	jobs                  map[string]*reservation
@@ -188,6 +189,9 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 	}
 	if err = store.ClaimWorker(probe, cfg.WorkerID, owner); err != nil {
 		cancel()
+		if failure, ok := CoordinationDiagnostic(err); ok {
+			return nil, &coordinationError{message: "worker identity is already active or its store is unavailable", failure: failure}
+		}
 		return nil, errors.New("worker identity is already active or its store is unavailable")
 	}
 	if cfg.Exports != nil {
@@ -497,6 +501,11 @@ func (n *Node) heartbeat() {
 				// Close cancels the same context under mu. A renewal interrupted
 				// by ordinary shutdown must not become a permanent lease fault.
 				if n.ctx.Err() == nil {
+					failure, ok := CoordinationDiagnostic(err)
+					if !ok {
+						failure = coordinationUnavailable("worker_renew", err).failure
+					}
+					n.leaseFailureCause = failure
 					n.cancel()
 					close(n.leaseFailure)
 				}
@@ -512,6 +521,14 @@ func (n *Node) heartbeat() {
 // supervisor subscribes. Normal drain/Close never signals it. The node cannot
 // reactivate itself; its supervisor must start a new owner after safe shutdown.
 func (n *Node) LeaseFailure() <-chan struct{} { return n.leaseFailure }
+
+// LeaseFailureCause returns a copy of the first permanent renewal failure.
+// It is zero before failure; normal shutdown does not manufacture a cause.
+func (n *Node) LeaseFailureCause() CoordinationFailure {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.leaseFailureCause
+}
 
 func (n *Node) mutate(ctx context.Context, id string, fn func(*Job) error) error {
 	for range 8 {
