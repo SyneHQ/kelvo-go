@@ -32,7 +32,7 @@ func NewCockroachDB(c catalog.Config, l query.Limits) (*Engine, error) {
 func NewAlloyDB(c catalog.Config, l query.Limits) (*Engine, error)  { return family(c, l, "alloydb") }
 func NewRedshift(c catalog.Config, l query.Limits) (*Engine, error) { return family(c, l, "redshift") }
 func family(c catalog.Config, l query.Limits, kind string) (*Engine, error) {
-	return sqlnative.New(c, l, sqlnative.Dialect{SourceType: kind, DriverName: "pgx", ErrorCode: sourceErrorCode, ReadOnlyOption: true, AllowDollarParams: true, ValidateDSN: validateDSN, OpenDB: openDB})
+	return sqlnative.New(c, l, sqlnative.Dialect{SourceType: kind, DriverName: "pgx", ErrorCode: sourceErrorCode, ReadOnlyOption: true, AllowDollarParams: true, ValidateDSN: validateDSN, OpenDB: openDB, ValidateSource: validateSource, OpenSourceDB: openSourceDB})
 }
 func configError() error {
 	return query.NewError("CONFIGURATION_ERROR", "PostgreSQL requires an explicit TCP URL, user/password/database and sslmode=verify-full without ambient or unsafe options")
@@ -130,4 +130,36 @@ func openDB(dsn string) (*sql.DB, error) {
 		return nil, err
 	}
 	return stdlib.OpenDB(*config), nil
+}
+
+func validateSource(source catalog.Source) error {
+	if source.Federation != nil && len(source.Options) != 0 {
+		return configError()
+	}
+	return ValidateSourceOptions(source.Options)
+}
+func openSourceDB(source catalog.Source, dsn string) (*sql.DB, error) {
+	config, err := parseSourceConfig(source, dsn)
+	if err != nil {
+		return nil, err
+	}
+	return stdlib.OpenDB(*config), nil
+}
+func parseSourceConfig(source catalog.Source, dsn string) (*pgx.ConnConfig, error) {
+	if err := validateSource(source); err != nil {
+		return nil, err
+	}
+	config, err := parseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	if raw, ok := source.Options["tls_ca_pem"]; ok {
+		roots, err := privateRoots(raw, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		config.TLSConfig = config.TLSConfig.Clone()
+		config.TLSConfig.RootCAs = roots.Clone()
+	}
+	return config, nil
 }

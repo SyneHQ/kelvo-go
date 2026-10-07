@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"math/big"
 	"os"
 	"regexp"
@@ -30,9 +31,13 @@ type Dialect struct {
 	Backend         string
 	ReadOnlySession string
 	// ReadOnlyOption is set only when the driver honors database/sql TxOptions.
-	ReadOnlyOption    bool
-	ValidateDSN       func(string) error
-	OpenDB            func(string) (*sql.DB, error)
+	ReadOnlyOption bool
+	ValidateDSN    func(string) error
+	OpenDB         func(string) (*sql.DB, error)
+	// Source-aware hooks must be supplied together. Options remain rejected by
+	// default; a dialect must validate every accepted option before opening.
+	ValidateSource    func(catalog.Source) error
+	OpenSourceDB      func(catalog.Source, string) (*sql.DB, error)
 	AllowDollarParams bool
 	// ErrorCode maps driver errors to a bounded public classification, never text.
 	ErrorCode func(error) string
@@ -45,7 +50,7 @@ type Engine struct {
 }
 
 func New(config catalog.Config, limits query.Limits, dialect Dialect) (*Engine, error) {
-	if err := limits.Validate(); err != nil || dialect.SourceType == "" || dialect.DriverName == "" {
+	if err := limits.Validate(); err != nil || dialect.SourceType == "" || dialect.DriverName == "" || (dialect.ValidateSource == nil) != (dialect.OpenSourceDB == nil) {
 		return nil, query.NewError("INVALID_ARGUMENT", "Invalid native SQL source configuration")
 	}
 	sources := make(map[string]catalog.Source)
@@ -53,11 +58,19 @@ func New(config catalog.Config, limits query.Limits, dialect Dialect) (*Engine, 
 		if source.Type != dialect.SourceType {
 			continue
 		}
-		if !catalog.ValidID(source.ID) || source.DSNEnv == "" || catalog.ValidateEnvironment(source.DSNEnv) != nil || len(source.Options) != 0 {
+		if !catalog.ValidID(source.ID) || source.DSNEnv == "" || catalog.ValidateEnvironment(source.DSNEnv) != nil || (len(source.Options) != 0 && dialect.ValidateSource == nil) {
 			return nil, query.NewError("INVALID_ARGUMENT", "Native SQL source requires an ID and dsn_env")
 		}
 		if _, exists := sources[source.ID]; exists {
 			return nil, query.NewError("INVALID_ARGUMENT", "Duplicate native SQL source")
+		}
+		source.Options = maps.Clone(source.Options)
+		if dialect.ValidateSource != nil {
+			checked := source
+			checked.Options = maps.Clone(source.Options)
+			if err := dialect.ValidateSource(checked); err != nil {
+				return nil, query.NewError("INVALID_ARGUMENT", "Native SQL source options are invalid")
+			}
 		}
 		sources[source.ID] = source
 	}
@@ -105,13 +118,16 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	ctx, cancel := context.WithTimeout(parent, e.limits.Timeout)
 	defer cancel()
 	var db *sql.DB
-	if e.dialect.OpenDB != nil {
+	if e.dialect.OpenSourceDB != nil {
+		source.Options = maps.Clone(source.Options)
+		db, err = e.dialect.OpenSourceDB(source, dsn)
+	} else if e.dialect.OpenDB != nil {
 		db, err = e.dialect.OpenDB(dsn)
 	} else {
 		db, err = sql.Open(e.dialect.DriverName, dsn)
 	}
 	if err != nil {
-		if e.dialect.OpenDB != nil {
+		if e.dialect.OpenDB != nil || e.dialect.OpenSourceDB != nil {
 			return stats, e.callbackError(ctx, err, "Could not initialize source connection")
 		}
 		return stats, e.sourceError(ctx, err, "Could not initialize source connection")
