@@ -57,6 +57,10 @@ The startup SELECT probe counts as execution. Metrics reset on restart; there is
 2. Send SIGTERM or SIGINT: admission stops and readiness fails; existing results, status/cancel and leases continue during grace.
 3. Allow workers to finish assigned queries/refreshes. Gateways wait their configured grace because handles are shared. Grace expiry cancels work and bounds shutdown; assigned SQL is never replayed.
 
+PostgreSQL cancellation allows 5 seconds for a new connection, verified TLS and CancelRequest. Workers allow 6 seconds for cleanup and 7 seconds for process waits, so cleanup can delay the final deadline response. Uncooperative workers and descendants are still terminated.
+
+Cancellation remains best effort during a network partition. A returned deadline does not prove the source query stopped; retain source-side query limits. The opt-in `TestLiveCancellationWaitsForDelayedTLSCancelAndPreservesOtherBackend` regression uses `KELVO_TEST_POSTGRES_CANCEL_DSN` and optional `KELVO_TEST_POSTGRES_CANCEL_CA_PEM` to verify a delayed TLS cancellation against a real PostgreSQL backend without cancelling its concurrent peer.
+
 Gateway `/health` and `/ready` bypass ordinary request permits. Readiness requires healthy lifecycle/broker state and at least one ready worker per configured tenant. [Worker checks](worker-coordination.md) use cached, verified mTLS probes; they do not reserve capacity or query sources.
 
 ## Dataset diagnostics and required readiness

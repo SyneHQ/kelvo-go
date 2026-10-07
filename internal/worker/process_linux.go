@@ -10,10 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"golang.org/x/sys/unix"
 )
 
-const cancellationGrace = 750 * time.Millisecond
+const cancellationGrace = query.WorkerCancellationGrace
 
 func configureProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL, Setpgid: true}

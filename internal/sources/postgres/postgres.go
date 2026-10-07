@@ -116,11 +116,12 @@ func parseConfig(dsn string) (*pgx.ConnConfig, error) {
 		return nil, configError()
 	}
 	config.TLSConfig.MinVersion = tls.VersionTLS12
-	// Socket closure alone can leave a server query running. Send pgx's
-	// connection-keyed CancelRequest before the worker's bounded shutdown
-	// grace expires, with a socket deadline as the fallback.
+	// CancelRequest opens a new connection and repeats verified source TLS.
+	// Allow multiple WAN/proxy round trips before the socket fallback; closing
+	// the query socket alone can leave remote work running. Worker shutdown
+	// reserves additional time around this shared cancellation budget.
 	config.BuildContextWatcherHandler = func(conn *pgconn.PgConn) ctxwatch.Handler {
-		return &pgconn.CancelRequestContextWatcherHandler{Conn: conn, CancelRequestDelay: 0, DeadlineDelay: 500 * time.Millisecond}
+		return &pgconn.CancelRequestContextWatcherHandler{Conn: conn, CancelRequestDelay: 0, DeadlineDelay: query.SourceCancellationGrace}
 	}
 	return config, nil
 }

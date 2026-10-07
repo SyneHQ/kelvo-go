@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -55,7 +55,7 @@ func TestConfigUsesNoAmbientCredentials(t *testing.T) {
 	}
 	conn := &pgconn.PgConn{}
 	handler, ok := config.BuildContextWatcherHandler(conn).(*pgconn.CancelRequestContextWatcherHandler)
-	if !ok || handler.Conn != conn || handler.CancelRequestDelay != 0 || handler.DeadlineDelay != 500*time.Millisecond {
+	if !ok || handler.Conn != conn || handler.CancelRequestDelay != 0 || handler.DeadlineDelay != query.SourceCancellationGrace {
 		t.Fatal("bounded upstream cancellation handler missing")
 	}
 	for _, name := range []string{"PGSERVICEFILE", "PGSERVICE", "PGPASSFILE", "PGSSLKEY", "PGSSLCERT", "PGSSLROOTCERT", "PGPASSWORD", "PGUSER", "PGHOST", "PGPORT", "PGOPTIONS"} {
