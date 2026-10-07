@@ -13,7 +13,7 @@ import (
 )
 
 func TestSourceOptionsRequireExplicitDialectHooks(t *testing.T) {
-	source := catalog.Source{ID: "source", Type: "fake", DSNEnv: "KELVO_NATIVE_OPTION_DSN", Options: map[string]string{"trusted": "original"}}
+	source := catalog.Source{ID: "source", Type: "fake", DSNEnv: "KELVO_SOURCE_NATIVE_OPTION_DSN", Options: map[string]string{"trusted": "original"}}
 	config := catalog.Config{Sources: []catalog.Source{source}}
 	dialect := Dialect{SourceType: "fake", DriverName: fakeDriverName}
 	if _, err := New(config, query.DefaultLimits(), dialect); err == nil {
@@ -43,7 +43,7 @@ func TestSourceOptionsRequireExplicitDialectHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	source.Options["trusted"] = "external mutation"
-	t.Setenv("KELVO_NATIVE_OPTION_DSN", "fixture")
+	t.Setenv("KELVO_SOURCE_NATIVE_OPTION_DSN", "fixture")
 	for range 2 {
 		_, err = e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "source", SQL: "SELECT 1"}, &execSink{})
 		if err == nil || strings.Contains(err.Error(), "private fixture") {
