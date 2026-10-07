@@ -21,8 +21,14 @@ import sys
 import time
 
 MODULE = "github.com/SYNEHQ/kelvo-go"
-FORBIDDEN = (MODULE + "/internal", "syne_db", "github.com/SYNEHQ/db.api.go", "github.com/synehq/db.api.go",
+# Finite guard for the runtime, adapter implementations, and driver/client roots
+# shipped in go.mod and adapters/go/go.mod. Custom warehouse/cloud HTTP clients
+# live under internal/ or adapters/. Shared Arrow, HTTP, and cloud secret-provider
+# SDKs remain allowed; this is not an inventory of every third-party DB driver.
+FORBIDDEN = (MODULE + "/internal", MODULE + "/adapters", "syne_db", "github.com/SYNEHQ/db.api.go", "github.com/synehq/db.api.go",
              "github.com/duckdb", "github.com/jackc/pgx", "github.com/lib/pq", "github.com/go-sql-driver/mysql",
+             "github.com/microsoft/go-mssqldb", "github.com/sijms/go-ora", "github.com/exasol/exasol-driver-go",
+             "github.com/gocql/gocql", "github.com/mattn/go-sqlite3", "github.com/apache/arrow-go/v18/arrow/flight",
              "github.com/nats-io", "go.mongodb.org/mongo-driver")
 
 
