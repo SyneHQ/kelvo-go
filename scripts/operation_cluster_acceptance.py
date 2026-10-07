@@ -6,6 +6,7 @@ All fixture secrets and diagnostic logs remain in a new mode-0700 output root.
 The caller supplies pinned binaries and a frozen source manifest; no downloads.
 """
 import argparse
+import ctypes
 import hashlib
 import ipaddress
 import json
@@ -22,6 +23,7 @@ import threading
 import socketserver
 import select
 import shutil
+import stat
 from urllib.parse import quote
 
 sys.dont_write_bytecode = True
@@ -33,6 +35,310 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def create_source_ca(run, key, certificate):
+    # Do not inherit the host openssl.cnf CA profile: its v3_ca section can
+    # omit keyUsage, which the native PostgreSQL trust-root validator rejects.
+    run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+         "-subj", "/CN=Kelvo operation fixture CA", "-addext", "basicConstraints=critical,CA:TRUE",
+         "-addext", "keyUsage=critical,keyCertSign,cRLSign", "-keyout", str(key), "-out", str(certificate)])
+
+
+def source_ca_profile(run, certificate):
+    """Retain only public certificate facts, never PEM, keys or source details."""
+    result = run(["openssl", "x509", "-in", str(certificate), "-noout", "-ext", "basicConstraints,keyUsage"])
+    extensions = result.stdout.decode("ascii")
+    basic = re.search(r"X509v3 Basic Constraints:([^\n]*)\n\s*([^\n]*)", extensions)
+    usage = re.search(r"X509v3 Key Usage:([^\n]*)\n\s*([^\n]*)", extensions)
+    basic_values = set(value.strip() for value in basic[2].split(",")) if basic else set()
+    usage_values = set(value.strip() for value in usage[2].split(",")) if usage else set()
+    verified = run(["openssl", "verify", "-CAfile", str(certificate), str(certificate)], check=False)
+    profile = {"sha256": digest(certificate), "is_ca": "CA:TRUE" in basic_values,
+               "certificate_signing": "Certificate Sign" in usage_values, "crl_signing": "CRL Sign" in usage_values,
+               "critical_basic_constraints": bool(basic and basic[1].strip() == "critical"),
+               "critical_key_usage": bool(usage and usage[1].strip() == "critical"),
+               "currently_valid": verified.returncode == 0}
+    profile["accepted"] = profile["is_ca"] and profile["certificate_signing"] and profile["currently_valid"]
+    return profile
+
+
+def unified_cgroup(pid, proc_root=Path("/proc")):
+    entries = (proc_root / str(pid) / "cgroup").read_text().splitlines()
+    unified = [line[3:] for line in entries if line.startswith("0::/")]
+    if len(unified) != 1:
+        raise RuntimeError("unified process cgroup unavailable")
+    return unified[0]
+
+
+def process_identity(pid, proc_root=Path("/proc")):
+    try:
+        fields = (proc_root / str(pid) / "stat").read_text().rsplit(") ", 1)[1].split()
+        return {"pid": pid, "start_ticks": int(fields[19]), "cgroup": unified_cgroup(pid, proc_root)}
+    except (FileNotFoundError, ProcessLookupError):
+        return None
+
+
+def adopted_zombie(identity, parent, proc_root=Path("/proc")):
+    try:
+        fields = (proc_root / str(identity["pid"]) / "stat").read_text().rsplit(") ", 1)[1].split()
+        return fields[0] == "Z" and int(fields[1]) == parent and int(fields[19]) == identity["start_ticks"]
+    except (FileNotFoundError, ProcessLookupError):
+        return False
+
+
+def child_subreaper():
+    # Adopt descendants when test2json or a Go test exits without its defers.
+    # Otherwise an exited orphan can remain a zombie outside our wait custody.
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
+        raise OSError(ctypes.get_errno(), "cannot establish child reaping custody")
+
+
+class OwnedWorkloads:
+    """Cleanup authority is one initially empty delegated service, never a PID alone."""
+
+    def __init__(self, unit):
+        if not re.fullmatch(r"kelvo-operation-live-[a-zA-Z0-9.-]+\.service", unit):
+            raise RuntimeError("invalid owned service name")
+        self.pid = os.getpid()
+        self.relative = "/system.slice/" + unit
+        self.group = Path("/sys/fs/cgroup") / self.relative.lstrip("/")
+        self.supervisor = self.group / "supervisor"
+        self.jobs = self.group / "jobs"
+        info = self.group.lstat()
+        if not stat.S_ISDIR(info.st_mode) or unified_cgroup(self.pid) != self.relative:
+            raise RuntimeError("runner does not own expected delegated service")
+        self.identity = (info.st_dev, info.st_ino)
+        if set((self.group / "cgroup.procs").read_text().split()) != {str(self.pid)} or self.directories():
+            raise RuntimeError("delegated service is not exclusively owned")
+        if not hasattr(os, "pidfd_open") or not hasattr(signal, "pidfd_send_signal"):
+            raise RuntimeError("pidfd cleanup support required")
+
+    def assert_owner(self):
+        info = self.group.lstat()
+        if not stat.S_ISDIR(info.st_mode) or (info.st_dev, info.st_ino) != self.identity or unified_cgroup(self.pid) not in (self.relative, self.relative + "/supervisor"):
+            raise RuntimeError("delegated service identity changed")
+
+    def contains(self, relative):
+        return relative == self.relative or relative.startswith(self.relative + "/")
+
+    def prepare(self):
+        self.assert_owner()
+        child_subreaper()
+        self.supervisor.mkdir(mode=0o755)
+        (self.supervisor / "cgroup.procs").write_text(str(self.pid))
+        (self.group / "cgroup.subtree_control").write_text("+cpu +memory +pids")
+        self.jobs.mkdir(mode=0o755)
+
+    def directories(self):
+        found, pending = [], [self.group]
+        while pending:
+            parent = pending.pop()
+            try:
+                entries = list(parent.iterdir())
+            except FileNotFoundError:
+                continue
+            for path in entries:
+                try:
+                    mode = path.lstat().st_mode
+                except FileNotFoundError:
+                    continue
+                if stat.S_ISLNK(mode):
+                    raise RuntimeError("unexpected cgroup symlink")
+                if stat.S_ISDIR(mode):
+                    found.append(path)
+                    pending.append(path)
+        return found
+
+    def snapshot(self):
+        self.assert_owner()
+        pids = set()
+        for group in [self.group] + self.directories():
+            try:
+                pids.update(int(value) for value in (group / "cgroup.procs").read_text().split())
+            except FileNotFoundError:
+                continue
+        # cgroup.procs omits zombies. Include adopted children so cleanup must
+        # reap their exit status too, and never leave that task to outer systemd.
+        children = set()
+        for path in (Path("/proc") / str(self.pid) / "task").glob("*/children"):
+            try:
+                children.update(int(value) for value in path.read_text().split())
+            except FileNotFoundError:
+                continue
+        pids.update(children)
+        result = []
+        for pid in sorted(pids - {self.pid}):
+            identity = process_identity(pid)
+            # Exited tasks may already have left their live cgroup. Reaping an
+            # adopted zombie uses exact start time plus parent custody; it never
+            # grants permission to signal a live process in another cgroup.
+            if identity is not None and (self.contains(identity["cgroup"]) or (pid in children and adopted_zombie(identity, self.pid))):
+                result.append(identity)
+        return result
+
+    def signal_process(self, identity, sig):
+        self.assert_owner()
+        pid = identity["pid"]
+        if pid == self.pid or not self.contains(identity["cgroup"]):
+            raise RuntimeError("refusing foreign process cleanup")
+        if process_identity(pid) != identity:
+            return False
+        try:
+            descriptor = os.pidfd_open(pid, 0)
+        except ProcessLookupError:
+            return False
+        try:
+            # Pin the kernel process, then recheck start time and membership.
+            # A reused PID or task moved outside this unit is never signalled.
+            self.assert_owner()
+            if process_identity(pid) != identity:
+                return False
+            signal.pidfd_send_signal(descriptor, sig)
+            return True
+        except ProcessLookupError:
+            return False
+        finally:
+            os.close(descriptor)
+
+    def reap(self, identity):
+        self.assert_owner()
+        if identity["pid"] == self.pid or process_identity(identity["pid"]) != identity:
+            return False
+        if not self.contains(identity["cgroup"]) and not adopted_zombie(identity, self.pid):
+            return False
+        try:
+            return os.waitpid(identity["pid"], os.WNOHANG)[0] == identity["pid"]
+        except ChildProcessError:
+            return False
+
+    def remove_groups(self):
+        self.assert_owner()
+        for path in sorted(self.directories(), key=lambda p: len(p.parts), reverse=True):
+            if path == self.supervisor:
+                continue
+            self.assert_owner()
+            try:
+                path.rmdir()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                # Still attempt the other owned directories; the inventory
+                # below keeps cleanup false if any group could not be removed.
+                continue
+        return self.directories() in ([], [self.supervisor])
+
+    def cleanup(self, term_seconds=2, kill_seconds=5):
+        evidence = {"initial_processes": [], "initial_job_groups": [], "observed_processes": [],
+                    "reaped": [], "signals": [], "remaining_processes": [], "errors": [],
+                    "processes_reaped": False, "child_groups_removed": False}
+        observed, signalled = {}, set()
+        try:
+            evidence["initial_processes"] = self.snapshot()
+            evidence["initial_job_groups"] = [str(path.relative_to(self.group)) for path in self.directories()
+                                               if path not in (self.supervisor, self.jobs)]
+            started = time.monotonic()
+            deadline = started + term_seconds + kill_seconds
+            while True:
+                current = self.snapshot()
+                for identity in current:
+                    key = (identity["pid"], identity["start_ticks"])
+                    observed[key] = identity
+                    try:
+                        if self.reap(identity):
+                            evidence["reaped"].append(identity)
+                            continue
+                        sig = signal.SIGTERM if time.monotonic() < started + term_seconds else signal.SIGKILL
+                        if (key, sig) not in signalled and self.signal_process(identity, sig):
+                            signalled.add((key, sig))
+                            evidence["signals"].append({**identity, "signal": int(sig)})
+                    except OSError as error:
+                        category = type(error).__name__
+                        if category not in evidence["errors"]:
+                            evidence["errors"].append(category)
+                if not current or time.monotonic() >= deadline:
+                    break
+                time.sleep(.05)
+            evidence["remaining_processes"] = self.snapshot()
+            if not evidence["remaining_processes"]:
+                evidence["child_groups_removed"] = self.remove_groups()
+                evidence["remaining_processes"] = self.snapshot()
+                evidence["processes_reaped"] = not evidence["remaining_processes"]
+        except BaseException as error:
+            evidence["errors"].append(type(error).__name__)
+        evidence["observed_processes"] = list(observed.values())
+        return evidence
+
+
+def record_owned_cleanup(report, evidence):
+    report["owned_workload_cleanup"] = evidence
+    report["cleanup"]["owned_processes_reaped"] = evidence["processes_reaped"]
+    report["cleanup"]["owned_child_groups_removed"] = evidence["child_groups_removed"]
+    if evidence["initial_processes"] or evidence["initial_job_groups"] or evidence["observed_processes"]:
+        report["failures"].append("owned-workloads-required-cleanup")
+        report["passed"] = False
+    if evidence["errors"] or not evidence["processes_reaped"] or not evidence["child_groups_removed"]:
+        report["passed"] = False
+
+
+def verify_application_provenance(artifacts, report, source, source_manifest, published_version=None, published_sum=None):
+    """Bind standalone executables to unchanged SDK and example build inputs."""
+    manifests = {}
+    for label in ("checkout", "sdk", "application"):
+        evidence = report.get("provenance", {}).get(label, {})
+        before_name, after_name = "source-" + label + "-before.json", "source-" + label + "-after.json"
+        if evidence.get("unchanged_after_execution") is not True or evidence.get("manifest_file") != before_name or evidence.get("after_manifest_file") != after_name:
+            raise RuntimeError("application source provenance incomplete")
+        loaded = []
+        for name, key in ((before_name, "manifest_sha256"), (after_name, "after_manifest_sha256")):
+            path = artifacts / name
+            if path.is_symlink() or not path.is_file() or path.stat().st_size > 32 << 20:
+                raise RuntimeError("application source manifest unavailable")
+            entries = json.loads(path.read_text())
+            if not isinstance(entries, dict) or len(entries) > 100000:
+                raise RuntimeError("application source manifest invalid")
+            actual = hashlib.sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            if actual != evidence.get(key):
+                raise RuntimeError("application source manifest hash changed")
+            loaded.append(entries)
+        if loaded[0] != loaded[1]:
+            raise RuntimeError("application build inputs changed during execution")
+        manifests[label] = loaded[0]
+    template = report.get("provenance", {}).get("template_copy", {})
+    if template.get("matches") is not True or template.get("template_sha256") != template.get("copied_sha256"):
+        raise RuntimeError("application template copy was not verified")
+    module = "github.com/SYNEHQ/kelvo-go"
+    packages = report.get("public_packages", [])
+    required = {module + "/" + name for name in ("client", "query", "delegation", "resolver", "operations")}
+    if not isinstance(packages, list) or not required.issubset(packages) or any(not isinstance(p, str) or not p.startswith(module + "/") or ".." in p or "/internal/" in p for p in packages):
+        raise RuntimeError("application public dependency provenance invalid")
+    directories = {p[len(module) + 1:] for p in packages}
+    current = {name: {"sha256": value, "bytes": (source / name).stat().st_size} for name, value in source_manifest["files"].items()}
+    def selected(entries, choose):
+        return {name: {"sha256": value["sha256"], "bytes": value["bytes"]} for name, value in entries.items() if choose(name)}
+    def sdk_file(name):
+        return name in ("go.mod", "go.sum") or (str(Path(name).parent) in directories and not name.endswith(".md"))
+    if selected(current, sdk_file) != selected(manifests["sdk"], sdk_file):
+        raise RuntimeError("application SDK differs from current frozen public sources")
+    prefix = "examples/application/"
+    expected_example = {name[len(prefix):]: value for name, value in current.items() if name.startswith(prefix) and not name.endswith(".md")}
+    original_example = {name[len(prefix):]: {"sha256": value["sha256"], "bytes": value["bytes"]} for name, value in manifests["checkout"].items() if name.startswith(prefix) and not name.endswith(".md")}
+    if not expected_example or original_example != expected_example:
+        raise RuntimeError("application example differs from current frozen source")
+    # The copied module is deliberately pinned/tidied before compilation.
+    application_file = lambda name: name not in ("go.mod", "go.sum") and not name.endswith(".md")
+    if selected(expected_example, application_file) != selected(manifests["application"], application_file):
+        raise RuntimeError("compiled application differs from current example")
+    mode = report.get("mode")
+    if mode == "published":
+        resolved = report.get("resolved_module", {})
+        if not published_version or not published_sum or not re.fullmatch(r"h1:[A-Za-z0-9+/]{43}=", published_sum) or report.get("version") != published_version or resolved.get("Path") != module or resolved.get("Version") != published_version or resolved.get("Sum") != published_sum:
+            raise RuntimeError("published SDK requires authoritative version and module sum")
+    elif mode != "candidate" or published_version or published_sum:
+        raise RuntimeError("application provenance mode mismatch")
+    return {"source_unchanged": True, "mode": mode, "sdk_manifest_sha256": report["provenance"]["sdk"]["manifest_sha256"],
+            "application_manifest_sha256": report["provenance"]["application"]["manifest_sha256"], "public_files": len(selected(current, sdk_file))}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-manifest", type=Path, required=True)
@@ -42,6 +348,9 @@ def main():
     for name in ("binary", "adapter", "launcher", "nats"):
         parser.add_argument("--" + name, type=Path, required=True)
         parser.add_argument("--" + name + "-sha256", required=True)
+    parser.add_argument("--application-artifacts", type=Path, help="passed public_sdk_acceptance.py output containing pinned authority/exercise binaries")
+    parser.add_argument("--application-module-version", help="authoritative published SDK version, required in published mode")
+    parser.add_argument("--application-module-sum", help="authoritative published SDK h1 module sum, required in published mode")
     parser.add_argument("--api-source", type=Path)
     parser.add_argument("--api-manifest", type=Path)
     parser.add_argument("--source-ca-cert", type=Path)
@@ -49,6 +358,10 @@ def main():
     args = parser.parse_args()
     if bool(args.api_source) != bool(args.api_manifest) or bool(args.source_ca_cert) != bool(args.source_ca_key):
         parser.error("paired API source manifest and fixture CA paths required")
+    if args.application_artifacts and args.api_source:
+        parser.error("application artifacts and API source are separate acceptance modes")
+    if bool(args.application_module_version) != bool(args.application_module_sum) or ((args.application_module_version or args.application_module_sum) and not args.application_artifacts):
+        parser.error("published application version and module sum must be supplied together")
     root = Path(__file__).resolve().parents[1]
     if sys.platform != "linux" or not re.fullmatch(r"kelvo-operation-live-[a-zA-Z0-9.-]+\.service", args.unit):
         parser.error("explicit owned Linux fixture service required")
@@ -71,6 +384,8 @@ def main():
     relay_thread = None
     relay_sockets = set()
     relay_lock = threading.Lock()
+    owned = None
+    state = None
     passwords = {key: secrets.token_hex(32) for key in ("admin", "postgres", "mysql")}
     log_number = 0
     stage = "source"
@@ -117,6 +432,39 @@ def main():
                 raise RuntimeError("pinned binary mismatch")
             binaries[name] = expected
         report["binaries"] = binaries
+        stage = "containment"
+        owned = OwnedWorkloads(args.unit)
+        owned.prepare()
+        jobs = owned.jobs
+        state = out / "containment"
+        state.mkdir(mode=0o700)
+        application_report = None
+        application_binding = None
+        def verify_application():
+            nonlocal application_binding
+            if not args.application_artifacts:
+                return
+            artifacts = args.application_artifacts
+            if not artifacts.is_absolute() or artifacts.is_symlink() or not artifacts.is_dir():
+                raise RuntimeError("application artifact directory is invalid")
+            current_report = json.loads((artifacts / "report.json").read_text())
+            if current_report.get("passed") is not True or current_report.get("forbidden_imports") or current_report.get("cgo_packages"):
+                raise RuntimeError("standalone application boundary did not pass")
+            if application_report is not None and current_report != application_report:
+                raise RuntimeError("application report changed during acceptance")
+            application_binding = verify_application_provenance(artifacts, current_report, root, manifest, args.application_module_version, args.application_module_sum)
+            for name in ("authority", "exercise"):
+                path = artifacts / name
+                pin = current_report.get("binaries", {}).get(name, {})
+                if path.is_symlink() or not path.is_file() or not os.access(path, os.X_OK) or not re.fullmatch(r"[0-9a-f]{64}", pin.get("sha256", "")) or digest(path) != pin["sha256"] or path.stat().st_size != pin.get("bytes"):
+                    raise RuntimeError("standalone application binary pin mismatch")
+            return current_report
+        if args.application_artifacts:
+            application_report = verify_application()
+            report["application"] = {"mode": application_report.get("mode"), "version": application_report.get("version"), "report_sha256": digest(args.application_artifacts / "report.json"), "binaries": application_report["binaries"]}
+            report["application"]["source_binding"] = application_binding
+            report["scope"] = "standalone public application authority and SDK, real Node/Gateway, TLS PostgreSQL, tenant-scoped NATS, live authorization revocation and fresh credentials"
+
         stage = "build-test"
         (out / "tmp").mkdir(mode=0o700)
         build_env = {key: value for key, value in os.environ.items() if key in ("PATH", "HOME", "LANG", "GOCACHE", "GOPATH", "GOMODCACHE")}
@@ -151,18 +499,6 @@ def main():
                 raise RuntimeError("API cross-service fixture did not compile")
             verify_api()
             report["api_test_binary_sha256"] = digest(out / "api.test")
-        relative = Path("/proc/self/cgroup").read_text().strip().split(":", 2)[2]
-        if relative != "/system.slice/" + args.unit:
-            raise RuntimeError("runner does not own expected delegated service")
-        group = Path("/sys/fs/cgroup") / relative.lstrip("/")
-        supervisor = group / "supervisor"
-        supervisor.mkdir(mode=0o755)
-        (supervisor / "cgroup.procs").write_text(str(os.getpid()))
-        (group / "cgroup.subtree_control").write_text("+cpu +memory +pids")
-        jobs = group / "jobs"
-        jobs.mkdir(mode=0o755)
-        state = out / "containment"
-        state.mkdir(mode=0o700)
         stage = "images"
         images = {}
         for kind, image in (("postgres", "postgres:17.6"), ("mysql", "mysql:8.4")):
@@ -183,7 +519,10 @@ def main():
             shutil.copyfile(args.source_ca_cert, certs / "ca.crt")
             shutil.copyfile(args.source_ca_key, out / "ca.key")
         else:
-            run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=Kelvo operation fixture CA", "-keyout", str(out / "ca.key"), "-out", str(certs / "ca.crt")])
+            create_source_ca(run, out / "ca.key", certs / "ca.crt")
+        report["source_ca_profile"] = source_ca_profile(run, certs / "ca.crt")
+        if not report["source_ca_profile"]["accepted"]:
+            raise RuntimeError("fixture CA requires current CA constraints and certificate-signing key usage")
         for kind in ("postgres", "mysql", "broker"):
             leaf = certs / kind
             leaf.mkdir(mode=0o755)
@@ -232,10 +571,13 @@ def main():
                 raise RuntimeError("owned databases did not become ready")
             time.sleep(.5)
         table = "CREATE TABLE kelvo_operation_fixture (id INTEGER PRIMARY KEY, marker BIGINT NOT NULL); INSERT INTO kelvo_operation_fixture VALUES (1,0);"
-        admin("postgres", table + "CREATE ROLE kelvo_operator LOGIN PASSWORD '" + passwords["postgres"] + "'; GRANT USAGE ON SCHEMA public TO kelvo_operator; GRANT SELECT,INSERT,UPDATE,DELETE ON kelvo_operation_fixture TO kelvo_operator;")
-        admin("postgres", "CREATE SCHEMA kelvo_ingestion_fixture AUTHORIZATION kelvo_operator; GRANT CREATE ON DATABASE kelvo_fixture TO kelvo_operator; SET ROLE kelvo_operator; CREATE TABLE kelvo_ingestion_fixture.watch_source (id BIGINT PRIMARY KEY, amount NUMERIC(30,3));")
-        admin("postgres", "CREATE SCHEMA kelvo_migration_fixture AUTHORIZATION kelvo_operator;")
-        admin("postgres", "CREATE SCHEMA kelvo_migration_status_fixture AUTHORIZATION kelvo_operator; SET ROLE kelvo_operator; CREATE TABLE kelvo_migration_status_fixture.status_write_probe(id bigint); CREATE FUNCTION kelvo_migration_status_fixture.status_write() RETURNS bigint LANGUAGE plpgsql AS $$ BEGIN INSERT INTO kelvo_migration_status_fixture.status_write_probe VALUES(1); RETURN 1; END; $$; CREATE VIEW kelvo_migration_status_fixture.schema_migrations AS SELECT kelvo_migration_status_fixture.status_write() AS version,false AS dirty;")
+        if args.application_artifacts:
+            admin("postgres", "CREATE TABLE public.team_a_rows(id TEXT PRIMARY KEY,value BIGINT NOT NULL); CREATE TABLE public.team_b_rows(id TEXT PRIMARY KEY,value BIGINT NOT NULL); CREATE ROLE kelvo_operator LOGIN PASSWORD '" + passwords["postgres"] + "'; GRANT USAGE ON SCHEMA public TO kelvo_operator; GRANT SELECT,INSERT ON public.team_a_rows,public.team_b_rows TO kelvo_operator;")
+        else:
+            admin("postgres", table + "CREATE ROLE kelvo_operator LOGIN PASSWORD '" + passwords["postgres"] + "'; GRANT USAGE ON SCHEMA public TO kelvo_operator; GRANT SELECT,INSERT,UPDATE,DELETE ON kelvo_operation_fixture TO kelvo_operator;")
+            admin("postgres", "CREATE SCHEMA kelvo_ingestion_fixture AUTHORIZATION kelvo_operator; GRANT CREATE ON DATABASE kelvo_fixture TO kelvo_operator; SET ROLE kelvo_operator; CREATE TABLE kelvo_ingestion_fixture.watch_source (id BIGINT PRIMARY KEY, amount NUMERIC(30,3));")
+            admin("postgres", "CREATE SCHEMA kelvo_migration_fixture AUTHORIZATION kelvo_operator;")
+            admin("postgres", "CREATE SCHEMA kelvo_migration_status_fixture AUTHORIZATION kelvo_operator; SET ROLE kelvo_operator; CREATE TABLE kelvo_migration_status_fixture.status_write_probe(id bigint); CREATE FUNCTION kelvo_migration_status_fixture.status_write() RETURNS bigint LANGUAGE plpgsql AS $$ BEGIN INSERT INTO kelvo_migration_status_fixture.status_write_probe VALUES(1); RETURN 1; END; $$; CREATE VIEW kelvo_migration_status_fixture.schema_migrations AS SELECT kelvo_migration_status_fixture.status_write() AS version,false AS dirty;")
         admin("mysql", "USE kelvo_fixture; " + table + "CREATE TABLE watch_source (id BIGINT PRIMARY KEY,amount DECIMAL(30,3)) ENGINE=InnoDB; CREATE USER 'kelvo_operator'@'%' IDENTIFIED BY '" + passwords["mysql"] + "' REQUIRE SSL; GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,DROP,ALTER,TRIGGER ON kelvo_fixture.* TO 'kelvo_operator'@'%';")
         if args.api_source:
             admin("metadata", "CREATE DATABASE kelvo_metadata")
@@ -321,12 +663,16 @@ def main():
                     "KELVO_TEST_CGROUP_ROOT": str(jobs), "KELVO_TEST_CGROUP_STATE": str(state)})
         if args.api_source:
             env.update({"KELVO_TEST_OPERATION_API_BINARY": str(out / "api.test"), "KELVO_TEST_OPERATION_API_WORKDIR": str(args.api_source / "api/handlers"), "KELVO_TEST_OPERATION_API_SOURCE_CONFIG": str(out / "api-source-config.json"), "KELVO_TEST_OPERATION_API_LOG": str(out / "api-test.log")})
+        if args.application_artifacts:
+            app_logs = out / "application"
+            app_logs.mkdir(mode=0o700)
+            env.update({"KELVO_TEST_OPERATION_APPLICATION_ARTIFACTS": str(args.application_artifacts), "KELVO_TEST_OPERATION_APPLICATION_LOG_DIRECTORY": str(app_logs)})
         write(out / "environment.json", json.dumps(env))
         stage = "live-test"
         environment = {key: value for key, value in os.environ.items() if key in ("PATH", "HOME", "LANG", "GOCACHE", "GOPATH", "GOMODCACHE")}
         environment.update(env)
         environment.update(GOMAXPROCS="2", GOMEMLIMIT="2GiB", CGO_ENABLED="1", GOTOOLCHAIN="local", GOENV="off", GOWORK="off", GOPROXY="off", GOSUMDB="off", GOVCS="*:off", GOFLAGS="", GOTMPDIR=str(out / "tmp"), TMPDIR=str(out / "tmp"))
-        command = [str(args.go), "tool", "test2json", "-p", "github.com/SYNEHQ/kelvo-go/internal/cluster", str(out / "cluster.test"), "-test.v", "-test.timeout=4m", "-test.run=^TestOperationClusterActualNodeLifecycle$"]
+        command = [str(args.go), "tool", "test2json", "-p", "github.com/SYNEHQ/kelvo-go/internal/cluster", str(out / "cluster.test"), "-test.v", "-test.timeout=" + ("6m" if args.application_artifacts else "4m"), "-test.run=^TestOperationClusterActualNodeLifecycle$"]
         started = time.monotonic()
         with (out / "test.log").open("wb") as log:
             code = subprocess.run(command, cwd=root, env=environment, stdout=log, stderr=subprocess.STDOUT, timeout=600).returncode
@@ -349,6 +695,17 @@ def main():
             verify_api()
             report["api_source_unchanged"] = True
             report["api_network_policy"] = "IPAddressDeny=any; IPAddressAllow=localhost; source TCP probes must fail"
+        if args.application_artifacts:
+            required_tests = {"TestOperationClusterActualNodeLifecycle/standalone-application/" + name for name in ("team-a", "team-b", "revoked-membership", "membership-restored", "fresh-credentials-required", "credentials-restored", "cross-team-forged-caller", "cross-team-restored")}
+            verify_application()
+            report["application_artifacts_unchanged"] = True
+            application_evidence = out / "application" / "report.json"
+            if not application_evidence.is_file():
+                raise RuntimeError("standalone application acceptance evidence missing")
+            app_evidence = json.loads(application_evidence.read_text())
+            report["application_evidence"] = {"sha256": digest(application_evidence), "passed": app_evidence.get("passed"), "authority_reaped": app_evidence.get("authority_reaped")}
+            if app_evidence.get("passed") is not True or app_evidence.get("authority_reaped") is not True:
+                raise RuntimeError("standalone application lifecycle did not pass")
         report["required_tests"] = sorted(required_tests)
         report["passed"] = code == 0 and required_tests.issubset(report["tests"]) and not report["skips"] and not report["failures"] and report["remaining_job_groups"] == 0 and report["remaining_ownership_records"] == 0
     except BaseException as error:
@@ -357,27 +714,33 @@ def main():
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
         if relay is not None:
-            relay.shutdown()
-            relay.server_close()
-            relay_thread.join(2)
-            with relay_lock:
-                for sock in list(relay_sockets):
-                    try:
-                        sock.shutdown(socket.SHUT_RDWR)
-                    except OSError:
-                        pass
-                    sock.close()
-            report["cleanup"]["metadata_relay"] = not relay_thread.is_alive()
+            try:
+                relay.shutdown()
+                relay.server_close()
+                relay_thread.join(2)
+                with relay_lock:
+                    for sock in list(relay_sockets):
+                        try:
+                            sock.shutdown(socket.SHUT_RDWR)
+                        except OSError:
+                            pass
+                        sock.close()
+                report["cleanup"]["metadata_relay"] = not relay_thread.is_alive()
+            except BaseException:
+                report["cleanup"]["metadata_relay"] = False
         if broker is not None:
-            if broker.poll() is None:
-                broker.terminate()
-                try:
-                    broker.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    broker.kill()
-                    broker.wait(timeout=5)
-                    report["passed"] = False
-            report["cleanup"]["broker_reaped"] = broker.poll() is not None
+            try:
+                if broker.poll() is None:
+                    broker.terminate()
+                    try:
+                        broker.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        broker.kill()
+                        broker.wait(timeout=5)
+                        report["passed"] = False
+                report["cleanup"]["broker_reaped"] = broker.poll() is not None
+            except BaseException:
+                report["cleanup"]["broker_reaped"] = False
         for kind, identity in created.items():
             try:
                 inspected = run(docker + ["inspect", identity or names[kind]], check=False)
@@ -401,6 +764,24 @@ def main():
                 report["cleanup"]["network"] = run(docker + ["network", "inspect", network_id], check=False).returncode != 0
             except BaseException:
                 report["cleanup"]["network"] = False
+        report["cleanup"]["owned_scope_verified"] = owned is not None
+        if owned is not None:
+            # This also runs after subprocess.TimeoutExpired, Go panic, failed
+            # broker shutdown or failed Docker cleanup. Outer systemd remains
+            # the final bound, but is never counted as successful local cleanup.
+            evidence = owned.cleanup()
+            record_owned_cleanup(report, evidence)
+            report["remaining_job_groups"] = max(report.get("remaining_job_groups", 0), len(evidence["initial_job_groups"]))
+        if state is not None:
+            try:
+                remaining = sum(p.name != ".kelvo-containment.lock" for p in state.iterdir())
+                report["cleanup"]["ownership_inventory_verified"] = True
+                report["remaining_ownership_records"] = max(report.get("remaining_ownership_records", 0), remaining)
+                if remaining:
+                    report["failures"].append("retained-containment-ownership-records")
+                    report["passed"] = False
+            except BaseException:
+                report["cleanup"]["ownership_inventory_verified"] = False
         if not all(report["cleanup"].values()):
             report["passed"] = False
         if all(report["cleanup"].values()):
