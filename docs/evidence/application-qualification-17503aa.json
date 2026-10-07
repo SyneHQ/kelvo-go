@@ -1,0 +1,113 @@
+{
+  "schema": 1,
+  "reviewed_at": "2026-10-07",
+  "passed": true,
+  "scope": "One selected sequential external application scenario exercises PostgreSQL/MySQL operations through native Kelvo workers, metadata PostgreSQL, a private mTLS credential resolver and an AES-GCM fixture KMS.",
+  "application_boundary": {
+    "entry_point": "A compiled external application test process exercises API authentication, preparation and dispatch through an in-process HTTP test recorder.",
+    "network_paths": "The production Kelvo HTTP/Arrow client and private mTLS resolver communicate across processes.",
+    "key_management": "AES-GCM fixture KMS; no real KMS provider was exercised."
+  },
+  "kelvo": {
+    "revision": "17503aafd640aa417207ddc18e9dd7cd52c7dc2c",
+    "source_sha256": "9e4203dd3bd2eda11e4c393532fb7fc77fa5c733b57cfff8ff9d9371f8bcd91d",
+    "build_source_manifest_sha256": "5e81e582d60a25a0ff4e148456d4bafa9b041f7514463bb9b42ff59d81d164e0",
+    "native_binary_sha256": "e6262af5f0041851be2e8905c738e1f1caa1e8b1d40edc72e261b5d7c8ea0c65",
+    "sandbox_binary_sha256": "e8591dbfcee7e197a38f687f496e6a61957e0418c8ec839c65b4dbe3bf8ad547",
+    "test_binary_sha256": "66eb47d12e1692b22f37ef161fe2127d05421c40fb799771bf13e1efc59da863",
+    "native_binary_vcs_revision_matches": true,
+    "artifact_binding_verified": true,
+    "source_unchanged": true
+  },
+  "external_application_source_unchanged": true,
+  "raw_receipt_sha256": {
+    "acceptance": "e96ab2f3b8b56cf88ddfda74b6035b158c77889b7f53be59ebe540fbdea5950e",
+    "artifact_and_cleanup_proof": "1be33da7c2823ca5141e55d6ee86cf58353248c4b5193bb7ee73151d4fbf0e64"
+  },
+  "stages": [
+    {
+      "name": "native_test_build",
+      "exit_code": 0
+    },
+    {
+      "name": "external_application_test_build",
+      "exit_code": 0
+    },
+    {
+      "name": "cross_process_lifecycle",
+      "exit_code": 0,
+      "elapsed_seconds": 12.537786726024933
+    }
+  ],
+  "tests": {
+    "selected_required_scenarios": 1,
+    "reported_pass_records": 2,
+    "counting_scope": "One selected child scenario and its parent test passed; these are not two independent scenarios. Build stages are not additional test passes.",
+    "skipped": 0,
+    "failures": 0
+  },
+  "database_fixtures": {
+    "source_transport": "TLS",
+    "postgresql_image_digest": "sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929",
+    "mysql_image_digest": "sha256:6ea90827b1100f8f2ae306a539f86d2c264a26ed435a2a9f75551dd5c3aeb242",
+    "metadata_postgresql_image_digest": "sha256:00bc86618629af00d2937fdc5a5d63db3ff8450acf52f0636ec813c7f4902929"
+  },
+  "cleanup": {
+    "checks": {
+      "metadata_relay": true,
+      "broker_reaped": true,
+      "postgres": true,
+      "mysql": true,
+      "metadata": true,
+      "network": true,
+      "owned_scope_verified": true,
+      "owned_processes_reaped": true,
+      "owned_child_groups_removed": true,
+      "ownership_inventory_verified": true
+    },
+    "remaining_job_groups": 0,
+    "remaining_ownership_records": 0,
+    "owned_workload_cleanup": {
+      "initial_processes": [],
+      "initial_job_groups": [],
+      "observed_processes": [],
+      "reaped": [],
+      "signals": [],
+      "remaining_processes": [],
+      "errors": [],
+      "processes_reaped": true,
+      "child_groups_removed": true
+    },
+    "owned_unit_removed": true,
+    "service_exit_verified": true,
+    "recovery_fixture_removals": 0,
+    "recovery_external_application_stops": 0,
+    "post_recovery_cleanup": {
+      "completed": true,
+      "external_application_stops": 0,
+      "fixture_removals": 0,
+      "failures": []
+    }
+  },
+  "retained_failures": [
+    {
+      "scope": "Earlier controller preparation trial",
+      "kelvo_revision": "add2e86939168b22c3d8dc831b148c3db5ab193e",
+      "passed": false,
+      "raw_acceptance_sha256": "285566ce75d189c6b423c5ae9305d84795de541950b344c9a90cad45b8d449b5",
+      "raw_proof_sha256": "1e80558725f77f2ac5128af2449e0805831fb33e59ada297c141342c058b3778",
+      "failure_category": "build-test:RuntimeError",
+      "cause": "External application module editing used the wrong working directory before fixture creation.",
+      "resolution": "A fresh controller with corrected working-directory handling passed the same workflow.",
+      "owned_unit_removed": true,
+      "service_exit_verified": false
+    }
+  ],
+  "limits": [
+    "Sequential PostgreSQL/MySQL fixture acceptance; no Redis, concurrent application load, sustained application campaign or throughput measurement.",
+    "No actual KMS provider, cloud-provider account, customer deployment or production rollout acceptance.",
+    "The incoming application path uses an HTTP test recorder; this does not qualify a deployed external application HTTP server or all application routes.",
+    "The recorded lifecycle stage duration is elapsed test time, not a request-latency or capacity result.",
+    "This fixture evidence does not establish WAN behavior, multihost availability, recovery objectives or deployment sizing."
+  ]
+}

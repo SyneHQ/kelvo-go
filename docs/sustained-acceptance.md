@@ -5,10 +5,46 @@ two-tenant cluster for at least two hours. A passing smoke run cannot close the
 [sustained-load gate](https://github.com/SyneHQ/kelvo-go/issues/7). Results apply
 only to the recorded binary, source inventories, topology and resource budget.
 
-The current runner adds real cross-source file joins and small durable exports
-to the original workload. These additions require a new matching smoke and
-two-hour report; the historical results below do not qualify them. The paired
-DBAPI/database lane is separate from this generic Kelvo campaign.
+The current runner adds cross-source file joins and small durable exports.
+Matching smoke and two-hour runs on `17503aa` passed all twelve gates.
+[External application/database integration](evidence/application-qualification-17503aa.json)
+is recorded separately.
+
+## Current candidate `17503aa`
+
+Both [recorded runs](evidence/production-qualification-17503aa.json) passed full
+pinned reconciliation, source/binary checks and independent service/cgroup
+cleanup. Four paced client threads across two tenants exercised Parquet/CSV
+joins, scheduled refreshes, nine-row exports, slow readers, cancellations and
+controlled gateway/worker/broker loss under a 2 CPU / 6 GiB service cap.
+
+| Observation | Smoke | Two-hour run |
+| --- | ---: | ---: |
+| Observed mixed-workload interval | 600.096 seconds | 7,200.145 seconds |
+| Aggregate queries / file joins | 756 / 755 | 9,282 / 9,282 |
+| Export cycles / downloads / withdrawals | 58 / 116 / 58 | 692 / 1,384 / 692 |
+| Refreshes / slow readers / cancellations | 80 / 20 / 20 | 960 / 240 / 239 |
+| Whole-fixture charged memory peak | 803,618,816 bytes | 1,002,876,928 bytes |
+| Client/resource errors and OOMs | Zero | Zero |
+
+Both cleanups left zero forced application kills, live descendants, scratch
+directories, containment records or export entries; owned brokers stopped and
+the service/cgroup were removed. The charged memory peak includes brokers and
+the Python controller. It is not the memory footprint of one Kelvo worker.
+
+[CI run 37635453893](https://github.com/SyneHQ/kelvo-go/actions/runs/37635453893)
+passed on `927273f`, whose Git tree matches `17503aa`. The native AMD64 campaign
+uses `duckdb_arrow`; CI covers the optional `duckbridge` path separately.
+These paced runs establish bounded lifecycle coverage. Maximum throughput,
+wide-export capacity, live providers, WAN behavior, a fresh Oracle micro-VM run
+and customer deployment sizing remain unqualified. Raw report hashes, latency
+histograms and build checks are in the linked receipt.
+
+The initial expanded smoke on `add2e869` remains failed: its workload gates
+passed, but cleanup counted permanent custody metadata as retained exports.
+The correction validates the custody layout and counts entries inside `data/`;
+it does not delete payloads or relax cleanup. Failed raw report SHA-256:
+`c74633050ef3b7c0178c185bcb61793ef87c53c273f501ed9efbd6beeeeaa3fc`.
 
 ## Recorded two-hour run
 

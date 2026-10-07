@@ -2,6 +2,16 @@
 
 This is recorded developer-preview evidence, tied to specific binaries and fixtures. Use [production status](production-status.md) for current release gates; these results do not certify arbitrary multi-tenant deployments.
 
+## Current candidate `17503aa`
+
+The [smoke and two-hour campaign](sustained-acceptance.md#current-candidate-17503aa) passed all twelve lifecycle gates, including paced two-tenant Parquet/CSV joins and nine-row durable exports, with exact source/binary binding and independent cleanup. The [reconciled receipt](evidence/production-qualification-17503aa.json) records 9,282 queries, 9,282 file joins and 692 export cycles over 7,200.145 seconds. [CI run 37635453893](https://github.com/SyneHQ/kelvo-go/actions/runs/37635453893) passed on `927273f`, whose Git tree matches `17503aa`. The native campaign uses `duckdb_arrow`; optional `duckbridge` CI remains separate. These paced results do not establish maximum throughput or deployment capacity.
+
+[External application evidence](evidence/application-qualification-17503aa.json) records three successful build/execution stages and one selected sequential PostgreSQL/MySQL scenario. The child scenario and its parent produce two pass records, not two independent scenarios. Incoming authentication, preparation and dispatch use an HTTP test recorder; the production Kelvo HTTP/Arrow client and private mTLS resolver communicate across processes. Metadata uses PostgreSQL and key management uses an AES-GCM fixture KMS. All cleanup checks passed, with no remaining job groups, ownership records or processes and no recovery fixture removals or application stops.
+
+The application receipt retains the earlier controller preparation failure on `add2e869`, including its unverified service exit. The [expanded smoke failure](sustained-acceptance.md#current-candidate-17503aa) also remains recorded. Actual KMS, Redis, concurrent or sustained application load, throughput, a deployed full application HTTP server, live cloud providers, WAN behavior and customer rollout remain unqualified.
+
+## Earlier baseline
+
 Baseline: [merged-cargo acceptance](evidence/cargo-b1a0ea5-acceptance.json) passed both CI jobs on `b1a0ea5`, including worker/broker export gates and all 15 notebooks. [Export lifecycle acceptance](export-ci-diagnostics.md) separates these direct passes from the retained historical failure and its unknown cause. [Earlier combined validation](export-validation.md) remains tied to `d144a43`.
 
 The [telemetry comparison](telemetry-overhead.md#recorded-full-comparison) passed all 48 epochs on `93339e7`, with 96 warmups and 96 measured queries. Paired metrics/tracing ratios describe one local million-row fixture; they do not establish deployment capacity or separate source/compute time. Both smoke attempts and full cleanup evidence are retained.
