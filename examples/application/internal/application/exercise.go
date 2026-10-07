@@ -175,6 +175,15 @@ type mutationJournal struct {
 	Response   *operations.Response `json:"response,omitempty"`
 }
 
+// Recovery keeps the SDK's typed cause for callers without exposing its text.
+// The journal remains the only authority for retrying lookup or status reads.
+type mutationRecoveryError struct{ cause error }
+
+func (e *mutationRecoveryError) Error() string {
+	return "mutation outcome is unresolved; preserve the journal and reconcile without resubmitting"
+}
+func (e *mutationRecoveryError) Unwrap() error { return e.cause }
+
 func saveJournal(path string, j mutationJournal, first bool) error {
 	raw, err := json.Marshal(j)
 	if err != nil {
@@ -282,7 +291,7 @@ func mutate(ctx context.Context, c Config, key ed25519.PrivateKey, gateway *clie
 		response, err = gateway.SubmitOperation(ctx, r, auth)
 	}
 	if err != nil {
-		return operations.Response{}, errors.New("mutation outcome is unresolved; preserve the journal and reconcile without resubmitting")
+		return operations.Response{}, &mutationRecoveryError{cause: err}
 	}
 	j.ID = response.ID
 	j.Response = &response
@@ -291,7 +300,7 @@ func mutate(ctx context.Context, c Config, key ed25519.PrivateKey, gateway *clie
 	}
 	response, err = waitOperation(ctx, gateway, response, auth)
 	if err != nil {
-		return response, errors.New("mutation status is unresolved; preserve the journal and reconcile without resubmitting")
+		return response, &mutationRecoveryError{cause: err}
 	}
 	j.Response = &response
 	if err := saveJournal(o.Journal, j, false); err != nil {

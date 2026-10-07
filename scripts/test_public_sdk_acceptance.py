@@ -208,10 +208,45 @@ class DependencyBoundaryTests(unittest.TestCase):
                 package = {"ImportPath": "example.com/renamed/package", "Module": {"Path": module}}
                 self.assertTrue(fixture.forbidden_package(package))
 
+    def test_shipped_native_and_adapter_driver_roots_are_rejected(self):
+        for module, package in (
+                ("github.com/microsoft/go-mssqldb", "github.com/microsoft/go-mssqldb/msdsn"),
+                ("github.com/sijms/go-ora/v2", "github.com/sijms/go-ora/v2/configurations"),
+                ("github.com/exasol/exasol-driver-go", "github.com/exasol/exasol-driver-go/pkg/dsn"),
+                ("github.com/gocql/gocql", "github.com/gocql/gocql"),
+                ("github.com/mattn/go-sqlite3", "github.com/mattn/go-sqlite3"),
+                (fixture.MODULE + "/adapters/go", fixture.MODULE + "/adapters/go/connectors/clickhouse")):
+            with self.subTest(module=module):
+                self.assertTrue(fixture.forbidden_package({"ImportPath": module}))
+                self.assertTrue(fixture.forbidden_package({"ImportPath": package, "Module": {"Path": module}}))
+                self.assertTrue(fixture.forbidden_package({"ImportPath": "example.com/renamed/driver", "Module": {"Path": module}}))
+
+    def test_flight_database_client_is_rejected_without_banning_arrow(self):
+        for package in ("github.com/apache/arrow-go/v18/arrow/flight",
+                        "github.com/apache/arrow-go/v18/arrow/flight/flightsql",
+                        "github.com/apache/arrow-go/v18/arrow/flight/gen/flight"):
+            with self.subTest(package=package):
+                self.assertTrue(fixture.forbidden_package({"ImportPath": package, "Module": {"Path": "github.com/apache/arrow-go/v18"}}))
+
+    def test_secret_provider_and_shared_protocol_libraries_remain_allowed(self):
+        for package, module in (
+                ("github.com/aws/aws-sdk-go-v2/aws/signer/v4", "github.com/aws/aws-sdk-go-v2"),
+                ("github.com/aws/aws-sdk-go-v2/service/secretsmanager", "github.com/aws/aws-sdk-go-v2/service/secretsmanager"),
+                ("cloud.google.com/go/secretmanager/apiv1", "cloud.google.com/go/secretmanager"),
+                ("github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets", "github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azsecrets"),
+                ("github.com/apache/arrow-go/v18/arrow/ipc", "github.com/apache/arrow-go/v18"),
+                ("github.com/synehq/zero-sql/pkg/zerosql", "github.com/synehq/zero-sql"),
+                ("net/http", "")):
+            with self.subTest(package=package):
+                self.assertFalse(fixture.forbidden_package({"ImportPath": package, "Module": {"Path": module}}))
+
     def test_similarly_named_packages_do_not_cross_the_boundary(self):
         for path in ("syne_db_tools", "syne_db_tools/api", "github.com/lib/pquery",
                      "github.com/SYNEHQ/db.api.go-tools", "github.com/synehq/db.api.go2",
-                     "github.com/jackc/pgxhelper"):
+                     "github.com/jackc/pgxhelper", fixture.MODULE + "/adaptershelper",
+                     "github.com/microsoft/go-mssqldb-helper", "github.com/sijms/go-oracle",
+                     "github.com/exasol/exasol-driver-go-tools", "github.com/gocql/gocqlhelper",
+                     "github.com/mattn/go-sqlite3-tools", "github.com/apache/arrow-go/v18/arrow/flights"):
             with self.subTest(path=path):
                 self.assertFalse(fixture.forbidden_package({"ImportPath": path, "Module": {"Path": path}}))
 
