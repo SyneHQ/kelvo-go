@@ -49,7 +49,15 @@ func TestOperationClusterActualNodeLifecycle(t *testing.T) {
 		t.Skip("explicit delegated cgroup fixture required")
 	}
 	get := func(name string) string { return os.Getenv("KELVO_TEST_OPERATION_" + name) }
-	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
+	applicationMode := os.Getenv("KELVO_TEST_OPERATION_APPLICATION_ARTIFACTS") != ""
+	if applicationMode && os.Getenv("KELVO_TEST_OPERATION_API_BINARY") != "" {
+		t.Fatal("application and API fixture modes are mutually exclusive")
+	}
+	timeout := 240 * time.Second
+	if applicationMode {
+		timeout = 360 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	root := t.TempDir()
 	caPEM, err := os.ReadFile(get("SOURCE_CA_FILE"))
@@ -128,11 +136,13 @@ func TestOperationClusterActualNodeLifecycle(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"version": 1, "grant_sha256": operations.GrantDigest(input.Grant), "request_sha256": record.Record.RequestSHA256, "source_revision": strings.Repeat("a", 64), "valid_until": min(until.Unix(), time.Now().Unix()+5), "source": catalog.Source{ID: "source_1", Type: engine, DSNEnv: "KELVO_SOURCE_REQUEST_0_DSN", Options: map[string]string{"tls_ca_pem": string(caPEM)}}, "secrets": map[string]string{"KELVO_SOURCE_REQUEST_0_DSN": dsn}})
 	}))
-	resolverServer.TLS = privateTLS.Clone()
-	resolverServer.StartTLS()
-	t.Cleanup(resolverServer.Close)
-	resolverURL := resolverServer.URL
-	if os.Getenv("KELVO_TEST_OPERATION_API_BINARY") != "" {
+	resolverURL := ""
+	if applicationMode || os.Getenv("KELVO_TEST_OPERATION_API_BINARY") != "" {
+		// NewUnstartedServer already owns a listener. External authority mode
+		// must close it even though its synthetic handler is never started.
+		if err := resolverServer.Listener.Close(); err != nil {
+			t.Fatal(err)
+		}
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
@@ -141,6 +151,11 @@ func TestOperationClusterActualNodeLifecycle(t *testing.T) {
 		if err := listener.Close(); err != nil {
 			t.Fatal(err)
 		}
+	} else {
+		resolverServer.TLS = privateTLS.Clone()
+		resolverServer.StartTLS()
+		t.Cleanup(resolverServer.Close)
+		resolverURL = resolverServer.URL
 	}
 	policy := testPolicy()
 	policy.Limits.MemoryMB = 64
@@ -291,6 +306,12 @@ func TestOperationClusterActualNodeLifecycle(t *testing.T) {
 	if os.Getenv("KELVO_TEST_OPERATION_API_BINARY") != "" {
 		t.Run("api-on-demand-cross-service", func(t *testing.T) {
 			operationAPICrossService(t, public, resolverURL, gatewayTLS, key, token)
+		})
+		return
+	}
+	if applicationMode {
+		t.Run("standalone-application", func(t *testing.T) {
+			operationApplicationCrossService(t, public, resolverURL, gatewayTLS, workerTLS, key, token)
 		})
 		return
 	}
