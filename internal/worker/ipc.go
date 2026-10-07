@@ -10,8 +10,11 @@ import (
 	"math"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	arrowutil "github.com/apache/arrow-go/v18/arrow/util"
@@ -29,12 +32,33 @@ var (
 // forged Arrow lengths. Bound framing, allocation-critical metadata and decoded
 // buffers separately, and require explicit EOS followed by pipe EOF.
 func readWorkerIPC(ctx context.Context, input io.Reader, limits query.Limits, sink query.Sink) (observed query.Stats, resultErr error) {
+	return readWorkerIPCObserved(ctx, input, limits, sink, nil)
+}
+
+// readWorkerIPCObserved adds call-owned diagnostics without changing the trust
+// boundary or completion contract. A nil observation takes no extra clocks and
+// does not wrap the sink. It never retains a borrowed batch.
+func readWorkerIPCObserved(ctx context.Context, input io.Reader, limits query.Limits, sink query.Sink, observation *telemetry.IPCTransfer) (observed query.Stats, resultErr error) {
+	stream := &ipcInput{reader: input, remaining: limits.MaxBytes}
+	var started time.Time
+	var trailingBytes int
+	if observation != nil {
+		*observation = telemetry.IPCTransfer{Observed: true}
+		started = time.Now()
+		sink = &ipcTransferSink{sink: sink, observation: observation}
+	}
 	defer func() {
 		if recover() != nil {
 			resultErr = query.NewError("QUERY_FAILED", "Query worker returned invalid Arrow data")
 		}
+		if observation != nil {
+			observation.Duration = time.Since(started)
+			// Include the one-byte post-EOS probe if it found trailing data.
+			// These are pipe bytes consumed, not network or delivered bytes.
+			observation.InputBytes = limits.MaxBytes - stream.remaining + int64(trailingBytes)
+			observation.Complete = resultErr == nil
+		}
 	}()
-	stream := &ipcInput{reader: input, remaining: limits.MaxBytes}
 	alloc := &ipcAllocator{base: memory.NewGoAllocator(), limit: int64(limits.MemoryMB) << 20}
 	framing := &ipcFrames{stream: stream, alloc: alloc}
 	framing.refs.Store(1)
@@ -62,6 +86,12 @@ func readWorkerIPC(ctx context.Context, input io.Reader, limits query.Limits, si
 		if size < 0 || size > limits.MaxBytes-observed.Bytes {
 			return observed, query.NewError("RESOURCE_EXHAUSTED", "Worker result exceeds byte limit")
 		}
+		if observation != nil {
+			// Count validated buffers offered to the synchronous sink, including
+			// its failed final call. These are not successful delivery counters.
+			observation.DecodedBytes += size
+			observation.Batches++
+		}
 		if err := sink.Write(batch); err != nil {
 			return observed, err
 		}
@@ -76,6 +106,7 @@ func readWorkerIPC(ctx context.Context, input io.Reader, limits query.Limits, si
 	// overflow or data appended after EOS. No appended bytes reach the sink.
 	var trailing [1]byte
 	n, err := io.ReadFull(input, trailing[:])
+	trailingBytes = n
 	if n != 0 || !errors.Is(err, io.EOF) {
 		if stream.remaining == 0 && n != 0 {
 			stream.exceeded = true
@@ -87,6 +118,25 @@ func readWorkerIPC(ctx context.Context, input io.Reader, limits query.Limits, si
 	}
 	observed.WireBytes = limits.MaxBytes - stream.remaining
 	return observed, nil
+}
+
+type ipcTransferSink struct {
+	sink        query.Sink
+	observation *telemetry.IPCTransfer
+}
+
+func (s *ipcTransferSink) Schema(schema *arrow.Schema) error {
+	started := time.Now()
+	s.observation.HasSink = true
+	defer func() { s.observation.SinkDuration += time.Since(started) }()
+	return s.sink.Schema(schema)
+}
+
+func (s *ipcTransferSink) Write(batch arrow.RecordBatch) error {
+	started := time.Now()
+	s.observation.HasSink = true
+	defer func() { s.observation.SinkDuration += time.Since(started) }()
+	return s.sink.Write(batch)
 }
 
 func ipcReadError(ctx context.Context, stream *ipcInput, alloc *ipcAllocator, err error) error {

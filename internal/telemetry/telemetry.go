@@ -64,6 +64,7 @@ type Snapshot struct {
 	ChildUnknown      [2][ChildStageCount][childTimingStatusCount]uint64
 	ChildWorkerStages [2][ChildEngineSetup]Histogram
 	ChildDuckDBStages [2][ChildStageCount - ChildEngineSetup]Histogram
+	IPCTransfer       IPCTransferSnapshot
 }
 
 // Registry's zero value is usable. All state has a fixed size, regardless of
@@ -164,6 +165,7 @@ func writeMetrics(w io.Writer, s Snapshot) error {
 	writeHistogram(&out, "kelvo_job_duration_seconds", "Observed worker call duration including setup and transfer but excluding admission wait.", s.Duration)
 	writePhaseMetrics(&out, s)
 	writeChildMetrics(&out, s)
+	writeIPCTransferMetrics(&out, s)
 	_, err := w.Write(out.data)
 	return err
 }
