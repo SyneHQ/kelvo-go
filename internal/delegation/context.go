@@ -3,12 +3,6 @@ package delegation
 
 import "context"
 
-type ExecutionBinding struct {
-	JobID    string `json:"job_id"`
-	WorkerID string `json:"worker_id"`
-	Owner    string `json:"owner"`
-	Claim    string `json:"claim"`
-}
 type Execution struct {
 	Claims  Claims
 	Token   string
