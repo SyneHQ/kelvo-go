@@ -1,0 +1,43 @@
+name: Public application SDK
+on:
+  push:
+    branches: [cargo]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-sdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.26.8'
+          cache: true
+      - name: Validate SDK runner cleanup and source provenance controls
+        timeout-minutes: 2
+        run: python3 -m unittest discover -s scripts -p test_public_sdk_acceptance.py
+      - name: Validate cluster fixture cleanup controls
+        timeout-minutes: 2
+        run: python3 -m unittest discover -s scripts -p test_operation_cluster_acceptance.py
+      - name: Test the public contracts without CGO
+        run: CGO_ENABLED=0 go test -p 2 ./query ./delegation ./resolver ./client ./operations
+      - name: Check concurrent public client and authority behavior
+        run: go test -p 2 -race ./query ./delegation ./resolver ./client ./operations
+      - name: Build the independent application and check its imports
+        run: python3 scripts/public_sdk_acceptance.py --output "$RUNNER_TEMP/kelvo-public-sdk"
+      - name: Retain public SDK evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: public-sdk-evidence
+          path: |
+            ${{ runner.temp }}/kelvo-public-sdk/report.json
+            ${{ runner.temp }}/kelvo-public-sdk/*.log
+            ${{ runner.temp }}/kelvo-public-sdk/source-*.json
+          retention-days: 14
+          if-no-files-found: warn
