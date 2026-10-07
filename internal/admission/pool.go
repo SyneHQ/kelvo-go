@@ -70,8 +70,17 @@ type Pool struct {
 	active           int
 	waiting          int
 	classes          [classCount]ClassSnapshot
+	queueHead        [classCount]*waiter
+	queueTail        [classCount]*waiter
 	draining         bool
 	changed          chan struct{}
+}
+
+// Each class has its own FIFO so a refresh blocked by protected capacity cannot
+// block interactive work. Only class heads are notified, not every queued call.
+type waiter struct {
+	previous, next *waiter
+	ready          chan struct{}
 }
 
 // New rejects invalid capacity instead of silently permitting unlimited work.
@@ -158,8 +167,10 @@ func (p *Pool) reserve(r Request, class int) *Reservation {
 	return &Reservation{pool: p, request: r, class: class}
 }
 
-// Acquire waits for capacity or cancellation. No ordering/fairness is promised;
-// callers must bound upstream queues. Cancellation does not release an acquired
+// Acquire waits FIFO within its workload class. New calls cannot overtake a
+// queued larger reservation. Classes compete for shared capacity independently;
+// this is not tenant fairness or a guarantee of service across classes. Callers
+// must bound upstream queues. Cancellation does not release an acquired
 // reservation: actual execution cleanup must finish before Release is called.
 func (p *Pool) Acquire(ctx context.Context, r Request) (*Reservation, error) {
 	p.mu.Lock()
@@ -168,11 +179,11 @@ func (p *Pool) Acquire(ctx context.Context, r Request) (*Reservation, error) {
 	if err != nil {
 		return nil, err
 	}
-	waiting := false
+	var queued *waiter
 	defer func() {
-		if waiting {
-			p.waiting--
-			p.classes[class].Waiting--
+		if queued != nil {
+			p.removeWaiter(queued, class)
+			p.wakeHeads()
 		}
 	}()
 	for {
@@ -182,25 +193,30 @@ func (p *Pool) Acquire(ctx context.Context, r Request) (*Reservation, error) {
 		if p.draining {
 			return nil, ErrDraining
 		}
-		if p.fits(r, class) {
+		if p.queueHead[class] == queued && p.fits(r, class) {
 			return p.reserve(r, class), nil
 		}
-		if !waiting {
+		if queued == nil {
+			queued = &waiter{previous: p.queueTail[class], ready: make(chan struct{}, 1)}
+			if queued.previous == nil {
+				p.queueHead[class] = queued
+			} else {
+				queued.previous.next = queued
+			}
+			p.queueTail[class] = queued
 			p.waiting++
 			p.classes[class].Waiting++
-			waiting = true
 		}
-		changed := p.changed
 		p.mu.Unlock()
 		select {
 		case <-ctx.Done():
-		case <-changed:
+		case <-queued.ready:
 		}
 		p.mu.Lock()
 	}
 }
 
-// TryAcquire does not allocate or wait in an internal queue.
+// TryAcquire does not enqueue or wait for capacity. It cannot bypass its class's FIFO.
 func (p *Pool) TryAcquire(r Request) (*Reservation, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -211,13 +227,43 @@ func (p *Pool) TryAcquire(r Request) (*Reservation, error) {
 	if p.draining {
 		return nil, ErrDraining
 	}
-	if !p.fits(r, class) {
+	if p.queueHead[class] != nil || !p.fits(r, class) {
 		return nil, ErrBusy
 	}
 	return p.reserve(r, class), nil
 }
 
-func (p *Pool) notify() { close(p.changed); p.changed = make(chan struct{}) }
+func (p *Pool) removeWaiter(w *waiter, class int) {
+	if w.previous == nil {
+		p.queueHead[class] = w.next
+	} else {
+		w.previous.next = w.next
+	}
+	if w.next == nil {
+		p.queueTail[class] = w.previous
+	} else {
+		w.next.previous = w.previous
+	}
+	p.waiting--
+	p.classes[class].Waiting--
+}
+
+func (p *Pool) wakeHeads() {
+	for _, head := range p.queueHead {
+		if head != nil {
+			select {
+			case head.ready <- struct{}{}:
+			default:
+			}
+		}
+	}
+}
+
+func (p *Pool) notify() {
+	close(p.changed)
+	p.changed = make(chan struct{})
+	p.wakeHeads()
+}
 
 // Release is safe to call concurrently and multiple times.
 func (r *Reservation) Release() {
