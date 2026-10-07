@@ -179,7 +179,12 @@ latency histograms must match the workload counters.
 
 After the measured interval, normal worker cleanup has up to 75 seconds to remove
 all export entries and partial-publication markers. The runner does not delete
-retained data to obtain a passing cleanup result. This drain stays inside the
+retained data to obtain a passing cleanup result. It validates the persistent
+custody root (`.lock`, `custody.yml`, `data/`) and counts retained entries inside
+`data/`, excluding only regular `.lock` and `store.yml` metadata files. Unexpected
+custody entries, symlinks, escaping roots and invalid metadata types fail the
+check; actual export directories and publication markers still block cleanup.
+This drain stays inside the
 existing `duration + 300` service watchdog, and resource observation continues
 through it. A failed drain fails acceptance even when outer service cleanup succeeds.
 Fault recovery counts status/transport observations. Only status GETs on the

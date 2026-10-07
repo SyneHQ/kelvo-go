@@ -1007,11 +1007,32 @@ class Campaign(loss.LossAcceptance):
 
     def remaining_export_entries(self):
         remaining = 0
-        for root in self.export_roots.values():
-            ops.require(root.is_dir() and not root.is_symlink(), "EXPORT_ROOT_DISAPPEARED")
-            for entry in root.iterdir():
-                if entry.name not in (".lock", "store.yml"):
-                    remaining += 1
+        for worker, root in self.export_roots.items():
+            ops.require(root == self.directory / (worker + "-exports") and root.is_absolute()
+                        and root.resolve() == root and stat.S_ISDIR(root.lstat().st_mode), "EXPORT_ROOT_DISAPPEARED")
+            # ExportRuntime opens a Custody first, then places the Store in
+            # Custody.DataDirectory(). Custody metadata persists after every
+            # retained export has expired; it is not itself a retained entry.
+            ops.require({entry.name for entry in root.iterdir()} == {".lock", "custody.yml", "data"},
+                        "EXPORT_CUSTODY_LAYOUT_INVALID")
+            data = root / "data"
+            ops.require(stat.S_ISDIR(data.lstat().st_mode), "EXPORT_DATA_NOT_DIRECTORY")
+            for metadata in (root / ".lock", root / "custody.yml", data / ".lock", data / "store.yml"):
+                info = metadata.lstat()
+                ops.require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "EXPORT_METADATA_NOT_REGULAR")
+            for entry in data.iterdir():
+                if entry.name in (".lock", "store.yml"):
+                    continue
+                try:
+                    mode = entry.lstat().st_mode
+                except FileNotFoundError:
+                    # The owned worker may finish normal removal during this
+                    # sample. No data is removed by the acceptance harness.
+                    continue
+                ops.require(stat.S_ISREG(mode) or stat.S_ISDIR(mode), "EXPORT_ENTRY_TYPE_INVALID")
+                # Count export directories, active-reader custody, partial
+                # publication markers and unexpected files until they vanish.
+                remaining += 1
         return remaining
 
     def cleanup(self):
