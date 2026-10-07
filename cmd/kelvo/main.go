@@ -93,6 +93,7 @@ func run(args []string) error {
 	f.Int64Var(&limits.MaxRows, "max-rows", limits.MaxRows, "Maximum returned rows")
 	f.Int64Var(&limits.MaxBytes, "max-bytes", limits.MaxBytes, "Maximum result bytes")
 	f.StringVar(&limits.ResultCompression, "result-compression", limits.ResultCompression, "Arrow result compression: none or lz4_frame (default none)")
+	f.Int64Var(&limits.RowBatchTargetBytes, "row-batch-target-bytes", limits.RowBatchTargetBytes, "Row-backed Arrow batch target in estimated decoded bytes (0 keeps 1024 rows; no timed flush)")
 	f.DurationVar(&limits.Timeout, "timeout", limits.Timeout, "Per-query deadline")
 	f.IntVar(&limits.MemoryMB, "memory-mb", limits.MemoryMB, "Engine/client memory budget (source-specific; not process RSS)")
 	f.IntVar(&limits.Threads, "threads", limits.Threads, "Threads per DuckDB or ClickHouse query")
