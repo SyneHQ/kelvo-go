@@ -325,11 +325,1215 @@
       },
       "remaining_job_groups": 0,
       "remaining_ownership_records": 0
+    },
+    {
+      "passed": true,
+      "validation_role": "published_checkpoint_before_example_review_fixes",
+      "source_digest": "240bee52852b0ca7a55770ff4084b6e79af5e322db970c6d6c26b3e9a0666f7c",
+      "report_sha256": "e9dcae6cf5a166d7920eba181906b81f065d7f8743af9786cf1a20e826c53c31",
+      "application_report_sha256": "78fc92c6a0fc1d49e47d04100487f2b7c86c35b530d1b3ba1e86f37d780cfdfe",
+      "collection_proof_sha256": "ae981a99edcd4c61be48942d0f98f45ff289e0a182eebd7699cdecb1bae79b5c",
+      "published_module": {
+        "Path": "github.com/SYNEHQ/kelvo-go",
+        "Version": "v0.1.0-preview.1.0.20261007061320-2244e8e98e76",
+        "Sum": "h1:2GCjhi1nUtfHdvcyQr6KHLz9MJ5X701mJBJnud7qRCs=",
+        "GoModSum": "h1:EPWEQZ4aphRA4npGYe8AgbPqjTKlDHw1tDfoH+/zcmU="
+      },
+      "source_unchanged": true,
+      "application_artifacts_unchanged": true,
+      "cgroup_removed": true,
+      "secrets_removed": true,
+      "forced_kill": false,
+      "binaries": {
+        "binary": "7f7059bbad364675b750ac8c37b4bfd0adb5742bca6fadee6deed29c9eedc7bf",
+        "adapter": "2979139831ef99ce8b07ce69a4c8c7c020a48de17846dbc3956d7b94eaba6a1a",
+        "launcher": "e8591dbfcee7e197a38f687f496e6a61957e0418c8ec839c65b4dbe3bf8ad547",
+        "nats": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341"
+      },
+      "application_binaries": {
+        "authority": {
+          "sha256": "0baa86a7fe256ef75c12ee157453179fe8cbba74696b341583c43ad755a74e1c",
+          "bytes": 14541887
+        },
+        "exercise": {
+          "sha256": "f0407df5d0be52e9eaaeb4ce1d1e465329419422d60a5be2128172dcb06bef66",
+          "bytes": 15126508
+        }
+      },
+      "source_binding": {
+        "source_unchanged": true,
+        "mode": "published",
+        "sdk_manifest_sha256": "1ab38617014c52e2eec7a7af9c58a62c077c4ad3d544b516c4f20f57b12b5c79",
+        "application_manifest_sha256": "3f99398322816143566f8846293751806612b5eeaf64110bde28053e296df580",
+        "public_files": 63
+      },
+      "scenario_count": 8,
+      "scenarios": {
+        "team-a": {
+          "checks": [
+            "mutation_committed",
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified",
+            "cancellation_confirmed"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 0,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 0,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 0,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 2,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 4,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 3,
+            "credential_lookup_failed": 0
+          },
+          "outcome": {
+            "operation_rows": 1,
+            "query_rows": 1,
+            "server_rows": 1,
+            "mutation_effect": "committed",
+            "cancellation_state": "cancelled"
+          },
+          "report_sha256": "fb98a57295d06bfd494a95f7a4adda807c7795f06fd1ce982cb3ee72a806bdee"
+        },
+        "team-b": {
+          "checks": [
+            "mutation_committed",
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified",
+            "cancellation_confirmed"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 2,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 4,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 3,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          },
+          "outcome": {
+            "operation_rows": 1,
+            "query_rows": 1,
+            "server_rows": 1,
+            "mutation_effect": "committed",
+            "cancellation_state": "cancelled"
+          },
+          "report_sha256": "5e9e07d3ffa0067de645687b4745b091af8b035a812a550e33b780710862ffe0"
+        },
+        "revoked-membership": {
+          "checks": [
+            "query_status_observed",
+            "query_denied"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          },
+          "outcome": {
+            "query_state": "failed",
+            "query_error_code": "PERMISSION_DENIED",
+            "rows": 0,
+            "wire_bytes": 0,
+            "server_rows": 0,
+            "server_wire_bytes": 0
+          },
+          "report_sha256": "b47e1aa4f9e6d5c1c359648cc7f0fcace021219f201bd462eeef92ba7d4ab5fc"
+        },
+        "membership-restored": {
+          "checks": [
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 6,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 8,
+            "credential_lookup_failed": 0
+          },
+          "outcome": {
+            "operation_rows": 1,
+            "query_rows": 1,
+            "server_rows": 1
+          },
+          "report_sha256": "4fcca34c79787b1d3a1c1748f3263c6ddc01528b058bc20d23a5a3b4e8ba6127"
+        },
+        "fresh-credentials-required": {
+          "checks": [
+            "query_status_observed",
+            "query_denied"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 6,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 8,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 7,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 9,
+            "credential_lookup_failed": 1
+          },
+          "outcome": {
+            "query_state": "failed",
+            "query_error_code": "PERMISSION_DENIED",
+            "rows": 0,
+            "wire_bytes": 0,
+            "server_rows": 0,
+            "server_wire_bytes": 0
+          },
+          "report_sha256": "7cd0ae0cfdcc5698047109e19633f2e481d789fdb8dad84e64e9f8bd7d57a4de"
+        },
+        "credentials-restored": {
+          "checks": [
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 7,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 9,
+            "credential_lookup_failed": 1
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          },
+          "outcome": {
+            "operation_rows": 1,
+            "query_rows": 1,
+            "server_rows": 1
+          },
+          "report_sha256": "b9d7cf29014f863d2f753fdc1a4ad14940ca98b7a27bbdc0d9e644f0dbf7a2a9"
+        },
+        "cross-team-forged-caller": {
+          "checks": [
+            "query_status_observed",
+            "query_denied"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 2,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          },
+          "outcome": {
+            "query_state": "failed",
+            "query_error_code": "PERMISSION_DENIED",
+            "rows": 0,
+            "wire_bytes": 0,
+            "server_rows": 0,
+            "server_wire_bytes": 0
+          },
+          "report_sha256": "44a35461d21705515be565a6eb615113b3f6e18831e7c42d5e36183d85e40fd7"
+        },
+        "cross-team-restored": {
+          "checks": [
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 2,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 11,
+            "query_policy_denied": 2,
+            "query_authorization_failed": 0,
+            "operation_authorized": 14,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 13,
+            "credential_lookup_failed": 1
+          },
+          "outcome": {
+            "operation_rows": 1,
+            "query_rows": 1,
+            "server_rows": 1
+          },
+          "report_sha256": "5d1bd2ff70a9b340262a56567e03c1cc0ed3c8e9b895582acff51ceeb788d4cf"
+        }
+      },
+      "skips": [],
+      "failures": [],
+      "source_ca_profile": {
+        "sha256": "08810267e2bc0a60b844f77892d9e865ffe942541063b0c543cc3f319d2b22a0",
+        "is_ca": true,
+        "certificate_signing": true,
+        "crl_signing": true,
+        "critical_basic_constraints": true,
+        "critical_key_usage": true,
+        "currently_valid": true,
+        "accepted": true
+      },
+      "cleanup": {
+        "broker_reaped": true,
+        "postgres": true,
+        "mysql": true,
+        "network": true,
+        "owned_scope_verified": true,
+        "owned_processes_reaped": true,
+        "owned_child_groups_removed": true,
+        "ownership_inventory_verified": true,
+        "authority_reaped": true
+      },
+      "remaining_job_groups": 0,
+      "remaining_ownership_records": 0
+    },
+    {
+      "passed": true,
+      "validation_role": "final_published_application_acceptance",
+      "source_digest": "95cbf403965cf85f70a559b191d1a5cd4403c86013e0962e5869136fa41e857d",
+      "report_sha256": "a69138b9dfe9fac3c3ea1404f18433e8132ee6fceb59b291ff547492fcb0086f",
+      "application_report_sha256": "9bc091389a9c65c542d5b437afb2f64e95bee31755f9187db545ca28d936f32f",
+      "collection_proof_sha256": "b746b96940c821a5feb53a8f6f0bf9f8a3400241b950fe192daef73e91a1359d",
+      "published_module": {
+        "Path": "github.com/SYNEHQ/kelvo-go",
+        "Version": "v0.1.0-preview.1.0.20261007061320-2244e8e98e76",
+        "Sum": "h1:2GCjhi1nUtfHdvcyQr6KHLz9MJ5X701mJBJnud7qRCs=",
+        "GoModSum": "h1:EPWEQZ4aphRA4npGYe8AgbPqjTKlDHw1tDfoH+/zcmU="
+      },
+      "source_unchanged": true,
+      "application_artifacts_unchanged": true,
+      "cgroup_removed": true,
+      "secrets_removed": true,
+      "forced_kill": false,
+      "binaries": {
+        "binary": "a78076448ed9e0f22ceb7fe5fdd706ddbe05abed70ffbf2bfaa40c10f3dc5949",
+        "adapter": "2979139831ef99ce8b07ce69a4c8c7c020a48de17846dbc3956d7b94eaba6a1a",
+        "launcher": "e8591dbfcee7e197a38f687f496e6a61957e0418c8ec839c65b4dbe3bf8ad547",
+        "nats": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341"
+      },
+      "application_binaries": {
+        "authority": {
+          "sha256": "5b35230907f785b973c110ae7aa6252d4921cf7b63ec020bda5d5682e7545268",
+          "bytes": 14541887
+        },
+        "exercise": {
+          "sha256": "5886beb9fbfce962566ec42242b3bd37f7fe88fb3a393ba303d6534e07c5bfc1",
+          "bytes": 15129169
+        }
+      },
+      "source_binding": {
+        "source_unchanged": true,
+        "mode": "published",
+        "sdk_manifest_sha256": "1ab38617014c52e2eec7a7af9c58a62c077c4ad3d544b516c4f20f57b12b5c79",
+        "application_manifest_sha256": "2dc0bcbfe9bf4b3a9f3e19b1ba9f3e794f8b85c98f555d39edbf91801c9118b1",
+        "public_files": 63
+      },
+      "scenario_count": 8,
+      "scenarios": {
+        "team-a": {
+          "checks": [
+            "mutation_committed",
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified",
+            "cancellation_confirmed"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 0,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 0,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 0,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 2,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 4,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 3,
+            "credential_lookup_failed": 0
+          },
+          "outcome": {
+            "operation_rows": 1,
+            "query_rows": 1,
+            "server_rows": 1,
+            "mutation_effect": "committed",
+            "cancellation_state": "cancelled"
+          },
+          "report_sha256": "8c550397c8676833dd4a98c430b1755147fcc0e3ffe974f532b71376e47ca2f0"
+        },
+        "team-b": {
+          "checks": [
+            "mutation_committed",
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified",
+            "cancellation_confirmed"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 2,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 4,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 3,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          },
+          "outcome": {
+            "operation_rows": 1,
+            "query_rows": 1,
+            "server_rows": 1,
+            "mutation_effect": "committed",
+            "cancellation_state": "cancelled"
+          },
+          "report_sha256": "90bce6861f13f92d378bc359f9c2cc0928541ff9368644d04809ff322c106c12"
+        },
+        "revoked-membership": {
+          "checks": [
+            "query_status_observed",
+            "query_denied"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          },
+          "outcome": {
+            "query_state": "failed",
+            "query_error_code": "PERMISSION_DENIED",
+            "rows": 0,
+            "wire_bytes": 0,
+            "server_rows": 0,
+            "server_wire_bytes": 0
+          },
+          "report_sha256": "5f4ae2329f5857b365f8a085d934303b8f087d8bddd1b28662ba990d00982e91"
+        },
+        "membership-restored": {
+          "checks": [
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 6,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 8,
+            "credential_lookup_failed": 0
+          },
+          "outcome": {
+            "operation_rows": 1,
+            "query_rows": 1,
+            "server_rows": 1
+          },
+          "report_sha256": "48b88fa2eab6a76823c9f42729610596ada6a88041bb67369fdab8d5f067dfd7"
+        },
+        "fresh-credentials-required": {
+          "checks": [
+            "query_status_observed",
+            "query_denied"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 6,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 8,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 7,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 9,
+            "credential_lookup_failed": 1
+          },
+          "outcome": {
+            "query_state": "failed",
+            "query_error_code": "PERMISSION_DENIED",
+            "rows": 0,
+            "wire_bytes": 0,
+            "server_rows": 0,
+            "server_wire_bytes": 0
+          },
+          "report_sha256": "2e866d55e4856ff55a056cfad88fc461d042e0abe7596aff6c4f5a9169e2c6cb"
+        },
+        "credentials-restored": {
+          "checks": [
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 7,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 9,
+            "credential_lookup_failed": 1
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          },
+          "outcome": {
+            "operation_rows": 1,
+            "query_rows": 1,
+            "server_rows": 1
+          },
+          "report_sha256": "8fcf33d8c966216c702177449d3a3e14508d70bb7f9220636a22345502da2e6d"
+        },
+        "cross-team-forged-caller": {
+          "checks": [
+            "query_status_observed",
+            "query_denied"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 2,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          },
+          "outcome": {
+            "query_state": "failed",
+            "query_error_code": "PERMISSION_DENIED",
+            "rows": 0,
+            "wire_bytes": 0,
+            "server_rows": 0,
+            "server_wire_bytes": 0
+          },
+          "report_sha256": "2c3b7cf420b60ef776e670103526dc2dda839553586e6378a38a3daac8b5528d"
+        },
+        "cross-team-restored": {
+          "checks": [
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 2,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 11,
+            "query_policy_denied": 2,
+            "query_authorization_failed": 0,
+            "operation_authorized": 14,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 13,
+            "credential_lookup_failed": 1
+          },
+          "outcome": {
+            "operation_rows": 1,
+            "query_rows": 1,
+            "server_rows": 1
+          },
+          "report_sha256": "fee4a0a240f8a4fab1eb8b032f5ed0fb8c49998defa49733fbf1e6ed99dfc236"
+        }
+      },
+      "skips": [],
+      "failures": [],
+      "source_ca_profile": {
+        "sha256": "efd096e1aa7187150738d497616bc93abb9e85fe1e7406f580eef3a53d7f3f9f",
+        "is_ca": true,
+        "certificate_signing": true,
+        "crl_signing": true,
+        "critical_basic_constraints": true,
+        "critical_key_usage": true,
+        "currently_valid": true,
+        "accepted": true
+      },
+      "cleanup": {
+        "broker_reaped": true,
+        "postgres": true,
+        "mysql": true,
+        "network": true,
+        "owned_scope_verified": true,
+        "owned_processes_reaped": true,
+        "owned_child_groups_removed": true,
+        "ownership_inventory_verified": true,
+        "authority_reaped": true
+      },
+      "remaining_job_groups": 0,
+      "remaining_ownership_records": 0
     }
   ],
   "unverified": [
     "live cloud-provider accounts",
     "deployment-specific capacity and recovery objectives",
     "production rollout"
-  ]
+  ],
+  "published_module_download": {
+    "passed": true,
+    "module": {
+      "Path": "github.com/SYNEHQ/kelvo-go",
+      "Version": "v0.1.0-preview.1.0.20261007061320-2244e8e98e76",
+      "Sum": "h1:2GCjhi1nUtfHdvcyQr6KHLz9MJ5X701mJBJnud7qRCs=",
+      "GoModSum": "h1:EPWEQZ4aphRA4npGYe8AgbPqjTKlDHw1tDfoH+/zcmU="
+    },
+    "commit": "2244e8e98e7694dd48a0eb0a239906d7f77ab4dc",
+    "git_tree": "949443753aa0dd810a47062313f51e21100e05ae",
+    "go_version": "go version go1.26.8 linux/amd64",
+    "network": {
+      "GOPROXY": "https://proxy.golang.org",
+      "GOSUMDB": "sum.golang.org",
+      "private_bypass_disabled": true,
+      "vcs_downloads_disabled": true
+    },
+    "source_equivalence": {
+      "all_downloaded_files_match_git": true,
+      "all_nonexcluded_git_files_present": true,
+      "extracted_files_match_zip": true,
+      "downloaded_files": 1447,
+      "expected_git_entries": 1639,
+      "required_source_files": 869,
+      "required_sources_missing": [],
+      "unexpected_omissions": [],
+      "downloaded_manifest_sha256": "a48835532cfee3e2e965519123df860b8c6addd7d7d6cbd4f44b914c94ea4872"
+    },
+    "process_cleanup": {
+      "all_parents_reaped": true,
+      "all_process_groups_gone": true
+    },
+    "cgroup_removed": true,
+    "evidence_sha256": {
+      "result/finished.json": "d88740a30edbfdda90e7d2267b0b7452d43f84fb6066f810cbeaddead3bc7fe7",
+      "result/download.log": "7957176dfff2736475fc6803c928faf82d06921ee9075b1af7b5c2278e3ff698",
+      "result/source-equivalence.json": "ed3cdf384870fd315558a59e27d921a8a3ae396d4ba79cbbce77f9adef60776b",
+      "unit-after-stop.json": "93df7676ee6912be4f9fafddb79580baf1f1b731f77a8a46e70e8fb28a9c9efd",
+      "bundle-verification.json": "fb391fa9cf66c55de9969d9e9c0ac59f6e4d9246b34c73328c8f53786774d9c3"
+    }
+  },
+  "published_application_checkpoints": [
+    {
+      "passed": true,
+      "source_digest": "240bee52852b0ca7a55770ff4084b6e79af5e322db970c6d6c26b3e9a0666f7c",
+      "module": {
+        "Path": "github.com/SYNEHQ/kelvo-go",
+        "Version": "v0.1.0-preview.1.0.20261007061320-2244e8e98e76",
+        "Sum": "h1:2GCjhi1nUtfHdvcyQr6KHLz9MJ5X701mJBJnud7qRCs=",
+        "GoModSum": "h1:EPWEQZ4aphRA4npGYe8AgbPqjTKlDHw1tDfoH+/zcmU="
+      },
+      "stages": [
+        {
+          "name": "pin",
+          "exit": 0,
+          "passed": true,
+          "timed_out": false,
+          "cleanup": {
+            "parent_reaped": true,
+            "process_group_gone": true,
+            "descendants_after_exit": false,
+            "term_sent": false,
+            "kill_sent": false
+          }
+        },
+        {
+          "name": "module-before",
+          "exit": 0,
+          "passed": true,
+          "timed_out": false,
+          "cleanup": {
+            "parent_reaped": true,
+            "process_group_gone": true,
+            "descendants_after_exit": false,
+            "term_sent": false,
+            "kill_sent": false
+          }
+        },
+        {
+          "name": "tidy",
+          "exit": 0,
+          "passed": true,
+          "timed_out": false,
+          "cleanup": {
+            "parent_reaped": true,
+            "process_group_gone": true,
+            "descendants_after_exit": false,
+            "term_sent": false,
+            "kill_sent": false
+          }
+        },
+        {
+          "name": "resolved-module",
+          "exit": 0,
+          "passed": true,
+          "timed_out": false,
+          "cleanup": {
+            "parent_reaped": true,
+            "process_group_gone": true,
+            "descendants_after_exit": false,
+            "term_sent": false,
+            "kill_sent": false
+          }
+        },
+        {
+          "name": "dependencies",
+          "exit": 0,
+          "passed": true,
+          "timed_out": false,
+          "cleanup": {
+            "parent_reaped": true,
+            "process_group_gone": true,
+            "descendants_after_exit": false,
+            "term_sent": false,
+            "kill_sent": false
+          }
+        },
+        {
+          "name": "test",
+          "exit": 0,
+          "passed": true,
+          "timed_out": false,
+          "cleanup": {
+            "parent_reaped": true,
+            "process_group_gone": true,
+            "descendants_after_exit": false,
+            "term_sent": false,
+            "kill_sent": false
+          }
+        },
+        {
+          "name": "race",
+          "exit": 0,
+          "passed": true,
+          "timed_out": false,
+          "cleanup": {
+            "parent_reaped": true,
+            "process_group_gone": true,
+            "descendants_after_exit": false,
+            "term_sent": false,
+            "kill_sent": false
+          }
+        },
+        {
+          "name": "vet",
+          "exit": 0,
+          "passed": true,
+          "timed_out": false,
+          "cleanup": {
+            "parent_reaped": true,
+            "process_group_gone": true,
+            "descendants_after_exit": false,
+            "term_sent": false,
+            "kill_sent": false
+          }
+        },
+        {
+          "name": "build-authority",
+          "exit": 0,
+          "passed": true,
+          "timed_out": false,
+          "cleanup": {
+            "parent_reaped": true,
+            "process_group_gone": true,
+            "descendants_after_exit": false,
+            "term_sent": false,
+            "kill_sent": false
+          }
+        },
+        {
+          "name": "build-exercise",
+          "exit": 0,
+          "passed": true,
+          "timed_out": false,
+          "cleanup": {
+            "parent_reaped": true,
+            "process_group_gone": true,
+            "descendants_after_exit": false,
+            "term_sent": false,
+            "kill_sent": false
+          }
+        }
+      ],
+      "forbidden_imports": [],
+      "cgo_packages": [],
+      "public_packages": [
+        "github.com/SYNEHQ/kelvo-go/client",
+        "github.com/SYNEHQ/kelvo-go/delegation",
+        "github.com/SYNEHQ/kelvo-go/federation",
+        "github.com/SYNEHQ/kelvo-go/filesnapshot",
+        "github.com/SYNEHQ/kelvo-go/operations",
+        "github.com/SYNEHQ/kelvo-go/query",
+        "github.com/SYNEHQ/kelvo-go/resolver"
+      ],
+      "source_binding": {
+        "source_unchanged": true,
+        "mode": "published",
+        "sdk_manifest_sha256": "1ab38617014c52e2eec7a7af9c58a62c077c4ad3d544b516c4f20f57b12b5c79",
+        "application_manifest_sha256": "3f99398322816143566f8846293751806612b5eeaf64110bde28053e296df580",
+        "public_files": 63
+      },
+      "template_module_unchanged_by_tidy": true,
+      "template_copy": {
+        "template_sha256": "3f99398322816143566f8846293751806612b5eeaf64110bde28053e296df580",
+        "copied_sha256": "3f99398322816143566f8846293751806612b5eeaf64110bde28053e296df580",
+        "matches": true
+      },
+      "source_manifests": {
+        "checkout": {
+          "files": 1665,
+          "manifest_sha256": "f9b5abcb1947fed0e2243da028dbea3b85121620f124b760f49a21427fb1d890",
+          "unchanged_after_execution": true,
+          "after_manifest_sha256": "f9b5abcb1947fed0e2243da028dbea3b85121620f124b760f49a21427fb1d890"
+        },
+        "sdk": {
+          "files": 1447,
+          "manifest_sha256": "1ab38617014c52e2eec7a7af9c58a62c077c4ad3d544b516c4f20f57b12b5c79",
+          "unchanged_after_execution": true,
+          "after_manifest_sha256": "1ab38617014c52e2eec7a7af9c58a62c077c4ad3d544b516c4f20f57b12b5c79"
+        },
+        "application": {
+          "files": 19,
+          "manifest_sha256": "3f99398322816143566f8846293751806612b5eeaf64110bde28053e296df580",
+          "unchanged_after_execution": true,
+          "after_manifest_sha256": "3f99398322816143566f8846293751806612b5eeaf64110bde28053e296df580"
+        }
+      },
+      "binaries": {
+        "authority": {
+          "sha256": "0baa86a7fe256ef75c12ee157453179fe8cbba74696b341583c43ad755a74e1c",
+          "bytes": 14541887
+        },
+        "exercise": {
+          "sha256": "f0407df5d0be52e9eaaeb4ce1d1e465329419422d60a5be2128172dcb06bef66",
+          "bytes": 15126508
+        }
+      },
+      "process_cleanup": {
+        "all_parents_reaped": true,
+        "all_process_groups_gone": true
+      },
+      "source_unchanged": true,
+      "cgroup_removed": true,
+      "evidence_sha256": {
+        "output/standalone/report.json": "b54eac334589aae49ecda40ac894c87e27bf789581fcee232db0f09e6e0055a6",
+        "output/published-verification.json": "142dee4a460f5485dbcc18ba2c6869d9c883c84dbc9827d47612bd4124bd3f4e",
+        "finished.json": "0a1d288ac88655b75e37cd01a61f86439965849131c10f87380ce9eb390933df",
+        "receipt.json": "b6a3852dcb6b014a7fd7816b4e54cbb2093099c1e7ef4847453d768d0d6cb8ad"
+      }
+    }
+  ],
+  "published_application_validation": {
+    "passed": true,
+    "source_digest": "95cbf403965cf85f70a559b191d1a5cd4403c86013e0962e5869136fa41e857d",
+    "module": {
+      "Path": "github.com/SYNEHQ/kelvo-go",
+      "Version": "v0.1.0-preview.1.0.20261007061320-2244e8e98e76",
+      "Sum": "h1:2GCjhi1nUtfHdvcyQr6KHLz9MJ5X701mJBJnud7qRCs=",
+      "GoModSum": "h1:EPWEQZ4aphRA4npGYe8AgbPqjTKlDHw1tDfoH+/zcmU="
+    },
+    "stages": [
+      {
+        "name": "pin",
+        "exit": 0,
+        "passed": true,
+        "timed_out": false,
+        "cleanup": {
+          "parent_reaped": true,
+          "process_group_gone": true,
+          "descendants_after_exit": false,
+          "term_sent": false,
+          "kill_sent": false
+        }
+      },
+      {
+        "name": "module-before",
+        "exit": 0,
+        "passed": true,
+        "timed_out": false,
+        "cleanup": {
+          "parent_reaped": true,
+          "process_group_gone": true,
+          "descendants_after_exit": false,
+          "term_sent": false,
+          "kill_sent": false
+        }
+      },
+      {
+        "name": "tidy",
+        "exit": 0,
+        "passed": true,
+        "timed_out": false,
+        "cleanup": {
+          "parent_reaped": true,
+          "process_group_gone": true,
+          "descendants_after_exit": false,
+          "term_sent": false,
+          "kill_sent": false
+        }
+      },
+      {
+        "name": "resolved-module",
+        "exit": 0,
+        "passed": true,
+        "timed_out": false,
+        "cleanup": {
+          "parent_reaped": true,
+          "process_group_gone": true,
+          "descendants_after_exit": false,
+          "term_sent": false,
+          "kill_sent": false
+        }
+      },
+      {
+        "name": "dependencies",
+        "exit": 0,
+        "passed": true,
+        "timed_out": false,
+        "cleanup": {
+          "parent_reaped": true,
+          "process_group_gone": true,
+          "descendants_after_exit": false,
+          "term_sent": false,
+          "kill_sent": false
+        }
+      },
+      {
+        "name": "test",
+        "exit": 0,
+        "passed": true,
+        "timed_out": false,
+        "cleanup": {
+          "parent_reaped": true,
+          "process_group_gone": true,
+          "descendants_after_exit": false,
+          "term_sent": false,
+          "kill_sent": false
+        }
+      },
+      {
+        "name": "race",
+        "exit": 0,
+        "passed": true,
+        "timed_out": false,
+        "cleanup": {
+          "parent_reaped": true,
+          "process_group_gone": true,
+          "descendants_after_exit": false,
+          "term_sent": false,
+          "kill_sent": false
+        }
+      },
+      {
+        "name": "vet",
+        "exit": 0,
+        "passed": true,
+        "timed_out": false,
+        "cleanup": {
+          "parent_reaped": true,
+          "process_group_gone": true,
+          "descendants_after_exit": false,
+          "term_sent": false,
+          "kill_sent": false
+        }
+      },
+      {
+        "name": "build-authority",
+        "exit": 0,
+        "passed": true,
+        "timed_out": false,
+        "cleanup": {
+          "parent_reaped": true,
+          "process_group_gone": true,
+          "descendants_after_exit": false,
+          "term_sent": false,
+          "kill_sent": false
+        }
+      },
+      {
+        "name": "build-exercise",
+        "exit": 0,
+        "passed": true,
+        "timed_out": false,
+        "cleanup": {
+          "parent_reaped": true,
+          "process_group_gone": true,
+          "descendants_after_exit": false,
+          "term_sent": false,
+          "kill_sent": false
+        }
+      }
+    ],
+    "forbidden_imports": [],
+    "cgo_packages": [],
+    "public_packages": [
+      "github.com/SYNEHQ/kelvo-go/client",
+      "github.com/SYNEHQ/kelvo-go/delegation",
+      "github.com/SYNEHQ/kelvo-go/federation",
+      "github.com/SYNEHQ/kelvo-go/filesnapshot",
+      "github.com/SYNEHQ/kelvo-go/operations",
+      "github.com/SYNEHQ/kelvo-go/query",
+      "github.com/SYNEHQ/kelvo-go/resolver"
+    ],
+    "source_binding": {
+      "source_unchanged": true,
+      "mode": "published",
+      "sdk_manifest_sha256": "1ab38617014c52e2eec7a7af9c58a62c077c4ad3d544b516c4f20f57b12b5c79",
+      "application_manifest_sha256": "2dc0bcbfe9bf4b3a9f3e19b1ba9f3e794f8b85c98f555d39edbf91801c9118b1",
+      "public_files": 63
+    },
+    "template_module_unchanged_by_tidy": true,
+    "template_copy": {
+      "template_sha256": "2dc0bcbfe9bf4b3a9f3e19b1ba9f3e794f8b85c98f555d39edbf91801c9118b1",
+      "copied_sha256": "2dc0bcbfe9bf4b3a9f3e19b1ba9f3e794f8b85c98f555d39edbf91801c9118b1",
+      "matches": true
+    },
+    "source_manifests": {
+      "checkout": {
+        "files": 1665,
+        "manifest_sha256": "8eb3ee30b74582d51b93ec53c5050abdfb10d3225a7a336f549cfbb082c0d395",
+        "unchanged_after_execution": true,
+        "after_manifest_sha256": "8eb3ee30b74582d51b93ec53c5050abdfb10d3225a7a336f549cfbb082c0d395"
+      },
+      "sdk": {
+        "files": 1447,
+        "manifest_sha256": "1ab38617014c52e2eec7a7af9c58a62c077c4ad3d544b516c4f20f57b12b5c79",
+        "unchanged_after_execution": true,
+        "after_manifest_sha256": "1ab38617014c52e2eec7a7af9c58a62c077c4ad3d544b516c4f20f57b12b5c79"
+      },
+      "application": {
+        "files": 19,
+        "manifest_sha256": "2dc0bcbfe9bf4b3a9f3e19b1ba9f3e794f8b85c98f555d39edbf91801c9118b1",
+        "unchanged_after_execution": true,
+        "after_manifest_sha256": "2dc0bcbfe9bf4b3a9f3e19b1ba9f3e794f8b85c98f555d39edbf91801c9118b1"
+      }
+    },
+    "binaries": {
+      "authority": {
+        "sha256": "5b35230907f785b973c110ae7aa6252d4921cf7b63ec020bda5d5682e7545268",
+        "bytes": 14541887
+      },
+      "exercise": {
+        "sha256": "5886beb9fbfce962566ec42242b3bd37f7fe88fb3a393ba303d6534e07c5bfc1",
+        "bytes": 15129169
+      }
+    },
+    "process_cleanup": {
+      "all_parents_reaped": true,
+      "all_process_groups_gone": true
+    },
+    "source_unchanged": true,
+    "cgroup_removed": true,
+    "evidence_sha256": {
+      "output/standalone/report.json": "1295ffc374f45b134c4fc588b6aafb862d29bb9b9a829f07d2c719a08fce09b8",
+      "output/published-verification.json": "69b70e702160e21b398296787eb3e3dcccb8cc1667bc03ed7ab6a4171bc7c93c",
+      "finished.json": "b7f6be2f7919230033d6b53706c115c9c8058d6f54b030ed7d7388aff9de40d4",
+      "receipt.json": "9be17d8b5f084df37809467103bb70bd881199332b827b4a2212a7de528d631a"
+    },
+    "sdk_runner_controls": {
+      "passed": true,
+      "count": 17,
+      "report_sha256": "317216c7b8a851844c6d1396f84482f282f6716d19b29f7f7d722375e7c149cd"
+    },
+    "mutation_regressions": [
+      "TestUncertainMutationRecoveryNeverResubmits",
+      "TestMutationRecoveryPreservesDeadlineBeforeSubmission",
+      "TestMutationRecoveryPreservesCancelledPollAndNeverResubmits",
+      "TestMutationRecoveryErrorSuppressesCauseText"
+    ],
+    "review_fix_source_sha256": {
+      "examples/application/internal/application/exercise.go": "5df2c9719f78a0c116314026966cb7131395c3fbd76fc983e6cd083588c55b58",
+      "examples/application/internal/application/journal_test.go": "e854f96e0e221b69cd0dc8d37fdb2a172491688a154907873cea21320fda4932",
+      "scripts/public_sdk_acceptance.py": "53ef5b50a4d0cfcd05c72411478249924e6e1c5e362e33757a6245d3f11e3366",
+      "scripts/test_public_sdk_acceptance.py": "f800513f66338b57f7849165734d6b0db293d6da69863428933606907717d427"
+    }
+  }
 }
