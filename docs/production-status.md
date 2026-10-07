@@ -7,7 +7,8 @@ Status reviewed 7 October 2026. This is a capability checklist, not production c
 | Available | Still needed |
 | --- | --- |
 | Shared query/export/refresh budgets, interactive reserves and source quotas | Sustained mixed-workload capacity gates |
-| [Pinned two-hour campaign (#7)](sustained-acceptance.md#recorded-two-hour-run) on `0544d5f`: all ten gates, exact source/binary checks and independent cleanup passed | Sustained acceptance for later releases; joins/exports, WAN, live providers and deployment capacity need separate evidence |
+| [Current `17503aa` smoke and two-hour campaign](sustained-acceptance.md#current-candidate-17503aa): all twelve gates, paced file joins and nine-row exports, exact source/binary checks and independent cleanup passed; matching-tree CI passed | Maximum throughput, wide-export capacity, WAN, live providers and deployment sizing remain open |
+| [Historical two-hour campaign (#7)](sustained-acceptance.md#recorded-two-hour-run) on `0544d5f`: all ten gates and independent cleanup passed | Applies to its recorded source and workload; current join/export evidence is recorded separately above |
 | [Pinned worker-capacity gate (#8)](node-capacity.md): five metrics on/off pairs and 130 exact workload queries on `b1a0ea5` | Revalidate after runtime changes; sustained and deployment-wide capacity remain separate |
 | Opt-in Linux process-tree memory, CPU and PID limits | Deployment-specific headroom, restart recovery and sustained fault/load validation |
 | Independent probes, dataset readiness, phased drain and [application](rolling-upgrades.md) and [broker/client](nats-compatibility.md) upgrade matrices | Deployment-specific rollout and multi-hour fault/load campaigns |
@@ -42,6 +43,7 @@ The [protected runtime](protected-object-readers.md), [verification and inventor
 | --- | --- |
 | Arrow delivery and optional LZ4 | Available; decoded limits remain unchanged |
 | [Public application SDK](application-sdk.md) | Canonical Go contracts, bounded HTTPS client and mTLS credential resolver; [published independent application and all eight live scenarios passed](evidence/public-application-sdk.json). Production rollout, live cloud-provider accounts and deployment capacity/recovery acceptance remain unverified |
+| External application integration | [One sequential PostgreSQL/MySQL scenario](evidence/application-qualification-17503aa.json) passed on `17503aa`, with an incoming HTTP test recorder, real Kelvo client/resolver network paths and fixture KMS. Actual KMS, Redis, application load and customer rollout remain unqualified |
 | Durable exports | Delivered: [opt-in federated jobs and repeat downloads](exports.md). [Merged-cargo gates](export-ci-diagnostics.md) passed on NATS 2.14.7 and 2.15.0; the earlier failure's cause remains unknown. Sustained capacity, live providers and deployment acceptance remain separate |
 | Result cache | Pending authorization/generation keys, bounded fills and revocation fencing |
 | Eight database adapters and Flight SQL federation | Available; live Oracle/warehouse gates remain open; Flight SQL compatibility is service-specific |

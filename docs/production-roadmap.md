@@ -20,7 +20,9 @@ Kelvo remains a developer preview. The board tracks owners, dependencies and acc
 | Opt-in federated exports and authorized repeat downloads | [Setup and API](exports.md) · [Storage contract](export-storage.md) · [Merged-cargo acceptance](export-ci-diagnostics.md) |
 | Repeatable release gates | [Process loss](process-loss-acceptance.md) · [Snapshot upgrades](release-upgrades.md) · [Rolling matrix](rolling-upgrades.md) · [Broker/client matrix](nats-compatibility.md) · [Storage](storage-conformance.md) |
 
-The [two-hour campaign](sustained-acceptance.md#recorded-two-hour-run) passed on pinned `0544d5f`; [merged-cargo functional acceptance](evidence/cargo-b1a0ea5-acceptance.json) passed on `b1a0ea5`. Later releases still need sustained validation, live-provider fixtures and deployment capacity checks. The [application](rolling-upgrades.md) and [broker/client](nats-compatibility.md) matrices cover their declared versions and policies. These results do not certify other deployment combinations.
+The [current `17503aa` smoke and two-hour campaign](sustained-acceptance.md#current-candidate-17503aa) passed all twelve gates for paced file joins, small exports and lifecycle recovery; matching-tree CI also passed. [External application integration](evidence/application-qualification-17503aa.json) separately passed one sequential PostgreSQL/MySQL test scenario with a private mTLS resolver and fixture KMS. These results do not establish application load, maximum throughput or customer rollout readiness.
+
+The historical [two-hour campaign](sustained-acceptance.md#recorded-two-hour-run) remains tied to `0544d5f`; [merged-cargo functional acceptance](evidence/cargo-b1a0ea5-acceptance.json) remains tied to `b1a0ea5`. Live-provider fixtures, WAN behavior and deployment capacity still need separate acceptance. The [application](rolling-upgrades.md) and [broker/client](nats-compatibility.md) matrices cover their declared versions and policies. These results do not certify other deployment combinations.
 
 ## Review scope
 
