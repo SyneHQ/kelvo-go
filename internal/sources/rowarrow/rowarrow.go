@@ -16,8 +16,13 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
-const batchRows = 1024
+const (
+	batchRows       = 1024
+	targetBatchRows = 65536
+)
 
+// Writer builds one batch at a time and borrows it synchronously to the sink.
+// Calls must be sequential; a slow sink backpressures the source's Write call.
 type Writer struct {
 	schema                 *arrow.Schema
 	limits                 query.Limits
@@ -25,10 +30,13 @@ type Writer struct {
 	b                      *array.RecordBuilder
 	rows, bytes, batches   int64
 	batchBytes, batchLimit int64
+	batchTarget            int64
+	batchRowLimit          int
 	inBatch                int
 	finished, closed       bool
 	result                 query.Stats
 	finishErr              error
+	writeErr               error
 }
 
 func NewWriter(schema *arrow.Schema, limits query.Limits, sink query.Sink) (*Writer, error) {
@@ -46,7 +54,12 @@ func NewWriter(schema *arrow.Schema, limits query.Limits, sink query.Sink) (*Wri
 	if err := sink.Schema(schema); err != nil {
 		return nil, err
 	}
-	return &Writer{schema: schema, limits: limits, sink: sink, b: array.NewRecordBuilder(memory.DefaultAllocator, schema), batchLimit: int64(limits.MemoryMB) << 18}, nil
+	w := &Writer{schema: schema, limits: limits, sink: sink, b: array.NewRecordBuilder(memory.DefaultAllocator, schema), batchLimit: int64(limits.MemoryMB) << 18, batchRowLimit: batchRows}
+	if limits.RowBatchTargetBytes > 0 {
+		w.batchTarget = min(limits.RowBatchTargetBytes, w.batchLimit, limits.MaxBytes)
+		w.batchRowLimit = targetBatchRows
+	}
+	return w, nil
 }
 
 func validType(t arrow.DataType) error {
@@ -69,6 +82,9 @@ func validType(t arrow.DataType) error {
 }
 
 func (w *Writer) Write(row []any) error {
+	if w.writeErr != nil {
+		return w.writeErr
+	}
 	if w.closed || w.finished {
 		return errors.New("row writer is closed")
 	}
@@ -100,7 +116,7 @@ func (w *Writer) Write(row []any) error {
 	if size > w.batchLimit {
 		return query.NewError("RESOURCE_EXHAUSTED", "Query row exceeds batch memory limit")
 	}
-	if w.inBatch > 0 && w.batchBytes+size > w.batchLimit {
+	if w.inBatch > 0 && (w.batchBytes+size > w.batchLimit || (w.batchTarget > 0 && w.batchBytes+size > w.targetBytes())) {
 		if err := w.flush(); err != nil {
 			return err
 		}
@@ -112,10 +128,16 @@ func (w *Writer) Write(row []any) error {
 	w.bytes += size
 	w.batchBytes += size
 	w.inBatch++
-	if w.inBatch == batchRows {
+	if w.inBatch == w.batchRowLimit || (w.batchTarget > 0 && w.batchBytes >= w.targetBytes()) {
 		return w.flush()
 	}
 	return nil
+}
+
+// targetBytes includes the pending batch in the remaining result budget. A row
+// may exceed this soft target, but never the unchanged batch memory limit.
+func (w *Writer) targetBytes() int64 {
+	return min(w.batchTarget, w.limits.MaxBytes-w.bytes+w.batchBytes)
 }
 
 func validateValue(field arrow.Field, value any) (int64, error) {
@@ -256,6 +278,9 @@ func (w *Writer) flush() error {
 	record := w.b.NewRecord()
 	defer record.Release()
 	if err := w.sink.Write(record); err != nil {
+		// NewRecord has consumed the builders. Never retry or hide a failed
+		// delivery by flushing the now-empty builders from Finish.
+		w.writeErr = err
 		return err
 	}
 	w.batches++
@@ -271,7 +296,10 @@ func (w *Writer) Finish() (query.Stats, error) {
 		return query.Stats{}, errors.New("row writer is closed")
 	}
 	w.finished = true
-	w.finishErr = w.flush()
+	w.finishErr = w.writeErr
+	if w.finishErr == nil {
+		w.finishErr = w.flush()
+	}
 	w.result = query.Stats{Rows: w.rows, Bytes: w.bytes, Batches: w.batches}
 	return w.result, w.finishErr
 }
