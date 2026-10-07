@@ -2,7 +2,7 @@
 
 Interactive queries, exports and refreshes share one process budget for slots, memory and scratch. Export and refresh together leave reserved capacity for interactive queries.
 
-Configure the runtime through [durable exports](exports.md). [Persistent storage](export-storage.md) accounts for retained results separately. This page covers the shared Go admission API.
+Configure the runtime through [durable exports](exports.md). [Persistent storage](export-storage.md) accounts for retained results separately. The Go snippets below describe Kelvo's internal runtime contract, not an importable public SDK.
 
 ## 1. Set the shared budget
 
@@ -58,7 +58,9 @@ Trusted execution code selects the class. Never accept it from SQL or an untrust
 | Explicit class with `Background: true` | Allowed only for `refresh` |
 | Unknown class or conflicting flags | `ErrInvalid` |
 
-Requests need positive memory and nonnegative scratch. Impossible requests return `ErrOversize`; `TryAcquire` returns `ErrBusy` when capacity is occupied. `Acquire` waits for capacity or cancellation. Bound upstream queues; this pool promises no queue limit or fairness.
+Requests need positive memory and nonnegative scratch. Impossible requests return `ErrOversize`. `Acquire` waits FIFO within its class; `TryAcquire` returns `ErrBusy` if capacity is occupied or that class has queued work. New small requests cannot overtake an older large request.
+
+Only class heads wake on capacity changes. A refresh waiting on protected capacity does not block interactive admission. Bound upstream queues; there is no internal queue limit, cross-class service guarantee or tenant fairness.
 
 ## 3. Keep reservations until cleanup
 
@@ -75,4 +77,4 @@ GOMAXPROCS=2 go test -race -count=10 -p 1 ./internal/admission
 GOMAXPROCS=2 go vet -p 1 ./internal/admission
 ```
 
-Tests cover shared/class limits, legacy callers, disabled exports, cancellation, drain, overflow and concurrent accounting. They do not establish end-to-end export availability or production capacity.
+Tests cover shared/class limits, FIFO order, legacy callers, disabled exports, cancellation, drain, overflow and concurrent accounting. They do not establish end-to-end export availability or production capacity.

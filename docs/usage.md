@@ -147,6 +147,8 @@ See `kelvo query -h` and `kelvo serve -h` for rows, bytes, duration, memory, thr
 - Limits fail the query; they never silently truncate it. A native driver can allocate a large value before checking output size.
 - `--memory-mb` sets DuckDB's managed budget, or ClickHouse's source budget and local Arrow decoder cap. Neither caps worker RSS. Apply host/container limits.
 
+For row-backed connectors, `--row-batch-target-bytes 1048576` opts into larger Arrow batches without raising resource limits. Zero retains 1,024-row batches. See [throughput tuning](throughput-tuning.md) for YAML settings, latency tradeoffs and measurements.
+
 ## Opt-in result compression
 
 Enable LZ4 for any public Arrow result path; default is `none`:

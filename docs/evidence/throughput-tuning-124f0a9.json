@@ -1,0 +1,865 @@
+{
+  "version": 1,
+  "date": "2026-10-07",
+  "scope": "In-memory row conversion, validated parent IPC and resource admission; not source database, network, TLS or full-query throughput.",
+  "source": {
+    "before": "9e1760e91f83cf44c7b045dc1f216d9fed423549",
+    "after": "124f0a957f1a6cd7f876987222ef3acbd369f142",
+    "tree": "4d91f3c6842a665a4231d0d03175309e71d819dc",
+    "archive_sha256": "89c97fff106972e9d1561c7a570bf93760d6614e12b492f9b9abaf3749632059"
+  },
+  "environment": {
+    "toolchain": "go version go1.26.8 linux/amd64",
+    "kernel": "6.12.95+deb12-cloud-amd64",
+    "cpu": "Intel Xeon Platinum 8573C",
+    "host_logical_cpus": 4,
+    "gomaxprocs": 2,
+    "cpu_quota_percent": 200,
+    "memory_max_bytes": 6442450944,
+    "private_network": true,
+    "exclusive_physical_host": false,
+    "test_services_stopped": true
+  },
+  "checks": {
+    "suite": "check",
+    "passed": true,
+    "steps": [
+      {
+        "name": "normal",
+        "exit_code": 0,
+        "seconds": 107.859,
+        "log_sha256": "236735fae4b99fbf3dcddb1044ffe431dd05397fc7b9dbe14df9aaec38bd52aa"
+      },
+      {
+        "name": "race",
+        "exit_code": 0,
+        "seconds": 121.173,
+        "log_sha256": "a636bd344a44dcff560a2e554e3c53eacd2ada7c5397ef85cb9a7d17d1d3ab78"
+      },
+      {
+        "name": "vet",
+        "exit_code": 0,
+        "seconds": 2.826,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "binary",
+        "exit_code": 0,
+        "seconds": 7.312,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "source_archive_sha256": "89c97fff106972e9d1561c7a570bf93760d6614e12b492f9b9abaf3749632059",
+    "limits": {
+      "cpu_quota": "200%",
+      "memory_max": "6G",
+      "gomaxprocs": 2
+    },
+    "scope": "isolated Linux package checks and in-process benchmarks; no database/network throughput claim",
+    "binary_sha256": "46017aa50153059b39cffc921e842bf771fa53d1e3f1f19a0fee225bcb62cecb"
+  },
+  "test_events": {
+    "normal": {
+      "package_passes": 33,
+      "test_pass_events": 2569,
+      "skip_events": [
+        "TestNATSRefreshStatusDurabilityResetAndBudget",
+        "TestNATSRefreshQueueProvisionDedupRetry",
+        "TestContainedWorkerSuccessAndCancellation",
+        "TestContainedWorkerRefreshCustody",
+        "TestContainedWorkerStartFailureCleansOwnership",
+        "TestContainedWorkerRealDuckDBCTE",
+        "TestCatalogBindingActualNodeAndExportExecution",
+        "TestCatalogBindingActualGuardedSnapshot",
+        "TestNATSWorkerOutageFencesOwnerAndRecoversOnlyWithNewOwner",
+        "TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-1",
+        "TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-2",
+        "TestObjectSnapshotWorkerActualChildRejectsRawAccessAndReplay",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/rows",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/schema",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/digest",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/version",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-rows",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-bytes",
+        "TestObjectSnapshotWorkerActualChildCancellationDrainsResources/source-range",
+        "TestObjectSnapshotWorkerActualChildCancellationDrainsResources/result-delivery",
+        "TestObjectSnapshotPreviousChildRefusesNewEnvelope",
+        "TestContainedOperationCleanupObserverAfterPhysicalDrain/fixture",
+        "TestContainedOperationCleanupObserverAfterPhysicalDrain/cancelled",
+        "TestContainedOperationCleanupObserverAfterPhysicalDrain/committed_exit_error",
+        "TestContainedOperationCleanupObserverAfterPhysicalDrain/ack-failure",
+        "TestJDBCContainedPinnedRuntime",
+        "TestContainedOperationProcessReceiptsAndIsolation",
+        "TestContainedOperationCancellationKillsDescendants",
+        "TestContainedOperationResolvesOnlyAfterAdmission",
+        "TestContainedOperationExecutesPinnedDescriptorAfterReplacement",
+        "TestContainedOperationRequiresEveryBoundary",
+        "TestContainedOperationFinalizesResultBeforeRelease",
+        "TestContainedOperationSourceSnapshotIsReadOnly",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_candidate",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_conflict",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_lost_reply",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_bad_hash",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_truncated",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_crash",
+        "TestNATSExportRuntimeACLAndAccountIsolation",
+        "TestExportWorkerConstructorBindsKernelContainment",
+        "TestContainedWorkerProtectedObjects",
+        "TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
+        "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+        "TestExportWorkerSourceQuotaRevocationReapsChild",
+        "TestExportWorkerCrashAcrossLocalCommit",
+        "TestExportClusterActualWorkerLifecycle",
+        "TestNATSExportRetainedLifecycleAndProvisioning",
+        "TestExportWorkerUsesSandboxAndExternalCustody",
+        "TestExportWorkerCancellationReapsSandboxAndReservations",
+        "TestGatewayAuthorityR3",
+        "TestSnapshotWorkerSandboxPoliciesCancellationAndPinnedGeneration",
+        "TestContainedNodeStartupPlacement",
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/single",
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/multipart",
+        "TestLiveDynamoDBTaggedTypesAndExactNumbers",
+        "TestLiveDynamoDBPagination",
+        "TestLiveDynamoDBEmptyFilteredPages",
+        "TestLiveDynamoDBRestrictionsAndLimits",
+        "TestLiveDynamoDBRequiresVerifiedTLS",
+        "TestOperationClusterActualNodeLifecycle",
+        "TestLiveElasticsearchPaginationAndTypes",
+        "TestLiveElasticsearchBoundParameters",
+        "TestLiveElasticsearchLimitsAndPermissions",
+        "TestContainedProtectedObjectExports",
+        "TestContainedProtectedObjectQueries",
+        "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS",
+        "TestLiveIgniteStatementLifecycle",
+        "TestLiveIgnitePagination",
+        "TestLiveIgniteExactTypes",
+        "TestLiveIgniteUUIDMetadataRefusal",
+        "TestLiveIgniteEmptyResult",
+        "TestLiveIgniteFailureCleanup",
+        "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+        "TestNATSStoreAdmissionCASAndReuse",
+        "TestNATSStoreQueueAndWorkerLease",
+        "TestNATSStoreRejectsMetadataMismatch",
+        "TestNATSStoreReconcileFailsStaleAssigned",
+        "TestNATSStoreCorruptJobFailsClosed",
+        "TestNATSAccountIsolation",
+        "TestMongoLiveReadOnlyAggregation",
+        "TestMongoLiveSQLSemantics",
+        "TestPostgresLiveNativeTLS",
+        "TestMySQLLiveNativeTLS",
+        "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission"
+      ],
+      "fail_events": []
+    },
+    "race": {
+      "package_passes": 7,
+      "test_pass_events": 1742,
+      "skip_events": [
+        "TestNATSRefreshStatusDurabilityResetAndBudget",
+        "TestNATSRefreshQueueProvisionDedupRetry",
+        "TestCatalogBindingActualNodeAndExportExecution",
+        "TestCatalogBindingActualGuardedSnapshot",
+        "TestNATSWorkerOutageFencesOwnerAndRecoversOnlyWithNewOwner",
+        "TestNATSExportRuntimeACLAndAccountIsolation",
+        "TestExportWorkerConstructorBindsKernelContainment",
+        "TestNATSExportDispatchRenewalConflictAndDelayedRedelivery",
+        "TestExportWorkerSourceQuotaRejectsBeforeChildStart",
+        "TestExportWorkerSourceQuotaRevocationReapsChild",
+        "TestExportWorkerCrashAcrossLocalCommit",
+        "TestExportClusterActualWorkerLifecycle",
+        "TestNATSExportRetainedLifecycleAndProvisioning",
+        "TestExportWorkerUsesSandboxAndExternalCustody",
+        "TestExportWorkerCancellationReapsSandboxAndReservations",
+        "TestContainedWorkerSuccessAndCancellation",
+        "TestContainedWorkerRefreshCustody",
+        "TestContainedWorkerStartFailureCleansOwnership",
+        "TestContainedWorkerRealDuckDBCTE",
+        "TestGatewayAuthorityR3",
+        "TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-1",
+        "TestObjectSnapshotWorkerActualChildTypesNullsAndMultipart/parts-2",
+        "TestObjectSnapshotWorkerActualChildRejectsRawAccessAndReplay",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/rows",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/schema",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/digest",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/version",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-rows",
+        "TestObjectSnapshotWorkerActualChildRejectsIntegrityAndRawBudget/raw-bytes",
+        "TestObjectSnapshotWorkerActualChildCancellationDrainsResources/source-range",
+        "TestObjectSnapshotWorkerActualChildCancellationDrainsResources/result-delivery",
+        "TestObjectSnapshotPreviousChildRefusesNewEnvelope",
+        "TestContainedOperationCleanupObserverAfterPhysicalDrain/fixture",
+        "TestContainedOperationCleanupObserverAfterPhysicalDrain/cancelled",
+        "TestContainedOperationCleanupObserverAfterPhysicalDrain/committed_exit_error",
+        "TestContainedOperationCleanupObserverAfterPhysicalDrain/ack-failure",
+        "TestJDBCContainedPinnedRuntime",
+        "TestContainedOperationProcessReceiptsAndIsolation",
+        "TestContainedOperationCancellationKillsDescendants",
+        "TestContainedOperationResolvesOnlyAfterAdmission",
+        "TestContainedOperationExecutesPinnedDescriptorAfterReplacement",
+        "TestContainedOperationRequiresEveryBoundary",
+        "TestContainedOperationFinalizesResultBeforeRelease",
+        "TestContainedOperationSourceSnapshotIsReadOnly",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_candidate",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_conflict",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_lost_reply",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_bad_hash",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_truncated",
+        "TestContainedFileMutationPublishesOnlyVerifiedCandidate/file_crash",
+        "TestContainedWorkerProtectedObjects",
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/single",
+        "TestObjectSnapshotPrincipalRealWorkerRevocationWithholdsEOS/multipart",
+        "TestOperationClusterActualNodeLifecycle",
+        "TestContainedProtectedObjectExports",
+        "TestContainedProtectedObjectQueries",
+        "TestSnapshotPrincipalRealWorkerRevocationWithholdsEOS",
+        "TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry",
+        "TestNATSStoreAdmissionCASAndReuse",
+        "TestNATSStoreQueueAndWorkerLease",
+        "TestNATSStoreRejectsMetadataMismatch",
+        "TestNATSStoreReconcileFailsStaleAssigned",
+        "TestNATSStoreCorruptJobFailsClosed",
+        "TestNATSAccountIsolation",
+        "TestSnapshotWorkerSandboxPoliciesCancellationAndPinnedGeneration",
+        "TestContainedNodeStartupPlacement",
+        "TestSandboxedWorkerFailurePreservesSnapshotAndAdmission"
+      ],
+      "fail_events": []
+    }
+  },
+  "paired_schema_copy_fix": {
+    "passed": true,
+    "scope": "in-memory 65536-row conversion plus uncompressed IPC; nominal 32-byte input payload; no DB/network/TLS",
+    "before_revision": "9e1760e91f83cf44c7b045dc1f216d9fed423549",
+    "after_revision": "124f0a957f1a6cd7f876987222ef3acbd369f142",
+    "order": "alternating AB/BA, one excluded warmup per variant",
+    "trials": [
+      {
+        "variant": "before",
+        "pair": 0,
+        "metrics": {
+          "ns/op": 8384730.0,
+          "MB/s": 250.12,
+          "B/op": 18612848.0,
+          "allocs/op": 69794.0
+        },
+        "log_sha256": "8d2b9c8bd777b9dab122f023b5e70ad1e40321840131c52e3c2046e07e86305e",
+        "binary_sha256": "18810e151393a9be75ad284e66e7a03912d03d386a64ccbca866dc38f627a513"
+      },
+      {
+        "variant": "after",
+        "pair": 0,
+        "metrics": {
+          "ns/op": 4288836.0,
+          "MB/s": 488.98,
+          "B/op": 7078339.0,
+          "allocs/op": 4257.0
+        },
+        "log_sha256": "d4258b1b767db65cc87911256ebee468a34624c1d23c1a15fb4dbdc8f0560304",
+        "binary_sha256": "a7a3707df3e3132c0ce439fea1e936b173b6036f1fef77cf8a157c3db73462ad"
+      },
+      {
+        "variant": "after",
+        "pair": 1,
+        "metrics": {
+          "ns/op": 4270858.0,
+          "MB/s": 491.04,
+          "B/op": 7078344.0,
+          "allocs/op": 4257.0
+        },
+        "log_sha256": "fb66fa9338f833e2a57d167740a79d74d4aaf5b4a2643b2e26d7ca391a48d3d8",
+        "binary_sha256": "a7a3707df3e3132c0ce439fea1e936b173b6036f1fef77cf8a157c3db73462ad"
+      },
+      {
+        "variant": "before",
+        "pair": 1,
+        "metrics": {
+          "ns/op": 8423105.0,
+          "MB/s": 248.98,
+          "B/op": 18612845.0,
+          "allocs/op": 69794.0
+        },
+        "log_sha256": "f5fbc9524e076e826c850124baf3cae79f2ceba24249422a1265a7732432ac8d",
+        "binary_sha256": "18810e151393a9be75ad284e66e7a03912d03d386a64ccbca866dc38f627a513"
+      },
+      {
+        "variant": "before",
+        "pair": 2,
+        "metrics": {
+          "ns/op": 8610309.0,
+          "MB/s": 243.56,
+          "B/op": 18612853.0,
+          "allocs/op": 69794.0
+        },
+        "log_sha256": "e1c6c24fa543457ad2f65a27a0abcf914006fe455e4bbce0598774cb1e98f2f7",
+        "binary_sha256": "18810e151393a9be75ad284e66e7a03912d03d386a64ccbca866dc38f627a513"
+      },
+      {
+        "variant": "after",
+        "pair": 2,
+        "metrics": {
+          "ns/op": 4263553.0,
+          "MB/s": 491.88,
+          "B/op": 7078341.0,
+          "allocs/op": 4257.0
+        },
+        "log_sha256": "b0d3fa1dca6364431a0adf51ea75cf5ddab149d8a75bda183227acabf5ee0436",
+        "binary_sha256": "a7a3707df3e3132c0ce439fea1e936b173b6036f1fef77cf8a157c3db73462ad"
+      },
+      {
+        "variant": "after",
+        "pair": 3,
+        "metrics": {
+          "ns/op": 4269735.0,
+          "MB/s": 491.17,
+          "B/op": 7078335.0,
+          "allocs/op": 4257.0
+        },
+        "log_sha256": "835524e371b48be986e6e19a19f0e39782a399ecf8f66cef4f38d3b7d2f764d4",
+        "binary_sha256": "a7a3707df3e3132c0ce439fea1e936b173b6036f1fef77cf8a157c3db73462ad"
+      },
+      {
+        "variant": "before",
+        "pair": 3,
+        "metrics": {
+          "ns/op": 8498256.0,
+          "MB/s": 246.77,
+          "B/op": 18612910.0,
+          "allocs/op": 69794.0
+        },
+        "log_sha256": "8f17a09fdb7ee68a827e306b0adf237dc4e0586015c9259a39ebbbe4731044ce",
+        "binary_sha256": "18810e151393a9be75ad284e66e7a03912d03d386a64ccbca866dc38f627a513"
+      },
+      {
+        "variant": "before",
+        "pair": 4,
+        "metrics": {
+          "ns/op": 8436559.0,
+          "MB/s": 248.58,
+          "B/op": 18612845.0,
+          "allocs/op": 69794.0
+        },
+        "log_sha256": "0d00480d339a6923edc19eeeb4bfa36c2b5b878ed2835acb496dee1009e29ad2",
+        "binary_sha256": "18810e151393a9be75ad284e66e7a03912d03d386a64ccbca866dc38f627a513"
+      },
+      {
+        "variant": "after",
+        "pair": 4,
+        "metrics": {
+          "ns/op": 4248523.0,
+          "MB/s": 493.62,
+          "B/op": 7078358.0,
+          "allocs/op": 4257.0
+        },
+        "log_sha256": "aa1351fb6812ec2bc273e3776f20fb8c450ce6dffc3ca600377e0b83d24e554a",
+        "binary_sha256": "a7a3707df3e3132c0ce439fea1e936b173b6036f1fef77cf8a157c3db73462ad"
+      }
+    ],
+    "warmups": [
+      {
+        "variant": "before",
+        "pair": "warmup",
+        "metrics": {
+          "ns/op": 8185332.0,
+          "MB/s": 256.21,
+          "B/op": 18612868.0,
+          "allocs/op": 69794.0
+        },
+        "log_sha256": "11b55d1592cd1a30d72db7e0487d249709c82db1a943acb975062ac912b93f34",
+        "binary_sha256": "18810e151393a9be75ad284e66e7a03912d03d386a64ccbca866dc38f627a513"
+      },
+      {
+        "variant": "after",
+        "pair": "warmup",
+        "metrics": {
+          "ns/op": 4326515.0,
+          "MB/s": 484.72,
+          "B/op": 7078356.0,
+          "allocs/op": 4257.0
+        },
+        "log_sha256": "3cd25a935ba7f758695cb292d431e0e683384a825a95205384c54a7f5eff87c5",
+        "binary_sha256": "a7a3707df3e3132c0ce439fea1e936b173b6036f1fef77cf8a157c3db73462ad"
+      }
+    ],
+    "medians": {
+      "before": {
+        "ns/op": 8436559.0,
+        "MB/s": 248.58,
+        "B/op": 18612848.0,
+        "allocs/op": 69794.0
+      },
+      "after": {
+        "ns/op": 4269735.0,
+        "MB/s": 491.17,
+        "B/op": 7078341.0,
+        "allocs/op": 4257.0
+      }
+    }
+  },
+  "benchmarks": {
+    "cases": 51,
+    "measurements": 255,
+    "raw_file": "throughput-microbenchmarks-124f0a9.txt",
+    "raw_sha256": "942edf6b07cfaaa8b1374c6b787b5af1a775ba4aed4f1942ffbb29697d160211",
+    "medians": {
+      "BenchmarkWriterBatching/row32/legacy1024/convert-2": {
+        "ns/op": 4079476.0,
+        "MB/s": 514.07,
+        "batches/op": 64.0,
+        "B/op": 6947424.0,
+        "allocs/op": 2637.0
+      },
+      "BenchmarkWriterBatching/row32/legacy1024/convertIPC-2": {
+        "ns/op": 4281469.0,
+        "MB/s": 489.82,
+        "batches/op": 64.0,
+        "ipc-bytes/op": 2373304.0,
+        "B/op": 7078332.0,
+        "allocs/op": 4257.0
+      },
+      "BenchmarkWriterBatching/row32/target1MiB/convert-2": {
+        "ns/op": 4463604.0,
+        "MB/s": 469.83,
+        "batches/op": 3.0,
+        "B/op": 7064907.0,
+        "allocs/op": 205.0
+      },
+      "BenchmarkWriterBatching/row32/target1MiB/convertIPC-2": {
+        "ns/op": 4464171.0,
+        "MB/s": 469.77,
+        "batches/op": 3.0,
+        "ipc-bytes/op": 2360128.0,
+        "B/op": 7073322.0,
+        "allocs/op": 300.0
+      },
+      "BenchmarkWriterBatching/row32/target4MiB/convert-2": {
+        "ns/op": 4516659.0,
+        "MB/s": 464.31,
+        "batches/op": 1.0,
+        "B/op": 5952344.0,
+        "allocs/op": 84.0
+      },
+      "BenchmarkWriterBatching/row32/target4MiB/convertIPC-2": {
+        "ns/op": 4514673.0,
+        "MB/s": 464.52,
+        "batches/op": 1.0,
+        "ipc-bytes/op": 2359696.0,
+        "B/op": 5956744.0,
+        "allocs/op": 129.0
+      },
+      "BenchmarkWriterBatching/row256/legacy1024/convert-2": {
+        "ns/op": 9416325.0,
+        "MB/s": 1781.72,
+        "batches/op": 64.0,
+        "B/op": 37859940.0,
+        "allocs/op": 2701.0
+      },
+      "BenchmarkWriterBatching/row256/legacy1024/convertIPC-2": {
+        "ns/op": 9707036.0,
+        "MB/s": 1728.36,
+        "batches/op": 64.0,
+        "ipc-bytes/op": 17053368.0,
+        "B/op": 37990853.0,
+        "allocs/op": 4321.0
+      },
+      "BenchmarkWriterBatching/row256/target1MiB/convert-2": {
+        "ns/op": 11080782.0,
+        "MB/s": 1514.08,
+        "batches/op": 17.0,
+        "B/op": 37471773.0,
+        "allocs/op": 892.0
+      },
+      "BenchmarkWriterBatching/row256/target1MiB/convertIPC-2": {
+        "ns/op": 11658300.0,
+        "MB/s": 1439.08,
+        "batches/op": 17.0,
+        "ipc-bytes/op": 17043216.0,
+        "B/op": 37508307.0,
+        "allocs/op": 1337.0
+      },
+      "BenchmarkWriterBatching/row256/target4MiB/convert-2": {
+        "ns/op": 8429534.0,
+        "MB/s": 1990.29,
+        "batches/op": 5.0,
+        "B/op": 36802939.0,
+        "allocs/op": 308.0
+      },
+      "BenchmarkWriterBatching/row256/target4MiB/convertIPC-2": {
+        "ns/op": 8404277.0,
+        "MB/s": 1996.27,
+        "batches/op": 5.0,
+        "ipc-bytes/op": 17040624.0,
+        "B/op": 36815371.0,
+        "allocs/op": 453.0
+      },
+      "BenchmarkWriterBatching/row1024/legacy1024/convert-2": {
+        "ns/op": 30288612.0,
+        "MB/s": 2215.65,
+        "batches/op": 64.0,
+        "B/op": 139514541.0,
+        "allocs/op": 2701.0
+      },
+      "BenchmarkWriterBatching/row1024/legacy1024/convertIPC-2": {
+        "ns/op": 31425385.0,
+        "MB/s": 2135.5,
+        "batches/op": 64.0,
+        "ipc-bytes/op": 67385016.0,
+        "B/op": 139645435.0,
+        "allocs/op": 4321.0
+      },
+      "BenchmarkWriterBatching/row1024/target1MiB/convert-2": {
+        "ns/op": 30839043.0,
+        "MB/s": 2176.1,
+        "batches/op": 65.0,
+        "B/op": 140622928.0,
+        "allocs/op": 2738.0
+      },
+      "BenchmarkWriterBatching/row1024/target1MiB/convertIPC-2": {
+        "ns/op": 32130605.0,
+        "MB/s": 2088.63,
+        "batches/op": 65.0,
+        "ipc-bytes/op": 67385232.0,
+        "B/op": 140755867.0,
+        "allocs/op": 4383.0
+      },
+      "BenchmarkWriterBatching/row1024/target4MiB/convert-2": {
+        "ns/op": 21976975.0,
+        "MB/s": 3053.6,
+        "batches/op": 17.0,
+        "B/op": 138338751.0,
+        "allocs/op": 882.0
+      },
+      "BenchmarkWriterBatching/row1024/target4MiB/convertIPC-2": {
+        "ns/op": 23843988.0,
+        "MB/s": 2814.5,
+        "batches/op": 17.0,
+        "ipc-bytes/op": 67374864.0,
+        "B/op": 138375286.0,
+        "allocs/op": 1327.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/repeated/batch=1024/compression=none-2": {
+        "ns/op": 482927.0,
+        "MB/s": 2426.17,
+        "batches/op": 33.0,
+        "child-IPC-B/op": 1180496.0,
+        "decoded-B/op": 1171660.0,
+        "result-IPC-B/op": 1180496.0,
+        "rows/s": 67888177.0,
+        "B/op": 1498794.0,
+        "allocs/op": 2309.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/repeated/batch=1024/compression=lz4_frame-2": {
+        "ns/op": 2072723.0,
+        "MB/s": 565.28,
+        "batches/op": 33.0,
+        "child-IPC-B/op": 1180496.0,
+        "decoded-B/op": 1171660.0,
+        "result-IPC-B/op": 285888.0,
+        "rows/s": 15817357.0,
+        "B/op": 2873726.0,
+        "allocs/op": 3174.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/repeated/batch=8192/compression=none-2": {
+        "ns/op": 336719.0,
+        "MB/s": 3479.31,
+        "batches/op": 5.0,
+        "child-IPC-B/op": 1173104.0,
+        "decoded-B/op": 1171548.0,
+        "result-IPC-B/op": 1173104.0,
+        "rows/s": 97366097.0,
+        "B/op": 1213609.0,
+        "allocs/op": 405.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/repeated/batch=8192/compression=lz4_frame-2": {
+        "ns/op": 1991222.0,
+        "MB/s": 588.36,
+        "batches/op": 5.0,
+        "child-IPC-B/op": 1173104.0,
+        "decoded-B/op": 1171548.0,
+        "result-IPC-B/op": 265784.0,
+        "rows/s": 16464760.0,
+        "B/op": 2539420.0,
+        "allocs/op": 541.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/repeated/batch=32768/compression=none-2": {
+        "ns/op": 226288.0,
+        "MB/s": 5177.19,
+        "batches/op": 2.0,
+        "child-IPC-B/op": 1172312.0,
+        "decoded-B/op": 1171536.0,
+        "result-IPC-B/op": 1172312.0,
+        "rows/s": 144881633.0,
+        "B/op": 1188904.0,
+        "allocs/op": 201.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/repeated/batch=32768/compression=lz4_frame-2": {
+        "ns/op": 1778153.0,
+        "MB/s": 658.85,
+        "batches/op": 2.0,
+        "child-IPC-B/op": 1172312.0,
+        "decoded-B/op": 1171536.0,
+        "result-IPC-B/op": 264400.0,
+        "rows/s": 18437676.0,
+        "B/op": 2403732.0,
+        "allocs/op": 257.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/high_entropy/batch=1024/compression=none-2": {
+        "ns/op": 518336.0,
+        "MB/s": 2260.43,
+        "batches/op": 33.0,
+        "child-IPC-B/op": 1180496.0,
+        "decoded-B/op": 1171660.0,
+        "result-IPC-B/op": 1180496.0,
+        "rows/s": 63250484.0,
+        "B/op": 1498795.0,
+        "allocs/op": 2309.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/high_entropy/batch=1024/compression=lz4_frame-2": {
+        "ns/op": 2936729.0,
+        "MB/s": 398.97,
+        "batches/op": 33.0,
+        "child-IPC-B/op": 1180496.0,
+        "decoded-B/op": 1171660.0,
+        "result-IPC-B/op": 1040112.0,
+        "rows/s": 11163781.0,
+        "B/op": 2882504.0,
+        "allocs/op": 3174.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/high_entropy/batch=8192/compression=none-2": {
+        "ns/op": 283265.0,
+        "MB/s": 4135.87,
+        "batches/op": 5.0,
+        "child-IPC-B/op": 1173104.0,
+        "decoded-B/op": 1171548.0,
+        "result-IPC-B/op": 1173104.0,
+        "rows/s": 115739582.0,
+        "B/op": 1213609.0,
+        "allocs/op": 405.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/high_entropy/batch=8192/compression=lz4_frame-2": {
+        "ns/op": 3499580.0,
+        "MB/s": 334.77,
+        "batches/op": 5.0,
+        "child-IPC-B/op": 1173104.0,
+        "decoded-B/op": 1171548.0,
+        "result-IPC-B/op": 1024752.0,
+        "rows/s": 9368267.0,
+        "B/op": 2524973.0,
+        "allocs/op": 541.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/high_entropy/batch=32768/compression=none-2": {
+        "ns/op": 238921.0,
+        "MB/s": 4903.45,
+        "batches/op": 2.0,
+        "child-IPC-B/op": 1172312.0,
+        "decoded-B/op": 1171536.0,
+        "result-IPC-B/op": 1172312.0,
+        "rows/s": 137221298.0,
+        "B/op": 1188904.0,
+        "allocs/op": 201.0
+      },
+      "BenchmarkWorkerIPCTransit/narrow/high_entropy/batch=32768/compression=lz4_frame-2": {
+        "ns/op": 3351407.0,
+        "MB/s": 349.57,
+        "batches/op": 2.0,
+        "child-IPC-B/op": 1172312.0,
+        "decoded-B/op": 1171536.0,
+        "result-IPC-B/op": 1023376.0,
+        "rows/s": 9782460.0,
+        "B/op": 2416403.0,
+        "allocs/op": 258.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/repeated/batch=1024/compression=none-2": {
+        "ns/op": 5232580.0,
+        "MB/s": 6335.78,
+        "batches/op": 33.0,
+        "child-IPC-B/op": 33161312.0,
+        "decoded-B/op": 33152476.0,
+        "result-IPC-B/op": 33161312.0,
+        "rows/s": 6265551.0,
+        "B/op": 33498092.0,
+        "allocs/op": 2309.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/repeated/batch=1024/compression=lz4_frame-2": {
+        "ns/op": 17504686.0,
+        "MB/s": 1893.92,
+        "batches/op": 33.0,
+        "child-IPC-B/op": 33161312.0,
+        "decoded-B/op": 33152476.0,
+        "result-IPC-B/op": 423656.0,
+        "rows/s": 1872927.0,
+        "B/op": 67164743.0,
+        "allocs/op": 3177.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/repeated/batch=8192/compression=none-2": {
+        "ns/op": 5841419.0,
+        "MB/s": 5675.4,
+        "batches/op": 5.0,
+        "child-IPC-B/op": 33153920.0,
+        "decoded-B/op": 33152364.0,
+        "result-IPC-B/op": 33153920.0,
+        "rows/s": 5612506.0,
+        "B/op": 33212907.0,
+        "allocs/op": 405.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/repeated/batch=8192/compression=lz4_frame-2": {
+        "ns/op": 17651882.0,
+        "MB/s": 1878.12,
+        "batches/op": 5.0,
+        "child-IPC-B/op": 33153920.0,
+        "decoded-B/op": 33152364.0,
+        "result-IPC-B/op": 403768.0,
+        "rows/s": 1857309.0,
+        "B/op": 66736998.0,
+        "allocs/op": 544.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/repeated/batch=32768/compression=none-2": {
+        "ns/op": 7237305.0,
+        "MB/s": 4580.76,
+        "batches/op": 2.0,
+        "child-IPC-B/op": 33153128.0,
+        "decoded-B/op": 33152352.0,
+        "result-IPC-B/op": 33153128.0,
+        "rows/s": 4530001.0,
+        "B/op": 33171817.0,
+        "allocs/op": 201.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/repeated/batch=32768/compression=lz4_frame-2": {
+        "ns/op": 21387028.0,
+        "MB/s": 1550.11,
+        "batches/op": 2.0,
+        "child-IPC-B/op": 33153128.0,
+        "decoded-B/op": 33152352.0,
+        "result-IPC-B/op": 402376.0,
+        "rows/s": 1532939.0,
+        "B/op": 66527383.0,
+        "allocs/op": 258.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/high_entropy/batch=1024/compression=none-2": {
+        "ns/op": 4940199.0,
+        "MB/s": 6710.76,
+        "batches/op": 33.0,
+        "child-IPC-B/op": 33161312.0,
+        "decoded-B/op": 33152476.0,
+        "result-IPC-B/op": 33161312.0,
+        "rows/s": 6636373.0,
+        "B/op": 33498091.0,
+        "allocs/op": 2309.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/high_entropy/batch=1024/compression=lz4_frame-2": {
+        "ns/op": 16487638.0,
+        "MB/s": 2010.75,
+        "batches/op": 33.0,
+        "child-IPC-B/op": 33161312.0,
+        "decoded-B/op": 33152476.0,
+        "result-IPC-B/op": 33022928.0,
+        "rows/s": 1988460.0,
+        "B/op": 67168808.0,
+        "allocs/op": 3177.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/high_entropy/batch=8192/compression=none-2": {
+        "ns/op": 5514550.0,
+        "MB/s": 6011.8,
+        "batches/op": 5.0,
+        "child-IPC-B/op": 33153920.0,
+        "decoded-B/op": 33152364.0,
+        "result-IPC-B/op": 33153920.0,
+        "rows/s": 5945182.0,
+        "B/op": 33212907.0,
+        "allocs/op": 405.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/high_entropy/batch=8192/compression=lz4_frame-2": {
+        "ns/op": 19400195.0,
+        "MB/s": 1708.87,
+        "batches/op": 5.0,
+        "child-IPC-B/op": 33153920.0,
+        "decoded-B/op": 33152364.0,
+        "result-IPC-B/op": 33007416.0,
+        "rows/s": 1689931.0,
+        "B/op": 66706997.0,
+        "allocs/op": 543.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/high_entropy/batch=32768/compression=none-2": {
+        "ns/op": 7325174.0,
+        "MB/s": 4525.81,
+        "batches/op": 2.0,
+        "child-IPC-B/op": 33153128.0,
+        "decoded-B/op": 33152352.0,
+        "result-IPC-B/op": 33153128.0,
+        "rows/s": 4475661.0,
+        "B/op": 33171816.0,
+        "allocs/op": 201.0
+      },
+      "BenchmarkWorkerIPCTransit/wide/high_entropy/batch=32768/compression=lz4_frame-2": {
+        "ns/op": 25092810.0,
+        "MB/s": 1321.19,
+        "batches/op": 2.0,
+        "child-IPC-B/op": 33153128.0,
+        "decoded-B/op": 33152352.0,
+        "result-IPC-B/op": 33006008.0,
+        "rows/s": 1306550.0,
+        "B/op": 66550289.0,
+        "allocs/op": 259.0
+      },
+      "BenchmarkWorkerIPCAttribution/discard/disabled-2": {
+        "ns/op": 164449.0,
+        "MB/s": 1647.88,
+        "B/op": 348464.0,
+        "allocs/op": 836.0
+      },
+      "BenchmarkWorkerIPCAttribution/discard/enabled-2": {
+        "ns/op": 171716.0,
+        "MB/s": 1578.14,
+        "B/op": 348552.0,
+        "allocs/op": 838.0
+      },
+      "BenchmarkWorkerIPCAttribution/none/disabled-2": {
+        "ns/op": 222878.0,
+        "MB/s": 1215.88,
+        "B/op": 402840.0,
+        "allocs/op": 1529.0
+      },
+      "BenchmarkWorkerIPCAttribution/none/enabled-2": {
+        "ns/op": 235323.0,
+        "MB/s": 1151.58,
+        "B/op": 402928.0,
+        "allocs/op": 1531.0
+      },
+      "BenchmarkWorkerIPCAttribution/lz4_frame/disabled-2": {
+        "ns/op": 1084529.0,
+        "MB/s": 249.87,
+        "B/op": 742986.0,
+        "allocs/op": 1857.0
+      },
+      "BenchmarkWorkerIPCAttribution/lz4_frame/enabled-2": {
+        "ns/op": 1085876.0,
+        "MB/s": 249.56,
+        "B/op": 741739.0,
+        "allocs/op": 1859.0
+      },
+      "BenchmarkObserveIPCTransfer/disabled-2": {
+        "ns/op": 0.7891,
+        "B/op": 0.0,
+        "allocs/op": 0.0
+      },
+      "BenchmarkObserveIPCTransfer/enabled-2": {
+        "ns/op": 56.04,
+        "B/op": 0.0,
+        "allocs/op": 0.0
+      },
+      "BenchmarkAdmissionContended-2": {
+        "ns/op": 576.0,
+        "B/op": 327.0,
+        "allocs/op": 3.0
+      }
+    }
+  },
+  "limitations": [
+    "B/op is cumulative allocated bytes, not peak RSS.",
+    "Row conversion reuses decoded values; rates use nominal input width.",
+    "IPC transit uses pre-encoded resident data and discard output; its GB/s is not network delivery.",
+    "Batch/codec matrix order is fixed; repeats are exploratory, not a randomized production comparison.",
+    "Telemetry overhead is workload-dependent; enabled collection is not free.",
+    "Larger batches and LZ4 can slow workloads; defaults and decoded limits remain unchanged.",
+    "Live-provider, kernel containment, durable JetStream and multi-host capacity gates were not executed by this VM test run; skipped events are retained."
+  ]
+}
