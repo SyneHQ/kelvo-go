@@ -215,6 +215,13 @@ containment custody records; every owned broker must stop and the exact service
 and cgroup must disappear. The final cgroup sample occurs after application and
 broker shutdown.
 
+The outer controller uses a fresh `kelvo-sustained-<nonce>` unit and a separate
+unpredictable Description marker. The live service verifies its exact unit,
+marker, user, working directory and cgroup before setup. Cleanup checks those
+same ownership fields before stopping the unit; it never deletes cgroups or
+adopts another runner's unit namespace. Lookup errors, failed stops, a same-name
+replacement or retained cgroup fail acceptance.
+
 Retain failed reports alongside successful ones. Initial smoke failures exposed
 a restricted fixture serializer, an over-budget wide projection, handle eviction
 during a cancellation assertion and an incorrect harness liveness path. These

@@ -16,6 +16,10 @@ import sustained_acceptance as fixture
 from test_lease_supervision import recovered_evidence, unfenced_evidence
 
 REVISION = "a" * 40
+UNIT = "kelvo-sustained-0123456789ab"
+DESCRIPTION = "Kelvo sustained acceptance " + "b" * 32
+USER = "fixture-user"
+ARTIFACT = Path("/fixture/artifacts")
 
 
 def valid_report():
@@ -38,6 +42,7 @@ def valid_report():
     report = {"schema": 2, "revision": REVISION, "checks": checks, "requested_seconds": 7200., "mode": "sustained", "interrupted": False,
             "prerequisite_smoke_sha256": "d" * 64,
             "service_exit_code": 0, "source_unchanged": True, "owned_service_removed": True, "owned_cgroup_removed": True,
+            "owned_unit": UNIT, "service_description": DESCRIPTION, "service_identity_verified": True,
             "source": {"verified": True, "file_count": len(files), "files": files, "sha256": hashlib.sha256(canonical).hexdigest(),
                        "base_revision": REVISION, "excluded_metadata": [".DS_Store", "._*"]},
             "binary_sha256": {"kelvo": "b" * 64, "kelvo-landlock": "c" * 64},
@@ -68,6 +73,94 @@ def valid_report():
 
 
 class SustainedControls(unittest.TestCase):
+    def service_response(self, **changes):
+        state = {"Id": UNIT + ".service", "LoadState": "loaded", "Description": DESCRIPTION,
+                 "User": USER, "WorkingDirectory": str(ARTIFACT), "ControlGroup": "/system.slice/" + UNIT + ".service"}
+        state.update(changes)
+        return fixture.subprocess.CompletedProcess([], 0, stdout="".join(key + "=" + value + "\n" for key, value in state.items()), stderr="")
+
+    def test_sustained_cleanup_stops_only_exact_marked_owned_unit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stopped = fixture.subprocess.CompletedProcess([], 0, stdout="", stderr="")
+            with mock.patch.object(fixture.identity, "run", side_effect=[self.service_response(), stopped, self.service_response(LoadState="not-found")]) as run:
+                result = fixture.cleanup_owned(UNIT, DESCRIPTION, USER, ARTIFACT, Path(directory))
+            self.assertEqual(result, {"owned_service_removed": True, "owned_cgroup_removed": True})
+            self.assertEqual(run.call_args_list[1], mock.call(["sudo", "-n", "systemctl", "stop", UNIT + ".service"], timeout=40))
+            self.assertEqual(run.call_count, 3)
+
+    def test_sustained_cleanup_refuses_foreign_identity_and_invalid_names(self):
+        for field, foreign in (("Id", "other.service"), ("Description", "foreign"), ("User", "other-user"),
+                               ("WorkingDirectory", "/other/artifacts"), ("ControlGroup", "/system.slice/other.service"), ("LoadState", "error")):
+            with mock.patch.object(fixture.identity, "run", return_value=self.service_response(**{field: foreign})) as run:
+                result = fixture.cleanup_owned(UNIT, DESCRIPTION, USER, ARTIFACT)
+            self.assertIn("cleanup_failure", result, field)
+            self.assertFalse(result["owned_service_removed"])
+            self.assertEqual(run.call_count, 1)
+            self.assertTrue(all(call.args[0][0] == "systemctl" for call in run.call_args_list))
+        for unit, description in (("unrelated-production", DESCRIPTION), ("kelvo-containment-0123456789ab", DESCRIPTION),
+                                  (UNIT + ".service", DESCRIPTION), (UNIT, "fixture")):
+            with mock.patch.object(fixture.identity, "run") as run:
+                self.assertIn("cleanup_failure", fixture.cleanup_owned(unit, description, USER, ARTIFACT))
+            run.assert_not_called()
+
+    def test_sustained_cleanup_does_not_adopt_replacement_or_ignore_stop_failure(self):
+        for after in (self.service_response(Description="replacement"), fixture.subprocess.TimeoutExpired("systemctl", 5)):
+            stopped = fixture.subprocess.CompletedProcess([], 0, stdout="", stderr="")
+            with mock.patch.object(fixture.identity, "run", side_effect=[self.service_response(), stopped, after]) as run:
+                result = fixture.cleanup_owned(UNIT, DESCRIPTION, USER, ARTIFACT)
+            self.assertIn("cleanup_failure", result)
+            self.assertEqual(sum(call.args[0][0] == "sudo" for call in run.call_args_list), 1)
+        with mock.patch.object(fixture.identity, "run", side_effect=[self.service_response(), fixture.subprocess.CompletedProcess([], 1, stdout="", stderr="")]) as run:
+            result = fixture.cleanup_owned(UNIT, DESCRIPTION, USER, ARTIFACT)
+        self.assertIn("cleanup_failure", result)
+        self.assertFalse(result["owned_service_removed"])
+        self.assertEqual(run.call_count, 2)
+
+    def test_sustained_cleanup_preserves_unowned_cgroup_and_handles_never_started_unit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            absent = self.service_response(LoadState="not-found")
+            with mock.patch.object(fixture.identity, "run", return_value=absent) as run:
+                self.assertEqual(fixture.cleanup_owned(UNIT, DESCRIPTION, USER, ARTIFACT, root),
+                                 {"owned_service_removed": True, "owned_cgroup_removed": True})
+            self.assertTrue(all(call.args[0][0] == "systemctl" for call in run.call_args_list))
+            group = root / (UNIT + ".service")
+            group.mkdir()
+            with mock.patch.object(fixture.identity, "run", return_value=absent) as run, mock.patch.object(fixture.time, "monotonic", side_effect=[0., 6.]):
+                result = fixture.cleanup_owned(UNIT, DESCRIPTION, USER, ARTIFACT, root)
+            self.assertTrue(result["owned_service_removed"])
+            self.assertFalse(result["owned_cgroup_removed"])
+            self.assertIn("cleanup_failure", result)
+            self.assertTrue(group.is_dir())
+            self.assertTrue(all(call.args[0][0] == "systemctl" for call in run.call_args_list))
+
+    def test_sustained_launch_requires_fresh_unit_and_missing_cgroup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with mock.patch.object(fixture.identity, "run", return_value=self.service_response()), self.assertRaises(fixture.ops.AcceptanceError):
+                fixture.require_fresh_service(UNIT, root)
+            with mock.patch.object(fixture.identity, "run", return_value=self.service_response(LoadState="not-found")):
+                fixture.require_fresh_service(UNIT, root)
+                (root / (UNIT + ".service")).mkdir()
+                with self.assertRaises(fixture.ops.AcceptanceError):
+                    fixture.require_fresh_service(UNIT, root)
+
+    def test_sustained_ownership_lookup_rejects_missing_duplicate_and_failed_properties(self):
+        for result in (fixture.subprocess.CompletedProcess([], 1, stdout="", stderr=""),
+                       fixture.subprocess.CompletedProcess([], 0, stdout="LoadState=not-found\n", stderr=""),
+                       fixture.subprocess.CompletedProcess([], 0, stdout=self.service_response().stdout + "User=other\n", stderr="")):
+            with mock.patch.object(fixture.identity, "run", return_value=result) as run:
+                self.assertIn("cleanup_failure", fixture.cleanup_owned(UNIT, DESCRIPTION, USER, ARTIFACT))
+            self.assertEqual(run.call_count, 1)
+
+    def test_reconciliation_requires_live_ownership_proof_and_successful_cleanup(self):
+        for field, value in (("service_identity_verified", False), ("service_identity_verified", 1),
+                             ("owned_unit", "kelvo-containment-0123456789ab"), ("service_description", "unmarked"),
+                             ("cleanup_failure", "OWNED_SERVICE_STOP_FAILED")):
+            report = valid_report()
+            report[field] = value
+            self.assertFalse(fixture.reconcile(report, REVISION), field)
+
     def test_mixed_evidence_rejects_missing_or_extra_requests_and_lost_acknowledgements(self):
         for tenant in fixture.TENANTS:
             for stage in valid_report()["mixed_response_counts"][tenant]:
@@ -271,7 +364,10 @@ class SustainedControls(unittest.TestCase):
                 args = fixture.argparse.Namespace(duration=duration, mode=mode, expected_revision=REVISION,
                     binary="/fixture/bin/kelvo", sandbox="/fixture/bin/kelvo-landlock", go="/fixture/go",
                     output=Path("/fixture/report.json"), nats_archive="/fixture/nats.tar.gz")
-                command = fixture.service_command(args, "kelvo-sustained-fixture", Path("/fixture/artifacts"))
+                command = fixture.service_command(args, UNIT, ARTIFACT, DESCRIPTION)
+                self.assertIn("--description=" + DESCRIPTION, command)
+                self.assertIn("--property=WorkingDirectory=" + str(ARTIFACT), command)
+                self.assertEqual(command[command.index("--service-description") + 1], DESCRIPTION)
                 self.assertEqual([part for part in command if part.startswith("--property=RuntimeMaxSec=")],
                                  [f"--property=RuntimeMaxSec={watchdog}"])
                 self.assertEqual(command[command.index("--duration") + 1], str(duration))
