@@ -30,36 +30,168 @@ def valid_report():
                          failed_attempt_result_rejected=True, queued_handles_preserved=True)
         if check["test"] == "mixed_load":
             check["observed_seconds"] = 7200.
+        if check["test"] in ("file_joins", "durable_exports"):
+            check["counts"] = {tenant: 5 for tenant in fixture.TENANTS}
         if check["test"] == "cleanup":
             check.update(forced_application_kills=0, observed_live_descendants=0, worker_scratch_directories=0,
-                         remaining_containment_records=0, all_owned_brokers_stopped=True, original_configurations_verified=True)
-    report = {"revision": REVISION, "checks": checks, "requested_seconds": 7200., "mode": "sustained", "interrupted": False,
+                         remaining_containment_records=0, remaining_export_entries=0, all_owned_brokers_stopped=True, original_configurations_verified=True)
+    report = {"schema": 2, "revision": REVISION, "checks": checks, "requested_seconds": 7200., "mode": "sustained", "interrupted": False,
             "prerequisite_smoke_sha256": "d" * 64,
             "service_exit_code": 0, "source_unchanged": True, "owned_service_removed": True, "owned_cgroup_removed": True,
             "source": {"verified": True, "file_count": len(files), "files": files, "sha256": hashlib.sha256(canonical).hexdigest(),
                        "base_revision": REVISION, "excluded_metadata": [".DS_Store", "._*"]},
             "binary_sha256": {"kelvo": "b" * 64, "kelvo-landlock": "c" * 64},
-            "workload": {kind: {tenant: 5 for tenant in fixture.TENANTS} for kind in ("queries", "refreshes", "slow_readers", "cancellations")},
+            "workload": {kind: {tenant: 10 if kind == "export_downloads" else 5 for tenant in fixture.TENANTS} for kind in fixture.WORKLOAD_KINDS},
+            "client_failures": [],
             "resources": {"samples": 7200, "counter_errors": [], "resource_violations": [], "peak_scratch_bytes": 1,
                           "cgroup_memory_events_delta": {"oom": 0, "oom_kill": 0}, "query_refresh_overlap_samples": 1, "final_cgroup_sample_after_shutdown": True},
-            "progress_windows": [{"start_seconds": 0., "end_seconds": 7200., "deltas": {kind: {tenant: 5 for tenant in fixture.TENANTS} for kind in ("queries", "refreshes")}}]}
+            "progress_windows": [{"start_seconds": 0., "end_seconds": 7200., "deltas": {kind: {tenant: 10 if kind == "export_downloads" else 5 for tenant in fixture.TENANTS} for kind in fixture.WORKLOAD_KINDS}}]}
     report["build_source"] = copy.deepcopy(report["source"])
     report["control_response_counts"] = {"queued_status_http_200": 6}
+    report["mixed_response_counts"] = {tenant: {stage + "_http_" + str(code): 10 if stage == "export_part" else 5
+        for stage, code in (("join_submit", 201), ("join_status", 200), ("join_result", 200), ("export_submit", 201),
+            ("export_status", 200), ("export_manifest", 200), ("export_part", 200), ("export_cancel", 200), ("export_withdrawn", 409),
+            ("export_foreign_status", 404), ("export_foreign_manifest", 404), ("export_foreign_part", 404), ("export_foreign_cancel", 404))}
+        for tenant in fixture.TENANTS}
     report["process_sampling"] = {"process_tree_rss_available": True, "samples": 100,
         "sampled_process_tree_rss_peak_bytes": 1024, "read_errors": [],
         "rss_source": fixture.PROCESS_RSS_SOURCE, "page_size_bytes": 4096}
     report["latencies"] = {}
-    for kind in ("query", "dispatch_observation", "first_byte", "slow_delivery", "cancel"):
+    for kind, count_kind in fixture.LATENCY_COUNTS.items():
         report["latencies"][kind] = {}
         for tenant in fixture.TENANTS:
             observed = fixture.histogram()
-            for _ in range(5):
+            for _ in range(report["workload"][count_kind][tenant]):
                 fixture.observe(observed, .01)
             report["latencies"][kind][tenant] = fixture.histogram_evidence(observed)
     return report
 
 
 class SustainedControls(unittest.TestCase):
+    def test_mixed_evidence_rejects_missing_or_extra_requests_and_lost_acknowledgements(self):
+        for tenant in fixture.TENANTS:
+            for stage in valid_report()["mixed_response_counts"][tenant]:
+                for value in (0, -1, True, 1.5, "5", None):
+                    report = valid_report()
+                    report["mixed_response_counts"][tenant][stage] = value
+                    self.assertFalse(fixture.reconcile(report, REVISION), (tenant, stage, value))
+                report = valid_report()
+                del report["mixed_response_counts"][tenant][stage]
+                self.assertFalse(fixture.reconcile(report, REVISION), stage)
+            for key in ("export_submit_transport_error", "export_submit_http_503", "join_submit_http_429", "private-source-label"):
+                report = valid_report()
+                report["mixed_response_counts"][tenant][key] = 1
+                self.assertFalse(fixture.reconcile(report, REVISION), key)
+            report = valid_report()
+            report["mixed_response_counts"][tenant]["export_submit_http_201"] += 1
+            self.assertFalse(fixture.reconcile(report, REVISION))
+            report = valid_report()
+            report["client_failures"] = ["OSError"]
+            self.assertFalse(fixture.reconcile(report, REVISION))
+
+    def test_mixed_totals_need_both_downloads_withdrawal_and_per_minute_progress(self):
+        for kind in ("joins", "exports", "export_downloads", "export_withdrawals"):
+            report = valid_report()
+            report["progress_windows"][0]["deltas"][kind]["a"] += 1
+            self.assertFalse(fixture.reconcile(report, REVISION), kind)
+        for name in ("file_joins", "durable_exports"):
+            report = valid_report()
+            next(check for check in report["checks"] if check["test"] == name)["counts"]["a"] = 4
+            self.assertFalse(fixture.reconcile(report, REVISION))
+        report = valid_report()
+        next(check for check in report["checks"] if check["test"] == "cleanup")["remaining_export_entries"] = 1
+        self.assertFalse(fixture.reconcile(report, REVISION))
+
+    def test_join_reference_depends_on_separate_dimension_and_tenant(self):
+        rows = [{"tenant": "a", "bucket": bucket, "n": 10, "present": 9, "total": 20} for bucket in range(10)]
+        original = copy.deepcopy(rows)
+        a = fixture.join_expected(rows, "a")
+        b = fixture.join_expected([{**row, "tenant": "b"} for row in rows], "b")
+        self.assertEqual([row["bucket"] for row in a], [0, 1, 2, 3, 4, 5, 6, 8, 9])
+        self.assertEqual([row["total"] for row in a], [60, 80, 100, 120, 140, 160, 180, 220, 240])
+        self.assertEqual([row["total"] for row in b], [260, 280, 300, 320, 340, 360, 380, 420, 440])
+        self.assertEqual(rows, original)
+
+    def export_case(self):
+        export_id = "e0-" + "a" * 32
+        expected = [{"tenant": "a", "bucket": 0, "n": 10, "present": 9, "total": 60}]
+        manifest = {"id": export_id, "schema_sha256": "b" * 64, "rows": 1, "encoded_bytes": 10, "decoded_bytes": 8,
+            "parts": [{"index": 0, "rows": 1, "batches": 1, "encoded_bytes": 10, "decoded_bytes": 8, "sha256": "c" * 64}]}
+        campaign = fixture.Campaign.__new__(fixture.Campaign)
+        campaign.default_gateway = 1
+        campaign.data_lock = fixture.threading.RLock()
+        campaign.mixed_response_counts = {tenant: {} for tenant in fixture.TENANTS}
+        campaign.workload = {kind: {tenant: 0 for tenant in fixture.TENANTS} for kind in fixture.WORKLOAD_KINDS}
+        campaign.latencies = {kind: {tenant: fixture.histogram() for tenant in fixture.TENANTS} for kind in fixture.LATENCY_COUNTS}
+        campaign.join_expected = {"a": expected}
+        responses = [(201, json.dumps({"id": export_id}).encode()), (200, b'{"state":"ready"}'), (200, json.dumps(manifest).encode()),
+            *[(404, b"hidden")] * 4, *[(200, b"same-arrow", {})] * 2, (200, b'{"state":"cancelled"}'), (409, b"withdrawn")]
+        campaign.call = mock.Mock(side_effect=responses)
+        return campaign, export_id, expected, manifest, responses
+
+    def test_export_cycle_reuses_one_handle_across_gateways_and_never_resubmits_sql(self):
+        campaign, export_id, expected, manifest, _ = self.export_case()
+        with mock.patch.object(fixture, "verify_export_part") as verify:
+            campaign.export_cycle("a")
+        calls = campaign.call.call_args_list
+        self.assertEqual(sum(call.args[0] == "/v1/exports" for call in calls), 1)
+        self.assertTrue(all(export_id in call.args[0] for call in calls[1:]))
+        self.assertEqual([call.kwargs["gateway"] for call in calls if "gateway" in call.kwargs], [1, 2])
+        self.assertEqual(verify.call_args_list, [mock.call(b"same-arrow", {}, manifest, expected)] * 2)
+        self.assertEqual([call.args[1] for call in calls[3:7]], ["b"] * 4)
+        self.assertEqual(campaign.workload["exports"]["a"], 1)
+        self.assertEqual(campaign.workload["export_downloads"]["a"], 2)
+        self.assertEqual(campaign.workload["export_withdrawals"]["a"], 1)
+
+    def test_export_loss_of_ack_terminal_state_and_changed_bytes_fail_without_replay(self):
+        for index, replacement in ((0, OSError("lost acknowledgement")), (1, (200, b'{"state":"publication_uncertain"}')),
+                                   (3, (200, b"foreign-visible")), (8, (200, b"changed-arrow", {})), (10, (200, b"still-readable"))):
+            campaign, _, _, _, responses = self.export_case()
+            responses[index] = replacement
+            campaign.call.side_effect = responses
+            with mock.patch.object(fixture, "verify_export_part"), self.assertRaises((OSError, fixture.ops.AcceptanceError)):
+                campaign.export_cycle("a")
+            self.assertEqual(campaign.call.call_count, index + 1)
+            self.assertEqual(sum(call.args[0] == "/v1/exports" for call in campaign.call.call_args_list), 1)
+            self.assertEqual(campaign.workload["exports"]["a"], 0)
+
+    def test_export_manifest_rejects_unbounded_or_inconsistent_metadata(self):
+        _, export_id, expected, valid, _ = self.export_case()
+        self.assertEqual(fixture.verify_export_manifest(json.dumps(valid), export_id, expected), valid)
+        for target, key, value in (("manifest", "id", "foreign"), ("manifest", "rows", True), ("manifest", "encoded_bytes", 11),
+                                  ("manifest", "schema_sha256", "x" * 64), ("part", "rows", 2), ("part", "index", True),
+                                  ("part", "batches", 2), ("part", "encoded_bytes", 2 << 20), ("part", "sha256", "")):
+            manifest = copy.deepcopy(valid)
+            (manifest if target == "manifest" else manifest["parts"][0])[key] = value
+            with self.assertRaises(fixture.ops.AcceptanceError):
+                fixture.verify_export_manifest(json.dumps(manifest), export_id, expected)
+        for parts in (None, [], [valid["parts"][0]] * 2):
+            with self.assertRaises(fixture.ops.AcceptanceError):
+                fixture.verify_export_manifest(json.dumps({**valid, "parts": parts}), export_id, expected)
+
+    def test_export_part_requires_manifest_digest_then_exact_completed_arrow(self):
+        _, _, expected, manifest, _ = self.export_case()
+        manifest["parts"][0].update(encoded_bytes=5, sha256=hashlib.sha256(b"arrow").hexdigest())
+        with mock.patch.object(fixture.ops, "verify_completed_arrow") as verify:
+            fixture.verify_export_part(b"arrow", {"completion": "fixture"}, manifest, expected)
+            verify.assert_called_once_with(b"arrow", {"completion": "fixture"}, expected)
+        for raw in (b"truncated", b"arrox"):
+            with mock.patch.object(fixture.ops, "verify_completed_arrow") as verify, self.assertRaises(fixture.ops.AcceptanceError):
+                fixture.verify_export_part(raw, {}, manifest, expected)
+            verify.assert_not_called()
+
+    def test_export_cleanup_counts_entries_and_retains_partial_publication_markers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            campaign = fixture.Campaign.__new__(fixture.Campaign)
+            root = Path(directory)
+            campaign.export_roots = {"a1": root}
+            for name in (".lock", "store.yml"):
+                (root / name).touch()
+            self.assertEqual(campaign.remaining_export_entries(), 0)
+            (root / ("a" * 32)).mkdir()
+            (root / ("a" * 32 + ".deleting.yml")).touch()
+            self.assertEqual(campaign.remaining_export_entries(), 2)
+
     def containment_campaign(self, directory):
         campaign = fixture.Campaign.__new__(fixture.Campaign)
         campaign.directory = directory
@@ -124,7 +256,7 @@ class SustainedControls(unittest.TestCase):
                 result = campaign.cleanup()
             signal_owned.assert_called_once_with((123, "456"), fixture.signal.SIGTERM)
             self.assertEqual(result, {"parent_cleanup": True, "remaining_containment_records": 0,
-                                      "all_owned_brokers_stopped": True})
+                                      "remaining_export_entries": 0, "all_owned_brokers_stopped": True})
             self.assertTrue(campaign.resource_samples["final_cgroup_sample_after_shutdown"])
             self.assertEqual(campaign.resource_samples["peak_cgroup_bytes"], 1024)
             report = valid_report()
@@ -474,14 +606,14 @@ class SustainedControls(unittest.TestCase):
         report = valid_report()
         next(item for item in report["checks"] if item["test"] == "mixed_load")["observed_seconds"] = 7199
         self.assertFalse(fixture.reconcile(report, REVISION))
-        for kind in ("queries", "refreshes"):
+        for kind in fixture.PROGRESS_KINDS:
             for tenant in fixture.TENANTS:
                 report = valid_report()
                 report["progress_windows"][0]["deltas"][kind][tenant] = 0
                 self.assertFalse(fixture.reconcile(report, REVISION))
 
     def test_both_tenants_need_every_workload_class(self):
-        for kind in ("queries", "refreshes", "slow_readers", "cancellations"):
+        for kind in fixture.WORKLOAD_KINDS:
             for tenant in fixture.TENANTS:
                 for value in (0, -1, True, "1", None):
                     report = valid_report()
@@ -597,7 +729,7 @@ class SustainedControls(unittest.TestCase):
                 report = valid_report()
                 report["resources"][field] = value
                 self.assertFalse(fixture.reconcile(report, REVISION), (field, value))
-        for kind in ("queries", "refreshes"):
+        for kind in fixture.WORKLOAD_KINDS:
             for tenant in fixture.TENANTS:
                 for value in (True, False, 1.0, -1, "1", None, float("nan"), float("inf")):
                     report = valid_report()

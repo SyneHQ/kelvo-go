@@ -220,6 +220,43 @@ class ProvisionOwnershipTests(unittest.TestCase):
         self.assertTrue(all(not child.reaped and not child.signals for child in self.children))
         self.assertTrue(all(stream.closed for stream in self.logs))
 
+    def test_export_grants_are_opt_in_and_preserve_query_refresh_namespaces(self):
+        from nats_export_permissions import export_delta
+        fixture.provision(self.archive, exports=True)
+        config = json.loads((self.directory / "nats-0.conf").read_text())
+        for tenant in ("a", "b"):
+            account = config["accounts"][tenant]
+            self.assertEqual(account["jetstream"]["max_streams"], 8)
+            self.assertEqual(account["jetstream"]["max_consumers"], 5)
+            for user in account["users"]:
+                if user["user"].endswith("admin"):
+                    continue
+                role = "gateway" if user["user"].endswith("gateway") else "worker"
+                publish = user["permissions"]["publish"]["allow"]
+                self.assertTrue(set(export_delta(role)["publish"]["allow"]).issubset(publish))
+                self.assertIn("$KV.KELVO_JOBS.>", publish)
+                if role == "worker":
+                    self.assertIn("$KV.KELVO_SOURCE_QUOTAS.>", publish)
+                    self.assertIn("acceleration.refresh", publish)
+        self.assertEqual(config["accounts"]["storetest"]["jetstream"]["max_streams"], 6)
+
+    def test_default_fixture_does_not_grant_export_namespaces(self):
+        self.provision()
+        config = json.loads((self.directory / "nats-0.conf").read_text())
+        for tenant in ("a", "b"):
+            self.assertEqual(config["accounts"][tenant]["jetstream"]["max_streams"], 6)
+            for user in config["accounts"][tenant]["users"]:
+                for subject in user.get("permissions", {}).get("publish", {}).get("allow", []):
+                    self.assertNotIn("KELVO_EXPORT", subject)
+                    self.assertNotEqual(subject, "export.ready")
+
+    def test_export_opt_in_rejects_non_boolean_before_creating_fixture(self):
+        for value in (None, 0, 1, "true"):
+            with self.assertRaises(ValueError):
+                fixture.provision(self.archive, exports=value)
+        self.assertFalse(self.directory.exists())
+        self.popen.assert_not_called()
+
     def test_existing_pid_inventory_is_not_overwritten_or_used_as_cleanup_targets(self):
         self.directory.mkdir()
         records = self.directory / "pids.json"

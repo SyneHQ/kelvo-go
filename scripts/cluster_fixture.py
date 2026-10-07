@@ -318,7 +318,9 @@ def stop():
     time.sleep(1)
 
 
-def provision(nats_archive=None, server_version=VERSION):
+def provision(nats_archive=None, server_version=VERSION, *, exports=False):
+    if type(exports) is not bool:
+        raise ValueError("explicit boolean export selection required")
     if server_version not in RELEASES:
         raise SystemExit("Unsupported NATS fixture version")
     DIR.mkdir(parents=True, exist_ok=True)
@@ -364,9 +366,12 @@ def provision(nats_archive=None, server_version=VERSION):
                 pub += ["job.ready"] if name.endswith("gateway") else ["$JS.API.CONSUMER.MSG.NEXT.KELVO_QUEUE.dispatch", "$JS.ACK.>"]
                 if not name.endswith("gateway"):
                     pub += ["$JS.API.STREAM.MSG.GET.KV_KELVO_ACCEL_STATUS", "$KV.KELVO_ACCEL_STATUS.>", "$JS.API.STREAM.MSG.GET.KV_KELVO_SOURCE_QUOTAS", "$KV.KELVO_SOURCE_QUOTAS.>", "acceleration.refresh", "$JS.API.CONSUMER.INFO.KELVO_ACCEL_QUEUE.refresh", "$JS.API.CONSUMER.MSG.NEXT.KELVO_ACCEL_QUEUE.refresh"]
+                if exports:
+                    from nats_export_permissions import export_delta
+                    pub += export_delta("gateway" if name.endswith("gateway") else "worker")["publish"]["allow"]
                 user["permissions"] = {"publish": {"allow": pub}, "subscribe": {"allow": ["_INBOX.>"]}}
             users.append(user)
-        accounts[tenant] = {"jetstream": {"max_memory": 16777216, "max_file": 67108864, "max_streams": 6, "max_consumers": 4}, "users": users}
+        accounts[tenant] = {"jetstream": {"max_memory": 16777216, "max_file": 67108864, "max_streams": 8 if exports else 6, "max_consumers": 5 if exports else 4}, "users": users}
 
         def nats(name):
             return {"url": "tls://127.0.0.1:14222", "username": name, "password_env": "KELVO_NATS_" + name.upper(), "ca_file": str(DIR / "ca.pem")}
