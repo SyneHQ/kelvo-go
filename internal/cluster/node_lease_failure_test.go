@@ -4,6 +4,8 @@ package cluster
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,6 +18,7 @@ type failingWorkerLeaseStore struct {
 	release chan struct{}
 	once    sync.Once
 	calls   atomic.Int32
+	failure error
 }
 
 func (s *failingWorkerLeaseStore) HeartbeatWorker(ctx context.Context, _, _ string) error {
@@ -23,6 +26,9 @@ func (s *failingWorkerLeaseStore) HeartbeatWorker(ctx context.Context, _, _ stri
 	s.once.Do(func() { close(s.entered) })
 	select {
 	case <-s.release:
+		if s.failure != nil {
+			return s.failure
+		}
 		return errors.New("private broker detail must not escape")
 	case <-ctx.Done():
 		return ctx.Err()
@@ -67,6 +73,9 @@ func TestNodeLeaseFailureFencesPermanentlyAndNotifiesLateSubscriber(t *testing.T
 	if node.ctx.Err() == nil {
 		t.Fatal("failure notification preceded fencing")
 	}
+	if got := node.LeaseFailureCause(); got.Stage != "worker_renew" || got.Reason != "other" {
+		t.Fatalf("unknown provider failure was not safely classified: %+v", got)
+	}
 	select {
 	case <-node.dispatchDone:
 	case <-time.After(time.Second):
@@ -110,5 +119,32 @@ func TestNodeNormalCloseDuringRenewalDoesNotSignalLeaseFailure(t *testing.T) {
 	case <-node.LeaseFailure():
 		t.Fatal("ordinary cancellation became lease failure")
 	default:
+	}
+	if node.LeaseFailureCause() != (CoordinationFailure{}) {
+		t.Fatal("normal close manufactured a lease failure cause")
+	}
+}
+
+func TestNodeLeaseFailureCauseIsImmutableAndRedacted(t *testing.T) {
+	node, store := leaseFailureFixture(t)
+	store.failure = fmt.Errorf("private broker URI and token: %w", coordinationUnavailable("worker_renew_write", context.DeadlineExceeded))
+	select {
+	case <-store.entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("renewal did not start")
+	}
+	close(store.release)
+	select {
+	case <-node.LeaseFailure():
+	case <-time.After(time.Second):
+		t.Fatal("renewal failure did not fence owner")
+	}
+	got := node.LeaseFailureCause()
+	if got.Stage != "worker_renew_write" || got.Reason != "deadline_exceeded" || strings.Contains(got.Diagnostic(), "private") || node.ctx.Err() == nil {
+		t.Fatalf("lease cause was lost or exposed: %+v", got)
+	}
+	got.Reason = "changed"
+	if node.LeaseFailureCause().Reason != "deadline_exceeded" {
+		t.Fatal("caller changed retained failure evidence")
 	}
 }
