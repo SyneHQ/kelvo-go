@@ -30,14 +30,14 @@ sequenceDiagram
 
 ## Integration status
 
-The configured-source [CLI and HTTP API](usage.md) work independently. The
-on-demand path currently requires a custom authority service implementing Kelvo's
-resolver and worker-custody protocol.
+Use the [public Go SDK](application-sdk.md) for query and operation contracts,
+signing, HTTPS results and credential callbacks. The
+[independent application example](../examples/application/) supplies application
+policy and fresh credential lookup through `resolver.NewHandler`.
 
-Public [operation requests and grant helpers](../operations/) are available.
-Analytical signing and resolver payload types still live under Go `internal/`
-packages. A complete public SDK, callback specification and standalone example
-remain open work. This guide covers the deployment trust and execution boundaries.
+Your authority owns live authorization and secret storage. Kelvo has no dependency
+on your application's metadata schema or KMS. The configured-source
+[CLI and HTTP API](usage.md) also work without an authority service.
 
 ## Configure trust
 
