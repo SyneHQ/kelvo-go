@@ -214,6 +214,10 @@ func (g *Gateway) submitOperation(w http.ResponseWriter, r *http.Request, state 
 	ref, err := state.inputs.PutRequest(r.Context(), identity, time.Unix(claims.ExpiresAt, 0), request)
 	if err != nil {
 		_ = op.complete(err)
+		if errors.Is(err, exports.ErrLimit) || errors.Is(err, operationinput.ErrLimit) {
+			g.operationAdmissionRejected(w, claims.RequestSHA256, digest)
+			return
+		}
 		g.operationError(w, err)
 		return
 	}
@@ -228,6 +232,17 @@ func (g *Gateway) submitOperation(w http.ResponseWriter, r *http.Request, state 
 		// A lost storage acknowledgement might already have admitted this ref.
 		// Leave it sealed until expiry; never cancel or resubmit an unknown write.
 		_ = op.complete(err)
+		if errors.Is(err, operationstore.ErrCapacity) {
+			// Capacity is a definite rejection. Its fresh sealed input has no
+			// admitted owner and can be reclaimed without touching prior work.
+			cleanup, stop := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+			if state.inputs.Cancel(cleanup, identity, ref) == nil {
+				_, _ = state.inputs.Cleanup(cleanup, 1)
+			}
+			stop()
+			g.operationAdmissionRejected(w, claims.RequestSHA256, digest)
+			return
+		}
 		g.operationError(w, err)
 		return
 	}
@@ -240,6 +255,15 @@ func (g *Gateway) submitOperation(w http.ResponseWriter, r *http.Request, state 
 		return
 	}
 	g.json(w, http.StatusAccepted, operationResponse(snapshot.Record))
+}
+
+// This response proves only that the current submission was not admitted. In
+// particular, input capacity can reject a duplicate before its existing record
+// is looked up. Never send it for an unknown CAS acknowledgement or any error
+// after Submit succeeded, including an audit completion failure.
+func (g *Gateway) operationAdmissionRejected(w http.ResponseWriter, requestDigest, grantDigest string) {
+	g.json(w, http.StatusTooManyRequests, operations.AdmissionRejection{Version: 1,
+		Admission: "not_admitted", Code: "RESOURCE_EXHAUSTED", RequestSHA256: requestDigest, GrantSHA256: grantDigest})
 }
 
 func (g *Gateway) operationError(w http.ResponseWriter, err error) {

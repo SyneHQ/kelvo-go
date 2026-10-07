@@ -23,6 +23,19 @@ import (
 
 const operationResponseLimit = operations.MaxReceiptBytes + 4<<10
 
+// OperationRejectedError confirms that this submission was not admitted.
+// It says nothing about any earlier attempt with the same idempotency key;
+// reconcile any earlier uncertainty before retrying. The SDK never replays it.
+type OperationRejectedError struct {
+	Code           string `json:"code"`
+	RequestSHA256  string `json:"request_sha256"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+}
+
+func (e *OperationRejectedError) Error() string {
+	return "Database operation admission capacity unavailable"
+}
+
 // OperationUncertainError means no verified terminal receipt was obtained.
 // Reconcile the ID or idempotency key; never automatically replay the mutation.
 type OperationUncertainError struct {
@@ -108,6 +121,21 @@ func decodeOperationResponse(response *http.Response, id, digest string) (operat
 	return status, nil
 }
 
+func decodeOperationRejection(response *http.Response, digest, grant string) (operations.AdmissionRejection, error) {
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusTooManyRequests || !operationContentType(response, "application/json") || response.ContentLength > operations.MaxAdmissionRejectionBytes {
+		return operations.AdmissionRejection{}, failure("PROTOCOL_ERROR")
+	}
+	raw, err := io.ReadAll(io.LimitReader(response.Body, operations.MaxAdmissionRejectionBytes+1))
+	var rejection operations.AdmissionRejection
+	if err != nil || len(raw) > operations.MaxAdmissionRejectionBytes ||
+		operations.DecodeStrict(raw, &rejection, operations.MaxAdmissionRejectionBytes) != nil ||
+		rejection.ValidateBinding(digest, operations.GrantDigest(grant)) != nil {
+		return operations.AdmissionRejection{}, failure("PROTOCOL_ERROR")
+	}
+	return rejection, nil
+}
+
 func operationRequest(request operations.Request) ([]byte, string, error) {
 	raw, err := operations.Encode(request)
 	if err != nil || len(raw) > operations.MaxRequestBytes {
@@ -128,6 +156,13 @@ func (c *Client) submitOperation(ctx context.Context, request operations.Request
 	response, err := c.doOperation(ctx, http.MethodPost, "/v1/operations", auth, raw)
 	if err != nil {
 		return operations.Response{}, uncertainOperation("", digest, request.IdempotencyKey, err)
+	}
+	if response.StatusCode == http.StatusTooManyRequests {
+		rejection, err := decodeOperationRejection(response, digest, auth.OperationGrant)
+		if err != nil {
+			return operations.Response{}, uncertainOperation("", digest, request.IdempotencyKey, err)
+		}
+		return operations.Response{}, &OperationRejectedError{Code: rejection.Code, RequestSHA256: digest, IdempotencyKey: request.IdempotencyKey}
 	}
 	status, err := decodeOperationResponse(response, "", digest)
 	if err == nil && status.Receipt != nil && operations.ValidateStatementReceipt(request, *status.Receipt) != nil {
