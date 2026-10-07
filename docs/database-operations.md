@@ -64,6 +64,12 @@ The gateway also needs a separate `operations.listen` mTLS listener and per-tena
 
 Operation TLS uses pinned, verified service identities and static certificate files. Restart with a valid replacement before certificate expiry. Adapter binary content is verified again on the descriptor used for execution.
 
+## Admission capacity
+
+A read without an idempotency key can try up to 16 distinct shards after a definite capacity rejection, within one storage deadline. Writes and keyed reads keep their original shard. Retained records and policy limits stay unchanged.
+
+A verified `429` means this submission was not admitted. It does not settle an earlier attempt with the same key. The SDK returns `OperationRejectedError`; lost acknowledgements and failures after admission remain `OperationUncertainError`. Neither error triggers automatic replay.
+
 ## Retry and outcomes
 
 | Outcome | Meaning | Next action |
