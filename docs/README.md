@@ -39,7 +39,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Rotate credentials | [API keys](gateway-key-rotation.md) · [Source files](operations.md#file-based-source-credential-rotation) · [Cloud source secrets](cloud-secrets.md) · [TLS identity](tls-identity-rotation.md) · [TLS trust](tls-trust-rotation.md) |
 | Retain security and execution receipts | [Durable local audit](durable-audit.md) |
 | Inspect query/refresh outcomes | [Tracing](tracing.md) · [Passive source health](source-health.md) · [Native errors](native-error-classification.md) |
-| Recover failed workers and scratch | [Worker failures](worker-failures.md) · [Managed scratch](worker-scratch.md) |
+| Recover failed workers and scratch | [Coordination diagnostics and readiness](worker-coordination.md) · [Worker failures](worker-failures.md) · [Managed scratch](worker-scratch.md) |
 | Run exports and repeat downloads | [Durable exports](exports.md) · [Storage API](export-storage.md) · [Protected-source acceptance](protected-export-acceptance.md) · [Admission](workload-admission.md) |
 
 ## Evaluate and reproduce results
@@ -51,7 +51,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Multi-adapter joins and small VMs | [Federation capacity](federation-capacity.md) · [Oracle worker profile](node-capacity.md) · [Earlier standalone trials](oracle-micro-capacity.md) |
 | Telemetry cost and tracing correctness | [Paired measurements](telemetry-overhead.md) · [OTLP acceptance](tracing-acceptance.md) |
 | Native export benchmark | [ClickHouse runner](benchmarking.md) |
-| Mixed load and fault recovery | [Operational acceptance](operational-acceptance.md) · [Process loss](process-loss-acceptance.md) |
+| Mixed load and fault recovery | [Sustained joins and exports](sustained-acceptance.md) · [Operational acceptance](operational-acceptance.md) · [Process loss](process-loss-acceptance.md) |
 | Shared gateway authority | [Configure the fixed fleet](gateway-key-authority.md) · [Quorum-witness protocol](key-authority-protocol.md) · [Validation status](validation.md#shared-gateway-authority) |
 | Storage and version compatibility | [Storage gates](storage-conformance.md) · [Snapshot upgrades](release-upgrades.md) · [Rolling applications](rolling-upgrades.md) |
 

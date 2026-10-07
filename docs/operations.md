@@ -56,7 +56,7 @@ The startup SELECT probe counts as execution. Metrics reset on restart; there is
 2. Send SIGTERM or SIGINT: admission stops and readiness fails; existing results, status/cancel and leases continue during grace.
 3. Allow workers to finish assigned queries/refreshes. Gateways wait their configured grace because handles are shared. Grace expiry cancels work and bounds shutdown; assigned SQL is never replayed.
 
-Gateway `/health` and `/ready` bypass ordinary request permits. Readiness reports lifecycle/broker reconciliation, not source reachability or spare capacity. Worker probes require gateway mTLS and can additionally require datasets.
+Gateway `/health` and `/ready` bypass ordinary request permits. Readiness requires healthy lifecycle/broker state and at least one ready worker per configured tenant. [Worker checks](worker-coordination.md) use cached, verified mTLS probes; they do not reserve capacity or query sources.
 
 ## Dataset diagnostics and required readiness
 
@@ -69,7 +69,7 @@ required_datasets:
   - orders_daily
 ```
 
-Missing, stale, mismatched or unavailable required data fails worker readiness. Optional datasets and gateway readiness remain independent. Without this setting, dataset state does not gate readiness.
+Missing, stale, mismatched or unavailable required data fails worker readiness. If no worker remains ready for a tenant, gateway readiness also fails after its cached evidence expires. Optional datasets do not gate readiness.
 
 Reads coalesce/cache for 2s with a 5s deadline and four backend slots. When required data exists, two slots are reserved for it. Cached age keeps advancing; diagnostics trigger no source SQL or refresh.
 
