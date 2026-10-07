@@ -273,17 +273,77 @@ class SustainedControls(unittest.TestCase):
                 fixture.verify_export_part(raw, {}, manifest, expected)
             verify.assert_not_called()
 
-    def test_export_cleanup_counts_entries_and_retains_partial_publication_markers(self):
+    def export_cleanup_campaign(self, directory):
+        campaign = fixture.Campaign.__new__(fixture.Campaign)
+        campaign.directory = Path(directory)
+        root = campaign.directory / "a1-exports"
+        root.mkdir()
+        data = root / "data"
+        data.mkdir()
+        campaign.export_roots = {"a1": root}
+        for path in (root / ".lock", root / "custody.yml", data / ".lock", data / "store.yml"):
+            path.touch()
+        return campaign, root, data
+
+    def test_export_cleanup_excludes_custody_metadata_but_counts_data_and_markers(self):
         with tempfile.TemporaryDirectory() as directory:
-            campaign = fixture.Campaign.__new__(fixture.Campaign)
-            root = Path(directory)
-            campaign.export_roots = {"a1": root}
-            for name in (".lock", "store.yml"):
-                (root / name).touch()
+            campaign, root, data = self.export_cleanup_campaign(directory)
             self.assertEqual(campaign.remaining_export_entries(), 0)
-            (root / ("a" * 32)).mkdir()
-            (root / ("a" * 32 + ".deleting.yml")).touch()
-            self.assertEqual(campaign.remaining_export_entries(), 2)
+            retained = data / ("a" * 32)
+            retained.mkdir()
+            (retained / "active-reader.lease").touch()
+            for name in ("b" * 32 + ".deleting.yml", "c" * 32 + ".initializing.yml", "unexpected"):
+                (data / name).touch()
+            self.assertEqual(campaign.remaining_export_entries(), 4)
+            self.assertTrue((retained / "active-reader.lease").exists())
+
+    def test_export_cleanup_rejects_unexpected_custody_entries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            campaign, root, _ = self.export_cleanup_campaign(directory)
+            (root / "unexpected").touch()
+            with self.assertRaises(fixture.ops.AcceptanceError):
+                campaign.remaining_export_entries()
+
+    def test_export_cleanup_rejects_missing_or_nonregular_metadata(self):
+        for relative in (".lock", "custody.yml", "data/.lock", "data/store.yml"):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as directory:
+                campaign, root, _ = self.export_cleanup_campaign(directory)
+                metadata = root / relative
+                metadata.unlink()
+                with self.assertRaises((fixture.ops.AcceptanceError, FileNotFoundError)):
+                    campaign.remaining_export_entries()
+                metadata.mkdir()
+                with self.assertRaises(fixture.ops.AcceptanceError):
+                    campaign.remaining_export_entries()
+
+    def test_export_cleanup_rejects_symlinked_custody_data_metadata_and_entries(self):
+        for relative in (".", "data", "custody.yml", "data/store.yml", "data/entry"):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as directory:
+                campaign, root, data = self.export_cleanup_campaign(directory)
+                path = root / relative
+                target = campaign.directory / "foreign"
+                if relative in (".", "data"):
+                    path.rename(target)
+                    path.symlink_to(target, target_is_directory=True)
+                else:
+                    target.touch()
+                    if path.exists():
+                        path.unlink()
+                    path.symlink_to(target)
+                with self.assertRaises(fixture.ops.AcceptanceError):
+                    campaign.remaining_export_entries()
+
+    def test_export_cleanup_rejects_escaping_or_wrong_worker_roots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            campaign, root, _ = self.export_cleanup_campaign(directory)
+            campaign.export_roots = {"b1": root}
+            with self.assertRaises(fixture.ops.AcceptanceError):
+                campaign.remaining_export_entries()
+            outside = campaign.directory / "outside"
+            root.rename(outside)
+            campaign.export_roots = {"a1": outside}
+            with self.assertRaises(fixture.ops.AcceptanceError):
+                campaign.remaining_export_entries()
 
     def containment_campaign(self, directory):
         campaign = fixture.Campaign.__new__(fixture.Campaign)
