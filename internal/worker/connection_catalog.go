@@ -17,6 +17,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/postgres"
 	driver "github.com/go-sql-driver/mysql"
 )
 
@@ -167,6 +168,12 @@ func validConnectionSource(s catalog.Source, selected delegation.Source, secrets
 		return false
 	}
 	for key, value := range s.Options {
+		if key == "tls_ca_pem" && (s.Type == "postgres" || s.Type == "cockroachdb" || s.Type == "alloydb" || s.Type == "redshift") {
+			if s.Federation != nil || postgres.ValidateSourceOptions(s.Options) != nil {
+				return false
+			}
+			continue
+		}
 		if len(key) > 64 || len(value) > 256 || !utf8.ValidString(value) || strings.ContainsAny(value, "\x00\r\n") {
 			return false
 		}
@@ -174,7 +181,9 @@ func validConnectionSource(s catalog.Source, selected delegation.Source, secrets
 	dsnOnly := s.DSNEnv != "" && s.URLEnv == "" && s.UsernameEnv == "" && s.PasswordEnv == "" && s.TokenEnv == ""
 	urlToken := s.URLEnv != "" && s.TokenEnv != "" && s.DSNEnv == "" && s.UsernameEnv == "" && s.PasswordEnv == ""
 	switch s.Type {
-	case "postgres", "cockroachdb", "alloydb", "redshift", "mysql", "mariadb", "sqlserver", "oracle":
+	case "postgres", "cockroachdb", "alloydb", "redshift":
+		return dsnOnly && postgres.ValidateSourceOptions(s.Options) == nil && validConnectionDSN(s.Type, secrets[s.DSNEnv], selected.Database)
+	case "mysql", "mariadb", "sqlserver", "oracle":
 		return dsnOnly && len(s.Options) == 0 && validConnectionDSN(s.Type, secrets[s.DSNEnv], selected.Database)
 	case "mongodb":
 		return dsnOnly && len(s.Options) == 1 && s.Options["database"] != "" && s.Options["database"] == selected.Database && s.Federation == nil && validConnectionDSN(s.Type, secrets[s.DSNEnv], selected.Database)
