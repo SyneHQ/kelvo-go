@@ -6,6 +6,17 @@ ENV CGO_ENABLED=1 GOTOOLCHAIN=local GOMAXPROCS=2
 COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
+COPY adapter ./adapter
+COPY delegation ./delegation
+COPY federation ./federation
+COPY filesnapshot ./filesnapshot
+COPY ingestion ./ingestion
+COPY migration ./migration
+COPY operations ./operations
+COPY provider ./provider
+COPY query ./query
+COPY resolver ./resolver
+COPY watch ./watch
 COPY sandbox ./sandbox
 COPY scripts/provision_duckbridge.py scripts/duckbridge-driver.patch ./scripts/
 ARG DUCKBRIDGE=0
