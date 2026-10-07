@@ -34,12 +34,79 @@ import process_loss_acceptance as loss
 
 ROOT = Path(__file__).resolve().parents[1]
 TENANTS = ("a", "b")
-REQUIRED = ("startup", "tenant_isolation", "saturation", "gateway_loss", "worker_loss", "broker_loss", "mixed_load", "slow_readers", "cancellations", "cleanup")
+REQUIRED = ("startup", "tenant_isolation", "saturation", "gateway_loss", "worker_loss", "broker_loss", "mixed_load", "file_joins", "durable_exports", "slow_readers", "cancellations", "cleanup")
+WORKLOAD_KINDS = ("queries", "joins", "exports", "export_downloads", "export_withdrawals", "slow_readers", "cancellations", "refreshes")
+PROGRESS_KINDS = ("queries", "joins", "exports", "refreshes")
+LATENCY_COUNTS = {"query": "queries", "dispatch_observation": "queries", "join": "joins", "export_fill": "exports",
+                  "export_download": "export_downloads", "first_byte": "slow_readers", "slow_delivery": "slow_readers", "cancel": "cancellations"}
 ROW_COUNT = 1_000_000
+JOIN_SOURCES = ["ops_snapshot", "ops_dimension"]
+JOIN_SQL = """SELECT f.tenant, CAST(d.bucket AS BIGINT) AS bucket, COUNT(*)::BIGINT AS n,
+COUNT(f.metric)::BIGINT AS present, SUM(f.metric * d.multiplier)::BIGINT AS total
+FROM ops_snapshot f JOIN ops_dimension d ON f.id % 10 = d.bucket AND f.tenant = d.tenant
+WHERE d.bucket <> 7 GROUP BY f.tenant, d.bucket ORDER BY bucket"""
+EXPORT_TTL = 60
+EXPORT_PERIOD = 20.
+EXPORT_BODY_BOUND = 1 << 20
+EXPORT_RESPONSE_STAGES = ("join_submit", "join_status", "join_result", "export_submit", "export_status", "export_manifest", "export_part", "export_cancel", "export_withdrawn",
+                          "export_foreign_status", "export_foreign_manifest", "export_foreign_part", "export_foreign_cancel")
 SLOW_ROWS = 16_384
 SLOW_BODY_BOUND = 8 << 20
 SLOW_QUERY = f"SELECT id, metric, tenant, repeat('x', 256) AS payload FROM ops_snapshot WHERE id < {SLOW_ROWS} ORDER BY id"
 HISTOGRAM_BOUNDS = (.005, .01, .025, .05, .1, .25, .5, 1., 2., 5., 10., 20., 40., 80.)
+
+
+def join_expected(expected, tenant):
+    # Independent integer reference; changing either the dimension filter,
+    # tenant or multiplier must change the certified output.
+    offset = 3 if tenant == "a" else 13
+    return [{**row, "total": row["total"] * (row["bucket"] + offset)} for row in expected if row["bucket"] != 7]
+
+
+def verify_export_manifest(raw, export_id, expected):
+    value = json.loads(raw)
+    ops.require(isinstance(value, dict) and value.get("id") == export_id, "EXPORT_MANIFEST_ID")
+    parts = value.get("parts")
+    ops.require(isinstance(parts, list) and len(parts) == 1 and isinstance(parts[0], dict), "EXPORT_MANIFEST_PART_COUNT")
+    part = parts[0]
+    for document in (value, part):
+        ops.require(type(document.get("rows")) is int and document["rows"] == len(expected), "EXPORT_MANIFEST_ROWS")
+        for key in ("encoded_bytes", "decoded_bytes"):
+            ops.require(type(document.get(key)) is int and 0 < document[key] <= EXPORT_BODY_BOUND, "EXPORT_MANIFEST_BYTE_BOUND")
+            ops.require(document[key] == value[key], "EXPORT_MANIFEST_TOTALS")
+    ops.require(type(part.get("index")) is int and part["index"] == 0
+                and type(part.get("batches")) is int and part["batches"] == 1, "EXPORT_MANIFEST_BATCHES")
+    ops.require(isinstance(part.get("sha256"), str) and identity.HEX_SHA256.fullmatch(part["sha256"])
+                and isinstance(value.get("schema_sha256"), str) and identity.HEX_SHA256.fullmatch(value["schema_sha256"]), "EXPORT_MANIFEST_DIGEST")
+    return value
+
+
+def verify_export_part(raw, headers, manifest, expected):
+    part = manifest["parts"][0]
+    ops.require(len(raw) == part["encoded_bytes"] and hashlib.sha256(raw).hexdigest() == part["sha256"], "EXPORT_PART_DIGEST_MISMATCH")
+    ops.verify_completed_arrow(raw, headers, expected)
+
+
+def valid_mixed_responses(counts, workload):
+    try:
+        if not isinstance(counts, dict) or set(counts) != set(TENANTS):
+            return False
+        for tenant in TENANTS:
+            values = counts[tenant]
+            exact = {"join_submit_http_201": workload["joins"][tenant], "join_result_http_200": workload["joins"][tenant],
+                     "export_submit_http_201": workload["exports"][tenant], "export_manifest_http_200": workload["exports"][tenant],
+                     "export_part_http_200": workload["export_downloads"][tenant], "export_cancel_http_200": workload["export_withdrawals"][tenant],
+                     "export_withdrawn_http_409": workload["export_withdrawals"][tenant]}
+            exact.update({"export_foreign_" + stage + "_http_404": workload["exports"][tenant] for stage in ("status", "manifest", "part", "cancel")})
+            if (not isinstance(values, dict) or set(values) != set(exact) | {"join_status_http_200", "export_status_http_200"}
+                    or any(not integer_count(value, 1) for value in values.values())
+                    or any(values[key] != value for key, value in exact.items())
+                    or values["join_status_http_200"] < workload["joins"][tenant]
+                    or values["export_status_http_200"] < workload["exports"][tenant]):
+                return False
+        return True
+    except (AttributeError, KeyError, TypeError):
+        return False
 
 
 def finite_number(value, minimum=0):
@@ -113,7 +180,8 @@ def valid_histogram(value, expected):
 def reconcile(report, expected_revision):
     try:
         checks = report["checks"]
-        if (not isinstance(expected_revision, str) or not re.fullmatch(r"[0-9a-f]{40}", expected_revision)
+        if (report.get("schema") != 2 or type(report.get("schema")) is not int
+                or not isinstance(expected_revision, str) or not re.fullmatch(r"[0-9a-f]{40}", expected_revision)
                 or report.get("revision") != expected_revision
                 or report.get("interrupted") is not False or len(checks) != len(REQUIRED)
                 or {check["test"] for check in checks} != set(REQUIRED)
@@ -152,9 +220,9 @@ def reconcile(report, expected_revision):
         for window in windows:
             if (not finite_number(window["start_seconds"]) or not finite_number(window["end_seconds"])
                     or window["start_seconds"] != previous or window["end_seconds"] < previous
-                    or not all(integer_count(window["deltas"][kind][tenant]) for kind in ("queries", "refreshes") for tenant in TENANTS)):
+                    or not all(integer_count(window["deltas"][kind][tenant]) for kind in WORKLOAD_KINDS for tenant in TENANTS)):
                 return False
-            if window["end_seconds"] - previous >= 60 and not all(window["deltas"][kind][tenant] > 0 for kind in ("queries", "refreshes") for tenant in TENANTS):
+            if window["end_seconds"] - previous >= 60 and not all(window["deltas"][kind][tenant] > 0 for kind in PROGRESS_KINDS for tenant in TENANTS):
                 return False
             previous = window["end_seconds"]
         mixed = next(check for check in checks if check["test"] == "mixed_load")
@@ -165,9 +233,20 @@ def reconcile(report, expected_revision):
             return False
         workload = report["workload"]
         for tenant in TENANTS:
-            if not all(type(workload[kind][tenant]) is int and workload[kind][tenant] > 0 for kind in ("queries", "slow_readers", "cancellations", "refreshes")):
+            if (not all(integer_count(workload[kind][tenant], 1) for kind in WORKLOAD_KINDS)
+                    or workload["export_downloads"][tenant] != 2 * workload["exports"][tenant]
+                    or workload["export_withdrawals"][tenant] != workload["exports"][tenant]
+                    or any(sum(window["deltas"][kind][tenant] for window in windows) != workload[kind][tenant]
+                           for kind in WORKLOAD_KINDS)):
                 return False
-        for kind, count_kind in (("query", "queries"), ("dispatch_observation", "queries"), ("first_byte", "slow_readers"), ("slow_delivery", "slow_readers"), ("cancel", "cancellations")):
+        if not valid_mixed_responses(report.get("mixed_response_counts"), workload) or report.get("client_failures") != []:
+            return False
+        for name, kind in (("file_joins", "joins"), ("durable_exports", "exports")):
+            gate = next(check for check in checks if check["test"] == name)
+            if (gate.get("counts") != workload[kind]
+                    or not all(integer_count(gate["counts"][tenant], 1) for tenant in TENANTS)):
+                return False
+        for kind, count_kind in LATENCY_COUNTS.items():
             if not all(valid_histogram(report["latencies"][kind][tenant], workload[count_kind][tenant]) for tenant in TENANTS):
                 return False
         process = report["process_sampling"]
@@ -183,7 +262,7 @@ def reconcile(report, expected_revision):
                 or not integer_count(samples["peak_scratch_bytes"]) or samples["peak_scratch_bytes"] > 1024 << 20):
             return False
         cleanup = next(check for check in checks if check["test"] == "cleanup")
-        return (all(type(cleanup[key]) is int and cleanup[key] == 0 for key in ("forced_application_kills", "observed_live_descendants", "worker_scratch_directories", "remaining_containment_records"))
+        return (all(type(cleanup[key]) is int and cleanup[key] == 0 for key in ("forced_application_kills", "observed_live_descendants", "worker_scratch_directories", "remaining_containment_records", "remaining_export_entries"))
                 and cleanup["all_owned_brokers_stopped"] is True and cleanup["original_configurations_verified"] is True)
     except (AttributeError, KeyError, OverflowError, TypeError, ValueError, StopIteration):
         return False
@@ -371,8 +450,11 @@ class Campaign(loss.LossAcceptance):
         self.client_failures = []
         self.phase = "startup"
         self.data_lock = threading.RLock()
-        self.workload = {kind: {tenant: 0 for tenant in TENANTS} for kind in ("queries", "slow_readers", "cancellations", "refreshes")}
-        self.latencies = {kind: {tenant: histogram() for tenant in TENANTS} for kind in ("query", "dispatch_observation", "first_byte", "slow_delivery", "cancel")}
+        self.workload = {kind: {tenant: 0 for tenant in TENANTS} for kind in WORKLOAD_KINDS}
+        self.latencies = {kind: {tenant: histogram() for tenant in TENANTS} for kind in LATENCY_COUNTS}
+        self.mixed_response_counts = {tenant: {} for tenant in TENANTS}
+        self.join_expected = {tenant: join_expected(self.expected[tenant], tenant) for tenant in TENANTS}
+        self.export_roots = {}
         self.monitor_stop = threading.Event()
         self.monitor_thread = None
         self.resource_samples = {"samples": 0, "counter_errors": [], "resource_violations": [], "peak_scratch_bytes": 0,
@@ -389,7 +471,8 @@ class Campaign(loss.LossAcceptance):
             config = self.directory / (name + ".yml")
             text = config.read_text()
             resources = {"max_concurrent": 2, "memory_mb": 1024, "baseline_mb": 128, "overhead_mb": 224,
-                         "scratch_mb": 512, "query_reserve_slots": 1, "query_reserve_memory_mb": 352, "query_reserve_scratch_mb": 256}
+                         "scratch_mb": 512, "query_reserve_slots": 1, "query_reserve_memory_mb": 352, "query_reserve_scratch_mb": 256,
+                         "export": {"max_concurrent": 1, "memory_mb": 352, "scratch_mb": 128}}
             text = ops.replace_field(text, "resources", resources)
             state = self.directory / (name + "-containment")
             state.mkdir(mode=0o700, exist_ok=True)
@@ -409,7 +492,19 @@ class Campaign(loss.LossAcceptance):
             data = yaml.safe_load(catalog.read_text())
             data["acceleration"]["datasets"][0]["limits"]["max_bytes"] = 64 << 20
             data["acceleration"]["datasets"][0]["refresh_interval"] = "10s"
+            dimension = self.directory / (name + "-dimension.csv")
+            tenant = name[0]
+            ops.cf.write(dimension, "bucket,tenant,multiplier\n" + "".join(f"{bucket},{tenant},{bucket + (3 if tenant == 'a' else 13)}\n" for bucket in range(10)))
+            data["sources"] = [source for source in data["sources"] if source["id"] != "ops_dimension"]
+            data["sources"].append({"id": "ops_dimension", "type": "csv", "path": str(dimension)})
             ops.cf.write(catalog, ops.yaml_document(data))
+            exports = self.directory / (name + "-exports")
+            exports.mkdir(mode=0o700, exist_ok=True)
+            self.export_roots[name] = exports
+            config_data = yaml.safe_load(config.read_text())
+            config_data["exports"] = {"directory": str(exports), "max_entries": 8, "max_stored_bytes": 32 << 20,
+                "max_concurrent": 1, "max_downloads": 2, "download_memory_mb": 16, "cleanup_interval": "1s", "cleanup_max_removals": 8}
+            ops.cf.write(config, yaml.safe_dump(config_data, sort_keys=False))
         return super().start_process(name, command)
 
     def startup(self):
@@ -418,6 +513,8 @@ class Campaign(loss.LossAcceptance):
         self.start_monitor()
         return {**detail, "query_memory_mb": 128, "native_tree_memory_mb": 192, "parent_arrow_allowance_mb": 160,
                 "service_cpu_percent": 200, "service_memory_bytes": 6 << 30, "per_node_scratch_bytes": 512 << 20,
+                "federation_sources": "Accelerated Parquet facts joined to a separate tenant-specific CSV dimension; file adapters only",
+                "export_retention_seconds": EXPORT_TTL, "export_storage_per_worker_bytes": 32 << 20,
                 "containment_enabled": True, "ports_exclusive_to_campaign": True, "fixture_config_sha256": dict(self.config_hashes)}
 
     def metric_sample(self, name):
@@ -436,7 +533,8 @@ class Campaign(loss.LossAcceptance):
                 "initial_refreshes": value, "local_queue_histogram": []})
         else:
             ops.require(value >= previous, "REFRESH_COUNTER_REGRESSED")
-            self.workload["refreshes"][name[0]] += value - previous
+            if self.phase == "mixed" or self.phase.startswith("fault_"):
+                self.workload["refreshes"][name[0]] += value - previous
         self.last_metrics[epoch] = value
         latest = next(item for item in reversed(self.resource_samples["node_metric_epochs"]) if item["node"] == name)
         latest["final_refreshes"] = value
@@ -506,6 +604,85 @@ class Campaign(loss.LossAcceptance):
             self.workload["queries"][tenant] += 1
             observe(self.latencies["query"][tenant], finished - start)
             observe(self.latencies["dispatch_observation"][tenant], assigned - submitted)
+
+    def mixed_call(self, stage, tenant, path, *, deadline, auth_tenant=None, **kwargs):
+        ops.require(stage in EXPORT_RESPONSE_STAGES, "INVALID_MIXED_RESPONSE_STAGE")
+        remaining = deadline - time.monotonic()
+        ops.require(remaining > 0, "MIXED_REQUEST_DEADLINE")
+        label = stage + "_transport_error"
+        try:
+            response = self.call(path, auth_tenant or tenant, timeout=min(25. if stage == "join_result" else 5., remaining), **kwargs)
+            label = stage + "_http_" + str(response[0])
+        finally:
+            with self.data_lock:
+                values = self.mixed_response_counts[tenant]
+                values[label] = values.get(label, 0) + 1
+        ops.require(time.monotonic() <= deadline, "MIXED_REQUEST_DEADLINE")
+        return response
+
+    def mixed_ready(self, stage, tenant, path, wanted, allowed, deadline):
+        while True:
+            code, raw = self.mixed_call(stage, tenant, path, deadline=deadline)
+            ops.require(code == 200, "MIXED_STATUS_HTTP_FAILURE")
+            state = json.loads(raw)["state"]
+            ops.require(state in allowed, "MIXED_TERMINAL_OR_UNKNOWN_STATE")
+            if state == wanted:
+                return
+            time.sleep(.05)
+
+    def timed_join(self, tenant):
+        started = time.monotonic()
+        deadline = started + 30.
+        code, raw = self.mixed_call("join_submit", tenant, "/v1/queries", deadline=deadline,
+                                   body={"mode": "federated", "sources": JOIN_SOURCES, "sql": JOIN_SQL})
+        ops.require(code == 201, "JOIN_SUBMISSION_FAILED")
+        query_id = json.loads(raw)["id"]
+        path = "/v1/queries/" + query_id
+        self.mixed_ready("join_status", tenant, path, "assigned", ("queued", "assigned"), deadline)
+        code, raw, headers = self.mixed_call("join_result", tenant, path + "/results", deadline=deadline, with_headers=True)
+        ops.require(code == 200, "JOIN_RESULT_FAILED")
+        ops.verify_completed_arrow(raw, headers, self.join_expected[tenant])
+        with self.data_lock:
+            self.workload["joins"][tenant] += 1
+            observe(self.latencies["join"][tenant], time.monotonic() - started)
+
+    def export_cycle(self, tenant):
+        started = time.monotonic()
+        deadline = started + 30.
+        code, raw = self.mixed_call("export_submit", tenant, "/v1/exports", deadline=deadline,
+            body={"query": {"mode": "federated", "sources": JOIN_SOURCES, "sql": JOIN_SQL}, "ttl_seconds": EXPORT_TTL, "compression": "none"})
+        ops.require(code == 201, "EXPORT_SUBMISSION_FAILED")
+        export_id = json.loads(raw)["id"]
+        ops.require(isinstance(export_id, str) and re.fullmatch(r"e[0-7]-[a-f0-9]{32}", export_id), "EXPORT_HANDLE_INVALID")
+        path = "/v1/exports/" + export_id
+        self.mixed_ready("export_status", tenant, path, "ready", ("queued", "assigned", "claimed", "running", "stored", "ready"), deadline)
+        ready = time.monotonic()
+        code, raw = self.mixed_call("export_manifest", tenant, path + "/manifest", deadline=deadline)
+        ops.require(code == 200, "EXPORT_MANIFEST_HTTP_FAILURE")
+        manifest = verify_export_manifest(raw, export_id, self.join_expected[tenant])
+        for stage, suffix, body in (("status", "", None), ("manifest", "/manifest", None), ("part", "/parts/0", None), ("cancel", "/cancel", {})):
+            code, _ = self.mixed_call("export_foreign_" + stage, tenant, path + suffix, deadline=deadline,
+                                     auth_tenant="b" if tenant == "a" else "a", body=body)
+            ops.require(code == 404, "CROSS_TENANT_EXPORT_VISIBLE")
+        first = None
+        for gateway in (self.default_gateway, 3 - self.default_gateway):
+            download = time.monotonic()
+            code, raw, headers = self.mixed_call("export_part", tenant, path + "/parts/0", deadline=deadline, with_headers=True, gateway=gateway)
+            ops.require(code == 200, "EXPORT_PART_HTTP_FAILURE")
+            verify_export_part(raw, headers, manifest, self.join_expected[tenant])
+            ops.require(first is None or raw == first, "EXPORT_REPEAT_BYTES_CHANGED")
+            first = raw
+            with self.data_lock:
+                self.workload["export_downloads"][tenant] += 1
+                observe(self.latencies["export_download"][tenant], time.monotonic() - download)
+        code, raw = self.mixed_call("export_cancel", tenant, path + "/cancel", deadline=deadline, body={})
+        ops.require(code == 200 and json.loads(raw).get("state") == "cancelled", "EXPORT_WITHDRAWAL_FAILED")
+        code, _ = self.mixed_call("export_withdrawn", tenant, path + "/manifest", deadline=deadline)
+        ops.require(code == 409, "WITHDRAWN_EXPORT_REPLAYABLE")
+        with self.data_lock:
+            self.workload["exports"][tenant] += 1
+            self.workload["export_withdrawals"][tenant] += 1
+            observe(self.latencies["export_fill"][tenant], ready - started)
 
     def slow_reader(self, tenant):
         import pyarrow as pa
@@ -641,7 +818,7 @@ class Campaign(loss.LossAcceptance):
             interval = elapsed - previous["end_seconds"]
             deltas = {kind: {tenant: self.workload[kind][tenant] - previous["counts"][kind][tenant] for tenant in TENANTS} for kind in self.workload}
             if interval >= 60:
-                ops.require(all(deltas["queries"][tenant] > 0 and deltas["refreshes"][tenant] > 0 for tenant in TENANTS), "TENANT_PROGRESS_WINDOW_EMPTY")
+                ops.require(all(deltas[kind][tenant] > 0 for kind in PROGRESS_KINDS for tenant in TENANTS), "TENANT_PROGRESS_WINDOW_EMPTY")
             self.window_counts.append({"start_seconds": previous["end_seconds"], "end_seconds": round(elapsed, 3), "deltas": deltas, "counts": json.loads(json.dumps(self.workload))})
             point = {"elapsed_seconds": round(elapsed, 3), "phase": self.phase, "counts": self.workload,
                      "cgroup_peak_bytes": self.resource_samples["peak_cgroup_bytes"], "scratch_peak_bytes": self.resource_samples["peak_scratch_bytes"]}
@@ -663,7 +840,8 @@ class Campaign(loss.LossAcceptance):
         self.progress_started = started
         deadline = started + self.args.duration
         self.phase = "mixed"
-        def client(tenant):
+        def client(tenant, kind):
+            sequence = 0
             while not self.stop_clients.is_set() and time.monotonic() < deadline:
                 with self.client_lock:
                     admitted = not self.pause_clients.is_set()
@@ -673,17 +851,23 @@ class Campaign(loss.LossAcceptance):
                     self.stop_clients.wait(.05)
                     continue
                 try:
-                    self.timed_query(tenant)
+                    if kind == "export":
+                        self.export_cycle(tenant)
+                    elif sequence % 2:
+                        self.timed_join(tenant)
+                    else:
+                        self.timed_query(tenant)
+                    sequence += 1
                 except Exception as error:
                     with self.data_lock:
                         self.client_failures.append(safe_category(error))
-                    ops.cf.write(self.artifact / ("client-" + tenant + "-failure.log"), traceback.format_exc())
+                    ops.cf.write(self.artifact / ("client-" + tenant + "-" + kind + "-failure.log"), traceback.format_exc())
                     self.stop_clients.set()
                 finally:
                     with self.client_lock:
                         self.active_clients -= 1
-                self.stop_clients.wait(.5)
-        tasks = [threading.Thread(target=client, args=(tenant,), daemon=True) for tenant in TENANTS]
+                self.stop_clients.wait(EXPORT_PERIOD if kind == "export" else .5)
+        tasks = [threading.Thread(target=client, args=(tenant, kind), daemon=True) for tenant in TENANTS for kind in ("query", "export")]
         for task in tasks:
             task.start()
         events = [(self.args.duration * ratio, name, callback) for ratio, name, callback in (
@@ -726,15 +910,19 @@ class Campaign(loss.LossAcceptance):
                 task.join(timeout=30)
             ops.require(all(not task.is_alive() for task in tasks), "CLIENT_THREAD_DID_NOT_STOP")
         elapsed = time.monotonic() - started
+        self.phase = "mixed_complete"
         self.checkpoint(elapsed)
         ops.require(not self.client_failures, "INTERACTIVE_CLIENT_FAILED")
         ops.require(elapsed >= self.args.duration and not events, "SUSTAINED_INTERVAL_INCOMPLETE")
-        return {"observed_seconds": round(elapsed, 3), "client_threads": 2, "pace_seconds_after_query": .5,
+        return {"observed_seconds": round(elapsed, 3), "client_threads": 4, "pace_seconds_after_query": .5, "pace_seconds_after_export": EXPORT_PERIOD,
+                "join_scope": "Real cross-source native join over Parquet snapshot and CSV dimension; no live database provider",
+                "export_scope": "Nine aggregate rows per fill, one Arrow part, two exact downloads through different gateways and withdrawal; no wide-export capacity claim",
                 "scheduled_fault_gates": 4, "fault_phase_workload": "Normal clients briefly quiesce for control gates and explicit cancellation checks; each fault gate establishes its own two running and two queued tenant queries before disruption.", "query_refresh_overlap_samples": self.resource_samples["query_refresh_overlap_samples"]}
 
     def evidence(self):
         with self.data_lock:
             return {"workload": json.loads(json.dumps(self.workload)), "resources": json.loads(json.dumps(self.resource_samples)),
+                    "mixed_response_counts": json.loads(json.dumps(self.mixed_response_counts)),
                     "control_response_counts": dict(self.control_response_counts), "broker_supervision": self.broker_supervision,
                     "latencies": {kind: {tenant: histogram_evidence(value) for tenant, value in values.items()} for kind, values in self.latencies.items()},
                     "latency_scope": "Client elapsed times and dispatch observation upper bounds (50ms polling), not exact distributed queue attribution; node admission histograms exclude dispatch.",
@@ -756,9 +944,27 @@ class Campaign(loss.LossAcceptance):
             remaining += sum(path.name != ".kelvo-containment.lock" for path in state.iterdir())
         return remaining
 
+    def remaining_export_entries(self):
+        remaining = 0
+        for root in self.export_roots.values():
+            ops.require(root.is_dir() and not root.is_symlink(), "EXPORT_ROOT_DISAPPEARED")
+            for entry in root.iterdir():
+                if entry.name not in (".lock", "store.yml"):
+                    remaining += 1
+        return remaining
+
     def cleanup(self):
         self.phase = "cleanup"
         self.stop_clients.set()
+        # Ready files may remain until their original TTL even after a broker
+        # withdrawal. Let the owned worker perform its normal safe cleanup;
+        # never delete storage to manufacture an empty-directory assertion.
+        export_cleanup_error = None
+        try:
+            if getattr(self, "export_roots", {}):
+                self.wait(lambda: self.remaining_export_entries() == 0, EXPORT_TTL + 15)
+        except Exception as error:
+            export_cleanup_error = error
         self.monitor_stop.set()
         if self.monitor_thread:
             self.monitor_thread.join(timeout=8)
@@ -783,19 +989,37 @@ class Campaign(loss.LossAcceptance):
         self.resource_samples["peak_cgroup_bytes"] = max(self.resource_samples["peak_cgroup_bytes"], int((self.group / "memory.peak").read_text()))
         self.resource_samples["final_cpu_stat"] = ops.numeric_counters((self.group / "cpu.stat").read_text())
         self.resource_samples["final_cgroup_sample_after_shutdown"] = True
-        return {**detail, "remaining_containment_records": remaining, "all_owned_brokers_stopped": True}
+        if export_cleanup_error is not None:
+            raise export_cleanup_error
+        export_entries = self.remaining_export_entries() if getattr(self, "export_roots", {}) else 0
+        ops.require(export_entries == 0, "EXPORT_STORAGE_CUSTODY_REMAINS")
+        return {**detail, "remaining_containment_records": remaining, "remaining_export_entries": export_entries, "all_owned_brokers_stopped": True}
 
 
 def provision_fixture(fixture, nats_archive=None):
     ops.cf.DIR = fixture
-    ops.cf.provision(nats_archive)
+    ops.cf.provision(nats_archive, exports=True)
     import yaml
+    env = json.loads((fixture / "environment.json").read_text())
+    keys = fixture / "principal-keys.yml"
+    ops.cf.write(keys, yaml.safe_dump({"version": 2, "revision": 1,
+        "principals": {tenant: {"analyst": [env["KELVO_TOKEN_" + tenant.upper()]]} for tenant in TENANTS}}, sort_keys=False))
     for path in [*fixture.glob("gateway*.yml"), fixture / "init.yml", *(fixture / (name + ".yml") for name in ("a1", "a2", "b1"))]:
         data = yaml.safe_load(path.read_text())
         policies = [tenant["policy"] for tenant in data["tenants"]] if "tenants" in data else [data["policy"]]
         for policy in policies:
             policy["job_ttl"] = "60s"
             policy["limits"].update(memory_mb=128, max_bytes=64 << 20, timeout="20s", max_temp_mb=128)
+            policy["access"] = {"revision": 1, "principals": {"analyst": {"kind": "user", "federated_sources": JOIN_SOURCES}}}
+            policy["exports"] = {"authorization_version": "sustained-file-join-v1", "max_jobs": 8, "queue_timeout": "10s",
+                "default_ttl": "60s", "max_ttl": "60s", "limits": {"max_rows": 16, "max_encoded_bytes": EXPORT_BODY_BOUND,
+                    "max_decoded_bytes": EXPORT_BODY_BOUND, "max_part_bytes": EXPORT_BODY_BOUND,
+                    "max_part_decoded_bytes": EXPORT_BODY_BOUND, "max_parts": 1, "compression": "none"}}
+        if "tenants" in data:
+            for tenant in data["tenants"]:
+                tenant.pop("token_env", None)
+            data["authentication"] = {"keys_file": str(keys), "reload_interval": "1s", "min_revision": 1}
+            data["exports"] = {"max_supervisors": 4, "max_downloads": 4}
         # The base fixture has caller-defined identifier map keys (for example
         # token environment names). Its full document is broader than the
         # deliberately restricted emitter used for generated policy blocks.
@@ -821,7 +1045,7 @@ def inside(args):
         report.pop("failure")
         if campaign.record("startup", campaign.startup) and campaign.record("tenant_isolation", campaign.isolation):
             campaign.record("mixed_load", campaign.mixed)
-        for name, kind in (("slow_readers", "slow_readers"), ("cancellations", "cancellations")):
+        for name, kind in (("file_joins", "joins"), ("durable_exports", "exports"), ("slow_readers", "slow_readers"), ("cancellations", "cancellations")):
             campaign.record(name, lambda kind=kind: (ops.require(all(campaign.workload[kind][tenant] > 0 for tenant in TENANTS), "WORKLOAD_CLASS_DID_NOT_PROGRESS") or {"counts": dict(campaign.workload[kind])}))
     except BaseException as error:
         report["failure"] = safe_category(error)
@@ -883,9 +1107,9 @@ def main():
     artifact = ROOT / "artifacts/sustained-private" / ("run-" + uuid.uuid4().hex[:12])
     artifact.mkdir(mode=0o700, parents=True)
     unit = "kelvo-sustained-" + uuid.uuid4().hex[:12]
-    report = {"schema": 1, "requested_seconds": args.duration, "mode": args.mode, "passed": False,
+    report = {"schema": 2, "requested_seconds": args.duration, "mode": args.mode, "passed": False,
               "checked_at": datetime.now(timezone.utc).isoformat(), "revision": args.expected_revision, "checks": [],
-              "scope": "Dedicated service on a shared test VM; synthetic Parquet correctness/lifecycle, not source-provider, WAN or multi-host capacity",
+              "scope": "Dedicated service on a shared test VM; synthetic Parquet/CSV file federation, small durable exports and lifecycle, not live database/object providers, WAN or multi-host capacity",
               "resource_budget": {"cpu_percent": 200, "memory_bytes": 6 << 30, "swap_bytes": 0, "tasks": 512},
               "interrupted": False}
     process = None

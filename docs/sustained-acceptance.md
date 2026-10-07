@@ -5,6 +5,11 @@ two-tenant cluster for at least two hours. A passing smoke run cannot close the
 [sustained-load gate](https://github.com/SyneHQ/kelvo-go/issues/7). Results apply
 only to the recorded binary, source inventories, topology and resource budget.
 
+The current runner adds real cross-source file joins and small durable exports
+to the original workload. These additions require a new matching smoke and
+two-hour report; the historical results below do not qualify them. The paired
+DBAPI/database lane is separate from this generic Kelvo campaign.
+
 ## Recorded two-hour run
 
 The [two-hour campaign on `0544d5f`](evidence/sustained-7200-0544d5f.json) passed strict reconciliation and all ten gates. Source, binaries and the prerequisite smoke matched. [Independent cleanup](evidence/sustained-7200-cleanup-0544d5f.json) confirmed exit 0, service/cgroup removal and the unchanged raw report.
@@ -70,9 +75,28 @@ unchanged; the historical scheduler timing was not captured.
 The runner provisions two gateways, two workers and three NATS brokers in one
 private Linux systemd service. Each tenant has one million deterministic Parquet
 rows with exact integer, NULL and tenant-marker checks. Interactive aggregates
-run alongside scheduled full refreshes. Periodic slow readers verify complete
+alternate with joins against a separate ten-row CSV dimension. The join excludes
+one dimension bucket and applies different per-tenant integer multipliers, so an
+omitted join, ignored filter or cross-tenant dimension changes the exact result.
+Both file adapters and native DuckDB execute; this is not a live database-provider
+test. These queries run alongside scheduled full refreshes. Periodic slow readers verify complete
 Arrow framing, types and values under delivery backpressure; explicit running
 query cancellations must reject result replay.
+
+Each tenant also has a paced export client. It submits the same file join through
+`POST /v1/exports`, observes the original handle becoming ready, validates the
+manifest, and verifies the one-part Arrow result twice through different gateways.
+Both complete deliveries must match the manifest digest, exact integers/types and
+each other's bytes. Foreign-tenant status, manifest, part and cancel requests must
+return 404. Withdrawal must return a cancelled handle and subsequent manifest
+access must return 409. New join/export submissions are never retried; an
+ambiguous response fails the campaign and remains recorded.
+
+Exports contain nine aggregate rows. This exercises durable export lifecycle and
+repeat reads under mixed traffic; it does not establish wide-result export
+throughput. The fixture enables explicit principal keys and adds only the export
+broker namespace permissions to its existing tenant roles. Other runners keep
+their existing fixture permissions by default.
 
 Normal clients briefly quiesce for saturation, cancellation and process-loss
 assertions. Each process-loss gate creates its own two running and two queued
@@ -88,6 +112,10 @@ during every injected fault or exactly-once source execution.
 | Native child process tree | 192 MiB, 64 tasks |
 | Parent Arrow allowance per query | 160 MiB |
 | Result | 64 MiB |
+| Export fill | One per tenant at a time, paced 20 seconds after each completed cycle |
+| Export result | Nine rows, one part, 1 MiB encoded and decoded limits |
+| Export admission class per worker | One background slot, 352 MiB accounted memory, 128 MiB scratch; within the worker's existing total |
+| Export retention per worker | Eight entries, 32 MiB reserved storage, 60-second TTL |
 | Generated artifacts | 8 GiB guard |
 
 The private NATS fixture binds loopback addresses inside the service's isolated
@@ -140,9 +168,20 @@ source while a run is active.
 
 ## Acceptance and interpretation
 
-All ten gates must pass: startup, tenant isolation, saturation, gateway loss,
-worker loss, broker loss, mixed load, slow readers, cancellations and cleanup.
-Each complete minute must show query and refresh progress for both tenants.
+All twelve gates must pass: startup, tenant isolation, saturation, gateway loss,
+worker loss, broker loss, mixed load, file joins, durable exports, slow readers,
+cancellations and cleanup. Each complete minute must show aggregate-query, join,
+export and refresh progress for both tenants. The new HTTP counters reconcile
+every successful join/export submission with one certified result cycle, two
+export downloads, one withdrawal and the expected isolation refusals. Extra,
+failed or lost responses cannot be discarded from a passing report. Per-class
+latency histograms must match the workload counters.
+
+After the measured interval, normal worker cleanup has up to 75 seconds to remove
+all export entries and partial-publication markers. The runner does not delete
+retained data to obtain a passing cleanup result. This drain stays inside the
+existing `duration + 300` service watchdog, and resource observation continues
+through it. A failed drain fails acceptance even when outer service cleanup succeeds.
 Fault recovery counts status/transport observations. Only status GETs on the
 original queued handle tolerate 429/503, within 25 seconds; SQL is not resubmitted
 and results are claimed once. Missing, denied, terminal or late-positive status
