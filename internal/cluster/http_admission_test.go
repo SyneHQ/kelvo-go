@@ -86,10 +86,10 @@ func admissionGateway(t *testing.T, states map[string]string) (*Gateway, *admiss
 	for id, state := range states {
 		store.jobs[id] = Snapshot{Revision: 1, Job: Job{ID: id, TenantID: "a", State: state, WorkerID: "a1", Owner: "owned", ExpiresAt: time.Now().Add(time.Minute)}}
 	}
-	gateway := &Gateway{tenants: map[string]gatewayTenant{"a": {store: store}},
+	gateway := &Gateway{tenants: map[string]gatewayTenant{"a": {store: store, workers: map[string]workerEndpoint{"a1": {}}}},
 		tokens:  map[[32]byte]string{sha256.Sum256([]byte(admissionToken)): "a"},
 		permits: make(chan struct{}, 2), resultWaiters: make(chan struct{}, 2), ctx: ctx,
-		reconcileOK: map[string]bool{"a": true}}
+		reconcileOK: map[string]bool{"a": true}, workerHealth: gatewayWorkerHealth{"a": {"a1": time.Now().Add(time.Minute)}}}
 	return gateway, store, cancel
 }
 func admissionRequest(ctx context.Context, path string) *http.Request {

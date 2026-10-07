@@ -37,31 +37,33 @@ type workerEndpoint struct {
 	client *http.Client
 }
 type Gateway struct {
-	operations        map[string]*gatewayOperations
-	exports           map[string]ExportStore
-	exportSupervisors chan struct{}
-	exportDownloads   chan struct{}
-	exportOwner       string
-	tracing           *tracing.Recorder
-	audit             *ServiceAudit
-	closeErr          error
-	tenants           map[string]gatewayTenant
-	tokens            map[[32]byte]string
-	auth              *gatewayAuthenticator
-	workerIdentity    *tlsIdentity
-	workerTrust       *tlsTrust
-	permits           chan struct{}
-	resultWaiters     chan struct{}
-	ctx               context.Context
-	cancel            context.CancelFunc
-	wg                sync.WaitGroup
-	handlers          sync.WaitGroup
-	mu                sync.RWMutex
-	reconcileOK       map[string]bool
-	reconcileErr      error
-	draining          bool
-	closed            bool
-	once              sync.Once
+	operations             map[string]*gatewayOperations
+	exports                map[string]ExportStore
+	exportSupervisors      chan struct{}
+	exportDownloads        chan struct{}
+	exportOwner            string
+	tracing                *tracing.Recorder
+	audit                  *ServiceAudit
+	closeErr               error
+	tenants                map[string]gatewayTenant
+	tokens                 map[[32]byte]string
+	auth                   *gatewayAuthenticator
+	workerIdentity         *tlsIdentity
+	workerTrust            *tlsTrust
+	workerCertificateUntil time.Time
+	permits                chan struct{}
+	resultWaiters          chan struct{}
+	ctx                    context.Context
+	cancel                 context.CancelFunc
+	wg                     sync.WaitGroup
+	handlers               sync.WaitGroup
+	mu                     sync.RWMutex
+	reconcileOK            map[string]bool
+	workerHealth           gatewayWorkerHealth
+	reconcileErr           error
+	draining               bool
+	closed                 bool
+	once                   sync.Once
 }
 
 func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
@@ -152,6 +154,9 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 				cancel()
 				return nil, err
 			}
+			if g.workerIdentity == nil {
+				g.workerCertificateUntil = gatewayStaticCertificateExpiry(tlsCfg)
+			}
 			transport := http.DefaultTransport.(*http.Transport).Clone()
 			transport.Proxy = nil
 			transport.TLSClientConfig = tlsCfg
@@ -232,6 +237,8 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 		g.wg.Add(1)
 		go g.reconcile(tenant)
 	}
+	g.wg.Add(1)
+	go g.watchWorkerReadiness()
 	started = true
 	return g, nil
 }
@@ -338,7 +345,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/ready" {
 		g.mu.RLock()
-		ready := !g.draining && g.audit.Ready() && len(g.reconcileOK) == len(g.tenants)
+		ready := !g.draining && g.ctx.Err() == nil && g.audit.Ready() && len(g.reconcileOK) == len(g.tenants) && g.workersReadyLocked(time.Now())
 		if g.auth != nil {
 			ready = ready && g.auth.ready()
 		}

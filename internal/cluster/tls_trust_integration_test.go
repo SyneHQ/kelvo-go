@@ -89,7 +89,8 @@ func TestTLSTrustManagedConfigAndPrivateFiles(t *testing.T) {
 func TestTLSTrustGatewayAndServerManagedLifecycle(t *testing.T) {
 	gateway, ca, key := tlsFiles(t, GatewayIdentity, nil, nil)
 	uri := WorkerIdentity("a", "a1")
-	worker, _ := rotatingTLSFixture(t, uri, ca, key)
+	worker, workerRaw := rotatingTLSFixture(t, uri, ca, key)
+	publishTLSIdentity(t, worker.IdentityFile, readinessLoopbackIdentity(t, workerRaw, ca, key))
 	raw := trustDoc(t, 1, time.Now().Add(20*time.Minute), ca)
 	workerTrust := TLSTrustConfig{File: filepath.Join(t.TempDir(), "worker-trust.yml"), MinimumEpoch: 1, ReloadInterval: time.Second}
 	publishTLSIdentity(t, workerTrust.File, raw)
@@ -104,7 +105,13 @@ func TestTLSTrustGatewayAndServerManagedLifecycle(t *testing.T) {
 	if err := runtime.Handler(fixture).(interface{ Drain(context.Context) error }).Drain(context.Background()); err == nil || !fixture.drained {
 		t.Fatal("managed trust swallowed server drain")
 	}
-	server := httptest.NewUnstartedServer(runtime.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) })))
+	server := httptest.NewUnstartedServer(runtime.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/ready" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})))
 	server.TLS = runtime.Config
 	server.StartTLS()
 	t.Cleanup(server.Close)
@@ -125,8 +132,6 @@ func TestTLSTrustGatewayAndServerManagedLifecycle(t *testing.T) {
 	if !ok || transport.trust != managed.workerTrust {
 		t.Fatal("gateway did not share its managed trust lifecycle")
 	}
-	// Fixture certificate uses a DNS SAN while the test listener is loopback IP.
-	transport.template.TLSClientConfig.ServerName = "gateway.test"
 	requireTrustOK(t, endpoint.client, server.URL)
 	status := func(path string) int {
 		response := httptest.NewRecorder()

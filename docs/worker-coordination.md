@@ -4,6 +4,15 @@ A failed worker lease renewal stops that owner permanently. Readiness becomes
 unavailable, active work is fenced, and the process exits with a failure status.
 A supervisor can start a new owner after shutdown; the old owner cannot resume.
 
+The gateway's `/ready` also requires at least one healthy configured worker for
+every tenant, plus healthy reconciliation, authentication and audit state.
+It checks workers over their verified mTLS connections every five seconds, with
+at most eight probes in flight and a two-second deadline per probe. Public
+readiness requests read the cache only and reveal no tenant or worker identities.
+Success expires within seven seconds or sooner at certificate expiry; startup,
+drain and shutdown fail closed. This is a **health snapshot, not a capacity
+reservation**: a subsequent query can still queue or be rejected.
+
 The CLI emits a bounded diagnostic before its usual terminal error:
 
 ```text
