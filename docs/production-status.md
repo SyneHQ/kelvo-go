@@ -1,6 +1,6 @@
 # Production delivery checklist
 
-Status reviewed 5 October 2026. This is a capability checklist, not production certification. Owners and acceptance criteria live on the [board](https://github.com/orgs/SyneHQ/projects/3) and [tracker #32](https://github.com/SyneHQ/kelvo-go/issues/32).
+Status reviewed 7 October 2026. This is a capability checklist, not production certification. Owners and acceptance criteria live on the [board](https://github.com/orgs/SyneHQ/projects/3) and [tracker #32](https://github.com/SyneHQ/kelvo-go/issues/32).
 
 ## Operational foundation
 
@@ -41,6 +41,7 @@ The [protected runtime](protected-object-readers.md), [verification and inventor
 | Capability | Status |
 | --- | --- |
 | Arrow delivery and optional LZ4 | Available; decoded limits remain unchanged |
+| [Public application SDK](application-sdk.md) | Canonical Go contracts, bounded HTTPS client and mTLS credential resolver; independent-module and application acceptance tracked in [#138](https://github.com/SyneHQ/kelvo-go/issues/138) |
 | Durable exports | Delivered: [opt-in federated jobs and repeat downloads](exports.md). [Merged-cargo gates](export-ci-diagnostics.md) passed on NATS 2.14.7 and 2.15.0; the earlier failure's cause remains unknown. Sustained capacity, live providers and deployment acceptance remain separate |
 | Result cache | Pending authorization/generation keys, bounded fills and revocation fencing |
 | Eight database adapters and Flight SQL federation | Available; live Oracle/warehouse gates remain open; Flight SQL compatibility is service-specific |

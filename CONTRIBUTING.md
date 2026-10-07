@@ -5,7 +5,7 @@ Kelvo uses `cargo` as its default branch. Choose an issue from the [delivery boa
 1. Read [AGENTS.md](AGENTS.md) and the [delivery process](docs/delivery-process.md).
 2. Use a purpose-based branch, such as `fix/query-cancellation`. Keep each commit to **ten files or fewer**.
 3. Preserve exact types, permissions and cancellation. Return an explicit error for unsupported behavior.
-4. Run the relevant tests, vet and build on the designated build host:
+4. Run the relevant tests, vet and build on a Linux development host or CI:
 
 ```sh
 go test -tags duckdb_arrow ./...
@@ -14,6 +14,10 @@ go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
 ```
 
 5. Open a focused PR describing the problem, resulting behavior and validation. Link the issue and include failed or unrun required checks.
+
+For application SDK changes, run `CGO_ENABLED=0 go test ./client ./query ./delegation ./resolver ./operations`
+and the [independent application check](docs/application-sdk.md#verify-an-independent-build).
+Runtime isolation tests need the [Linux containment setup](docs/process-containment.md).
 
 Connector changes need real-database checks for types/NULLs, cancellation, limits and permissions. Protocol fixtures alone do not prove compatibility.
 

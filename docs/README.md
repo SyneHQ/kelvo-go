@@ -7,6 +7,7 @@ Start with the [quick start](usage.md#quick-start) or [15 notebooks](../notebook
 | Task | Guide |
 | --- | --- |
 | Run queries, read Arrow, use HTTP | [Usage](usage.md) · [YAML examples](../examples/) |
+| Integrate your own application | [Public Go SDK](application-sdk.md) · [Independent example](../examples/application/) · [On-demand connections](on-demand-connections.md) |
 | Choose a database connector | [Coverage matrix](source-coverage.md) · [Source setup guides](usage.md#source-guides) |
 | Understand execution and isolation | [Architecture](architecture.md) · [Security](../SECURITY.md) |
 | Join live sources | [Federation](federation.md) · [Adapter SDK](federation-adapters.md) |

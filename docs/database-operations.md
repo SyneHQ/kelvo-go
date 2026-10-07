@@ -5,6 +5,11 @@ Kelvo can execute database operations submitted by a trusted application gateway
 Adapters reject unsupported operations explicitly. The application gateway does
 not need customer database drivers.
 
+Use the [public Go SDK](application-sdk.md) for signing, submission, status,
+validated Arrow results and uncertain-write lookup. The
+[independent application](../examples/application/) demonstrates a transactional
+write followed by exact-value reads through your own credential authority.
+
 ## Request flow
 
 1. Authorize the saved connection ID and sign the exact operation, team, subject and deadline.

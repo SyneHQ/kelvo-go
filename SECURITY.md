@@ -26,9 +26,16 @@ See the [deployment checklist](deploy/README.md) and [cluster model](docs/cluste
 | API keys | Optional [revisioned key files](docs/gateway-key-rotation.md) fail closed. Update every replica and restart floor; revocation is not globally atomic. |
 | TLS | [Identity](docs/tls-identity-rotation.md) and [trust](docs/tls-trust-rotation.md) rotation require operator propagation; trust policy also needs a configured restart floor. |
 
-Native relational connectors require verified TLS and operator-provisioned CA trust. Unsupported private wallets/CA paths are rejected. Legacy PostgreSQL/MySQL attachments use temporary redacted DuckDB secrets.
+Native relational connectors require verified TLS. Native PostgreSQL also accepts
+bounded CA certificate PEM through `options.tls_ca_pem`; other connectors use
+operator-provisioned trust. Unsupported private wallets/CA paths are rejected.
+Legacy PostgreSQL/MySQL attachments use temporary redacted DuckDB secrets.
 
 ## Saved-connection operations
+
+Applications can use the public [`client` and `resolver` packages](docs/application-sdk.md).
+The application owns identity, membership and secret storage. Resolver hooks must
+check current authorization; a signed grant alone cannot prove access is still allowed.
 
 [Database operations](docs/database-operations.md) require separate signed authority;
 ordinary query grants cannot authorize writes. A leased worker fetches current

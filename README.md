@@ -59,7 +59,9 @@ Any application can use the [HTTP API](docs/usage.md#http-api) with configured s
 
 Credentials stay out of query payloads and NATS. Contained Go/JDBC adapters support reads, writes, metadata and selected migration, ingestion and watcher jobs. Capabilities differ by engine; reconcile uncertain writes before retrying.
 
-Start with [on-demand queries](docs/on-demand-connections.md), [database operations](docs/database-operations.md) and [validation coverage](docs/database-operations-validation.md). The advanced on-demand path still needs a custom resolver; a complete public SDK and standalone integration example remain [open work](docs/on-demand-connections.md#integration-status). On-demand analytical queries do not yet support acceleration or durable exports.
+Use the [public Go SDK](docs/application-sdk.md) and [independent application example](examples/application/) to connect your own authentication and credential store. The SDK handles request signing, HTTPS, Arrow validation and private resolver callbacks. [On-demand trust](docs/on-demand-connections.md) · [Database operations](docs/database-operations.md) · [Validation](docs/database-operations-validation.md)
+
+On-demand analytical queries do not yet support acceleration or durable exports.
 
 ## Execution and sources
 
@@ -133,7 +135,7 @@ These are measurements of recorded binaries and workloads, not throughput guaran
 
 | Task | Guide |
 | --- | --- |
-| Query or integrate | [CLI/API](docs/usage.md) · [YAML examples](examples/) |
+| Query or integrate | [CLI/API](docs/usage.md) · [Go SDK](docs/application-sdk.md) · [Application example](examples/application/) |
 | Connect saved customer databases | [On-demand queries](docs/on-demand-connections.md) · [Database operations](docs/database-operations.md) |
 | Run supported writes and jobs | [Go adapters](adapters/go/README.md) · [JDBC runtimes](docs/jdbc-runtime.md) · [Validation](docs/database-operations-validation.md) |
 | Join sources or add a federation adapter | [Federation](docs/federation.md) · [Adapter SDK](docs/federation-adapters.md) |

@@ -27,7 +27,14 @@ PostgreSQL requires a TCP URL with explicit user, nonempty password, database an
 postgres://USER:PASSWORD@HOST:5432/DATABASE?sslmode=verify-full
 ```
 
-Only `sslmode` and optional integer `connect_timeout` (1–60 seconds) are allowed. Duplicate parameters, identity overrides, multi-host URLs, services, password files, certificate/key paths and arbitrary runtime settings are rejected. Workers must not inherit `PG*` variables: Kelvo rejects them before pgx setup, clears default home credential paths, disables plaintext fallback and sets UTC. TLS 1.2+ uses system CA roots; custom CA files and client certificates are unsupported. pgx may inspect default paths while building configuration but does not load their credential contents into the connection.
+Only `sslmode` and optional integer `connect_timeout` (1–60 seconds) are allowed. Duplicate parameters, identity overrides, multi-host URLs, services, password files, certificate/key paths and arbitrary runtime settings are rejected. Workers must not inherit `PG*` variables: Kelvo rejects them before pgx setup, clears default home credential paths, disables plaintext fallback and sets UTC. pgx may inspect default paths while building configuration but does not load their credential contents into the connection.
+
+TLS 1.2+ uses system roots by default. Native PostgreSQL accepts
+`options.tls_ca_pem` with at most eight currently valid CA certificates. Static
+YAML and catalog authority cap each option at 4 KiB; on-demand authorities allow
+64 KiB. The PEM replaces the root pool and preserves hostname verification.
+Certificate paths, client keys, verification bypass and federation use of this
+option remain unsupported.
 
 MySQL requires explicit user, nonempty password, database and `tcp(HOST:PORT)`, with:
 
