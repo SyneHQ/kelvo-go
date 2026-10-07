@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a> · <a href="#try-it-in-a-notebook">Notebooks</a> · <a href="#documentation">Docs</a> · <a href="#how-kelvo-fits">Architecture</a> · <a href="#real-analytics-measured">Benchmarks</a>
+  <a href="#quick-start">Quick start</a> · <a href="#try-it-in-a-notebook">Notebooks</a> · <a href="#use-kelvo-behind-your-api">Integrate</a> · <a href="#documentation">Docs</a> · <a href="#how-kelvo-fits">Architecture</a> · <a href="#real-analytics-measured">Benchmarks</a>
 </p>
 
 # Kelvo
@@ -12,7 +12,7 @@
 
 Kelvo is an open-source Go analytics gateway by [SYNEHQ](https://synehq.com). Query databases directly, join supported sources with DuckDB, or reuse Parquet snapshots. Send typed Arrow results to notebooks, dashboards, agents and APIs.
 
-Application gateways can also delegate [saved-connection operations](docs/database-operations.md): supported writes, metadata, migrations, ingestion and watchers run in contained adapters with fresh credentials.
+[Use Kelvo behind your API](#use-kelvo-behind-your-api) to execute saved-connection queries, supported writes and background jobs. Your application keeps authentication, authorization and credential decryption.
 
 **Developer preview.** Check [source coverage](docs/source-coverage.md), [validation](docs/validation.md) and [delivery status](docs/production-roadmap.md#delivery-status) before choosing a deployment.
 
@@ -47,7 +47,19 @@ The [15 Colab and Jupyter lessons](notebooks/README.md) include public data, set
 
 [![Applications query Kelvo; workers use native databases or DuckDB and return Arrow. Optional Parquet snapshots reduce repeated source reads. NATS dispatches independent cluster jobs.](brand/kelvo-architecture.png)](brand/kelvo-architecture.svg)
 
-One query runs on one worker. Add workers to run more independent queries. [Architecture](docs/architecture.md) · [Security model](SECURITY.md)
+Analytics overview. One query runs on one worker. Add workers to run more independent queries. [Architecture](docs/architecture.md) · [Security model](SECURITY.md)
+
+## Use Kelvo behind your API
+
+In cluster mode, configure deployment trust once, then select saved connection IDs at request time. Customer connections do not need individual entries in Kelvo YAML.
+
+1. Your API authenticates the caller, authorizes the saved connection and signs the request.
+2. The assigned worker resolves current credentials over private mTLS when execution starts.
+3. Kelvo executes the query or supported operation and returns results and receipts to your API.
+
+Credentials stay out of query payloads and NATS. Contained Go/JDBC adapters support reads, writes, metadata and selected migration, ingestion and watcher jobs. Capabilities differ by engine; reconcile uncertain writes before retrying.
+
+Start with [on-demand queries](docs/on-demand-connections.md), [database operations](docs/database-operations.md) and [validation coverage](docs/database-operations-validation.md). On-demand analytical queries do not yet support acceleration or durable exports.
 
 ## Execution and sources
 
@@ -56,7 +68,8 @@ One query runs on one worker. Add workers to run more independent queries. [Arch
 | DuckDB attachments | CSV, Parquet, DuckDB, SQLite, PostgreSQL, MySQL |
 | Optional native federation bridge | ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery, Databricks, [Flight SQL](docs/federation-flight-sql.md) |
 | Native queries | The federation sources above, MongoDB, D1, Trino/Presto, Elasticsearch, Exasol, Spanner, Ignite 2, Athena, DynamoDB, Cosmos DB |
-| External adapters | Additional engines through configured `dbapi` or Flight SQL services |
+| External query services | Separately operated [Flight SQL or legacy `dbapi` HTTP services](docs/sources-adapters.md) |
+| Contained operation adapters | Saved-connection reads, supported writes, metadata and jobs through [Go adapters](adapters/go/README.md) or [JDBC runtimes](docs/jdbc-runtime.md) |
 
 Use the [coverage matrix](docs/source-coverage.md) for exact modes, types and validation. Native connector support does not imply federation support. Live sources have no shared transaction snapshot.
 
@@ -70,7 +83,7 @@ bin/kelvo query --config examples/acceleration.yml --sources sales_fast \
   --sql 'SELECT region, SUM(amount) FROM sales_fast GROUP BY region' --out revenue.arrow
 ```
 
-Use [local storage](docs/acceleration.md) or opt into [S3, R2, GCS or Azure Blob](docs/object-storage.md). Refreshes are full extracts; CDC, incremental refresh and result caching are not available yet.
+Use [local storage](docs/acceleration.md) or opt into [S3, R2, GCS or Azure Blob](docs/object-storage.md). Refreshes are full extracts; incremental snapshot refresh and result caching are not available yet. Supported source watchers do not automatically update these snapshots.
 
 ## Security and cluster operation
 
@@ -114,14 +127,16 @@ Oracle used a burstable Always Free E2.1.Micro (951 MiB RAM, 1/8 OCPU entitlemen
 - **Oracle micro VM:** 30/30 native LZ4 exports, ten at a time, returned 120 million verified rows at 443,000 aggregate rows/s. The source ran on Azure; transport used SSH tunnels. Ten concurrent federated sorts exhausted the same memory cap. [Report](docs/oracle-micro-capacity.md)
 - **Latest pinned worker-only trial (`b1a0ea5`):** Five metrics on/off pairs and 130 exact workload queries through one execution slot, plus a separate three-query preflight. Gateway, NATS, source and SSH memory are excluded. [Results and scope](docs/node-capacity.md)
 
-These are measurements of recorded binaries and workloads, not throughput guarantees. Result caching, CDC, a Flight SQL server and production HA certification remain open work.
+These are measurements of recorded binaries and workloads, not throughput guarantees. Result caching, incremental snapshot refresh, a Flight SQL server and production HA certification remain open work.
 
 ## Documentation
 
 | Task | Guide |
 | --- | --- |
 | Query or integrate | [CLI/API](docs/usage.md) · [YAML examples](examples/) |
-| Join sources or add an adapter | [Federation](docs/federation.md) · [Adapter SDK](docs/federation-adapters.md) |
+| Connect saved customer databases | [On-demand queries](docs/on-demand-connections.md) · [Database operations](docs/database-operations.md) |
+| Run supported writes and jobs | [Go adapters](adapters/go/README.md) · [JDBC runtimes](docs/jdbc-runtime.md) · [Validation](docs/database-operations-validation.md) |
+| Join sources or add a federation adapter | [Federation](docs/federation.md) · [Adapter SDK](docs/federation-adapters.md) |
 | Refresh and recover datasets | [Acceleration](docs/acceleration.md) · [Backups](docs/snapshot-backup.md) |
 | Deploy and troubleshoot | [Deployment](deploy/README.md) · [Operations](docs/operations.md) |
 | Find a specific guide | [Documentation index](docs/README.md) |
