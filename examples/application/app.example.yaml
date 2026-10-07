@@ -1,0 +1,18 @@
+version: 1
+identity:
+  issuer: example-app
+  audience: operations
+  cluster_tenant: demo
+  service_principal: app
+  public_key_env: EXAMPLE_APP_PUBLIC_KEY
+  signing_seed_file: private/signing-seed.base64
+gateway:
+  url: https://kelvo.example.test:8443
+  bearer_token_env: EXAMPLE_GATEWAY_TOKEN
+  ca_file: public/gateway-ca.pem
+authority:
+  listen: 127.0.0.1:9444
+  ca_file: public/worker-ca.pem
+  cert_file: public/authority.pem
+  key_file: private/authority-key.pem
+policy_file: policy.yaml

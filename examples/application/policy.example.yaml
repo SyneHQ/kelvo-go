@@ -1,0 +1,33 @@
+version: 1
+subjects:
+  alice:
+    kind: user
+    team: team-a
+    connections:
+      saved-a: write
+  bob:
+    kind: user
+    team: team-b
+    connections:
+      saved-b: write
+connections:
+  saved-a:
+    team: team-a
+    type: postgres
+    database: example
+    schema: public
+    revision: "1"
+    credentials_file: private/saved-a-v1.yaml
+    read_sql: SELECT id, value FROM public.app_a_rows WHERE id=$1
+    write_sql: INSERT INTO public.app_a_rows(id,value) VALUES($1,$2)
+    cancel_sql: SELECT pg_sleep(30)
+  saved-b:
+    team: team-b
+    type: postgres
+    database: example
+    schema: public
+    revision: "1"
+    credentials_file: private/saved-b-v1.yaml
+    read_sql: SELECT id, value FROM public.app_b_rows WHERE id=$1
+    write_sql: INSERT INTO public.app_b_rows(id,value) VALUES($1,$2)
+    cancel_sql: SELECT pg_sleep(30)
