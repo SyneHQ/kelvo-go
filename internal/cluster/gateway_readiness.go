@@ -141,6 +141,7 @@ func (g *Gateway) probeWorkerReadiness(endpoint workerEndpoint) time.Time {
 		return time.Time{}
 	}
 	// A reused TLS connection must not extend health past certificate validity.
+	// Convert wall-clock certificate dates without discarding monotonic expiry.
 	now := time.Now()
 	until := started.Add(gatewayReadinessInterval + gatewayReadinessTimeout)
 	for _, chain := range response.TLS.VerifiedChains {
@@ -151,11 +152,11 @@ func (g *Gateway) probeWorkerReadiness(endpoint workerEndpoint) time.Time {
 			if cert == nil || now.Before(cert.NotBefore) || !now.Before(cert.NotAfter) {
 				return time.Time{}
 			}
-			until = minTime(until, cert.NotAfter)
+			until = minTime(until, now.Add(cert.NotAfter.Sub(now)))
 		}
 	}
 	if !g.workerCertificateUntil.IsZero() {
-		until = minTime(until, g.workerCertificateUntil)
+		until = minTime(until, now.Add(g.workerCertificateUntil.Sub(now)))
 	}
 	if !now.Before(until) {
 		return time.Time{}

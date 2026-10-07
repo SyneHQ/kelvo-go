@@ -225,6 +225,41 @@ type readinessBlockedBody struct {
 	closed atomic.Bool
 }
 
+func TestGatewayWorkerReadinessCertificateBoundsRetainMonotonicExpiry(t *testing.T) {
+	for _, source := range []string{"peer", "static-client"} {
+		t.Run(source, func(t *testing.T) {
+			g := readinessGateway(t, nil)
+			// Parsed X.509 dates have no monotonic component. A near expiry
+			// must shorten the cache without making it follow wall-clock steps.
+			expires := time.Now().Add(time.Second).Round(0)
+			if source == "static-client" {
+				g.workerCertificateUntil = expires
+			}
+			ep := readinessEndpoint(func(*http.Request) (*http.Response, error) {
+				response := readinessResponse(http.StatusOK)
+				if source == "peer" {
+					response.TLS.VerifiedChains[0][0].NotAfter = expires
+				}
+				return response, nil
+			})
+			until := g.probeWorkerReadiness(ep)
+			if !until.Equal(expires) {
+				t.Fatal("certificate expiry did not bound cached health")
+			}
+			// Round(0) strips the monotonic reading. Direct equality also
+			// compares that reading, unlike Equal, which compares instants.
+			if until == until.Round(0) {
+				t.Fatal("certificate clipping discarded monotonic cache expiry")
+			}
+			g.tenants = map[string]gatewayTenant{"a": {workers: map[string]workerEndpoint{"a1": ep}}}
+			g.workerHealth = gatewayWorkerHealth{"a": {"a1": until}}
+			if !g.workersReadyLocked(until.Add(-time.Nanosecond)) || g.workersReadyLocked(until) {
+				t.Fatal("cached health did not expire at its monotonic deadline")
+			}
+		})
+	}
+}
+
 func (b *readinessBlockedBody) Read([]byte) (int, error) {
 	<-b.ctx.Done()
 	return 0, b.ctx.Err()
