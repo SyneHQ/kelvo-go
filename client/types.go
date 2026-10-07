@@ -87,8 +87,16 @@ func failure(code string) *Error {
 	switch code {
 	case "INVALID_CONFIG":
 		message = "Invalid Kelvo service configuration"
+	case "CONFIGURATION_ERROR":
+		message = "Kelvo query configuration is invalid"
 	case "INVALID_ARGUMENT":
 		message = "Invalid Kelvo query request"
+	case "UNSUPPORTED":
+		message = "Kelvo query capability or result type is unsupported"
+	case "SCHEMA_MISMATCH":
+		message = "Kelvo dataset schema is incompatible"
+	case "DATASET_UNAVAILABLE":
+		message = "Kelvo dataset is unavailable"
 	case "RESOURCE_EXHAUSTED":
 		message = "Kelvo query limit reached"
 	case "PROTOCOL_ERROR":
@@ -103,6 +111,8 @@ func failure(code string) *Error {
 		message = "Kelvo query access denied"
 	case "QUERY_FAILED":
 		message = "Kelvo query failed"
+	case "WORKER_LOST":
+		message = "Kelvo query worker was lost before completion"
 	case "NOT_FOUND":
 		message = "Kelvo resource not found"
 	case "CLIENT_CLOSED":
