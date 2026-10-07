@@ -280,6 +280,10 @@ func TestGatewayAuthorityR3(t *testing.T) {
 				encoded, _ := compressedRelayFixture(t, "none")
 				upstreamDone := make(chan struct{})
 				upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "/ready" {
+						w.WriteHeader(http.StatusOK)
+						return
+					}
 					defer close(upstreamDone)
 					_, _ = w.Write(encoded[:100])
 					w.(http.Flusher).Flush()
@@ -287,7 +291,9 @@ func TestGatewayAuthorityR3(t *testing.T) {
 				}))
 				defer upstream.Close()
 				endpoint, _ := url.Parse(upstream.URL)
+				first.gate.mu.Lock()
 				first.gate.tenants["a"].workers["a1"] = workerEndpoint{url: endpoint, client: upstream.Client()}
+				first.gate.mu.Unlock()
 				requestContext, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				output := &firstRelayWrite{ResponseRecorder: httptest.NewRecorder(), started: make(chan struct{})}

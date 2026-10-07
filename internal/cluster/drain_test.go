@@ -16,7 +16,7 @@ import (
 func gatewayDrainFixture() *Gateway {
 	p := testPolicy()
 	store := &gatewayStore{policy: p, jobs: map[string]Snapshot{"existing": {Job: Job{ID: "existing", TenantID: "a", State: Queued}}}}
-	return &Gateway{tenants: map[string]gatewayTenant{"a": {store: store}}, tokens: map[[32]byte]string{sha256.Sum256([]byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")): "a"}, permits: make(chan struct{}, 1), ctx: context.Background(), reconcileOK: map[string]bool{"a": true}}
+	return &Gateway{tenants: map[string]gatewayTenant{"a": {store: store, workers: map[string]workerEndpoint{"a1": {}}}}, tokens: map[[32]byte]string{sha256.Sum256([]byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")): "a"}, permits: make(chan struct{}, 1), ctx: context.Background(), reconcileOK: map[string]bool{"a": true}, workerHealth: gatewayWorkerHealth{"a": {"a1": time.Now().Add(time.Minute)}}}
 }
 func TestGatewayProbesBypassSaturatedRequests(t *testing.T) {
 	g := gatewayDrainFixture()
