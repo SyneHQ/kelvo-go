@@ -60,6 +60,7 @@ type Gateway struct {
 	mu                     sync.RWMutex
 	reconcileOK            map[string]bool
 	workerHealth           gatewayWorkerHealth
+	workerHealthFreshness  time.Duration
 	reconcileErr           error
 	draining               bool
 	closed                 bool
@@ -179,6 +180,20 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 			gt.workers[ep.ID] = workerEndpoint{url: u, client: &http.Client{Transport: roundTripper, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 		}
 		g.tenants[tenant] = gt
+	}
+	var endpointCount uint64
+	for _, tenant := range g.tenants {
+		count := uint64(len(tenant.workers))
+		if count > ^uint64(0)-endpointCount {
+			cancel()
+			return nil, errors.New("cluster gateway: worker readiness budget overflow")
+		}
+		endpointCount += count
+	}
+	g.workerHealthFreshness = gatewayReadinessFreshness(endpointCount)
+	if g.workerHealthFreshness <= 0 {
+		cancel()
+		return nil, errors.New("cluster gateway: invalid worker readiness budget")
 	}
 	if cfg.Authentication != nil {
 		identities := make(map[string]bool, len(g.tenants))

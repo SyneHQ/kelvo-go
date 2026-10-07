@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -22,6 +23,28 @@ const (
 // Each entry is a health snapshot, never a reservation of worker capacity.
 // Expiry also bounds stale success if a sweep is delayed by other workers.
 type gatewayWorkerHealth map[string]map[string]time.Time
+
+// Budget for a worker moving from the first batch to the last in consecutive
+// sweeps. The single refresh loop waits for a tick only when a sweep is short.
+// Zero means the topology has no workers or cannot fit in a time.Duration.
+func gatewayReadinessFreshness(endpointCount uint64) time.Duration {
+	if endpointCount == 0 {
+		return 0
+	}
+	batches := endpointCount / gatewayReadinessParallel
+	if endpointCount%gatewayReadinessParallel != 0 {
+		batches++
+	}
+	if batches > uint64(math.MaxInt64/gatewayReadinessTimeout) {
+		return 0
+	}
+	sweep := time.Duration(batches) * gatewayReadinessTimeout
+	betweenSweeps := max(gatewayReadinessInterval, sweep)
+	if betweenSweeps > math.MaxInt64-sweep {
+		return 0
+	}
+	return betweenSweeps + sweep
+}
 
 // workersReadyLocked reads only cached evidence; public probes do no network I/O.
 func (g *Gateway) workersReadyLocked(now time.Time) bool {
@@ -114,7 +137,7 @@ send:
 }
 
 func (g *Gateway) probeWorkerReadiness(endpoint workerEndpoint) time.Time {
-	if endpoint.url == nil || endpoint.client == nil {
+	if endpoint.url == nil || endpoint.client == nil || g.workerHealthFreshness <= 0 {
 		return time.Time{}
 	}
 	started := time.Now()
@@ -143,7 +166,7 @@ func (g *Gateway) probeWorkerReadiness(endpoint workerEndpoint) time.Time {
 	// A reused TLS connection must not extend health past certificate validity.
 	// Convert wall-clock certificate dates without discarding monotonic expiry.
 	now := time.Now()
-	until := started.Add(gatewayReadinessInterval + gatewayReadinessTimeout)
+	until := started.Add(g.workerHealthFreshness)
 	for _, chain := range response.TLS.VerifiedChains {
 		if len(chain) == 0 {
 			return time.Time{}

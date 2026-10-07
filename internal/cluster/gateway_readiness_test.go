@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -39,9 +40,13 @@ func readinessGateway(t *testing.T, tenants map[string]gatewayTenant) *Gateway {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	g := &Gateway{tenants: tenants, ctx: ctx, cancel: cancel, reconcileOK: map[string]bool{}}
-	for tenant := range tenants {
+	var endpoints uint64
+	for tenant, configured := range tenants {
 		g.reconcileOK[tenant] = true
+		endpoints += uint64(len(configured.workers))
 	}
+	// Standalone probe tests have no tenant map but exercise one endpoint.
+	g.workerHealthFreshness = gatewayReadinessFreshness(max(1, endpoints))
 	return g
 }
 
@@ -49,6 +54,94 @@ func readinessStatus(g *Gateway) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	g.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/ready", nil))
 	return w
+}
+
+func TestGatewayWorkerReadinessFreshnessBudget(t *testing.T) {
+	largestBatches := uint64(math.MaxInt64 / (2 * gatewayReadinessTimeout))
+	for _, tc := range []struct {
+		endpoints uint64
+		want      time.Duration
+	}{
+		{0, 0}, {1, 7 * time.Second}, {8, 7 * time.Second},
+		{9, 9 * time.Second}, {16, 9 * time.Second},
+		{24, 12 * time.Second}, {64, 32 * time.Second},
+		{largestBatches * gatewayReadinessParallel, time.Duration(largestBatches) * 2 * gatewayReadinessTimeout},
+		{largestBatches*gatewayReadinessParallel + 1, 0},
+		{math.MaxUint64, 0},
+	} {
+		t.Run(fmt.Sprint(tc.endpoints), func(t *testing.T) {
+			if got := gatewayReadinessFreshness(tc.endpoints); got != tc.want {
+				t.Fatalf("freshness = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGatewayWorkerReadinessCoversEarlyThenLateSweepAndExpires(t *testing.T) {
+	// Sixty-four single-worker tenants need eight batches. In the next sweep,
+	// map iteration may move the first worker into the last batch. Use explicit
+	// times to cover both sweeps without a 32-second test or a fake clock in prod.
+	tenants := make(map[string]gatewayTenant)
+	for i := range 64 {
+		tenants[fmt.Sprint(i)] = gatewayTenant{workers: map[string]workerEndpoint{"worker": {}}}
+	}
+	g := readinessGateway(t, tenants)
+	g.workerHealth = gatewayWorkerHealth{}
+	start := time.Now()
+	sweep := 16 * time.Second
+	for i := range 64 {
+		probeStart := start.Add(time.Duration(i/8) * 2 * time.Second)
+		g.workerHealth[fmt.Sprint(i)] = map[string]time.Time{"worker": probeStart.Add(g.workerHealthFreshness)}
+	}
+	if !g.workersReadyLocked(start.Add(sweep)) {
+		t.Fatal("healthy first sweep never became ready")
+	}
+	// The old seven-second deadline already expired before this sweep finished.
+	early := g.workerHealth["0"]["worker"]
+	g.workerHealth["0"]["worker"] = start.Add(7 * time.Second)
+	if g.workersReadyLocked(start.Add(sweep)) {
+		t.Fatal("regression schedule did not expose the old fixed deadline")
+	}
+	g.workerHealth["0"]["worker"] = early
+	for batch := range 8 {
+		probeStart := start.Add(sweep + time.Duration(batch)*2*time.Second)
+		completed := probeStart.Add(2*time.Second - time.Nanosecond)
+		if !g.workersReadyLocked(completed) {
+			t.Fatal("healthy worker expired while waiting for its next batch")
+		}
+		for offset := range 8 {
+			worker := fmt.Sprint(63 - batch*8 - offset)
+			g.workerHealth[worker]["worker"] = probeStart.Add(g.workerHealthFreshness)
+		}
+	}
+	// With no further sweeps, the earliest success expires from its probe start,
+	// even though the rest of the last sweep may have completed much later.
+	firstExpiry := start.Add(sweep + g.workerHealthFreshness)
+	if !g.workersReadyLocked(firstExpiry.Add(-time.Nanosecond)) || g.workersReadyLocked(firstExpiry) {
+		t.Fatal("stalled sweeps did not expire at the first cached deadline")
+	}
+}
+
+func TestGatewayWorkerReadinessProbeUsesTopologyBudget(t *testing.T) {
+	g := readinessGateway(t, nil)
+	g.workerHealthFreshness = gatewayReadinessFreshness(64)
+	var calls int
+	ep := readinessEndpoint(func(*http.Request) (*http.Response, error) {
+		calls++
+		return readinessResponse(http.StatusOK), nil
+	})
+	before := time.Now()
+	until := g.probeWorkerReadiness(ep)
+	after := time.Now()
+	if until.Before(before.Add(32*time.Second)) || until.After(after.Add(32*time.Second)) {
+		t.Fatal("probe did not anchor topology budget at request start")
+	}
+	for _, invalid := range []time.Duration{0, -time.Second} {
+		g.workerHealthFreshness = invalid
+		if !g.probeWorkerReadiness(ep).IsZero() || calls != 1 {
+			t.Fatal("invalid budget performed I/O or cached health")
+		}
+	}
 }
 
 func TestGatewayWorkerReadinessRequiresEachTenantAndNeverFansOutPublicProbes(t *testing.T) {
