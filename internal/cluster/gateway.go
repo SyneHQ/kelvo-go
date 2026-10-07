@@ -155,7 +155,10 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 				return nil, err
 			}
 			if g.workerIdentity == nil {
-				g.workerCertificateUntil = gatewayStaticCertificateExpiry(tlsCfg)
+				until := gatewayStaticCertificateExpiry(tlsCfg)
+				if g.workerCertificateUntil.IsZero() || until.Before(g.workerCertificateUntil) {
+					g.workerCertificateUntil = until
+				}
 			}
 			transport := http.DefaultTransport.(*http.Transport).Clone()
 			transport.Proxy = nil
