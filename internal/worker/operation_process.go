@@ -377,7 +377,7 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 		limits := e.Limits
 		limits.MaxRows = input.Limits.MaxRows
 		limits.MaxBytes = input.Limits.MaxBytes
-		observed, readErr = readWorkerIPC(ctx, io.TeeReader(stdout, hasher), limits, sink)
+		observed, readErr = e.readIPC(ctx, io.TeeReader(stdout, hasher), limits, sink)
 	} else {
 		var extra [1]byte
 		n, err := stdout.Read(extra[:])

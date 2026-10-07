@@ -461,7 +461,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	}
 	stopClose := context.AfterFunc(ctx, func() { _ = stdout.Close() })
 	defer stopClose()
-	observed, readErr := readWorkerIPC(ctx, stdout, e.Limits, phases.sink(sink))
+	observed, readErr := e.readIPC(ctx, stdout, e.Limits, phases.sink(sink))
 	phases.enter(telemetry.PhaseCleanup)
 	if readErr != nil {
 		cancel()
