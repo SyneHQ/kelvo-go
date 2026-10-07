@@ -54,6 +54,64 @@ SLOW_ROWS = 16_384
 SLOW_BODY_BOUND = 8 << 20
 SLOW_QUERY = f"SELECT id, metric, tenant, repeat('x', 256) AS payload FROM ops_snapshot WHERE id < {SLOW_ROWS} ORDER BY id"
 HISTOGRAM_BOUNDS = (.005, .01, .025, .05, .1, .25, .5, 1., 2., 5., 10., 20., 40., 80.)
+UNIT_PATTERN = re.compile(r"kelvo-sustained-[0-9a-f]{12}")
+DESCRIPTION_PATTERN = re.compile(r"Kelvo sustained acceptance [0-9a-f]{32}")
+SERVICE_PROPERTIES = ("Id", "LoadState", "Description", "User", "WorkingDirectory", "ControlGroup")
+
+
+def service_state(unit):
+    ops.require(isinstance(unit, str) and UNIT_PATTERN.fullmatch(unit), "INVALID_OWNED_SERVICE")
+    result = identity.run(["systemctl", "show", unit + ".service", "--property=" + ",".join(SERVICE_PROPERTIES)], timeout=5)
+    ops.require(result.returncode == 0, "SERVICE_OWNERSHIP_LOOKUP_FAILED")
+    values = {}
+    for line in result.stdout.splitlines():
+        key, separator, value = line.partition("=")
+        ops.require(separator and key in SERVICE_PROPERTIES and key not in values, "INVALID_SERVICE_OWNERSHIP_RESPONSE")
+        values[key] = value
+    ops.require(set(values) == set(SERVICE_PROPERTIES), "INCOMPLETE_SERVICE_OWNERSHIP_RESPONSE")
+    ops.require(values["Id"] == unit + ".service", "FOREIGN_SERVICE_IDENTITY")
+    return values
+
+
+def require_service_identity(state, unit, description, user, artifact, *, running=False):
+    ops.require(isinstance(description, str) and DESCRIPTION_PATTERN.fullmatch(description), "INVALID_SERVICE_DESCRIPTION")
+    expected = {"Id": unit + ".service", "Description": description, "User": user, "WorkingDirectory": str(artifact)}
+    group = "/system.slice/" + unit + ".service"
+    ops.require(state["LoadState"] == "loaded" and all(state[key] == value for key, value in expected.items())
+                and state["ControlGroup"] in ((group,) if running else (group, "")), "FOREIGN_SERVICE_IDENTITY")
+
+
+def require_fresh_service(unit, cgroup_root=Path("/sys/fs/cgroup/system.slice")):
+    state = service_state(unit)
+    ops.require(state["LoadState"] == "not-found" and not os.path.lexists(cgroup_root / (unit + ".service")), "OWNED_SERVICE_NOT_FRESH")
+
+
+def cleanup_owned(unit, description, user, artifact, cgroup_root=Path("/sys/fs/cgroup/system.slice")):
+    """Stop only this exact marked unit. Never unlink a cgroup or reuse another runner's namespace."""
+    result = {"owned_service_removed": False, "owned_cgroup_removed": False}
+    try:
+        ops.require(isinstance(description, str) and DESCRIPTION_PATTERN.fullmatch(description), "INVALID_SERVICE_DESCRIPTION")
+        state = service_state(unit)
+        group = cgroup_root / (unit + ".service")
+        if state["LoadState"] != "not-found":
+            require_service_identity(state, unit, description, user, artifact)
+            stopped = identity.run(["sudo", "-n", "systemctl", "stop", unit + ".service"], timeout=40)
+            ops.require(stopped.returncode == 0, "OWNED_SERVICE_STOP_FAILED")
+        deadline = time.monotonic() + 5.
+        while True:
+            state = service_state(unit)
+            # A same-name replacement must not be accepted or stopped.
+            if state["LoadState"] != "not-found":
+                require_service_identity(state, unit, description, user, artifact)
+            result["owned_service_removed"] = state["LoadState"] == "not-found"
+            result["owned_cgroup_removed"] = not os.path.lexists(group)
+            if all(result.values()):
+                return result
+            ops.require(time.monotonic() < deadline, "OWNED_SERVICE_CLEANUP_DEADLINE")
+            time.sleep(.1)
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        result["cleanup_failure"] = safe_category(error)
+    return result
 
 
 def join_expected(expected, tenant):
@@ -188,6 +246,9 @@ def reconcile(report, expected_revision):
                 or not all(check.get("passed") is True for check in checks)
                 or report.get("failure") or report.get("source_unchanged") is not True
                 or report.get("owned_service_removed") is not True or report.get("owned_cgroup_removed") is not True
+                or report.get("service_identity_verified") is not True or report.get("cleanup_failure")
+                or not isinstance(report.get("owned_unit"), str) or not UNIT_PATTERN.fullmatch(report["owned_unit"])
+                or not isinstance(report.get("service_description"), str) or not DESCRIPTION_PATTERN.fullmatch(report["service_description"])
                 or type(report.get("service_exit_code")) is not int or report["service_exit_code"] != 0
                 or set(report.get("binary_sha256", {})) != {"kelvo", "kelvo-landlock"}
                 or not all(isinstance(value, str) and identity.HEX_SHA256.fullmatch(value) for value in report["binary_sha256"].values())
@@ -1034,6 +1095,9 @@ def inside(args):
     try:
         ops.require(Path("/proc/self/cgroup").read_text().strip() == "0::/system.slice/" + args.unit + ".service", "SERVICE_OWNERSHIP_MISMATCH")
         ops.require(identity.zero_capabilities(Path("/proc/self/status").read_text()), "CAPABILITIES_NOT_ZERO")
+        require_service_identity(service_state(args.unit), args.unit, args.service_description,
+                                 pwd.getpwuid(os.geteuid()).pw_name, artifact, running=True)
+        report["service_identity_verified"] = True
         supervisor = group / "supervisor"
         supervisor.mkdir()
         (supervisor / "cgroup.procs").write_text(str(os.getpid()))
@@ -1062,15 +1126,17 @@ def inside(args):
     return 0 if not report.get("failure") and all(item.get("passed") is True for item in report["checks"]) else 1
 
 
-def service_command(args, unit, artifact):
+def service_command(args, unit, artifact, description):
     """Keep the owned service bounded even if its outer controller exits."""
-    command = ["sudo", "-n", "systemd-run", "--unit=" + unit, "--uid=" + pwd.getpwuid(os.geteuid()).pw_name,
+    ops.require(UNIT_PATTERN.fullmatch(unit) and DESCRIPTION_PATTERN.fullmatch(description), "INVALID_OWNED_SERVICE")
+    command = ["sudo", "-n", "systemd-run", "--unit=" + unit, "--description=" + description,
+               "--property=WorkingDirectory=" + str(artifact), "--uid=" + pwd.getpwuid(os.geteuid()).pw_name,
                "--property=Delegate=yes", "--property=PrivateNetwork=yes", "--property=CPUQuota=200%", "--property=MemoryMax=6G", "--property=MemorySwapMax=0",
                "--property=TasksMax=512", "--property=NoNewPrivileges=yes", "--property=CapabilityBoundingSet=",
                "--property=AmbientCapabilities=", "--property=RuntimeMaxSec=" + str(math.ceil(args.duration + 300)),
                "--property=TimeoutStopSec=20", "--property=KillMode=control-group", "--property=SendSIGKILL=yes",
                "--collect", "--wait", "--pipe", sys.executable, str(Path(__file__).resolve()),
-               "--inside", "--unit", unit, "--artifact", str(artifact), "--mode", args.mode, "--duration", str(args.duration),
+               "--inside", "--unit", unit, "--service-description", description, "--artifact", str(artifact), "--mode", args.mode, "--duration", str(args.duration),
                "--expected-revision", args.expected_revision,
                "--binary", str(Path(args.binary).resolve()), "--sandbox", str(Path(args.sandbox).resolve()), "--go", args.go,
                "--output", str(args.output)]
@@ -1094,6 +1160,7 @@ def main():
     parser.add_argument("--inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--artifact", help=argparse.SUPPRESS)
     parser.add_argument("--unit", help=argparse.SUPPRESS)
+    parser.add_argument("--service-description", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-f]{40}", args.expected_revision):
         parser.error("--expected-revision requires a full lowercase40-character Git commit")
@@ -1107,11 +1174,14 @@ def main():
     artifact = ROOT / "artifacts/sustained-private" / ("run-" + uuid.uuid4().hex[:12])
     artifact.mkdir(mode=0o700, parents=True)
     unit = "kelvo-sustained-" + uuid.uuid4().hex[:12]
+    description = "Kelvo sustained acceptance " + uuid.uuid4().hex
+    user = pwd.getpwuid(os.geteuid()).pw_name
     report = {"schema": 2, "requested_seconds": args.duration, "mode": args.mode, "passed": False,
               "checked_at": datetime.now(timezone.utc).isoformat(), "revision": args.expected_revision, "checks": [],
               "scope": "Dedicated service on a shared test VM; synthetic Parquet/CSV file federation, small durable exports and lifecycle, not live database/object providers, WAN or multi-host capacity",
               "resource_budget": {"cpu_percent": 200, "memory_bytes": 6 << 30, "swap_bytes": 0, "tasks": 512},
               "interrupted": False}
+    report.update(owned_unit=unit, service_description=description, service_identity_verified=False)
     process = None
     started = time.monotonic()
     try:
@@ -1127,7 +1197,8 @@ def main():
             ops.require(smoke.get("mode") == "smoke" and smoke.get("passed") is True and reconcile(smoke, args.expected_revision)
                         and smoke["source"] == report["source"] and smoke["binary_sha256"] == report["binary_sha256"], "MATCHED_PASSING_SMOKE_REQUIRED")
             report["prerequisite_smoke_sha256"] = identity.digest(args.smoke_report)
-        command = service_command(args, unit, artifact)
+        require_fresh_service(unit)
+        command = service_command(args, unit, artifact, description)
         with (artifact / "service.log").open("w") as log:
             process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
             print(json.dumps({"unit": unit, "control_pid": process.pid, "private_artifact": str(artifact), "started_monotonic": started, "requested_seconds": args.duration}), flush=True)
@@ -1140,7 +1211,7 @@ def main():
         report["failure"] = safe_category(error)
         report["interrupted"] = isinstance(error, (KeyboardInterrupt, InterruptedError))
     finally:
-        report.update(identity.cleanup_owned(unit))
+        report.update(cleanup_owned(unit, description, user, artifact))
         if process is not None:
             try:
                 process.wait(timeout=10)
