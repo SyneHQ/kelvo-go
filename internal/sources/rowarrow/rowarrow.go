@@ -40,7 +40,7 @@ type Writer struct {
 }
 
 func NewWriter(schema *arrow.Schema, limits query.Limits, sink query.Sink) (*Writer, error) {
-	if schema == nil || sink == nil || len(schema.Fields()) == 0 {
+	if schema == nil || sink == nil || schema.NumFields() == 0 {
 		return nil, errors.New("nonempty schema and sink required")
 	}
 	if err := limits.Validate(); err != nil {
@@ -88,7 +88,8 @@ func (w *Writer) Write(row []any) error {
 	if w.closed || w.finished {
 		return errors.New("row writer is closed")
 	}
-	if len(row) != len(w.schema.Fields()) {
+	// Fields returns a copy; checking its length allocated once per input row.
+	if len(row) != w.schema.NumFields() {
 		return errors.New("row width mismatch")
 	}
 	if w.rows >= w.limits.MaxRows {
