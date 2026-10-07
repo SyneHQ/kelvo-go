@@ -107,6 +107,11 @@ locks; they never accept caller-selected filesystem paths. See the
 - Preserve a mutation's request, idempotency key and grant until its outcome is known.
   Reconcile an uncertain write with operation lookup; do not resubmit it automatically.
 
+Use `c.Ready(ctx)` to probe a cluster gateway with the same verified TLS settings
+and bounded control admission. It submits no query. Gateway health requires a
+ready worker for every configured tenant, using a short cached snapshot; it does
+not reserve capacity or validate source credentials. See [worker health](worker-coordination.md).
+
 On-demand analytics currently exclude acceleration, durable exports and mixed
 static/dynamic source queries. Connector coverage and deployment acceptance remain
 separate from SDK availability. [Coverage](source-coverage.md) · [Production gates](production-status.md)
