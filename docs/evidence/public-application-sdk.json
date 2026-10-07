@@ -1,0 +1,335 @@
+{
+  "version": 1,
+  "recorded_on": "2026-10-07",
+  "scope": "Public Go application SDK, independent example and real PostgreSQL cluster fixture",
+  "public_sdk_pr": "https://github.com/SyneHQ/kelvo-go/pull/139",
+  "safe_error_codes_pr": "https://github.com/SyneHQ/kelvo-go/pull/140",
+  "candidate_validation": {
+    "source_digest": "87480247b4b4910cabdf148823b9034436c9f82dd2a7616ecf1f63e60e1ef3da",
+    "checks": [
+      "public SDK normal/race/vet",
+      "native PostgreSQL and sqlnative normal/race/vet",
+      "worker and cluster compile",
+      "native PostgreSQL CA scope",
+      "16 cluster fixture controls",
+      "14 SDK runner controls",
+      "independent application normal/race/vet/build"
+    ],
+    "passed": true,
+    "source_unchanged": true,
+    "cgroup_removed": true
+  },
+  "live_trials": [
+    {
+      "passed": false,
+      "source_digest": "9368d0b279b9aa20904df8e9ff12adfaa6601403e9a64f35a4dfa6c480ac0f67",
+      "report_sha256": "4981b9ae0e9aeb2cde37877e83dbb2990d0412f1865e80a77b334979f692f149",
+      "source_unchanged": true,
+      "cgroup_removed": true,
+      "secrets_removed": true,
+      "failure": "fixture_ca_missing_signing_usage"
+    },
+    {
+      "passed": false,
+      "source_digest": "87480247b4b4910cabdf148823b9034436c9f82dd2a7616ecf1f63e60e1ef3da",
+      "report_sha256": "050b1b11d894803ea205eb82a41473aa4dbcf47ed63ebcf0510143ec68e41605",
+      "source_unchanged": true,
+      "cgroup_removed": true,
+      "secrets_removed": true,
+      "failure": "fixture_expected_unavailable_instead_of_permission_denied"
+    },
+    {
+      "passed": true,
+      "source_digest": "8bc01e1b6ab98294ede9723736c3cfa3f9fcbcd4c8fb64c04e2c21aaf6553e9c",
+      "report_sha256": "84c37904faa54b56f46d044b147c4458cd1853efe7bc48343feccca4a9de5e1f",
+      "source_unchanged": true,
+      "cgroup_removed": true,
+      "secrets_removed": true,
+      "binaries": {
+        "binary": "b2e8eaf8a455329510ea53050b8796008742411f9c3dc748e7e560fa0d4ffd0a",
+        "adapter": "2979139831ef99ce8b07ce69a4c8c7c020a48de17846dbc3956d7b94eaba6a1a",
+        "launcher": "e8591dbfcee7e197a38f687f496e6a61957e0418c8ec839c65b4dbe3bf8ad547",
+        "nats": "387ce54e7a0a249d877a579ed641d715bab047d7e061bfa42b4d07f6a0401341"
+      },
+      "application_binaries": {
+        "authority": {
+          "sha256": "a07725ca3834fc88e4587c83ec5e6d563cc35921ce54f0bc13185735fe4c0717",
+          "bytes": 14541887
+        },
+        "exercise": {
+          "sha256": "f9a888df8b5db3db9bb88e9613c1647567f07c7a98ec89c6ce73128dd65b5e98",
+          "bytes": 15126500
+        }
+      },
+      "source_binding": {
+        "source_unchanged": true,
+        "mode": "candidate",
+        "sdk_manifest_sha256": "0b1b1342c387a279946496a2a14f3f6b2846cea687d8c83ef0a483a337ffc1fb",
+        "application_manifest_sha256": "30b315d230fd1b5f846a23e3f6d80bcab45dfc8a9168b5557cd021591403f259",
+        "public_files": 63
+      },
+      "scenarios": {
+        "credentials-restored": {
+          "checks": [
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 7,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 9,
+            "credential_lookup_failed": 1
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          }
+        },
+        "cross-team-forged-caller": {
+          "checks": [
+            "query_status_observed",
+            "query_denied"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 2,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          }
+        },
+        "cross-team-restored": {
+          "checks": [
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 9,
+            "query_policy_denied": 2,
+            "query_authorization_failed": 0,
+            "operation_authorized": 12,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 11,
+            "credential_lookup_failed": 1
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 11,
+            "query_policy_denied": 2,
+            "query_authorization_failed": 0,
+            "operation_authorized": 14,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 13,
+            "credential_lookup_failed": 1
+          }
+        },
+        "fresh-credentials-required": {
+          "checks": [
+            "query_status_observed",
+            "query_denied"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 6,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 8,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 7,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 9,
+            "credential_lookup_failed": 1
+          }
+        },
+        "membership-restored": {
+          "checks": [
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 6,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 10,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 8,
+            "credential_lookup_failed": 0
+          }
+        },
+        "revoked-membership": {
+          "checks": [
+            "query_status_observed",
+            "query_denied"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 1,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          }
+        },
+        "team-a": {
+          "checks": [
+            "mutation_committed",
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified",
+            "cancellation_confirmed"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 0,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 0,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 0,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 2,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 4,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 3,
+            "credential_lookup_failed": 0
+          }
+        },
+        "team-b": {
+          "checks": [
+            "mutation_committed",
+            "operation_result_verified",
+            "query_status_observed",
+            "analytical_result_verified",
+            "cancellation_confirmed"
+          ],
+          "before": {
+            "version": 1,
+            "query_authorized": 2,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 4,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 3,
+            "credential_lookup_failed": 0
+          },
+          "after": {
+            "version": 1,
+            "query_authorized": 4,
+            "query_policy_denied": 0,
+            "query_authorization_failed": 0,
+            "operation_authorized": 8,
+            "operation_policy_denied": 0,
+            "operation_authorization_failed": 0,
+            "credential_lookups": 6,
+            "credential_lookup_failed": 0
+          }
+        }
+      },
+      "source_ca_profile": {
+        "sha256": "6c9ce5adb629fe2656c6380275c9600f2125e26f71ca24f7debc5c0124a7b7e2",
+        "is_ca": true,
+        "certificate_signing": true,
+        "crl_signing": true,
+        "critical_basic_constraints": true,
+        "critical_key_usage": true,
+        "currently_valid": true,
+        "accepted": true
+      },
+      "cleanup": {
+        "broker_reaped": true,
+        "postgres": true,
+        "mysql": true,
+        "network": true,
+        "owned_scope_verified": true,
+        "owned_processes_reaped": true,
+        "owned_child_groups_removed": true,
+        "ownership_inventory_verified": true
+      },
+      "remaining_job_groups": 0,
+      "remaining_ownership_records": 0
+    }
+  ],
+  "unverified": [
+    "live cloud-provider accounts",
+    "deployment-specific capacity and recovery objectives",
+    "production rollout"
+  ]
+}
