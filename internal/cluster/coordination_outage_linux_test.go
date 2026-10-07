@@ -144,6 +144,11 @@ func TestNATSWorkerOutageFencesOwnerAndRecoversOnlyWithNewOwner(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("healthy worker did not renew")
 	}
+	healthy := httptest.NewRecorder()
+	node.ServeHTTP(healthy, nodeRequest(http.MethodGet, "/ready"))
+	if healthy.Code != http.StatusOK {
+		t.Fatalf("healthy worker readiness status=%d, want 200", healthy.Code)
+	}
 	proxy.paused.Store(true)
 	select {
 	case <-node.LeaseFailure():
@@ -158,9 +163,9 @@ func TestNATSWorkerOutageFencesOwnerAndRecoversOnlyWithNewOwner(t *testing.T) {
 		t.Fatalf("missing bounded outage cause: %s", failure.Diagnostic())
 	}
 	recorder := httptest.NewRecorder()
-	node.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	node.ServeHTTP(recorder, nodeRequest(http.MethodGet, "/ready"))
 	if recorder.Code != http.StatusServiceUnavailable {
-		t.Fatal("fenced worker remained ready")
+		t.Fatalf("fenced worker readiness status=%d, want 503", recorder.Code)
 	}
 	if err := node.Close(); err != nil {
 		t.Fatal("fenced worker did not close")
