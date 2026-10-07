@@ -141,6 +141,7 @@ These are measurements of recorded binaries and workloads, not throughput guaran
 | Join sources or add a federation adapter | [Federation](docs/federation.md) · [Adapter SDK](docs/federation-adapters.md) |
 | Refresh and recover datasets | [Acceleration](docs/acceleration.md) · [Backups](docs/snapshot-backup.md) |
 | Deploy and troubleshoot | [Deployment](deploy/README.md) · [Operations](docs/operations.md) |
+| Tune batching and inspect overhead | [Throughput tuning](docs/throughput-tuning.md) |
 | Find a specific guide | [Documentation index](docs/README.md) |
 
 ## Build with us

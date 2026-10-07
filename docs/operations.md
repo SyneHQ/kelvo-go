@@ -19,9 +19,9 @@ resources:
 | Usable memory | `memory_mb - baseline_mb` |
 | Query | Engine `memory_mb + overhead_mb`; `max_temp_mb` scratch |
 | Refresh | Query reservation plus `max_bytes` staging, held through publication/pruning |
-| Query reserves | Capacity unavailable to background refresh; interactive queries can use all idle capacity |
+| Query reserves | Capacity unavailable to background refresh/export; interactive queries can use all idle capacity |
 
-Queries/refreshes share one process-local pool and wait within their timeout. Oversized configurations fail startup; release follows cleanup. Inner refresh executors do not reacquire the pool. Reserves provide neither preemption nor fairness. Async export dispatch is not connected yet.
+Queries, refreshes and enabled exports share one process-local pool and wait within their timeout. Oversized configurations fail startup; release follows cleanup. Inner refresh executors do not reacquire the pool. Queues are FIFO within each class; reserves provide neither preemption nor cross-class fairness. See [workload admission](workload-admission.md).
 
 Omitting `resources` retains slot-only admission. Reservations alone do not enforce RSS/disk limits; compression does not reduce them. Divide host capacity among nodes, retain OS/container limits, and budget persistent snapshots separately. DuckDB materializes execution before Arrow delivery and its memory setting does not cap every native/Arrow allocation.
 
@@ -42,6 +42,7 @@ Worker `GET /metrics` and `GET /resources` require gateway mTLS. Metrics have fi
 | Query phases | Validation, node admission, source admission, preparation, execution/delivery, cleanup |
 | First batch | Executor entry to first decoded Arrow record; absent for empty streams |
 | Sink callbacks | Subset of execution/delivery, not an additional phase or pure network time |
+| [IPC transfer](throughput-tuning.md#2-read-the-right-measurements) | Child bytes, validated buffers and parent read/validate/wait versus synchronous sink time; overlaps execution/delivery |
 | [Child stages](child-timings.md) | Disjoint worker stages and nested DuckDB setup/materialization/Arrow drain; unknown stages are counted separately |
 
 The startup SELECT probe counts as execution. Metrics reset on restart; there is no durable history. Optional [tracing](tracing.md) links authorized gateway and worker activity with bounded sampled spans. Broker queue time, assignment-to-claim delay and separate source/compute/transfer time remain unknown. See [phase definitions](tracing.md#what-is-recorded).
