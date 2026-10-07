@@ -10,6 +10,7 @@ import (
 
 	operationstore "github.com/SYNEHQ/kelvo-go/internal/operations"
 	"github.com/SYNEHQ/kelvo-go/operations"
+	"github.com/SYNEHQ/kelvo-go/resolver"
 )
 
 // This attests custody, not permission to run additional statements. The
@@ -22,11 +23,12 @@ func (g *Gateway) operationConnectionLease(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4096))
-	var binding operationstore.Binding
-	if err != nil || operations.DecodeStrict(raw, &binding, 4096) != nil || binding.Validate() != nil {
+	var wire resolver.Binding
+	if err != nil || operations.DecodeStrict(raw, &wire, resolver.MaxLeaseBytes) != nil || wire.Validate() != nil {
 		g.err(w, 400, "INVALID_ARGUMENT", "Invalid operation lease request")
 		return
 	}
+	binding := operationstore.Binding{WorkerID: wire.WorkerID, Owner: wire.Owner, Claim: wire.Claim}
 	if record.State != operationstore.Running || record.Binding != binding {
 		g.err(w, 409, "UNAVAILABLE", "Operation lease is unavailable")
 		return
@@ -41,7 +43,7 @@ func (g *Gateway) operationConnectionLease(w http.ResponseWriter, r *http.Reques
 		g.err(w, 409, "UNAVAILABLE", "Operation lease is unavailable")
 		return
 	}
-	g.json(w, 200, map[string]int64{"valid_until": until.Unix()})
+	g.json(w, 200, resolver.LeaseResponse{ValidUntil: until.Unix()})
 }
 
 func currentOperationLease(ctx context.Context, clusterStore Store, ledger *operationstore.Store, initial operationstore.Record, binding operationstore.Binding) (time.Time, error) {
