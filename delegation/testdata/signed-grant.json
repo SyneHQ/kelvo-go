@@ -1,0 +1,28 @@
+{
+  "seed_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+  "claims": {
+    "version": 1,
+    "iss": "api-resolver",
+    "aud": "analytics-cluster",
+    "cluster_tenant": "shared",
+    "service_principal": "db-api",
+    "app_team": "team-a",
+    "subject": {
+      "kind": "user",
+      "id": "user-a"
+    },
+    "jti": "0123456789abcdef0123456789abcdef0123456789abcdef",
+    "iat": 2000000000,
+    "exp": 2000000240,
+    "query_sha256": "9dd3e613b3e40165f116489169804bc347ddf3365d3245eaf6cd6ac5d0d13ce9",
+    "sources": [
+      {
+        "alias": "source_1",
+        "connection_id": "saved-a",
+        "database": "analytics"
+      }
+    ]
+  },
+  "token": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCIsImtpZCI6ImFwaS1yZXNvbHZlciJ9.eyJ2ZXJzaW9uIjoxLCJpc3MiOiJhcGktcmVzb2x2ZXIiLCJhdWQiOiJhbmFseXRpY3MtY2x1c3RlciIsImNsdXN0ZXJfdGVuYW50Ijoic2hhcmVkIiwic2VydmljZV9wcmluY2lwYWwiOiJkYi1hcGkiLCJhcHBfdGVhbSI6InRlYW0tYSIsInN1YmplY3QiOnsia2luZCI6InVzZXIiLCJpZCI6InVzZXItYSJ9LCJqdGkiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWYiLCJpYXQiOjIwMDAwMDAwMDAsImV4cCI6MjAwMDAwMDI0MCwicXVlcnlfc2hhMjU2IjoiOWRkM2U2MTNiM2U0MDE2NWYxMTY0ODkxNjk4MDRiYzM0N2RkZjMzNjVkMzI0NWVhZjZjZDZhYzVkMGQxM2NlOSIsInNvdXJjZXMiOlt7ImFsaWFzIjoic291cmNlXzEiLCJjb25uZWN0aW9uX2lkIjoic2F2ZWQtYSIsImRhdGFiYXNlIjoiYW5hbHl0aWNzIn1dfQ.JycjKW_9V2uumhMQx_icmMJkNU0Sx_YH7ZBp3nFXashWbTdY6WjG4tOT9XlP1HemCV4ylZiB-oCU8_FYtLGsAg"
+}
