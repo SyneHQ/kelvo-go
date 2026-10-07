@@ -227,8 +227,9 @@ func (s *Store) validScope(scope Scope) bool {
 }
 
 // Submit atomically reserves retention and duplicate identity in one shard.
-// The selected shard may be full while another is free; callers must not change
-// idempotency keys to bypass a conflict or replay an uncertain operation.
+// A caller-supplied idempotency key always selects its original shard. Reads
+// without a key may probe bounded alternatives after a definite capacity
+// rejection; a lost storage acknowledgement never permits another admission.
 func (s *Store) Submit(ctx context.Context, input Submission) (Snapshot, bool, error) {
 	if !s.validScope(input.Scope) || input.Request.Validate() != nil || input.Scope.ConnectionID != input.Request.Connection.ID || !validAuthority(input.AuthorityToken, input.AuthoritySHA256) || input.RequestRef.Validate() != nil || input.RequestRef.Format != "operation_request_v1" {
 		return Snapshot{}, false, ErrInvalid
@@ -253,6 +254,27 @@ func (s *Store) Submit(ctx context.Context, input Submission) (Snapshot, bool, e
 	if err != nil {
 		return Snapshot{}, false, err
 	}
+	probes := 1
+	if input.Request.IdempotencyKey == "" && !input.Request.Kind.Mutating() {
+		// Bound broker I/O independently of the configured shard count. The
+		// initial shard counts toward this budget; no candidate is revisited.
+		probes = min(16, s.policy.Shards)
+	}
+	ctx, cancel := context.WithTimeout(ctx, s.policy.StorageTimeout)
+	defer cancel()
+	for attempt := range probes {
+		candidate := (shard + attempt) % s.policy.Shards
+		snapshot, duplicate, err := s.submitShard(ctx, input, digest, identity, nonce, candidate)
+		if !errors.Is(err, ErrCapacity) {
+			return snapshot, duplicate, err
+		}
+	}
+	return Snapshot{}, false, ErrCapacity
+}
+
+// Each attempt remains one bounded shard CAS. ErrCapacity proves that this
+// attempt did not admit the request; all uncertain acknowledgements stop here.
+func (s *Store) submitShard(ctx context.Context, input Submission, digest, identity, nonce string, shard int) (Snapshot, bool, error) {
 	id := fmt.Sprintf("%04x-%s", shard, nonce)
 	duplicate := false
 	out, err := s.update(ctx, shard, true, func(d *document, now time.Time) (*Record, bool, error) {
