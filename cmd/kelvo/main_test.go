@@ -5,9 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 
+	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
 
 func TestCLIRequestAcceptsSQLAndMongoForms(t *testing.T) {
@@ -124,6 +127,44 @@ func TestCLIResultCompressionValidatedBeforeConfiguration(t *testing.T) {
 					t.Fatalf("compression %q: code=%s want=%s error=%v", codec, got, want, err)
 				}
 			})
+		}
+	}
+}
+
+func TestCLIRowBatchTargetValidatedBeforeConfiguration(t *testing.T) {
+	missingConfig := filepath.Join(t.TempDir(), "missing.yml")
+	for _, command := range []string{"query", "serve"} {
+		for _, target := range []int64{-1, 0, 1023, 1024, 1 << 20, 64 << 20, (64 << 20) + 1} {
+			t.Run(command+"/"+strconv.FormatInt(target, 10), func(t *testing.T) {
+				err := run([]string{command, "--config", missingConfig, "--row-batch-target-bytes", strconv.FormatInt(target, 10)})
+				if err == nil {
+					t.Fatal("missing configuration was accepted")
+				}
+				want := "INVALID_ARGUMENT"
+				if target == 0 || (target >= 1024 && target <= 64<<20) {
+					want = "CONFIGURATION_ERROR"
+				}
+				if got := query.PublicError(err).Code; got != want {
+					t.Fatalf("batch target %d: code=%s want=%s error=%v", target, got, want, err)
+				}
+			})
+		}
+	}
+}
+
+func TestRefreshFactoryPreservesRowBatchTarget(t *testing.T) {
+	// Refresh/watch use each dataset's limits; they do not share the standalone
+	// query/serve CLI flags or override other datasets' batching choices.
+	for _, target := range []int64{0, 1 << 20} {
+		limits := query.DefaultLimits()
+		limits.RowBatchTargetBytes = target
+		executor, err := refreshFactory("")(catalog.Config{}, limits)
+		if err != nil {
+			t.Fatal(err)
+		}
+		process, ok := executor.(*worker.Executor)
+		if !ok || process.Limits != limits {
+			t.Fatalf("refresh dropped dataset limits: %T, target=%d", executor, target)
 		}
 	}
 }
