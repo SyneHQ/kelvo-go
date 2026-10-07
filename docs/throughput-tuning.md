@@ -55,9 +55,9 @@ Interactive reserves remain available while background work waits. Class ceiling
 
 ```sh
 GOMAXPROCS=2 go test -tags duckdb_arrow -run '^$' \
-  -bench 'Benchmark(WriterBatching|WorkerIPCTransit|WorkerIPCAttribution|AdmissionContended)$' \
+  -bench 'Benchmark(WriterBatching|WorkerIPCTransit|WorkerIPCAttribution|ObserveIPCTransfer|AdmissionContended)$' \
   -benchmem -benchtime=500ms -count=5 \
-  ./internal/sources/rowarrow ./internal/worker ./internal/admission
+  ./internal/sources/rowarrow ./internal/worker ./internal/telemetry ./internal/admission
 ```
 
 These isolate conversion, IPC and admission. Inputs are already in memory; results use discard/counting sinks. Source databases, network, TLS and durable exports are outside these rates. [Capacity methodology](federation-capacity.md) and multi-host qualification are separate.
