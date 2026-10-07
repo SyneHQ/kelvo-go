@@ -398,7 +398,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	cmd.Stdin = bytes.NewReader(payload)
 	var stderr boundedBuffer
 	cmd.Stderr = &stderr
-	cmd.WaitDelay = 3 * time.Second
+	cmd.WaitDelay = query.WorkerWaitDelay
 	var processJob *containment.Job
 	processFinished := false
 	if e.Containment != nil {

@@ -50,7 +50,9 @@ func TestMain(m *testing.M) {
 				time.Sleep(time.Hour)
 			} else if os.Args[1] == "--group-cooperative-parent" {
 				<-ctx.Done()
-				time.Sleep(75 * time.Millisecond)
+				// A real proxy + TLS cancellation exceeded the former 750ms
+				// worker grace. Exercise cleanup longer than that old bound.
+				time.Sleep(1250 * time.Millisecond)
 				fmt.Fprintln(os.Stderr, "cooperative-cleanup-complete")
 			}
 			os.Exit(0)
@@ -108,7 +110,7 @@ func testWorkerMain() int {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 		defer stop()
 		<-ctx.Done()
-		time.Sleep(75 * time.Millisecond)
+		time.Sleep(1250 * time.Millisecond)
 		_ = json.NewEncoder(os.Stderr).Encode(Outcome{Stats: query.Stats{Backend: "cooperative-cleanup-complete"}})
 		return 0
 	}

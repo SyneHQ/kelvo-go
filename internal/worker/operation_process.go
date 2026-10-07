@@ -306,7 +306,7 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	command.Dir = operationDirectory
 	command.Env = operationEnvironment(operationDirectory, e.Limits.Threads)
 	command.Stderr = io.Discard
-	command.WaitDelay = 3 * time.Second
+	command.WaitDelay = query.WorkerWaitDelay
 	if workspace.lease == nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("CONFIGURATION_ERROR")
 	}

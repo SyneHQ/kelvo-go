@@ -126,7 +126,7 @@ func TestCancellationForcesUncooperativeLeaderAndDescendants(t *testing.T) {
 	if err := cmd.Wait(); err == nil {
 		t.Fatal("uncooperative leader survived")
 	}
-	if elapsed := time.Since(started); elapsed < cancellationGrace || elapsed > 2*time.Second {
+	if elapsed := time.Since(started); elapsed < cancellationGrace || elapsed > cancellationGrace+2*time.Second {
 		t.Fatalf("cancellation grace was not bounded: %s", elapsed)
 	}
 	requireProcessTerminated(t, child)
@@ -147,7 +147,7 @@ func TestExecutorCancellationAllowsSourceCleanup(t *testing.T) {
 	if stats.Backend != "cooperative-cleanup-complete" {
 		t.Fatal("executor skipped source cleanup grace")
 	}
-	if time.Since(started) > 3*time.Second {
+	if time.Since(started) > time.Second+query.WorkerCancellationGrace {
 		t.Fatal("cooperative cancellation exceeded bound")
 	}
 }
