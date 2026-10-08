@@ -402,7 +402,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	var stderr boundedBuffer
 	cmd.Stderr = &stderr
 	cmd.WaitDelay = query.WorkerWaitDelay
-	var processJob *containment.Job
+	var processJob containment.Process
 	processFinished := false
 	if e.Containment != nil {
 		processLimits, prepErr := e.ContainmentBudget.ProcessLimits(int64(e.Limits.MemoryMB), e.Limits.Threads)
@@ -418,7 +418,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 			token()
 			return stats, prepErr
 		}
-		processJob, prepErr = e.Containment.Prepare(processLimits, func() {
+		processJob, prepErr = e.Containment.PrepareProcess(processLimits, func() {
 			token()
 			snapshotProcess()
 		})
@@ -473,7 +473,12 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	// any descendants before Wait reaps it, including children that closed the
 	// output pipe and would otherwise survive a successful leader exit.
 	cleanupErr := finishProcess(cmd, ctx.Err() != nil)
-	waitErr := cmd.Wait()
+	var waitErr error
+	if processJob != nil {
+		waitErr = processJob.Wait()
+	} else {
+		waitErr = cmd.Wait()
+	}
 	var childBound time.Duration
 	if e.Metrics != nil {
 		childBound = time.Since(childStarted)

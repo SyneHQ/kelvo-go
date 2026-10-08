@@ -31,7 +31,7 @@ func verifyContainmentStartup(parent context.Context, executor *worker.Executor)
 		hold()
 		return err
 	}
-	job, err := executor.Containment.Prepare(limits, hold)
+	job, err := executor.Containment.PrepareProcess(limits, hold)
 	if err != nil {
 		hold()
 		return query.NewError("CONFIGURATION_ERROR", "Worker containment startup probe could not prepare")
@@ -48,7 +48,7 @@ func verifyContainmentStartup(parent context.Context, executor *worker.Executor)
 	if err := job.Start(command); err != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Worker containment requires usable pre-start cgroup placement inside the delegated hierarchy")
 	}
-	if err := command.Wait(); err != nil {
+	if err := job.Wait(); err != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Worker containment startup probe failed")
 	}
 	return nil
