@@ -144,8 +144,11 @@ func TestServeClusterLeaseFailureJoinsCleanupBeforeReturning(t *testing.T) {
 	release.Do(func() { close(cleanupRelease) })
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
+		// Permanent lease fencing interrupts drain. serveCluster must report
+		// that interruption only after owned cleanup has joined; runNode maps
+		// the durable lease failure to the public nonzero coordination error.
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal("fenced drain interruption was lost", err)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("service did not return after cleanup")

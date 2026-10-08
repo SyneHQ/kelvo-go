@@ -59,6 +59,8 @@ func TestServeClusterPreservesLifecycleFailuresThroughShutdown(t *testing.T) {
 		{"delivery failure", operationrun.ErrDelivery, false, operationrun.ErrDelivery},
 		{"delivery failure with grace expiry", operationrun.ErrDelivery, true, operationrun.ErrDelivery},
 		{"joined server closed", errors.Join(http.ErrServerClosed, operationrun.ErrCleanup), false, operationrun.ErrCleanup},
+		{"drain canceled", context.Canceled, false, context.Canceled},
+		{"cleanup failure with drain cancellation", errors.Join(context.Canceled, operationrun.ErrCleanup), false, operationrun.ErrCleanup},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			template := httptest.NewTLSServer(http.NotFoundHandler())
