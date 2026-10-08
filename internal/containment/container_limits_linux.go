@@ -213,6 +213,24 @@ func (b *ContainerLimits) Close() error {
 	return result
 }
 
+// Usage reports the visible cgroup's lifetime counters, including PID 1 and
+// page cache. A peak cannot be reset or converted into per-query usage here.
+func (b *ContainerLimits) Usage(policy Limits) (Usage, error) {
+	if _, err := b.Check(policy); err != nil {
+		return Usage{}, err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed || b.group == nil {
+		return Usage{}, ErrUnavailable
+	}
+	usage, err := readUsage(func(name string, limit int64) (string, error) {
+		return containerKernelRead(int(b.group.Fd()), name, cgroupMagic, limit)
+	})
+	usage.Scope = "container_cgroup_lifetime"
+	return usage, err
+}
+
 func containerKernelRead(parent int, name string, filesystem int64, limit int64) (string, error) {
 	fd, err := unix.Openat2(parent, name, &unix.OpenHow{
 		Flags:   unix.O_RDONLY | unix.O_CLOEXEC,

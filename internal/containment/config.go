@@ -69,6 +69,9 @@ func (l Limits) validate() error {
 // Usage is charged cgroup memory and kernel event counters, not RSS, a logical
 // reservation, whole-node memory or proof of a particular source-side outcome.
 type Usage struct {
+	// Scope is empty for a delegated per-operation group. Namespace execution
+	// reports container_cgroup_lifetime, which must not be attributed to a query.
+	Scope               string `json:"scope,omitempty"`
 	MemoryCurrentBytes  uint64 `json:"memory_current_bytes"`
 	MemoryPeakBytes     uint64 `json:"memory_peak_bytes"`
 	OOMEvents           uint64 `json:"oom_events"`

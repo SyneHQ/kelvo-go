@@ -24,6 +24,11 @@ static int ready(void) {
 int main(int argc, char **argv) {
     if (argc != 2 || getuid() != 65532 || geteuid() != 65532 || getpid() == 1) return 2;
     if (!strcmp(argv[1], "exit")) return 17;
+    if (!strcmp(argv[1], "optional-fd")) {
+        if (fcntl(3, F_GETFD) != -1 || errno != EBADF) return 14;
+        if (fcntl(4, F_GETFD) < 0 || write(4, "V", 1) != 1) return 15;
+        return 0;
+    }
     if (!strcmp(argv[1], "hold")) {
         if (ready()) return 3;
         hold();

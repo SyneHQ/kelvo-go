@@ -139,3 +139,22 @@ func TestChildFileDuplicationPreservesStatusFlags(t *testing.T) {
 		t.Fatal("preparing child output disabled parent deadlines", err)
 	}
 }
+
+func TestChildFilesPreserveClosedOptionalDescriptorSlots(t *testing.T) {
+	file, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	files, err := duplicateChildFiles([]*os.File{file, file, file, nil, file})
+	if err != nil || len(files) != 5 || files[3] != ^uintptr(0) {
+		t.Fatal("closed fd3 shifted the later descriptor", files, err)
+	}
+	if _, err := unix.FcntlInt(files[4], unix.F_GETFD, 0); err != nil {
+		t.Fatal("fd4 did not receive its explicit file", err)
+	}
+	closeChildFiles(files)
+	if _, err := file.Write([]byte("caller still owns this descriptor")); err != nil {
+		t.Fatal("optional-slot cleanup closed the caller's file", err)
+	}
+}
