@@ -85,7 +85,7 @@ func (c *s3Client) Get(ctx context.Context, key, version string) (io.ReadCloser,
 	if err = c.readCondition(r, version); err != nil {
 		return nil, Info{}, err
 	}
-	resp, err := c.do(r, "")
+	resp, err := c.do(op, r, "")
 	if err != nil {
 		return nil, Info{}, err
 	}
@@ -126,7 +126,7 @@ func (c *s3Client) GetRange(ctx context.Context, key, version string, offset, le
 		return nil, Info{}, err
 	}
 	r.Header.Set("Range", "bytes="+strconv.FormatInt(offset, 10)+"-"+strconv.FormatInt(offset+length-1, 10))
-	resp, err := c.do(r, "")
+	resp, err := c.do(op, r, "")
 	if err != nil {
 		return nil, Info{}, err
 	}
@@ -167,7 +167,7 @@ func (c *s3Client) Head(ctx context.Context, key, version string) (Info, error) 
 	if err = c.readCondition(r, version); err != nil {
 		return Info{}, err
 	}
-	resp, err := c.do(r, "")
+	resp, err := c.do(op, r, "")
 	if err != nil {
 		return Info{}, err
 	}
@@ -209,7 +209,7 @@ func (c *s3Client) Put(ctx context.Context, key string, body io.ReadSeeker, size
 		r.Body = upload
 		defer upload.wait()
 	}
-	resp, err := c.do(r, digest)
+	resp, err := c.do(op, r, digest)
 	if err != nil {
 		return Info{}, err
 	}
@@ -276,7 +276,7 @@ func (c *s3Client) readCondition(r *http.Request, version string) error {
 	return nil
 }
 
-func (c *s3Client) do(r *http.Request, digest string) (*http.Response, error) {
+func (c *s3Client) do(op *clientOperation, r *http.Request, digest string) (*http.Response, error) {
 	if digest == "" {
 		empty := sha256.Sum256(nil)
 		digest = hex.EncodeToString(empty[:])
@@ -296,10 +296,7 @@ func (c *s3Client) do(r *http.Request, digest string) (*http.Response, error) {
 	}
 	resp, err := c.http.Do(r)
 	if err != nil {
-		if r.Context().Err() != nil {
-			return nil, r.Context().Err()
-		}
-		return nil, errors.New("object storage request failed")
+		return nil, op.transportError(err, errors.New("object storage request failed"))
 	}
 	return resp, nil
 }

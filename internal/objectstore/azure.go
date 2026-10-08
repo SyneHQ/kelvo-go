@@ -114,13 +114,10 @@ func (c *azureClient) request(ctx context.Context, method, key, version string, 
 // do never returns URL errors or provider bodies: both can contain SAS material.
 // There are no implicit retries. Callers resolve uncertain conditional writes by
 // reading the manifest before deciding whether another operation is appropriate.
-func (c *azureClient) do(request *http.Request, expected int) (*http.Response, error) {
+func (c *azureClient) do(op *clientOperation, request *http.Request, expected int) (*http.Response, error) {
 	response, err := c.http.Do(request)
 	if err != nil {
-		if request.Context().Err() != nil {
-			return nil, request.Context().Err()
-		}
-		return nil, errors.New("Azure snapshot request failed")
+		return nil, op.transportError(err, errors.New("Azure snapshot request failed"))
 	}
 	if response.StatusCode != expected {
 		_ = response.Body.Close()
@@ -147,7 +144,7 @@ func (c *azureClient) Get(ctx context.Context, key, version string) (io.ReadClos
 	if err != nil {
 		return nil, Info{}, err
 	}
-	response, err := c.do(request, http.StatusOK)
+	response, err := c.do(op, request, http.StatusOK)
 	if err != nil {
 		return nil, azureErrorInfo(response), err
 	}
@@ -171,7 +168,7 @@ func (c *azureClient) Head(ctx context.Context, key, version string) (Info, erro
 	if err != nil {
 		return Info{}, err
 	}
-	response, err := c.do(request, http.StatusOK)
+	response, err := c.do(op, request, http.StatusOK)
 	if err != nil {
 		return azureErrorInfo(response), err
 	}
@@ -196,7 +193,7 @@ func (c *azureClient) GetRange(ctx context.Context, key, version string, offset,
 		return nil, Info{}, err
 	}
 	request.Header.Set("Range", "bytes="+strconv.FormatInt(offset, 10)+"-"+strconv.FormatInt(offset+length-1, 10))
-	response, err := c.do(request, http.StatusPartialContent)
+	response, err := c.do(op, request, http.StatusPartialContent)
 	if err != nil {
 		return nil, azureErrorInfo(response), err
 	}
@@ -257,7 +254,7 @@ func (c *azureClient) Put(ctx context.Context, key string, body io.ReadSeeker, s
 	if condition.Absent {
 		request.Header.Set("If-None-Match", "*")
 	}
-	response, err := c.do(request, http.StatusCreated)
+	response, err := c.do(op, request, http.StatusCreated)
 	if err != nil {
 		return azureErrorInfo(response), err
 	}
