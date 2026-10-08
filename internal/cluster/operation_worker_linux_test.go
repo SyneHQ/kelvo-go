@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -162,6 +163,9 @@ func TestOperationWorkerAutonomousTLSInputAndAudit(t *testing.T) {
 	// The completed runtime may release its result store and its exclusive
 	// storage lock even though it reports a result-delivery error.
 	directory := t.TempDir()
+	if err := os.Chmod(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
 	custody, err := exports.OpenCustody(context.Background(), directory, f.policy.TenantID, "worker-a")
 	if err != nil {
 		t.Fatal(err)
