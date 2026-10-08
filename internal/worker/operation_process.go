@@ -160,6 +160,9 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 		return rejectedOperation(input, "RESOURCE_EXHAUSTED"), operationFailure("RESOURCE_EXHAUSTED")
 	}
 	custody, _ = containment.NewCustody(reservation.Release)
+	if err := containment.RetainUntilCompletion(ctx, custody); err != nil {
+		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
+	}
 	workspace, err := newScratchWorkspace(e.ScratchRoot)
 	if err != nil {
 		return rejectedOperation(input, "RESOURCE_EXHAUSTED"), operationFailure("RESOURCE_EXHAUSTED")
