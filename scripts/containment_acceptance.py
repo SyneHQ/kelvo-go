@@ -36,7 +36,16 @@ KERNEL_GATES = [
 WORKER_GATES = [
     "TestContainedWorkerSuccessAndCancellation", "TestContainedWorkerRefreshCustody",
     "TestContainedWorkerStartFailureCleansOwnership", "TestContainedWorkerRealDuckDBCTE",
+    "TestContainedOperationFinalizesResultBeforeRelease", "TestContainedOperationCancellationKillsDescendants",
+    "TestContainedOperationResolvesOnlyAfterAdmission", "TestContainedOperationCleanupObserverAfterPhysicalDrain",
+    "TestContainedFileMutationPublishesOnlyVerifiedCandidate",
 ]
+OPERATION_LEAVES = {
+    "TestContainedOperationCleanupObserverAfterPhysicalDrain": (
+        "fixture", "cancelled", "committed_exit_error", "ack-failure"),
+    "TestContainedFileMutationPublishesOnlyVerifiedCandidate": (
+        "file_candidate", "file_conflict", "file_lost_reply", "file_bad_hash", "file_truncated", "file_crash"),
+}
 STARTUP_GATE = "TestContainedNodeStartupPlacement"
 EXPORT_GATE = "TestExportWorkerConstructorBindsKernelContainment"
 OUTSIDE_GATE = "StartupPlacementOutsideDelegation"
@@ -100,6 +109,15 @@ def gates(output, expected):
     for status, name in re.findall(r"^--- (PASS|FAIL|SKIP): (\w+)\b", output, re.M):
         if name in expected:
             observed[name] = "duplicate" if name in observed else status.lower()
+    for root, leaves in OPERATION_LEAVES.items():
+        if root not in expected:
+            continue
+        children = {}
+        for status, name in re.findall(
+                r"^[ \t]*--- (PASS|FAIL|SKIP): (" + re.escape(root) + r"/[^\s]+)\s", output, re.M):
+            children[name] = "duplicate" if name in children else status.lower()
+        if children != {root + "/" + leaf: "pass" for leaf in leaves}:
+            observed[root] = "fail"
     for root, leaves in ((PROTECTED_GATE, PROTECTED_LEAVES), (protected_query.ROOT, protected_query.LEAVES),
                          (protected_export.ROOT, protected_export.LEAVES)):
         if root in expected:
@@ -534,8 +552,9 @@ def inside(args):
         (artifact / "fixture-ready.json").write_text(json.dumps({"jobs": str(jobs), "state": str(state)}))
         wait_for_file(artifact / "outside-complete", timeout=60)
         env = test_environment(artifact, jobs, state, protected)
+        worker_required = WORKER_GATES + ([PROTECTED_GATE] if protected else [])
         for binary, pattern, required in [("containment.test", "^TestKernel", KERNEL_GATES),
-                                          ("worker.test", "^TestContainedWorker", WORKER_GATES + ([PROTECTED_GATE] if protected else [])),
+                                          ("worker.test", "^(" + "|".join(worker_required) + ")$", worker_required),
                                           ("startup.test", "^" + STARTUP_GATE + "$", [STARTUP_GATE]),
                                           ("export.test", "^" + EXPORT_GATE + "$", [EXPORT_GATE])]:
             result = run_logged([str(artifact / binary), "-test.v", "-test.run=" + pattern, "-test.timeout=90s"],
@@ -654,7 +673,7 @@ def main():
     (artifact / "run.json").write_text(json.dumps({"unit": unit, "description": description, "parent_unit": args.parent_unit,
         "artifact": str(artifact), "resource_limits": RESOURCE_LIMITS}, indent=2) + "\n")
     report = {"schema": 3, "mode": EXPORT_MODE if args.protected_exports else QUERY_MODE if args.protected_queries else PROTECTED_MODE if args.protected_objects else BASE_MODE,
-              "scope": "single Linux node process-tree containment and query/refresh custody",
+              "scope": "single Linux node process-tree containment and query/refresh/adapter-operation custody",
               "passed": False, "gates": {name: "missing" for name in required_gates(args.protected_objects, args.protected_queries, args.protected_exports)}, "limitations": [
                   "No hostile native escape reproduction was executed.",
                   "Native charged memory is not parent RSS or whole-node memory.",
