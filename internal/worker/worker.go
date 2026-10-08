@@ -267,6 +267,9 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		// resources are released before a competing job can take this reservation.
 		custody, _ = containment.NewCustody(reservation.Release)
 		defer custody.Complete()
+		if err := containment.RetainUntilCompletion(ctx, custody); err != nil {
+			return stats, err
+		}
 	}
 	if dynamic {
 		// Network/metadata resolution consumes the same bounded reservation as
