@@ -375,7 +375,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	})
 	defer stopLeaseWatch()
 	cleanupDone := make(chan struct{})
-	var refreshErr, auditCloseErr, objectCloseErr error // read only after cleanupDone closes
+	var refreshErr, auditCloseErr, objectCloseErr, nodeCloseErr error // read only after cleanupDone closes
 	datasetsTransferred = true
 	auditTransferred = true
 	runtimeTransferred = true
@@ -385,7 +385,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 		nodeDone := make(chan struct{})
 		datasetsDone := make(chan struct{})
 		go func() { closeDatasets(); close(datasetsDone) }()
-		go func() { _ = node.Close(); close(nodeDone) }()
+		go func() { nodeCloseErr = node.Close(); close(nodeDone) }()
 		if refreshDone != nil {
 			refreshErr = <-refreshDone
 		}
@@ -398,14 +398,17 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	// serveCluster bounds both joins; never wait again after its deadline.
 	select {
 	case <-cleanupDone:
-		if objectCloseErr != nil && result == nil {
-			result = query.NewError("UNAVAILABLE", "Protected object runtime shutdown remains uncertain")
+		if nodeCloseErr != nil {
+			result = errors.Join(result, query.NewError("UNAVAILABLE", "Worker operation shutdown did not complete cleanly"))
 		}
-		if auditCloseErr != nil && result == nil {
-			result = query.NewError("UNAVAILABLE", "Worker audit shutdown remains uncertain")
+		if objectCloseErr != nil {
+			result = errors.Join(result, query.NewError("UNAVAILABLE", "Protected object runtime shutdown remains uncertain"))
 		}
-		if refreshErr != nil && !errors.Is(refreshErr, context.Canceled) && result == nil {
-			result = refreshErr
+		if auditCloseErr != nil {
+			result = errors.Join(result, query.NewError("UNAVAILABLE", "Worker audit shutdown remains uncertain"))
+		}
+		if refreshErr != nil && !onlyClusterError(refreshErr, context.Canceled) {
+			result = errors.Join(result, query.NewError("UNAVAILABLE", "Worker refresh shutdown did not complete cleanly"))
 		}
 	default:
 		if result == nil {
@@ -459,7 +462,12 @@ func serveCluster(ctx context.Context, ln net.Listener, tc *tls.Config, handler 
 	case <-ctx.Done():
 		if drainer, ok := handler.(interface{ Drain(context.Context) error }); ok {
 			grace, stopGrace := context.WithTimeout(context.Background(), drainTimeout)
-			_ = drainer.Drain(grace)
+			result = drainer.Drain(grace)
+			// Expiring the grace period deliberately proceeds to forced close.
+			// A joined cleanup/delivery failure must survive that normalization.
+			if grace.Err() != nil && onlyClusterError(result, context.DeadlineExceeded) {
+				result = nil
+			}
 			stopGrace()
 		}
 	}
@@ -470,21 +478,44 @@ func serveCluster(ctx context.Context, ln net.Listener, tc *tls.Config, handler 
 	defer stop()
 	if err := s.Shutdown(shutdown); err != nil {
 		_ = s.Close()
-		if result == nil {
-			result = err
-		}
+		result = errors.Join(result, err)
 	}
 	select {
 	case <-closed:
 	case <-shutdown.Done():
-		if result == nil {
-			result = errors.New("cluster shutdown deadline exceeded")
-		}
+		result = errors.Join(result, errors.New("cluster shutdown deadline exceeded"))
 	}
-	if errors.Is(result, http.ErrServerClosed) {
+	if onlyClusterError(result, http.ErrServerClosed) {
 		return nil
 	}
 	return result
+}
+
+// errors.Is matches one branch of a joined error. Shutdown normalization may
+// suppress an expected outcome only when every leaf is that same outcome.
+func onlyClusterError(err, expected error) bool {
+	if err == nil {
+		return false
+	}
+	if err == expected {
+		return true
+	}
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		children := joined.Unwrap()
+		if len(children) == 0 {
+			return false
+		}
+		for _, child := range children {
+			if !onlyClusterError(child, expected) {
+				return false
+			}
+		}
+		return true
+	}
+	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
+		return onlyClusterError(wrapped.Unwrap(), expected)
+	}
+	return false
 }
 
 // Accepted node reservations may not have entered Execute yet. Keep the shared

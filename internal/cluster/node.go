@@ -594,19 +594,23 @@ func (n *Node) BeginDrain() {
 // caller must invoke Close after the grace period to cancel remaining work.
 func (n *Node) Drain(ctx context.Context) error {
 	n.BeginDrain()
+	var resultErr error
 	if n.operations != nil {
 		if err := n.operations.worker.Drain(ctx); err != nil {
-			return err
+			if !n.operations.worker.runtime.Joined() {
+				return err
+			}
+			resultErr = err
 		}
 	}
 	select {
 	case <-n.dispatchDone:
 	case <-ctx.Done():
-		return ctx.Err()
+		return errors.Join(resultErr, ctx.Err())
 	}
 	if n.exports != nil {
 		if err := n.exports.Drain(ctx); err != nil {
-			return err
+			return errors.Join(resultErr, err)
 		}
 	}
 	tick := time.NewTicker(20 * time.Millisecond)
@@ -616,11 +620,11 @@ func (n *Node) Drain(ctx context.Context) error {
 		empty := len(n.jobs) == 0
 		n.mu.Unlock()
 		if empty {
-			return nil
+			return resultErr
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return errors.Join(resultErr, ctx.Err())
 		case <-tick.C:
 		}
 	}

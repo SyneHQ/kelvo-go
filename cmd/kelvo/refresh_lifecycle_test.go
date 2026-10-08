@@ -14,6 +14,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
+	"github.com/SYNEHQ/kelvo-go/internal/operationrun"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 )
@@ -29,6 +30,53 @@ func (n *lifecycleTestNode) Drain(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+}
+
+type failedDrainFixture struct {
+	failure         error
+	waitForDeadline bool
+}
+
+func (h failedDrainFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }
+func (h failedDrainFixture) Drain(ctx context.Context) error {
+	if h.waitForDeadline {
+		<-ctx.Done()
+		return errors.Join(ctx.Err(), h.failure)
+	}
+	return h.failure
+}
+
+func TestServeClusterPreservesLifecycleFailuresThroughShutdown(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		failure error
+		wait    bool
+		want    error
+	}{
+		{"clean", nil, false, nil},
+		{"grace expires", nil, true, nil},
+		{"delivery failure", operationrun.ErrDelivery, false, operationrun.ErrDelivery},
+		{"delivery failure with grace expiry", operationrun.ErrDelivery, true, operationrun.ErrDelivery},
+		{"joined server closed", errors.Join(http.ErrServerClosed, operationrun.ErrCleanup), false, operationrun.ErrCleanup},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			template := httptest.NewTLSServer(http.NotFoundHandler())
+			tc := template.TLS.Clone()
+			template.Close()
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ln.Close()
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			closed := false
+			err = serveCluster(ctx, ln, tc, failedDrainFixture{test.failure, test.wait}, func() { closed = true }, 20*time.Millisecond)
+			if !errors.Is(err, test.want) || !closed {
+				t.Fatal("shutdown lost its lifecycle failure or skipped close", err, closed)
+			}
+		})
 	}
 }
 func TestNodeLifecycleKeepsAcceptedWorkAlive(t *testing.T) {
