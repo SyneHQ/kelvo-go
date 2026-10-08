@@ -44,6 +44,8 @@ type Server struct {
 // NewPair creates no listener or socket pathname. The caller passes only the
 // returned file to the admitted child and closes its copy immediately after
 // Start. Serve must use the actual process ID reported by that Start.
+// ctx must remain valid until execution cleanup completes. Do not use the
+// SQL request context: cancellation can require a new physical connection.
 func NewPair(ctx context.Context, authority string, data, cancellation transportbroker.Dialer, maxStreams int) (*Server, *os.File, error) {
 	if ctx == nil || ctx.Err() != nil || transportbroker.ValidateAuthority(authority) != nil || data == nil || maxStreams < 1 || maxStreams > 64 {
 		return nil, nil, ErrChannel
@@ -340,7 +342,11 @@ type Client struct {
 // NewClient consumes the inherited descriptor. The child receives no parent
 // credentials. A failed/cancelled exchange permanently closes this channel.
 func NewClient(file *os.File, authority string) (*Client, error) {
-	if file == nil || transportbroker.ValidateAuthority(authority) != nil {
+	if file == nil {
+		return nil, ErrChannel
+	}
+	if transportbroker.ValidateAuthority(authority) != nil {
+		file.Close()
 		return nil, ErrChannel
 	}
 	conn, err := net.FileConn(file)
