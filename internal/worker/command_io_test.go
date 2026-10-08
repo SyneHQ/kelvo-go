@@ -243,8 +243,8 @@ func TestCommandIOBlockedConsumerRetainsCustodyAfterNativeExit(t *testing.T) {
 	}()
 	select {
 	case <-entered:
-	case <-time.After(time.Second):
-		t.Fatal("result consumer did not reach the publication boundary")
+	case <-pipes.ctx.Done():
+		t.Fatal("result consumer did not reach its boundary before the child deadline")
 	}
 	if err := command.Wait(); err != nil {
 		t.Fatal(err)
