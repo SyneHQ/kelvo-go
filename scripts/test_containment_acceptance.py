@@ -676,6 +676,17 @@ class ContainmentControls(unittest.TestCase):
         self.assertEqual(fixture.gates("", [name]), {name: "missing"})
         self.assertEqual(fixture.gates(f"--- SKIP: {name} (0s)\n", [name]), {name: "skip"})
 
+    def test_operation_parent_pass_cannot_hide_missing_or_skipped_leaf(self):
+        for root, leaves in fixture.OPERATION_LEAVES.items():
+            self.assertIn(root, fixture.WORKER_GATES)
+            records = [f"    --- PASS: {root}/{leaf} (0s)\n" for leaf in leaves]
+            parent = f"--- PASS: {root} (0s)\n"
+            self.assertEqual(fixture.gates("".join(records) + parent, [root]), {root: "pass"})
+            for broken in (records[:-1], records + [records[0]],
+                           [records[0].replace("PASS:", "SKIP:"), *records[1:]],
+                           [*records, f"    --- PASS: {root}/unexpected (0s)\n"]):
+                self.assertEqual(fixture.gates("".join(broken) + parent, [root]), {root: "fail"})
+
     def test_unproven_cleanup_or_process_status_never_passes(self):
         for field in ("remaining_job_groups", "remaining_ownership_records", "service_exit_code"):
             for value in (1, -1, None, False, "0"):
