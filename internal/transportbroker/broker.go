@@ -25,6 +25,7 @@ type Snapshot struct {
 }
 
 type Broker struct {
+	self     *Broker
 	mu       sync.Mutex
 	limits   Limits
 	opener   Opener
@@ -42,13 +43,16 @@ func New(limits Limits, opener Opener) (*Broker, error) {
 		limits.MaxSessions > maxPoolConnections/limits.MaxDataPerSession {
 		return nil, ErrInvalid
 	}
-	return &Broker{limits: limits, opener: opener, sessions: make(map[*Session]struct{}), attempts: make(map[sourceAttempt]*Session), done: make(chan struct{})}, nil
+	b := &Broker{limits: limits, opener: opener, sessions: make(map[*Session]struct{}), attempts: make(map[sourceAttempt]*Session), done: make(chan struct{})}
+	b.self = b
+	return b, nil
 }
 
 // Session belongs to the trusted parent, not to a driver. Its context must cover
 // execution cleanup, including source cancellation; a query's cancelled request
 // context must not be substituted for this custody context.
 type Session struct {
+	self                             *Session
 	broker                           *Broker
 	binding                          Binding
 	ctx                              context.Context
@@ -70,7 +74,7 @@ func (b Binding) attempt() sourceAttempt {
 }
 
 func (b *Broker) Admit(ctx context.Context, binding Binding) (*Session, error) {
-	if b == nil || ctx == nil || !validBinding(binding, time.Now()) {
+	if b == nil || b.self != b || ctx == nil || !validBinding(binding, time.Now()) {
 		return nil, ErrInvalid
 	}
 	if err := ctx.Err(); err != nil {
@@ -91,22 +95,26 @@ func (b *Broker) Admit(ctx context.Context, binding Binding) (*Session, error) {
 	}
 	lifetime, cancel := context.WithDeadline(ctx, binding.ExpiresAt)
 	s := &Session{broker: b, binding: binding, ctx: lifetime, cancel: cancel, done: make(chan struct{}), connections: make(map[*connection]struct{})}
+	s.self = s
 	b.sessions[s] = struct{}{}
 	b.attempts[binding.attempt()] = s
 	b.state.Sessions++
 	b.mu.Unlock()
-	context.AfterFunc(lifetime, s.beginClose)
+	context.AfterFunc(lifetime, func() { _ = s.beginClose() })
 	return s, nil
 }
 
 func (b *Broker) Snapshot() Snapshot {
+	if b == nil || b.self != b {
+		return Snapshot{Draining: true, CleanupFailed: true}
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.state
 }
 
 func (b *Broker) Close(ctx context.Context) error {
-	if ctx == nil {
+	if b == nil || b.self != b || ctx == nil {
 		return ErrInvalid
 	}
 	b.mu.Lock()
@@ -118,7 +126,7 @@ func (b *Broker) Close(ctx context.Context) error {
 	b.finishLocked()
 	b.mu.Unlock()
 	for _, s := range sessions {
-		s.beginClose()
+		_ = s.beginClose()
 	}
 	return wait(ctx, b.done)
 }
@@ -144,7 +152,7 @@ type dialer struct {
 }
 
 func (d dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
-	if d.s == nil || ctx == nil {
+	if d.s == nil || d.s.self != d.s || d.s.broker == nil || d.s.broker.self != d.s.broker || ctx == nil {
 		return nil, ErrInvalid
 	}
 	s, b := d.s, d.s.broker
@@ -158,6 +166,10 @@ func (d dialer) DialContext(ctx context.Context, network, address string) (net.C
 	if s.closing || s.ctx.Err() != nil || (b.state.Draining && d.purpose != Cancellation) {
 		b.mu.Unlock()
 		return nil, ErrClosed
+	}
+	if _, exists := b.sessions[s]; !exists || b.attempts[s.binding.attempt()] != s {
+		b.mu.Unlock()
+		return nil, ErrInvalid
 	}
 	if d.purpose == Data {
 		if s.data >= b.limits.MaxDataPerSession || b.state.DataConnections >= b.limits.MaxDataConnections {
@@ -206,7 +218,8 @@ func (d dialer) DialContext(ctx context.Context, network, address string) (net.C
 		}
 		return nil, ErrOpen
 	}
-	c := &connection{Conn: raw, session: s, purpose: d.purpose, closed: make(chan struct{})}
+	c := &connection{conn: raw, session: s, purpose: d.purpose, closed: make(chan struct{})}
+	c.self = c
 	b.mu.Lock()
 	s.pending--
 	b.state.Opening--
@@ -266,12 +279,19 @@ func (s *Session) finishLocked() {
 	}
 }
 
-func (s *Session) beginClose() {
+func (s *Session) beginClose() error {
+	if s == nil || s.self != s || s.broker == nil || s.broker.self != s.broker {
+		return ErrInvalid
+	}
 	b := s.broker
 	b.mu.Lock()
 	if s.closing {
 		b.mu.Unlock()
-		return
+		return nil
+	}
+	if _, exists := b.sessions[s]; !exists || b.attempts[s.binding.attempt()] != s {
+		b.mu.Unlock()
+		return ErrInvalid
 	}
 	s.closing = true
 	connections := make([]*connection, 0, len(s.connections))
@@ -284,6 +304,7 @@ func (s *Session) beginClose() {
 	for _, c := range connections {
 		go c.Close()
 	}
+	return nil
 }
 
 // Close prevents new opens and waits for pending opens and socket closes. A
@@ -292,7 +313,9 @@ func (s *Session) Close(ctx context.Context) error {
 	if s == nil || ctx == nil {
 		return ErrInvalid
 	}
-	s.beginClose()
+	if err := s.beginClose(); err != nil {
+		return err
+	}
 	return wait(ctx, s.done)
 }
 
