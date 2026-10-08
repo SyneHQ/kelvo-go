@@ -55,6 +55,20 @@ func TestSupervisedChildRejectsMalformedHandle(t *testing.T) {
 	}
 }
 
+func TestSupervisedChildCopiesShareFinalExitAndClosedSignalHandle(t *testing.T) {
+	state := &supervisedChildState{pidfd: -1, done: make(chan struct{})}
+	child := &SupervisedChild{owner: &NamespaceSupervisor{}, pid: 2, state: state}
+	copy := *child
+	state.exit = ChildExit{Code: -1, Signal: syscall.SIGKILL}
+	close(state.done)
+	if exit, err := copy.Wait(context.Background()); err != nil || exit != state.exit {
+		t.Fatal("copied handle observed its pre-exit zero value", exit, err)
+	}
+	if err := copy.Signal(syscall.SIGTERM); !errors.Is(err, ErrUnavailable) {
+		t.Fatal("copied handle retained a closed signal descriptor", err)
+	}
+}
+
 func TestNamespaceSupervisorRejectsAmbientProcess(t *testing.T) {
 	if os.Getpid() == 1 {
 		t.Skip("ordinary host rejection requires a non-init process")
