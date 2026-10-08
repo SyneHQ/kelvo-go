@@ -11,6 +11,15 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/objectstore"
 )
 
+var ErrRefreshCleanup = errors.New("snapshot refresh cleanup did not complete")
+
+func refreshCleanupError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return errors.Join(ErrRefreshCleanup, err)
+}
+
 // Backend preserves the full-refresh lifecycle independently of where the
 // committed bytes live. A query must keep its Lease until execution ends.
 // Object backend Close seals writer admission, cancels admitted writers and

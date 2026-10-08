@@ -55,7 +55,7 @@ func (m *Manager) Close() error { return m.store.Close() }
 
 // Refresh publishes only after a complete successful source result and Parquet
 // footer. A redelivered scheduled job rechecks freshness under the writer lock.
-func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snapshot, error) {
+func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (_ Snapshot, resultErr error) {
 	d, ok := m.config.Dataset(id)
 	if !ok {
 		return Snapshot{}, query.NewError("INVALID_ARGUMENT", "Unknown accelerated dataset")
@@ -83,7 +83,7 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snaps
 	if err != nil {
 		return Snapshot{}, err
 	}
-	defer tx.Abort()
+	defer func() { resultErr = errors.Join(resultErr, refreshCleanupError(tx.Abort())) }()
 	ctx = tx.Context()
 	if onlyIfDue {
 		current, err := m.store.Status(ctx, id)
@@ -137,7 +137,7 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snaps
 // refreshMultipart retains one writer transaction across every part. Nothing
 // becomes visible until source execution, all footers and the schema contract
 // have completed successfully.
-func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, fingerprint string, onlyIfDue bool) (Snapshot, error) {
+func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, fingerprint string, onlyIfDue bool) (_ Snapshot, resultErr error) {
 	backend, ok := m.store.(MultipartBackend)
 	if !ok {
 		return Snapshot{}, query.NewError("CONFIGURATION_ERROR", "Snapshot backend does not support multipart refresh")
@@ -147,7 +147,7 @@ func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, finge
 	if err != nil {
 		return Snapshot{}, err
 	}
-	defer tx.Abort()
+	defer func() { resultErr = errors.Join(resultErr, refreshCleanupError(tx.Abort())) }()
 	ctx = tx.Context()
 	if onlyIfDue {
 		current, err := m.store.Status(ctx, d.ID)

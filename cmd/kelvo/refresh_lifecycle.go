@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
@@ -90,7 +91,15 @@ func withRefreshReservation(ctx context.Context, pool *admission.Pool, overhead 
 			return acquireErr
 		}
 		custody, _ := containment.NewCustody(reservation.Release)
-		defer custody.Complete()
+		defer func() {
+			if errors.Is(err, acceleration.ErrRefreshCleanup) {
+				// Keep the reservation while staged files or remote ownership
+				// remain uncertain. Restart recovery is an operator action.
+				pool.Drain()
+				return
+			}
+			custody.Complete()
+		}()
 		ctx = containment.WithCustody(ctx, custody)
 	}
 	return run(ctx)

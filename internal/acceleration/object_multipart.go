@@ -169,7 +169,7 @@ func (tx *objectMultipartTransaction) SealPart(rows int64) (err error) {
 	}
 	if err = file.Close(); err != nil {
 		local.file = nil
-		return err
+		return refreshCleanupError(err)
 	}
 	local.file = nil
 	if err = storeRemove(local.dir, local.stage); err != nil {
