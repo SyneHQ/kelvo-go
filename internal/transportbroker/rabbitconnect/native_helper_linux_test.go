@@ -30,14 +30,15 @@ import (
 // socket-only fixture addresses arrive through bounded stdin, never argv or
 // environment. This is not a production issuer or a child transport protocol.
 type nativeHelperInput struct {
-	Version  int          `json:"version"`
-	Mode     string       `json:"mode"`
-	Proxy    Config       `json:"proxy"`
-	Claims   ticketClaims `json:"claims"`
-	Key      []byte       `json:"key"`
-	SourceCA []byte       `json:"source_ca"`
-	Database string       `json:"database"`
-	AdminURL string       `json:"admin_url"`
+	Version       int          `json:"version"`
+	Mode          string       `json:"mode"`
+	Proxy         Config       `json:"proxy"`
+	Claims        ticketClaims `json:"claims"`
+	Key           []byte       `json:"key"`
+	SourceCA      []byte       `json:"source_ca"`
+	Database      string       `json:"database"`
+	AdminURL      string       `json:"admin_url"`
+	MySQLPassword string       `json:"mysql_password,omitempty"`
 }
 
 type nativeHelperResult struct {
@@ -55,6 +56,54 @@ func TestRabbitNativePostgresHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal("invalid native fixture input")
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	session, opens := nativeHelperSession(t, ctx, input)
+	config := nativePGConfig(t, input, session.DataDialer())
+	conn, err := pgx.ConnectConfig(ctx, config)
+	if input.Mode == "denied" {
+		if conn != nil {
+			_ = conn.Close(ctx)
+		}
+		if err == nil || opens.Load() != 0 {
+			t.Fatal("denied scope reached a native source connection")
+		}
+	} else if input.Mode == "hostname" {
+		if conn != nil {
+			_ = conn.Close(ctx)
+		}
+		var hostnameError x509.HostnameError
+		if !errors.As(err, &hostnameError) || opens.Load() != 1 {
+			t.Fatal("native driver did not verify original source hostname")
+		}
+	} else {
+		if err != nil {
+			t.Fatal("native PostgreSQL connection through Rabbit failed")
+		}
+		t.Cleanup(func() {
+			ctx, stop := context.WithTimeout(context.Background(), 3*time.Second)
+			defer stop()
+			_ = conn.Close(ctx)
+		})
+		if input.Mode == "rows" {
+			verifyNativePGRows(t, ctx, conn)
+			if opens.Load() != 1 {
+				t.Fatal("native row stream unexpectedly reopened its source")
+			}
+		} else {
+			verifyNativePGCancel(t, ctx, conn, input.AdminURL, opens)
+		}
+	}
+	result := nativeHelperResult{Version: 1, Mode: input.Mode, Opens: opens.Load()}
+	if input.Mode == "rows" {
+		result.Rows = 100000
+	}
+	encoded, _ := json.Marshal(result)
+	fmt.Println("KELVO_NATIVE_RESULT:" + string(encoded))
+}
+
+func nativeHelperSession(t *testing.T, ctx context.Context, input nativeHelperInput) (*transportbroker.Session, *atomic.Int32) {
+	t.Helper()
 	c := input.Claims
 	binding := transportbroker.Binding{Issuer: c.Issuer, Audience: c.Audience,
 		ClusterTenant: c.ClusterTenant, ServicePrincipal: c.ServicePrincipal,
@@ -91,53 +140,11 @@ func TestRabbitNativePostgresHelper(t *testing.T) {
 			t.Error("native broker retained unfinished resources")
 		}
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
-	defer cancel()
 	session, err := broker.Admit(ctx, binding)
 	if err != nil {
 		t.Fatal("native fixture broker admission failed")
 	}
-	config := nativePGConfig(t, input, session.DataDialer())
-	conn, err := pgx.ConnectConfig(ctx, config)
-	if input.Mode == "denied" {
-		if conn != nil {
-			_ = conn.Close(ctx)
-		}
-		if err == nil || opens.Load() != 0 {
-			t.Fatal("denied scope reached a native source connection")
-		}
-	} else if input.Mode == "hostname" {
-		if conn != nil {
-			_ = conn.Close(ctx)
-		}
-		var hostnameError x509.HostnameError
-		if !errors.As(err, &hostnameError) || opens.Load() != 1 {
-			t.Fatal("native driver did not verify original source hostname")
-		}
-	} else {
-		if err != nil {
-			t.Fatal("native PostgreSQL connection through Rabbit failed")
-		}
-		t.Cleanup(func() {
-			ctx, stop := context.WithTimeout(context.Background(), 3*time.Second)
-			defer stop()
-			_ = conn.Close(ctx)
-		})
-		if input.Mode == "rows" {
-			verifyNativePGRows(t, ctx, conn)
-			if opens.Load() != 1 {
-				t.Fatal("native row stream unexpectedly reopened its source")
-			}
-		} else {
-			verifyNativePGCancel(t, ctx, conn, input.AdminURL, &opens)
-		}
-	}
-	result := nativeHelperResult{Version: 1, Mode: input.Mode, Opens: opens.Load()}
-	if input.Mode == "rows" {
-		result.Rows = 100000
-	}
-	encoded, _ := json.Marshal(result)
-	fmt.Println("KELVO_NATIVE_RESULT:" + string(encoded))
+	return session, &opens
 }
 
 func readNativeHelperInput(source io.Reader) (nativeHelperInput, error) {
