@@ -5,6 +5,7 @@ package childipc
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 type dialFunc func(context.Context, string, string) (net.Conn, error)
@@ -237,4 +240,120 @@ func TestCloseDeadlineRetainsSingleCleanupOwner(t *testing.T) {
 	<-blocked.started
 	close(blocked.release)
 	closeServer(t, s)
+}
+
+func TestInvalidAuthorityConsumesInheritedFile(t *testing.T) {
+	dialer, _ := echoDialer(t)
+	s, file, err := NewPair(context.Background(), "source.private:5432", dialer, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client, err := NewClient(file, "invalid"); err == nil {
+		client.Close()
+		t.Fatal("invalid authority accepted")
+	}
+	if _, err := file.Stat(); !errors.Is(err, os.ErrClosed) {
+		t.Fatal("rejected inherited descriptor remains open")
+	}
+	closeServer(t, s)
+}
+
+func TestChannelRejectsMalformedRequestsBeforeDial(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		data   []byte
+		rights bool
+	}{
+		{"short", []byte{1}, false}, {"oversized", make([]byte, 4096), false},
+		{"version", []byte{2, 1}, false}, {"purpose", []byte{1, 3}, false},
+		{"descriptor", []byte{1, 1}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dialer, calls := echoDialer(t)
+			s, file, err := NewPair(context.Background(), "source.private:5432", dialer, nil, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			conn, err := net.FileConn(file)
+			file.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			control := conn.(*net.UnixConn)
+			served := make(chan error, 1)
+			go func() { served <- s.Serve(os.Getpid()) }()
+			var rights []byte
+			var peer *os.File
+			if tc.rights {
+				read, write, err := os.Pipe()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer read.Close()
+				peer = write
+				rights = unix.UnixRights(int(write.Fd()))
+				// The receiver must close the delivered descriptor on rejection.
+				if err := read.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+					t.Fatal(err)
+				}
+				defer func() {
+					var b [1]byte
+					if _, err := read.Read(b[:]); err != io.EOF {
+						t.Errorf("received descriptor leaked: %v", err)
+					}
+				}()
+			}
+			if _, _, err := control.WriteMsgUnix(tc.data, rights, nil); err != nil {
+				t.Fatal(err)
+			}
+			if peer != nil {
+				peer.Close()
+			}
+			select {
+			case err := <-served:
+				if err == nil {
+					t.Fatal("malformed message accepted")
+				}
+			case <-time.After(time.Second):
+				t.Fatal("malformed message stalled admission")
+			}
+			closeServer(t, s)
+			if calls.Load() != 0 {
+				t.Fatal("malformed request opened source connection")
+			}
+		})
+	}
+}
+
+type failedClose struct{ net.Conn }
+
+func (c *failedClose) Close() error { c.Conn.Close(); return errors.New("fixture close failure") }
+func TestCloseReportsPhysicalCleanupFailure(t *testing.T) {
+	left, right := net.Pipe()
+	defer right.Close()
+	dialer := dialFunc(func(context.Context, string, string) (net.Conn, error) { return &failedClose{left}, nil })
+	s, file, err := NewPair(context.Background(), "source.private:5432", dialer, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := NewClient(file, "source.private:5432")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	go s.Serve(os.Getpid())
+	conn, err := client.DialContext(context.Background(), "tcp", "source.private:5432")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := s.Close(ctx); !errors.Is(err, ErrChannel) {
+		t.Fatalf("cleanup failure not retained: %v", err)
+	}
+	if err := s.Close(ctx); !errors.Is(err, ErrChannel) {
+		t.Fatalf("repeated cleanup lost failure: %v", err)
+	}
 }
