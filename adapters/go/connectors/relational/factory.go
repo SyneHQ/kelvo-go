@@ -72,7 +72,11 @@ func (d *Driver) Open(ctx context.Context, connection adapter.Connection) (adapt
 		if err != nil {
 			return nil, err
 		}
-		pool = stdlib.OpenDB(*config)
+		if connection.DialContext != nil {
+			pool = sql.OpenDB(sourcePostgresConnector(config, connection))
+		} else {
+			pool = stdlib.OpenDB(*config)
+		}
 	case "mysql", "mariadb":
 		config, err := mysqlConfig(connection)
 		if err != nil {
@@ -128,6 +132,9 @@ func (d *Driver) Open(ctx context.Context, connection adapter.Connection) (adapt
 }
 
 func validConnection(c adapter.Connection) bool {
+	if !validSourceDialers(c) {
+		return false
+	}
 	if c.TenantID == "" || c.ConnectionID == "" || c.Revision == "" || c.Host == "" || c.Username == "" || c.Password == "" || c.Namespace == "" || c.Port < 1 || c.Port > 65535 {
 		return false
 	}
@@ -189,6 +196,9 @@ func postgresConfig(c adapter.Connection) (*pgx.ConnConfig, error) {
 	config.BuildContextWatcherHandler = func(conn *pgconn.PgConn) ctxwatch.Handler {
 		return &pgconn.CancelRequestContextWatcherHandler{Conn: conn, CancelRequestDelay: 0, DeadlineDelay: 500 * time.Millisecond}
 	}
+	if c.DialContext != nil {
+		configurePostgresSourceDialers(config, c)
+	}
 	return config, nil
 }
 
@@ -225,5 +235,8 @@ func mysqlConfig(c adapter.Connection) (*mysqldriver.Config, error) {
 	config.AllowCleartextPasswords = false
 	config.AllowOldPasswords = false
 	config.Logger = quietLogger{}
+	if c.DialContext != nil {
+		config.DialFunc = scopedSourceDialer(c, c.DialContext)
+	}
 	return config, nil
 }

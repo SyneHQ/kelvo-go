@@ -1,6 +1,6 @@
 # Private transport broker
 
-The internal broker is a dormant building block for [private CONNECT](https://github.com/SyneHQ/kelvo-go/issues/162). No CLI, configuration, worker, adapter or DBAPI route uses it. It does not yet implement an issuer client, CONNECT handshake or child IPC.
+The broker, issuer client, CONNECT handshake and child IPC are dormant building blocks for [private CONNECT](https://github.com/SyneHQ/kelvo-go/issues/162). Production startup does not activate them.
 
 ## Ownership
 
@@ -30,7 +30,9 @@ Opening, closing and uncertain connections keep their reservations. A close erro
 1. Add an authenticated issuer/CONNECT implementation in the trusted parent. Keep tickets and mTLS keys out of child input, environment and files.
 2. Pass a per-execution inherited IPC capability to the owning child. Verify exact peer/process custody; an in-process Go interface is not a security boundary.
 3. Wire supported native drivers explicitly. Keep the original database TLS hostname and bypass worker-side source DNS. Reject unsupported adapters.
-4. Give PostgreSQL cancellation its reserved dial capability. `pgx` uses `RemoteAddr()` and its configured dial function; the broker exposes the original source authority, but selecting the cancellation capability still needs a driver hook.
+4. Supply the PostgreSQL adapter's separate `DialContext` and `DialCancellation` hooks. MySQL uses `DialContext`, including cloned migration pools. Hooks are runtime-only and cannot enter JSON input. The PostgreSQL connector marks data opens explicitly; watcher and internal cleanup connections use cancellation authority. A denial never retries the data hook or direct network.
 5. Qualify verified source TLS, revocation, owner replacement, saturated cancellation, shutdown and cleanup against real PostgreSQL/MySQL and federation scans. Measure setup and transfer costs before making performance claims.
 
 Current tests cover the internal scope and lifecycle contract, capacity isolation, distinct open IDs, late opens, cleanup failures and TCP half-close. They do not qualify a live Rabbit path.
+
+Native PostgreSQL/MySQL fixtures also verify source TLS, hostname denial, no child DNS, reads and MySQL migration pools. PostgreSQL tests check source-backend termination and denied cancellation without data fallback. Both normal and race runs pass. These fixtures use admitted test dialers; launcher wiring and the complete Rabbit path remain separate gates.
