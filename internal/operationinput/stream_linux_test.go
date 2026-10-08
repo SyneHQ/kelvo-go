@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -37,6 +38,22 @@ func TestStreamReservesBeforeProducerAndCommitsExactBytes(t *testing.T) {
 	got, err := s.Load(context.Background(), identity, ref)
 	if err != nil || !bytes.Equal(payload, got) {
 		t.Fatal("committed stream changed or close withdrew it", err)
+	}
+}
+
+func TestStreamClosePreservesCleanupErrorJoinedWithCancellation(t *testing.T) {
+	for _, cause := range []error{context.Canceled, io.ErrClosedPipe} {
+		reader, writer := io.Pipe()
+		defer reader.Close()
+		done := make(chan struct{})
+		close(done)
+		failure := errors.New("fixture writer cleanup failure")
+		stream := &StreamWriter{pipe: writer, cancel: func() {}, done: done, err: errors.Join(cause, ErrCleanup, failure)}
+		for range 2 {
+			if err := stream.Close(); !errors.Is(err, cause) || !errors.Is(err, ErrCleanup) || !errors.Is(err, failure) {
+				t.Fatal("cancellation hid failed cleanup", err)
+			}
+		}
 	}
 }
 

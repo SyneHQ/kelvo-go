@@ -41,6 +41,7 @@ var (
 	ErrInvalid = errors.New("invalid operation input")
 	ErrCorrupt = errors.New("operation input verification failed")
 	ErrLimit   = errors.New("operation input limit exceeded")
+	ErrCleanup = errors.New("operation input cleanup did not complete")
 )
 
 // Storage must be a dedicated private input root. Its entry, byte and TTL
@@ -112,7 +113,11 @@ func (s *Store) Put(ctx context.Context, identity exports.Identity, expiry time.
 }
 
 func (s *Store) write(ctx context.Context, identity exports.Identity, expiry time.Time, format Format, maximum int64, w *exports.Writer, input io.Reader) (ref operations.InputRef, resultErr error) {
-	defer func() { resultErr = errors.Join(resultErr, w.Close()) }()
+	defer func() {
+		if err := w.Close(); err != nil {
+			resultErr = errors.Join(resultErr, ErrCleanup, err)
+		}
+	}()
 	schema := inputSchema(format)
 	reader := &inputReader{ctx: ctx, expiry: expiry, reader: input}
 	buffer := make([]byte, ChunkBytes)

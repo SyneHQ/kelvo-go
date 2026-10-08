@@ -64,6 +64,9 @@ func (s *StreamWriter) Commit() (operations.InputRef, error) {
 // a committed or uncertain publication; normal retention cleanup owns those.
 func (s *StreamWriter) Close() error {
 	s.once.Do(func() { _ = s.pipe.CloseWithError(context.Canceled); s.cancel(); <-s.done })
+	if errors.Is(s.err, ErrCleanup) {
+		return s.err
+	}
 	if errors.Is(s.err, context.Canceled) || errors.Is(s.err, io.ErrClosedPipe) {
 		return nil
 	}
