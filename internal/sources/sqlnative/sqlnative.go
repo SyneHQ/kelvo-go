@@ -197,6 +197,7 @@ func StreamRows(ctx context.Context, rows *sql.Rows, dialect Dialect, limits que
 		return stats, localResultError(ctx, err, "Could not prepare result stream")
 	}
 	defer writer.Close()
+	conversion := newRowConversion(schema)
 	stats.PrepareNS = time.Since(started).Nanoseconds()
 	valuesOut, scan := make([]any, len(columns)), make([]any, len(columns))
 	for i := range valuesOut {
@@ -209,7 +210,7 @@ func StreamRows(ctx context.Context, rows *sql.Rows, dialect Dialect, limits que
 		if err := rows.Scan(scan...); err != nil {
 			return stats, e.sourceError(ctx, err, "Source returned an invalid row")
 		}
-		row, err := normalizeRow(schema, valuesOut)
+		row, err := conversion.convert(valuesOut)
 		if err != nil {
 			return stats, query.NewError("UNSUPPORTED", "Source result value is unsupported")
 		}
@@ -337,30 +338,7 @@ func arrowType(c *sql.ColumnType, dialect Dialect) (arrow.DataType, error) {
 		return nil, errors.New("database type unsupported")
 	}
 }
-func normalizeRow(schema *arrow.Schema, values []any) ([]any, error) {
-	if len(values) != schema.NumFields() {
-		return nil, errors.New("source row width differs from schema")
-	}
-	out := make([]any, len(values))
-	for i, value := range values {
-		if value == nil {
-			continue
-		}
-		sourceType, _ := schema.Field(i).Metadata.GetValue("source_type")
-		if sourceType == "mysql" || sourceType == "mariadb" {
-			if tv, ok := value.(time.Time); ok && tv.IsZero() {
-				return nil, errors.New("MySQL zero dates cannot be represented as valid dates")
-			}
-		}
-		var err error
-		out[i], err = normalizeValue(schema.Field(i).Type, value)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
-}
-func normalizeValue(typ arrow.DataType, value any) (any, error) {
+func normalizeTextValue(typ arrow.DataType, value any) (any, error) {
 	text, err := scalarText(value)
 	if err != nil {
 		return nil, err
