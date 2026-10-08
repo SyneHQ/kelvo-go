@@ -218,7 +218,7 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	if err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
-	job, err := e.Containment.Prepare(processLimits, holdProcess)
+	job, err := e.Containment.PrepareProcess(processLimits, holdProcess)
 	if err != nil {
 		holdProcess()
 		return rejectedOperation(input, "RESOURCE_EXHAUSTED"), operationFailure("RESOURCE_EXHAUSTED")
@@ -393,7 +393,7 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	}
 	// Keep the leader unreaped until its descendants receive final SIGKILL.
 	cleanupErr := finishProcess(command, ctx.Err() != nil)
-	waitErr := command.Wait()
+	waitErr := job.Wait()
 	// A receipt reader cannot hold admission indefinitely if a descendant kept
 	// fd3 open despite process-group cleanup. Cgroup cleanup runs in the defer.
 	_ = readReceipt.SetReadDeadline(time.Now().Add(3 * time.Second))
