@@ -31,7 +31,7 @@ func TestOperationCleanupObserverNotCalledBeforeAdmission(t *testing.T) {
 }
 
 func TestOperationCleanupObserverRequiresBothPhysicalProofs(t *testing.T) {
-	for _, state := range []operationCleanupState{{}, {prepared: true}, {prepared: true, process: true}, {prepared: true, scratch: true}, {process: true, scratch: true}} {
+	for _, state := range []operationCleanupState{{}, {prepared: true}, {prepared: true, process: true}, {prepared: true, scratch: true}, {process: true, scratch: true}, {prepared: true, process: true, scratch: true, pendingIO: true}} {
 		called := false
 		sink := &operationCleanupTestSink{cleaned: func(context.Context) error { called = true; return nil }}
 		if err := state.notify(sink); err != nil || called {

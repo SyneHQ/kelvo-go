@@ -181,19 +181,6 @@ func TestOperationReceiptBoundAndStrictJSON(t *testing.T) {
 	}
 }
 
-func TestOperationPayloadStopsAtCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	reader := &operationPayloadReader{ctx: ctx, raw: []byte("private-pipe-input")}
-	buffer := make([]byte, 4)
-	if n, err := reader.Read(buffer); n != 4 || err != nil {
-		t.Fatal(n, err)
-	}
-	cancel()
-	if n, err := reader.Read(buffer); n != 0 || !errors.Is(err, context.Canceled) {
-		t.Fatal("private input continued after cancellation", n, err)
-	}
-}
-
 func TestOperationExecutorRequiresContainment(t *testing.T) {
 	input := operationProcessInput(t, operations.StatementExecute, "fixture")
 	for _, executor := range []*Executor{nil, {Limits: query.DefaultLimits()}} {

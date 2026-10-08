@@ -21,10 +21,22 @@ inject tasks beyond `pids.max`, so the limit is not an administrative security b
 
 ## Before enabling a container executor
 
-- Share one admission limit across queries, operations, refreshes and exports.
-- Retain source cancellation, output cleanup and result finalization under the same custody owner.
+- Queries and adapter operations already share explicit command I/O ownership.
+  Refreshes and exports use the same executor and retain their outer publication holds.
+- Keep the existing shared admission pool. A container backend must permit only
+  one native operation at a time and prove the namespace empty before reuse.
+- Route physical launch, cancellation and exit status through the PID-1 supervisor;
+  preserve explicit descriptor slots, including optional adapter descriptors.
 - Qualify PID storms, native and whole-worker OOM, supervisor death and worker replacement.
 - Preserve old worker custody after restart; do not replay work whose outcome is unknown.
+
+Command I/O owns a private input copy, concrete inherited files and explicit pumps.
+It clears input after delivery, bounds query diagnostics to 64 KiB, and keeps reservation
+holds until pumps, cancellation callbacks and the result consumer return. A cleanup deadline drains admission;
+it cannot turn a blocked writer into free capacity or a cleanup acknowledgement.
+
+Whole-worker death has no in-process cleanup callback. The external worker owner must
+fence the old incarnation and resolve its durable claims before replacement work.
 
 The native test lives in `internal/containment/supervisor_live_linux_test.go`. It needs a
 dedicated nonroot PID-1 fixture, the compiled C probe and finite container limits.
