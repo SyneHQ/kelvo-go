@@ -512,8 +512,23 @@ func TestOperationClusterActualNodeLifecycle(t *testing.T) {
 			request.Spec.Statement.Batch = &operations.BatchSpec{Statements: []operations.BoundStatement{{SQL: "UPDATE kelvo_operation_fixture SET marker = marker + 100 WHERE id = 1"}, {SQL: "UPDATE kelvo_missing_fixture SET marker = 1"}}}
 			grant = sign(request, "customer-a")
 			rolledBack := await(submit(request, grant).ID, grant, request)
-			if rolledBack.State != string(operations.Failed) || rolledBack.Receipt.Effect != operations.EffectNone || len(rolledBack.Receipt.Steps) != 2 {
-				t.Fatal("rollback receipt did not preserve source effects", rolledBack.State)
+			wantOutcome, wantEffect := operations.Failed, operations.EffectNone
+			if kind == "mysql" {
+				// A rollback acknowledgement cannot rule out implicit writes to
+				// nontransactional tables through source triggers or routines.
+				wantOutcome, wantEffect = operations.OutcomeUnknown, operations.EffectUnknown
+			}
+			if rolledBack.State != string(wantOutcome) || rolledBack.Receipt.Effect != wantEffect || len(rolledBack.Receipt.Steps) != 2 {
+				t.Fatal("rollback receipt changed the source effect guarantee", rolledBack.State)
+			}
+			for _, step := range rolledBack.Receipt.Steps {
+				if step.Effect != wantEffect {
+					t.Fatal("rollback receipt changed an attempted statement effect", step.Index, step.Effect)
+				}
+			}
+			before = resolutions.Load()
+			if duplicate := submit(request, grant); duplicate.ID != rolledBack.ID || duplicate.State != rolledBack.State || resolutions.Load() != before {
+				t.Fatal("terminal rollback submission was dispatched again")
 			}
 			request = operations.Request{Version: operations.Version, Kind: operations.QueryRead, Connection: connection, Spec: operations.Spec{Query: &operations.QuerySpec{SQL: "SELECT marker FROM kelvo_operation_fixture WHERE id = 1"}}}
 			grant = sign(request, "customer-a")
