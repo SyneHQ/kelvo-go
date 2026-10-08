@@ -124,7 +124,7 @@ func validGrant(grant string) error {
 		return ErrInvalid
 	}
 	for _, ch := range grant {
-		if ch <= 32 || ch >= 127 {
+		if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_' || ch == '.') {
 			return ErrInvalid
 		}
 	}
@@ -133,7 +133,7 @@ func validGrant(grant string) error {
 
 func validate(c Claims, now time.Time) error {
 	s := c.Scope
-	if c.Version != Version || c.IssuedAt > now.Unix() || c.ExpiresAt <= now.Unix() || c.ExpiresAt <= c.IssuedAt || c.ExpiresAt-c.IssuedAt > int64(MaxLifetime/time.Second) {
+	if c.Version != Version || c.IssuedAt <= 0 || c.IssuedAt > now.Unix() || c.ExpiresAt <= now.Unix() || c.ExpiresAt <= c.IssuedAt || c.ExpiresAt-c.IssuedAt > int64(MaxLifetime/time.Second) {
 		return ErrInvalid
 	}
 	for _, value := range []string{s.Issuer, s.Audience, s.ClusterTenant, s.ServicePrincipal, s.Tenant, s.Source, s.ExecutionID} {
