@@ -5,10 +5,12 @@
 // verify source mapping, revocation and live execution ownership before signing.
 package transportissuer
 
+import "github.com/SYNEHQ/kelvo-go/sourceproof"
+
 const (
 	Version          = 1
 	Path             = "/v1/private-transport/issue"
-	MaxRequestBytes  = 8192
+	MaxRequestBytes  = 64 << 10
 	MaxResponseBytes = 12288
 )
 
@@ -22,20 +24,24 @@ type Execution struct {
 }
 
 type Request struct {
-	Version          int       `json:"version"`
-	Issuer           string    `json:"issuer"`
-	Audience         string    `json:"audience"`
-	ClusterTenant    string    `json:"cluster_tenant"`
-	ServicePrincipal string    `json:"service_principal"`
-	Tenant           string    `json:"tenant"`
-	Source           string    `json:"source"`
-	SourceRevision   string    `json:"source_revision"`
-	Authority        string    `json:"authority"`
-	Execution        Execution `json:"execution"`
-	ExpiresAt        int64     `json:"expires_at"`
-	OpenID           string    `json:"open_id"`
-	WorkerIdentity   string    `json:"worker_identity"`
-	WorkerCertSHA256 string    `json:"worker_cert_sha256"`
+	PrivateSource    *sourceproof.Envelope `json:"private_source,omitempty"`
+	RouteID          string                `json:"route_id,omitempty"`
+	TokenID          string                `json:"token_id,omitempty"`
+	BindingVersion   int64                 `json:"binding_version,omitempty"`
+	Version          int                   `json:"version"`
+	Issuer           string                `json:"issuer"`
+	Audience         string                `json:"audience"`
+	ClusterTenant    string                `json:"cluster_tenant"`
+	ServicePrincipal string                `json:"service_principal"`
+	Tenant           string                `json:"tenant"`
+	Source           string                `json:"source"`
+	SourceRevision   string                `json:"source_revision"`
+	Authority        string                `json:"authority"`
+	Execution        Execution             `json:"execution"`
+	ExpiresAt        int64                 `json:"expires_at"`
+	OpenID           string                `json:"open_id"`
+	WorkerIdentity   string                `json:"worker_identity"`
+	WorkerCertSHA256 string                `json:"worker_cert_sha256"`
 }
 
 // RequestSHA256 binds the response to the exact received request bytes. Token is

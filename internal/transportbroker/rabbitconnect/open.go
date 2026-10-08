@@ -44,6 +44,13 @@ func (o *Opener) Open(parent context.Context, request transportbroker.OpenReques
 		return nil, transportbroker.ErrInvalid
 	}
 	issue := IssueRequest{Binding: binding, OpenID: request.ID, WorkerIdentity: o.identity, WorkerCertSHA256: o.certDigest}
+	if o.sourceProof != nil {
+		var err error
+		issue, err = o.refreshSourceProof(ctx, issue)
+		if err != nil {
+			return nil, err
+		}
+	}
 	token, err := o.tickets.Issue(ctx, issue)
 	if err != nil || ctx.Err() != nil || o.verifyTicket(token, issue, time.Now()) != nil {
 		return nil, setupError(ctx)

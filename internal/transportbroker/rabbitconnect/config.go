@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/transportbroker"
+	"github.com/SYNEHQ/kelvo-go/sourceproof"
 )
 
 const MaxSetupTime = 2 * time.Second
@@ -23,6 +24,9 @@ const MaxSetupTime = 2 * time.Second
 // IssueRequest contains the exact admitted scope. Purpose is deliberately absent:
 // v1 tickets do not provide downstream reserved cancellation capacity.
 type IssueRequest struct {
+	PrivateSource                            *sourceproof.Envelope
+	RouteID, TokenID                         string
+	BindingVersion                           int64
 	Binding                                  transportbroker.Binding
 	OpenID, WorkerIdentity, WorkerCertSHA256 string
 }
@@ -47,6 +51,7 @@ type Config struct {
 }
 
 type Opener struct {
+	sourceProof                                 *SourceProofConfig
 	proxy, issuer, audience, cluster, principal string
 	identity, certDigest                        string
 	certificateFrom, certificateUntil           time.Time
