@@ -1,0 +1,66 @@
+{
+  "scope": "internal PID1 supervisor prerequisite; no container executor activation",
+  "date": "2026-10-08",
+  "source_digest": "f6f652ed75fcc9cca0a1a57ca12f49eac9b77ca929fad37fbfc557559e6b4171",
+  "tested_files_sha256": {
+    "internal/containment/supervisor_linux.go": "717a900f392a366f3479bd273b811d75ee9bcf7170a655c1169eb57233014491",
+    "internal/containment/supervisor_linux_test.go": "8357a2a65c782afe4aa6359d45583ce4bab7c9f05e26ae5263e9f0938fd6eda2",
+    "internal/containment/supervisor_live_linux_test.go": "8f2511c4e1b747b1a9e05c01b4aedd21bfa09be0869b9a049903ae0573d1a1a0",
+    "internal/containment/testdata/supervisor_probe.c": "f2e731997f60b7d49d85733028c24140f16d758cd5d841e16dbbe9fac2153571"
+  },
+  "kernel": "6.12.95+deb12-cloud-amd64",
+  "runtime_versions": {
+    "containerd": "containerd github.com/k3s-io/containerd/v2 v2.2.7-k3s1",
+    "runc": "runc version 1.4.2\ncommit: v1.4.2-0-gc241c0b\nspec: 1.3.0\ngo: go1.26.7\nlibseccomp: 2.6.0",
+    "crictl": "crictl github.com/k3s-io/containerd/v2 v1.35.0-k3s2"
+  },
+  "containerd_sha256": "2c462e37b7c8758c68ac7495de64177a62cf86e781aedd16a720a95b29e0ffcb",
+  "native_test_binary_sha256": "ce91c9016bb2688784c87c4b9e5c76309f39f0e0a93f897aa1121b9559f6663c",
+  "native_helper_sha256": "0c5ea2406fded4dff10aba75333391c75a1b8dd5ee0afff5c5679759b9db9702",
+  "native_race_detector": true,
+  "leaf_limits": {
+    "cpu_quota_micros": 100000,
+    "cpu_period_micros": 100000,
+    "memory_bytes": 268435456,
+    "max_kernel_tasks": 64,
+    "swap_bytes": 0
+  },
+  "passed": [
+    "ambient_process_rejection",
+    "descriptor_ownership_and_status_preservation",
+    "caller_deadline_while_spawn_mutex_held",
+    "native_exit_before_registration",
+    "concurrent_spawn_and_reap",
+    "failed_exec",
+    "wait_cancellation_then_pidfd_signal",
+    "traced_stop_retains_future_and_pidfd",
+    "zero_signal_clone_and_double_fork_adoption",
+    "blocked_native_output_shutdown",
+    "native_close_deadline_during_registration",
+    "namespace_drain_and_admission_closure"
+  ],
+  "native_results": {
+    "reaped": 26,
+    "adopted": 3,
+    "close_deadline_ms": 20,
+    "registered_remaining": 0,
+    "no_oom": true,
+    "worker_cleanup": true,
+    "outer_cleanup": true,
+    "independent_cleanup": true
+  },
+  "fixture_sha256": {
+    "cri_pid_fixture.py": "ab1051f88e838991c8f64951c2f178bcae9e6811b8d312e145571e5b3d6fa47d",
+    "run_cri_pid_fixture.py": "ced848c4368d8913e57189fda9dfe8d95e92c39651ae6766317ca4cd20055ace"
+  },
+  "evidence_archive_sha256": "6fb8bcaaea95303ec6fc2143a8f3541865961cf7061965de5be55ef693777c99",
+  "not_qualified": [
+    "container_executor_activation",
+    "shared_operation_admission",
+    "output_and_result_custody",
+    "worker_crash_recovery",
+    "native_and_whole_worker_oom",
+    "PID_storm_custody",
+    "old_incarnation_recovery_without_replay"
+  ]
+}
