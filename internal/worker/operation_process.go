@@ -10,7 +10,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -169,7 +168,10 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	if err != nil {
 		return rejectedOperation(input, "RESOURCE_EXHAUSTED"), operationFailure("RESOURCE_EXHAUSTED")
 	}
-	custody, _ = containment.NewCustody(reservation.Release)
+	custody, _ = containment.NewReservationCustody(reservation)
+	if err := containment.CheckReservation(e.Containment, custody); err != nil {
+		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("CONFIGURATION_ERROR")
+	}
 	if err := containment.RetainUntilCompletion(ctx, custody); err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
@@ -228,7 +230,7 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	if err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
-	job, err := e.Containment.PrepareProcess(processLimits, holdProcess)
+	job, err := e.Containment.PrepareProcess(custody, processLimits, holdProcess)
 	if err != nil {
 		holdProcess()
 		return rejectedOperation(input, "RESOURCE_EXHAUSTED"), operationFailure("RESOURCE_EXHAUSTED")
@@ -314,11 +316,9 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 		return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT")
 	}
 	defer clear(payload)
-	command := exec.CommandContext(ctx, e.SandboxPath, args...)
-	configureProcess(command)
+	command := e.nativeCommand(ctx, e.SandboxPath, args...)
 	command.Dir = operationDirectory
 	command.Env = operationEnvironment(operationDirectory, e.Limits.Threads)
-	command.WaitDelay = query.WorkerWaitDelay
 	if workspace.lease == nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("CONFIGURATION_ERROR")
 	}
@@ -328,6 +328,9 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	}
 	defer readReceipt.Close()
 	defer writeReceipt.Close()
+	// Namespace launch does not call exec.Cmd.Start, so prepare this solely
+	// child-owned receipt endpoint explicitly as a blocking inherited file.
+	_ = writeReceipt.Fd()
 	command.ExtraFiles = []*os.File{writeReceipt}
 	workspace.attach(command)
 	command.ExtraFiles = append(command.ExtraFiles, binary) // fd3 receipt, fd4 scratch lease, fd5 executable.
@@ -346,7 +349,11 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	if err := operationBinaryCurrent(binary, identity); err != nil || (sourceFile != nil && operationBinaryCurrent(sourceFile, sourceIdentity) != nil) || (jdbcFiles != nil && jdbc.current() != nil) || ctx.Err() != nil || input.CredentialsValidUntil <= time.Now().Unix() {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
-	if err := commandIO.Start(func() error { return job.Start(command) }); err != nil {
+	if err := commandIO.Start(func() error { return job.Start(ctx, command) }); err != nil {
+		if errors.Is(err, containment.ErrLaunchUncertain) {
+			receipt := uncertainOperation(input)
+			return receipt, operationFailure(receipt.ErrorCode)
+		}
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
 	// Past Start, unknown source effects must never become a no-effect error.
@@ -398,8 +405,12 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	if readErr != nil {
 		cancel()
 	}
-	// Keep the leader unreaped until its descendants receive final SIGKILL.
-	cleanupErr := finishProcess(command, ctx.Err() != nil)
+	// Drain the native boundary while result and scratch custody remain held.
+	var grace time.Duration
+	if ctx.Err() != nil {
+		grace = query.WorkerCancellationGrace
+	}
+	cleanupErr := job.Terminate(grace)
 	waitErr := job.Wait()
 	if ioErr := commandIO.Finish(context.Background()); ioErr != nil {
 		waitErr = errors.Join(waitErr, ioErr)

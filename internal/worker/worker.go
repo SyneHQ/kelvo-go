@@ -71,7 +71,7 @@ type Executor struct {
 	catalogBinding *boundCatalog
 	// ObjectRuntime is parent-only and shared by copies, including exports.
 	ObjectRuntime     *acceleration.ObjectRuntime
-	Containment       *containment.Manager
+	Containment       containment.Domain
 	ContainmentBudget containment.Budget
 	Tracing           *tracing.Recorder
 	Config            catalog.Config
@@ -265,11 +265,14 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		}
 		// Registered before snapshot leases, temp files and child cleanup so those
 		// resources are released before a competing job can take this reservation.
-		custody, _ = containment.NewCustody(reservation.Release)
+		custody, _ = containment.NewReservationCustody(reservation)
 		defer custody.Complete()
 		if err := containment.RetainUntilCompletion(ctx, custody); err != nil {
 			return stats, err
 		}
+	}
+	if err := containment.CheckReservation(e.Containment, custody); err != nil {
+		return stats, err
 	}
 	if dynamic {
 		// Network/metadata resolution consumes the same bounded reservation as
@@ -370,8 +373,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		}
 		command = e.SandboxPath
 	}
-	cmd := exec.CommandContext(ctx, command, args...)
-	configureProcess(cmd)
+	cmd := e.nativeCommand(ctx, command, args...)
 	workspace.attach(cmd)
 	cmd.Dir = dir
 	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "TMPDIR=" + dir, "GOMAXPROCS=" + fmt.Sprint(e.Limits.Threads)}
@@ -400,7 +402,6 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		}
 	}
 	var stderr boundedBuffer
-	cmd.WaitDelay = query.WorkerWaitDelay
 	var processJob containment.Process
 	processFinished := false
 	if e.Containment != nil {
@@ -417,7 +418,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 			token()
 			return stats, prepErr
 		}
-		processJob, prepErr = e.Containment.PrepareProcess(processLimits, func() {
+		processJob, prepErr = e.Containment.PrepareProcess(custody, processLimits, func() {
 			token()
 			snapshotProcess()
 		})
@@ -460,7 +461,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	}
 	err = commandIO.Start(func() error {
 		if processJob != nil {
-			return processJob.Start(cmd)
+			return processJob.Start(ctx, cmd)
 		}
 		return cmd.Start()
 	})
@@ -477,15 +478,26 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	if readErr != nil {
 		cancel()
 	}
-	// On Linux the process-group ID stays pinned by the unreaped child. Kill
-	// any descendants before Wait reaps it, including children that closed the
-	// output pipe and would otherwise survive a successful leader exit.
-	cleanupErr := finishProcess(cmd, ctx.Err() != nil)
+	// The native backend drains every descendant. Output completion alone
+	// cannot release the operation or prove that source work has stopped.
+	var cleanupErr error
 	var waitErr error
+	var nativeExit containment.ChildExit
+	var exited bool
 	if processJob != nil {
+		var grace time.Duration
+		if ctx.Err() != nil {
+			grace = query.WorkerCancellationGrace
+		}
+		cleanupErr = processJob.Terminate(grace)
 		waitErr = processJob.Wait()
+		nativeExit, exited = processJob.Exit()
 	} else {
+		cleanupErr = finishProcess(cmd, ctx.Err() != nil)
 		waitErr = cmd.Wait()
+		if cmd.ProcessState != nil {
+			nativeExit.Code, exited = cmd.ProcessState.ExitCode(), true
+		}
 	}
 	var childBound time.Duration
 	if e.Metrics != nil {
@@ -503,7 +515,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	}
 	outcome, decodeErr := decodeCommandOutcome(commandIO, &stderr)
 	if e.Metrics != nil {
-		terminated := cmd.ProcessState != nil && cmd.ProcessState.ExitCode() == -1
+		terminated := exited && nativeExit.Code == -1
 		recordChildTiming(e.Metrics, ctx, outcome, decodeErr, terminated, childBound)
 	}
 	stats = outcome.Stats
@@ -513,6 +525,16 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	resultErr = workerResultError(parent, executionCtx, ctx, readErr, waitErr, decodeErr, cleanupErr, outcome.Error)
 	recordSourceHealth(e.SourceHealth, r, outcome.Error, resultErr, decodeErr == nil)
 	return stats, resultErr
+}
+
+func (e *Executor) nativeCommand(ctx context.Context, path string, args ...string) *exec.Cmd {
+	if containment.IsNamespaceDomain(e.Containment) {
+		return exec.Command(path, args...)
+	}
+	command := exec.CommandContext(ctx, path, args...)
+	configureProcess(command)
+	command.WaitDelay = query.WorkerWaitDelay
+	return command
 }
 
 // ValidateObjectRuntime rejects an uncontained or retargeted protected catalog

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -118,7 +119,7 @@ func TestProcessFinishDeadlineRetainsBlockedWait(t *testing.T) {
 			t.Cleanup(func() { unblock.Do(func() { close(writer.release) }) })
 			command := lifecycleCommand(t, "output")
 			command.Stdout = writer
-			if err := process.Start(command); err != nil {
+			if err := process.Start(context.Background(), command); err != nil {
 				t.Fatal(err)
 			}
 			select {
@@ -149,7 +150,7 @@ func TestProcessFinishDeadlineRetainsBlockedWait(t *testing.T) {
 			if releases.Load() != 1 {
 				t.Fatal("actual wait completion did not release existing custody")
 			}
-			if err := process.Start(lifecycleCommand(t, "exit")); !errors.Is(err, ErrInvalid) {
+			if err := process.Start(context.Background(), lifecycleCommand(t, "exit")); !errors.Is(err, ErrInvalid) {
 				t.Fatalf("deadline reopened process admission: %v", err)
 			}
 		})
@@ -160,7 +161,7 @@ func TestProcessConcurrentWaitAndFinishOwnReaping(t *testing.T) {
 	var releases atomic.Int32
 	process, _ := newLifecycleFixture(t, func() { releases.Add(1) })
 	command := lifecycleCommand(t, "hold")
-	if err := process.Start(command); err != nil {
+	if err := process.Start(context.Background(), command); err != nil {
 		t.Fatal(err)
 	}
 	const waiters = 16
@@ -191,16 +192,38 @@ func TestProcessConcurrentWaitAndFinishOwnReaping(t *testing.T) {
 	if releases.Load() != 1 || command.ProcessState == nil {
 		t.Fatal("custody did not follow the completed wait and cleanup")
 	}
+	if exit, done := process.Exit(); !done || exit.Code != -1 || exit.Signal != syscall.SIGKILL {
+		t.Fatal("typed native termination was lost", exit, done)
+	}
 	var status unix.WaitStatus
 	if _, err := unix.Wait4(command.Process.Pid, &status, unix.WNOHANG, nil); !errors.Is(err, unix.ECHILD) {
 		t.Fatalf("child was not reaped: %v", err)
 	}
 }
 
+func TestProcessCanceledStartRetainsReservationUntilCleanup(t *testing.T) {
+	var releases atomic.Int32
+	process, group := newLifecycleFixture(t, func() { releases.Add(1) })
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := process.Start(ctx, lifecycleCommand(t, "exit")); !errors.Is(err, context.Canceled) {
+		t.Fatal("cancelled admission launched a process", err)
+	}
+	if group.command != nil || releases.Load() != 0 {
+		t.Fatal("cancelled launch changed native ownership or freed an unclean group")
+	}
+	if _, done := process.Exit(); done {
+		t.Fatal("failed launch invented a native exit")
+	}
+	if _, err := process.Finish(context.Background()); err != nil || releases.Load() != 1 {
+		t.Fatal("cancelled launch cleanup did not release once", err)
+	}
+}
+
 func TestProcessWaitRetainsCustodyUntilCleanup(t *testing.T) {
 	var releases atomic.Int32
 	process, _ := newLifecycleFixture(t, func() { releases.Add(1) })
-	if err := process.Start(lifecycleCommand(t, "exit")); err != nil {
+	if err := process.Start(context.Background(), lifecycleCommand(t, "exit")); err != nil {
 		t.Fatal(err)
 	}
 	if err := process.Wait(); err != nil {
@@ -217,7 +240,7 @@ func TestProcessWaitRetainsCustodyUntilCleanup(t *testing.T) {
 func TestProcessDomainCloseRetainsCustodyUntilReaping(t *testing.T) {
 	var releases atomic.Int32
 	process, group := newLifecycleFixture(t, func() { releases.Add(1) })
-	if err := process.Start(lifecycleCommand(t, "hold")); err != nil {
+	if err := process.Start(context.Background(), lifecycleCommand(t, "hold")); err != nil {
 		t.Fatal(err)
 	}
 	// Manager.Close can finish the underlying domain while the request still
@@ -234,7 +257,7 @@ func TestProcessDomainCloseRetainsCustodyUntilReaping(t *testing.T) {
 func TestProcessCleanupUncertaintyRetainsCustody(t *testing.T) {
 	var releases atomic.Int32
 	process, group := newLifecycleFixture(t, func() { releases.Add(1) })
-	if err := process.Start(lifecycleCommand(t, "hold")); err != nil {
+	if err := process.Start(context.Background(), lifecycleCommand(t, "hold")); err != nil {
 		t.Fatal(err)
 	}
 	group.fail = ErrQuarantined
@@ -249,7 +272,7 @@ func TestProcessCleanupUncertaintyRetainsCustody(t *testing.T) {
 	if _, err := process.Finish(context.Background()); err != nil || releases.Load() != 1 {
 		t.Fatalf("cleanup retry did not finish existing custody: %v", err)
 	}
-	if err := process.Start(lifecycleCommand(t, "exit")); !errors.Is(err, ErrInvalid) {
+	if err := process.Start(context.Background(), lifecycleCommand(t, "exit")); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("cleanup reopened process admission: %v", err)
 	}
 }
@@ -260,10 +283,10 @@ func TestProcessNoChildRetainsCustodyUntilCleanup(t *testing.T) {
 			var releases atomic.Int32
 			process, _ := newLifecycleFixture(t, func() { releases.Add(1) })
 			if attempt {
-				if err := process.Start(exec.Command(filepath.Join(t.TempDir(), "missing"))); err == nil {
+				if err := process.Start(context.Background(), exec.Command(filepath.Join(t.TempDir(), "missing"))); err == nil {
 					t.Fatal("missing executable started")
 				}
-				if err := process.Start(lifecycleCommand(t, "exit")); !errors.Is(err, ErrInvalid) {
+				if err := process.Start(context.Background(), lifecycleCommand(t, "exit")); !errors.Is(err, ErrInvalid) {
 					t.Fatalf("failed start was retried: %v", err)
 				}
 			}
@@ -273,7 +296,7 @@ func TestProcessNoChildRetainsCustodyUntilCleanup(t *testing.T) {
 			if _, err := process.Finish(context.Background()); err != nil || releases.Load() != 1 {
 				t.Fatalf("unused group did not finish custody: %v", err)
 			}
-			if err := process.Start(lifecycleCommand(t, "exit")); !errors.Is(err, ErrInvalid) {
+			if err := process.Start(context.Background(), lifecycleCommand(t, "exit")); !errors.Is(err, ErrInvalid) {
 				t.Fatalf("finished group admitted a child: %v", err)
 			}
 		})
