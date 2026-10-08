@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -113,7 +114,7 @@ func TestNodeDrainStopsDispatchAndRenewsAcceptedLease(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	if err := n.Drain(ctx); err != context.DeadlineExceeded {
+	if err := n.Drain(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("pending reservation drain: %v", err)
 	}
 	if n.ctx.Err() != nil {
