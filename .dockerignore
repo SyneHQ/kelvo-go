@@ -9,6 +9,9 @@
 !internal/**
 !adapter
 !adapter/**
+!adapters
+!adapters/go
+!adapters/go/**
 !delegation
 !delegation/**
 !federation

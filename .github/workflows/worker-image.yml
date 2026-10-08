@@ -1,0 +1,45 @@
+name: Worker image
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [cargo]
+permissions:
+  contents: read
+concurrency:
+  group: worker-image-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      BUILDER: kelvo-image-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Create a bounded build worker
+        run: |
+          docker buildx create --name "$BUILDER" --driver docker-container \
+            --driver-opt memory=6g,memory-swap=6g,cpu-quota=200000,cpu-period=100000 \
+            --use --bootstrap
+      - name: Build both image targets without publishing
+        run: |
+          docker buildx build --builder "$BUILDER" --target runtime --load -t kelvo-runtime:accept .
+          docker buildx build --builder "$BUILDER" --target worker --load -t kelvo-worker:accept .
+      - name: Verify runtime and operation adapter packaging
+        run: |
+          python3 -m pip install pyarrow==25.0.1
+          python3 scripts/worker_image_acceptance.py \
+            --runtime-image kelvo-runtime:accept --worker-image kelvo-worker:accept \
+            --output artifacts/worker-image.json
+      - name: Retain image acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: worker-image-evidence
+          path: artifacts/worker-image.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Remove the owned build worker
+        if: always()
+        run: docker buildx rm --force "$BUILDER"
