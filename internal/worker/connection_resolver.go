@@ -184,6 +184,12 @@ func (r *ConnectionResolver) resolve(ctx context.Context, execution delegation.E
 	if delegation.StrictJSONLimit(data, &wire, maxConnectionResponseBytes) != nil {
 		return connectionResolution{}, connectionUnavailable()
 	}
+	// Private sources require the parent broker and child IPC. Until that path
+	// is active, reject the entire response. Never fall back to direct dialing.
+	if len(wire.PrivateSources) != 0 {
+		clear(wire.Secrets)
+		return connectionResolution{}, connectionUnavailable()
+	}
 	out = resolvedQuery(wire)
 	now := time.Now()
 	certificateExpiry, verified := resolverCertificateExpiry(resp.TLS, now)

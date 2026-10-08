@@ -16,6 +16,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/filesnapshot"
 	"github.com/SYNEHQ/kelvo-go/operations"
 	"github.com/SYNEHQ/kelvo-go/query"
+	"github.com/SYNEHQ/kelvo-go/sourceproof"
 )
 
 // Version identifies the existing v1 callback protocol. Request and custody
@@ -119,6 +120,8 @@ type QueryResponse struct {
 	ValidUntil       int64             `json:"valid_until"`
 	Sources          []Source          `json:"sources"`
 	Secrets          map[string]string `json:"secrets"`
+	// PrivateSources is indexed by selected alias. These proofs are parent-only.
+	PrivateSources map[string]sourceproof.Envelope `json:"private_sources,omitempty"`
 }
 
 type OperationRequest struct {
@@ -139,13 +142,14 @@ func (r OperationRequest) Validate() error {
 }
 
 type OperationResponse struct {
-	Version        int               `json:"version"`
-	GrantSHA256    string            `json:"grant_sha256"`
-	RequestSHA256  string            `json:"request_sha256"`
-	SourceRevision string            `json:"source_revision"`
-	ValidUntil     int64             `json:"valid_until"`
-	Source         Source            `json:"source"`
-	Secrets        map[string]string `json:"secrets"`
+	Version        int                   `json:"version"`
+	GrantSHA256    string                `json:"grant_sha256"`
+	RequestSHA256  string                `json:"request_sha256"`
+	SourceRevision string                `json:"source_revision"`
+	ValidUntil     int64                 `json:"valid_until"`
+	Source         Source                `json:"source"`
+	Secrets        map[string]string     `json:"secrets"`
+	PrivateSource  *sourceproof.Envelope `json:"private_source,omitempty"`
 }
 
 // CompletionRequest reports observed physical cleanup, including after a grant

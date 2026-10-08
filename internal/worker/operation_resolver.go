@@ -275,6 +275,11 @@ func (r *ConnectionResolver) resolveOperation(ctx context.Context, record operat
 	if err != nil || len(data) > maxConnectionResponseBytes || operations.DecodeStrict(data, &wire, maxConnectionResponseBytes) != nil {
 		return out, connectionUnavailable()
 	}
+	// No private source proof may enter ProcessRequest or a direct connection.
+	if wire.PrivateSource != nil {
+		clear(wire.Secrets)
+		return out, connectionUnavailable()
+	}
 	out = resolvedOperation(wire)
 	now := time.Now()
 	peerUntil, ok := resolverCertificateExpiry(resp.TLS, now)
