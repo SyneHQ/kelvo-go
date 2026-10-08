@@ -137,7 +137,13 @@ def run(runtime_image, worker_image, run_id=None):
             source = Path(temporary) / "sales.csv"
             source.write_bytes(SALES)
             source.chmod(0o444)
-            mounts = [(source, "/data/sales.csv"), (source, "/private/unselected.csv")]
+            # Landlock grants file-object access, so two bind mounts of the
+            # same inode are aliases of the allowed file, not a denial fixture.
+            unselected = Path(temporary) / "unselected.csv"
+            unselected.write_bytes(SALES)
+            unselected.chmod(0o444)
+            require(source.stat().st_ino != unselected.stat().st_ino, "Denial fixture must use a distinct file")
+            mounts = [(source, "/data/sales.csv"), (unselected, "/private/unselected.csv")]
             limits = {"max_rows": 100, "max_bytes": 1 << 20, "timeout": 10_000_000_000, "memory_mb": 128, "threads": 1, "max_temp_mb": 32}
             def native(path):
                 return json.dumps({"config": {"sources": [{"id": "sales", "type": "csv", "path": path}]}, "limits": limits,
