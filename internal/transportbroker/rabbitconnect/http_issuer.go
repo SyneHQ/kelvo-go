@@ -173,7 +173,7 @@ func (i *HTTPIssuer) Issue(parent context.Context, r IssueRequest) (string, erro
 		cancel()
 	}
 	b, e := r.Binding, r.Binding.Execution
-	wire := transportissuer.Request{Version: transportissuer.Version, Issuer: b.Issuer, Audience: b.Audience, ClusterTenant: b.ClusterTenant, ServicePrincipal: b.ServicePrincipal, Tenant: b.Tenant, Source: b.Source, SourceRevision: b.SourceRevision, Authority: b.Authority, ExpiresAt: b.ExpiresAt.Unix(), OpenID: r.OpenID, WorkerIdentity: r.WorkerIdentity, WorkerCertSHA256: r.WorkerCertSHA256, Execution: transportissuer.Execution{Kind: e.Kind, ID: e.ID, GrantSHA256: e.GrantSHA256, Worker: e.Worker, Owner: e.Owner, Claim: e.Claim}}
+	wire := transportissuer.Request{PrivateSource: r.PrivateSource, RouteID: r.RouteID, TokenID: r.TokenID, BindingVersion: r.BindingVersion, Version: transportissuer.Version, Issuer: b.Issuer, Audience: b.Audience, ClusterTenant: b.ClusterTenant, ServicePrincipal: b.ServicePrincipal, Tenant: b.Tenant, Source: b.Source, SourceRevision: b.SourceRevision, Authority: b.Authority, ExpiresAt: b.ExpiresAt.Unix(), OpenID: r.OpenID, WorkerIdentity: r.WorkerIdentity, WorkerCertSHA256: r.WorkerCertSHA256, Execution: transportissuer.Execution{Kind: e.Kind, ID: e.ID, GrantSHA256: e.GrantSHA256, Worker: e.Worker, Owner: e.Owner, Claim: e.Claim}}
 	body, err := json.Marshal(wire)
 	if err != nil || len(body) > transportissuer.MaxRequestBytes {
 		return "", transportbroker.ErrInvalid

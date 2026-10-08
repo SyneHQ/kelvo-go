@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/transportbroker"
+	"github.com/SYNEHQ/kelvo-go/sourceproof"
 )
 
 const maxTicketBytes = 8192
@@ -83,6 +84,18 @@ func (o *Opener) verifyTicket(token string, request IssueRequest, now time.Time)
 	if strictJSON(headerBytes, &header) != nil || strictJSON(payload, &claims) != nil ||
 		header.Algorithm != "EdDSA" || header.Type != "rabbit-connect+jwt" || header.KeyID != o.issuer {
 		return transportbroker.ErrOpen
+	}
+	if o.sourceProof != nil {
+		if request.PrivateSource == nil {
+			return transportbroker.ErrScope
+		}
+		proof, err := sourceproof.Verify(o.sourceProof.PublicKey, *request.PrivateSource, o.sourceProof.Scope, now)
+		if err != nil || claims.ExpiresAt > proof.ExpiresAt {
+			return transportbroker.ErrScope
+		}
+	}
+	if request.PrivateSource != nil && claims.TokenID != request.TokenID {
+		return transportbroker.ErrScope
 	}
 	binding := request.Binding
 	execution := binding.Execution
