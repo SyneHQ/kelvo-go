@@ -195,3 +195,29 @@ func TestContainerLimitsLive(t *testing.T) {
 		t.Fatal("closed boundary remained available", err)
 	}
 }
+
+func TestContainerLimitsLiveRejection(t *testing.T) {
+	mode := os.Getenv("KELVO_TEST_CONTAINER_LIMITS_REJECT")
+	if mode == "" {
+		t.Skip("explicit container rejection fixture required")
+	}
+	var expected error
+	switch mode {
+	case "ownership":
+		expected = ErrOwnership
+	case "unavailable":
+		expected = ErrUnavailable
+	case "unsupported":
+		expected = ErrContainerUnsupported
+	default:
+		t.Fatal("unknown container rejection fixture")
+	}
+	boundary, err := OpenContainerLimits(containerPolicy())
+	if boundary != nil {
+		_ = boundary.Close()
+		t.Fatal("container rejection fixture was accepted")
+	}
+	if !errors.Is(err, expected) {
+		t.Fatal("container rejection did not match the expected condition", err)
+	}
+}
