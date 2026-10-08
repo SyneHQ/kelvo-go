@@ -15,7 +15,7 @@ The opener resolves only its configured proxy. Database TLS and the original dat
 
 ## Remaining gates
 
-1. Implement and authenticate the application issuer endpoint. Its `Issue` implementation must obey the shared deadline and join its work; an arbitrary noncooperative implementation is not made safe by passing a context.
+1. Implement the application [issuer endpoint](private-issuer-protocol.md). The bounded mTLS HTTP client exists, but the endpoint must verify current source mapping and live execution custody.
 2. Add parent/child IPC with exact process and execution custody. A Go interface is not a process isolation boundary.
 3. Wire native source DNS and TLS hooks. PostgreSQL needs an explicit cancellation hook; the current `pgx` configuration does not select a separate cancellation capability.
 4. Qualify the opener against actual Rabbit, native PostgreSQL/MySQL, revocation, shutdown and cleanup. Local TLS fixtures alone do not establish this path.
