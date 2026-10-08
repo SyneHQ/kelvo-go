@@ -39,12 +39,15 @@ WORKER_GATES = [
     "TestContainedOperationFinalizesResultBeforeRelease", "TestContainedOperationCancellationKillsDescendants",
     "TestContainedOperationResolvesOnlyAfterAdmission", "TestContainedOperationCleanupObserverAfterPhysicalDrain",
     "TestContainedFileMutationPublishesOnlyVerifiedCandidate",
+    "TestContainedOperationUncertainLaunchKeepsSourceEffectsUnknown",
 ]
 OPERATION_LEAVES = {
     "TestContainedOperationCleanupObserverAfterPhysicalDrain": (
         "fixture", "cancelled", "committed_exit_error", "ack-failure"),
     "TestContainedFileMutationPublishesOnlyVerifiedCandidate": (
         "file_candidate", "file_conflict", "file_lost_reply", "file_bad_hash", "file_truncated", "file_crash"),
+    "TestContainedOperationUncertainLaunchKeepsSourceEffectsUnknown": (
+        "query.read", "statement.execute"),
 }
 STARTUP_GATE = "TestContainedNodeStartupPlacement"
 EXPORT_GATE = "TestExportWorkerConstructorBindsKernelContainment"
