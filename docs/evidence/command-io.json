@@ -1,0 +1,129 @@
+{
+  "scope": "Explicit command I/O in the current delegated query and adapter executor; container execution remains disabled",
+  "date": "2026-10-08",
+  "revision": "3e230e456830012e23ab98e8c97e3a6bf7e79509",
+  "source_digest": "18119a5b19a7a61d4b482b0431b3f3d4e8c32bbffcd694cfc453dbde15221504",
+  "tested_files_sha256": {
+    "internal/worker/command_io.go": "9cb9bdb267b9a9904a8fe02da56a204776890e901ff40e9587b991088e0b72b9",
+    "internal/worker/command_io_test.go": "bab2b5d0397beed1c1bc914017407826c92e0d9dd5e8b98f645f3e1af454ae08",
+    "internal/worker/operation_completion_test.go": "ca2b5971fddf555ed2229b7dec9ad93d842cd8dd155f83214093bf371fd4ac73",
+    "internal/worker/operation_process.go": "5a5856f31286f8f3c9e8cda4529a187f7931adf47d54ac60dca6616ffeb81b76",
+    "internal/worker/operation_process_test.go": "d2caa53560d57d9ac99f7b276d822f9726666442702d8254b32f1fe631be8848",
+    "internal/worker/worker.go": "9a81a8592b9464fe97b7c962410bdb679c0e2e8cc996eb3a2ca1bbc43419660b",
+    "scripts/containment_acceptance.py": "0404fc1a47d31670c221f2694ed6e602cef119f6d1d391ebb6653f6bda2b86ce",
+    "scripts/test_containment_acceptance.py": "748ecb2cfd1af262dbaaa497158c0b3f9f602c4b0af3920d410d70f7dd628d59"
+  },
+  "public_source": "https://codeload.github.com/SyneHQ/kelvo-go/tar.gz/3e230e456830012e23ab98e8c97e3a6bf7e79509",
+  "build_and_unit_limits": {
+    "cpu.max": "200000 100000",
+    "memory.max": "6442450944",
+    "memory.swap.max": "0",
+    "pids.max": "512"
+  },
+  "passed_build_and_unit_phases": [
+    {
+      "name": "command-io-race",
+      "seconds": 18.018,
+      "exit_code": 0
+    },
+    {
+      "name": "worker-and-startup-tests",
+      "seconds": 58.709,
+      "exit_code": 0
+    },
+    {
+      "name": "kelvo-build",
+      "seconds": 9.384,
+      "exit_code": 0
+    },
+    {
+      "name": "worker-test-build",
+      "seconds": 2.175,
+      "exit_code": 0
+    },
+    {
+      "name": "launcher-build",
+      "seconds": 0.171,
+      "exit_code": 0
+    }
+  ],
+  "compiled_artifacts_sha256": {
+    "kelvo-landlock": "e8591dbfcee7e197a38f687f496e6a61957e0418c8ec839c65b4dbe3bf8ad547",
+    "worker.test": "f69ab62d061456c50651444a681ac1dfd2d1425a4240a35254e85d1970fb3197",
+    "kelvo": "3fb22cd1a881d1a007750d895aa76ccf4256c339e5f08092b526eefa2e832b2e"
+  },
+  "native_execution": {
+    "limits": {
+      "cpu.max": "100000 100000",
+      "memory.max": "1073741824",
+      "memory.swap.max": "0",
+      "pids.max": "256"
+    },
+    "race_detector": false,
+    "required_tests": [
+      "TestContainedOperationCancellationKillsDescendants",
+      "TestContainedOperationFinalizesResultBeforeRelease",
+      "TestContainedOperationResolvesOnlyAfterAdmission",
+      "TestContainedWorkerRealDuckDBCTE",
+      "TestContainedWorkerRefreshCustody",
+      "TestContainedWorkerStartFailureCleansOwnership",
+      "TestContainedWorkerSuccessAndCancellation"
+    ],
+    "tests_passed": [
+      "TestContainedWorkerSuccessAndCancellation",
+      "TestContainedWorkerRefreshCustody",
+      "TestContainedWorkerStartFailureCleansOwnership",
+      "TestContainedWorkerRealDuckDBCTE",
+      "TestContainedOperationCancellationKillsDescendants",
+      "TestContainedOperationResolvesOnlyAfterAdmission",
+      "TestContainedOperationFinalizesResultBeforeRelease"
+    ],
+    "seconds": 1.918,
+    "no_oom": true,
+    "cleanup": {
+      "owned_processes_reaped": true,
+      "owned_child_groups_removed": true
+    },
+    "remaining_job_groups": 0,
+    "remaining_ownership_records": 0,
+    "source_unchanged": true,
+    "binaries_unchanged": true,
+    "service_cgroup_independently_absent": true
+  },
+  "targeted_race_coverage": [
+    "concrete inherited files and owned input erasure",
+    "blocked diagnostics retain every workload class",
+    "unjoined diagnostics cannot be decoded",
+    "blocked result consumer retains custody after native exit",
+    "late I/O completion releases custody while admission stays drained",
+    "diagnostic flood remains limited to 64 KiB",
+    "cancelled input joins callbacks before release",
+    "held native launch retains ownership"
+  ],
+  "controllers_sha256": {
+    "compile_and_unit": "ad7accbc9b8efab0d9da80dd095b3d3d56b7db3978ae3c12a8e9ffc453cd56d0",
+    "native": "f793a29f24590328a6b4167681610cf9689db97369d6689b160f1d66c1ccdcba"
+  },
+  "preserved_failures": [
+    {
+      "revision": "e053141cc2298fcccb3e3835cec8d86f6258d717",
+      "gate": "public Linux compilation",
+      "cause": "The removed payload-reader test left an unused errors import.",
+      "fix": "Remove the unused test import."
+    },
+    {
+      "revision": "c067d8552984f11503b90c4778f41250e0e4badf",
+      "gate": "Azure command I/O race test",
+      "cause": "The one-second EOF readiness wait coincided with the race runtime exit delay.",
+      "fix": "Use the existing bounded child context for readiness; retain the separate 20 ms cleanup deadline.",
+      "cleanup_verified": true
+    }
+  ],
+  "not_qualified": [
+    "container executor activation",
+    "native and whole-worker container OOM recovery",
+    "supervisor death and worker replacement",
+    "external old-incarnation fencing and unknown mutation reconciliation",
+    "throughput or production capacity"
+  ]
+}

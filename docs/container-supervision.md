@@ -35,6 +35,10 @@ It clears input after delivery, bounds query diagnostics to 64 KiB, and keeps re
 holds until pumps, cancellation callbacks and the result consumer return. A cleanup deadline drains admission;
 it cannot turn a blocked writer into free capacity or a cleanup acknowledgement.
 
+[Command I/O evidence](evidence/command-io.json) covers race tests and actual
+delegated query/operation execution at 1 CPU and 1 GiB. It does not qualify
+container execution or whole-worker crash recovery.
+
 Whole-worker death has no in-process cleanup callback. The external worker owner must
 fence the old incarnation and resolve its durable claims before replacement work.
 
