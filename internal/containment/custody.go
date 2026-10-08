@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 )
 
 var ErrCompleted = errors.New("containment reservation operation is complete")
@@ -16,11 +18,12 @@ var ErrCompleted = errors.New("containment reservation operation is complete")
 // owner calls Complete after publication and cleanup, not when its source query
 // exits. It must not separately release the reservation after ownership transfer.
 type Custody struct {
-	mu        sync.Mutex
-	held      int
-	completed bool
-	released  bool
-	release   func()
+	mu          sync.Mutex
+	held        int
+	completed   bool
+	released    bool
+	release     func()
+	reservation *admission.Reservation
 }
 
 type CustodyState struct {
@@ -34,6 +37,24 @@ func NewCustody(release func()) (*Custody, error) {
 		return nil, errors.New("containment reservation release is required")
 	}
 	return &Custody{release: release}, nil
+}
+
+// NewReservationCustody transfers release ownership from an existing shared
+// pool reservation. The caller must not also call reservation.Release.
+func NewReservationCustody(reservation *admission.Reservation) (*Custody, error) {
+	if reservation == nil {
+		return nil, ErrInvalid
+	}
+	return &Custody{release: reservation.Release, reservation: reservation}, nil
+}
+
+func (c *Custody) ownsReservation(pool *admission.Pool, memoryBytes int64) bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return !c.completed && !c.released && c.reservation.Owns(pool, memoryBytes)
 }
 
 // Hold returns an idempotent callback for one process tree. The caller owns

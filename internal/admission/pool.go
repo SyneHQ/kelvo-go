@@ -107,10 +107,27 @@ func New(limits Limits) (*Pool, error) {
 }
 
 type Reservation struct {
-	pool    *Pool
-	request Request
-	class   int
-	once    sync.Once
+	pool     *Pool
+	request  Request
+	class    int
+	identity *reservationIdentity
+}
+
+type reservationIdentity struct {
+	owner    *Reservation
+	once     sync.Once
+	released bool // protected by owner.pool.mu
+}
+
+// Owns reports whether this live reservation belongs to pool and charges the
+// exact memory cost. It does not transfer ownership or extend its lifetime.
+func (r *Reservation) Owns(pool *Pool, memoryBytes int64) bool {
+	if r == nil || pool == nil || r.pool != pool || r.identity == nil || r.identity.owner != r {
+		return false
+	}
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+	return !r.identity.released && r.request.MemoryBytes == memoryBytes
 }
 
 func (p *Pool) validate(r Request) (int, error) {
@@ -164,7 +181,9 @@ func (p *Pool) reserve(r Request, class int) *Reservation {
 		p.backgroundUsed.MemoryBytes += r.MemoryBytes
 		p.backgroundUsed.ScratchBytes += r.ScratchBytes
 	}
-	return &Reservation{pool: p, request: r, class: class}
+	reservation := &Reservation{pool: p, request: r, class: class}
+	reservation.identity = &reservationIdentity{owner: reservation}
+	return reservation
 }
 
 // Acquire waits FIFO within its workload class. New calls cannot overtake a
@@ -267,13 +286,17 @@ func (p *Pool) notify() {
 
 // Release is safe to call concurrently and multiple times.
 func (r *Reservation) Release() {
-	if r == nil {
+	if r == nil || r.identity == nil {
 		return
 	}
-	r.once.Do(func() {
+	// Copies share release idempotence, but only the original handle is an
+	// ownership proof. Use its immutable request for all accounting.
+	r = r.identity.owner
+	r.identity.once.Do(func() {
 		p := r.pool
 		p.mu.Lock()
 		defer p.mu.Unlock()
+		r.identity.released = true
 		p.active--
 		p.used.MemoryBytes -= r.request.MemoryBytes
 		p.used.ScratchBytes -= r.request.ScratchBytes
