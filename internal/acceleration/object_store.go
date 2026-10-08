@@ -503,7 +503,7 @@ type objectTransaction struct {
 	stopping        atomic.Bool
 }
 
-func (backend *objectBackend) Begin(ctx context.Context, dataset string) (RefreshWriter, error) {
+func (backend *objectBackend) Begin(ctx context.Context, dataset string) (_ RefreshWriter, resultErr error) {
 	if err := backend.check(ctx, dataset); err != nil {
 		return nil, err
 	}
@@ -517,7 +517,7 @@ func (backend *objectBackend) Begin(ctx context.Context, dataset string) (Refres
 	success := false
 	defer func() {
 		if !success {
-			_ = tx.cleanup()
+			resultErr = errors.Join(resultErr, tx.cleanup())
 		}
 	}()
 	if err := context.Cause(tx.ctx); err != nil {
@@ -843,7 +843,7 @@ func (tx *objectTransaction) cleanup() (err error) {
 	if tx.cancel != nil {
 		tx.cancel(context.Canceled)
 	}
-	return errors.Join(errs...)
+	return refreshCleanupError(errors.Join(errs...))
 }
 
 func objectSHA256(data []byte) string {

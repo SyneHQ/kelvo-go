@@ -176,7 +176,7 @@ type Transaction struct {
 	done       bool
 }
 
-func (s *Store) Begin(ctx context.Context, dataset string) (*Transaction, error) {
+func (s *Store) Begin(ctx context.Context, dataset string) (_ *Transaction, resultErr error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -188,7 +188,7 @@ func (s *Store) Begin(ctx context.Context, dataset string) (*Transaction, error)
 	ok := false
 	defer func() {
 		if !ok {
-			_ = tx.cleanup()
+			resultErr = errors.Join(resultErr, tx.cleanup())
 		}
 	}()
 	tx.writer, err = storeLockNamed(ctx, dir, ".writer.lock", true)
@@ -196,7 +196,7 @@ func (s *Store) Begin(ctx context.Context, dataset string) (*Transaction, error)
 		return nil, err
 	}
 	if err := storeCleanStages(ctx, dir); err != nil {
-		return nil, err
+		return nil, refreshCleanupError(err)
 	}
 	var generation [16]byte
 	if _, err := rand.Read(generation[:]); err != nil {
@@ -259,19 +259,19 @@ func (tx *Transaction) Commit(fingerprint string, rows int64) (snapshot Snapshot
 	}
 	if err := tx.file.Close(); err != nil {
 		tx.file = nil
-		return Snapshot{}, err
+		return Snapshot{}, refreshCleanupError(err)
 	}
 	tx.file = nil
 	metadata, err := storeLockNamed(tx.ctx, tx.dir, ".metadata.lock", true)
 	if err != nil {
 		return Snapshot{}, err
 	}
-	defer metadata.Close()
+	defer func() { err = errors.Join(err, refreshCleanupError(metadata.Close())) }()
 	// Refuse a symlink, hard link, or insecure manifest rather than overwriting it.
 	previous, err := storeOpenFile(tx.dir, storeManifestName, os.O_RDONLY, 0)
 	if err == nil {
 		err = storeCheckPrivate(previous, false, true)
-		_ = previous.Close()
+		err = errors.Join(err, refreshCleanupError(previous.Close()))
 	}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return Snapshot{}, err
@@ -284,12 +284,12 @@ func (tx *Transaction) Commit(fingerprint string, rows int64) (snapshot Snapshot
 	sidecarPublished := false
 	manifestStage := ".manifest-" + tx.generation + ".yaml"
 	defer func() {
-		_ = storeRemove(tx.dir, manifestStage)
+		err = errors.Join(err, removeRefreshFile(tx.dir, manifestStage))
 		if !published {
 			if sidecarPublished {
-				_ = storeRemove(tx.dir, generationManifestName(tx.generation))
+				err = errors.Join(err, removeRefreshFile(tx.dir, generationManifestName(tx.generation)))
 			}
-			_ = storeRemove(tx.dir, payload)
+			err = errors.Join(err, removeRefreshFile(tx.dir, payload))
 		}
 	}()
 	manifest := storeManifest{SchemaHash: tx.schemaHash, Version: 1, Dataset: tx.dataset, Generation: tx.generation,
@@ -336,6 +336,14 @@ func (tx *Transaction) Commit(fingerprint string, rows int64) (snapshot Snapshot
 	return snapshot, nil
 }
 
+func removeRefreshFile(dir *os.File, name string) error {
+	err := storeRemove(dir, name)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return refreshCleanupError(err)
+}
+
 func (tx *Transaction) Abort() error {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
@@ -365,7 +373,7 @@ func (tx *Transaction) cleanup() error {
 		errs = append(errs, tx.dir.Close())
 		tx.dir = nil
 	}
-	return errors.Join(errs...)
+	return refreshCleanupError(errors.Join(errs...))
 }
 
 // Lease pins a generation across workers until Close. Do not copy a Lease.
@@ -614,7 +622,7 @@ func storeWriteManifest(dir *os.File, name string, data []byte) error {
 	if err == nil {
 		err = file.Sync()
 	}
-	return errors.Join(err, file.Close())
+	return errors.Join(err, refreshCleanupError(file.Close()))
 }
 
 func storeLockNamed(ctx context.Context, dir *os.File, name string, exclusive bool) (*os.File, error) {
@@ -623,8 +631,7 @@ func storeLockNamed(ctx context.Context, dir *os.File, name string, exclusive bo
 		return nil, err
 	}
 	if err := storeLock(ctx, file, exclusive); err != nil {
-		_ = file.Close()
-		return nil, err
+		return nil, errors.Join(err, refreshCleanupError(file.Close()))
 	}
 	return file, nil
 }
@@ -672,8 +679,7 @@ func storeCleanStages(ctx context.Context, dir *os.File) error {
 		if err != nil {
 			return fmt.Errorf("inspect abandoned snapshot stage: %w", err)
 		}
-		_ = file.Close()
-		if err := storeRemove(dir, name); err != nil {
+		if err := errors.Join(file.Close(), storeRemove(dir, name)); err != nil {
 			return err
 		}
 	}

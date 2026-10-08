@@ -143,13 +143,11 @@ func (s *Store) BeginMultipart(ctx context.Context, dataset string, options Mult
 	}
 	if err = tx.file.Close(); err != nil {
 		tx.file = nil
-		tx.Abort()
-		return nil, err
+		return nil, errors.Join(refreshCleanupError(err), tx.Abort())
 	}
 	tx.file = nil
 	if err = storeRemove(tx.dir, tx.stage); err != nil {
-		tx.Abort()
-		return nil, err
+		return nil, errors.Join(refreshCleanupError(err), tx.Abort())
 	}
 	tx.stage = ""
 	return &multipartTransaction{tx: tx, options: options}, nil
@@ -247,7 +245,7 @@ func (t *multipartTransaction) SealPart(rows int64) error {
 	}
 	if err = f.Close(); err != nil {
 		tx.file = nil
-		return err
+		return refreshCleanupError(err)
 	}
 	tx.file = nil
 	t.schema = schema
@@ -264,7 +262,7 @@ func (t *multipartTransaction) cleanup() error {
 		}
 	}
 	errs = append(errs, t.tx.cleanup())
-	return errors.Join(errs...)
+	return refreshCleanupError(errors.Join(errs...))
 }
 func (t *multipartTransaction) Abort() error {
 	tx := t.tx
@@ -313,7 +311,7 @@ func (t *multipartTransaction) Commit(fingerprint string) (snapshot Snapshot, er
 	if err != nil {
 		return Snapshot{}, err
 	}
-	defer metadata.Close()
+	defer func() { err = errors.Join(err, refreshCleanupError(metadata.Close())) }()
 	prior, err := storeReadManifest(tx.dir, tx.dataset)
 	if err == nil {
 		err = storeSaveGeneration(tx.dir, prior)
@@ -326,13 +324,13 @@ func (t *multipartTransaction) Commit(fingerprint string) (snapshot Snapshot, er
 	sidecar := false
 	stage := ".manifest-" + tx.generation + ".yaml"
 	defer func() {
-		storeRemove(tx.dir, stage)
+		err = errors.Join(err, removeRefreshFile(tx.dir, stage))
 		if !published {
 			for _, name := range publishedParts {
-				storeRemove(tx.dir, name)
+				err = errors.Join(err, removeRefreshFile(tx.dir, name))
 			}
 			if sidecar {
-				storeRemove(tx.dir, generationManifestName(tx.generation))
+				err = errors.Join(err, removeRefreshFile(tx.dir, generationManifestName(tx.generation)))
 			}
 		}
 	}()

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/acceleration"
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
@@ -269,5 +270,26 @@ func TestRefreshReservationWaitsForProcessCustodyAfterPublication(t *testing.T) 
 	releaseProcess()
 	if pool.Snapshot().Active != 0 {
 		t.Fatal("verified process cleanup did not release reservation")
+	}
+}
+
+func TestRefreshCleanupUncertaintyRetainsCapacityAndDrainsAdmission(t *testing.T) {
+	pool, err := admission.New(admission.Limits{MaxConcurrent: 1, MemoryBytes: 2 << 30, ScratchBytes: 2 << 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := query.DefaultLimits()
+	limits.MemoryMB, limits.MaxTempMB, limits.MaxBytes = 64, 16, 1<<20
+	err = withRefreshReservation(context.Background(), pool, 64<<20, limits, nil, func(context.Context) error {
+		return errors.Join(errors.New("fixture source failure"), acceleration.ErrRefreshCleanup)
+	})
+	if !errors.Is(err, acceleration.ErrRefreshCleanup) {
+		t.Fatal("cleanup failure was hidden", err)
+	}
+	if got := pool.Snapshot(); got.Active != 1 || !got.Draining {
+		t.Fatal("uncertain refresh released reusable capacity", got)
+	}
+	if _, err := pool.TryAcquire(admission.Request{MemoryBytes: 1}); !errors.Is(err, admission.ErrDraining) {
+		t.Fatal("uncertain refresh admitted more work", err)
 	}
 }
