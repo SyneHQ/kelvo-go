@@ -385,6 +385,26 @@ func TestContainedOperationProcessReceiptsAndIsolation(t *testing.T) {
 }
 
 func TestContainedOperationCancellationKillsDescendants(t *testing.T) {
+	if os.Getenv("KELVO_TEST_OPERATION_CANCEL_REAPER") != "1" {
+		for _, key := range []string{"KELVO_TEST_CGROUP_ROOT", "KELVO_TEST_CGROUP_STATE", "KELVO_TEST_SANDBOX"} {
+			if os.Getenv(key) == "" {
+				t.Skip("explicit disposable delegation and launcher required")
+			}
+		}
+		// Isolate subreaper ownership from other tests and their exec.Cmd waits.
+		// The helper must pass this exact test; a missing or skipped child gate
+		// must not turn into a successful outer result.
+		command := exec.Command(os.Args[0], "-test.run=^TestContainedOperationCancellationKillsDescendants$", "-test.timeout=30s", "-test.v")
+		command.Env = append(os.Environ(), "KELVO_TEST_OPERATION_CANCEL_REAPER=1")
+		output, err := command.CombinedOutput()
+		if err != nil || !bytes.Contains(output, []byte("--- PASS: TestContainedOperationCancellationKillsDescendants")) || bytes.Contains(output, []byte("--- SKIP:")) {
+			t.Fatalf("isolated cancellation gate failed: %v\n%s", err, output)
+		}
+		return
+	}
+	if err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0); err != nil {
+		t.Fatal("cannot own the fixture descendant", err)
+	}
 	executor, manager, pool := containedExecutor(t)
 	cfg := operationExecutable(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -401,6 +421,12 @@ func TestContainedOperationCancellationKillsDescendants(t *testing.T) {
 		t.Fatal("cancellation fixture did not dispatch", receipt, err, descendant)
 	}
 	requireProcessTerminated(t, descendant)
+	// ExecuteOperation has joined its own exec.Cmd before returning. Reap only
+	// the exact adopted fixture PID; never steal another command's child wait.
+	var status unix.WaitStatus
+	if reaped, err := unix.Wait4(descendant, &status, unix.WNOHANG, nil); err != nil || reaped != descendant {
+		t.Fatal("terminated fixture descendant was not reaped", reaped, err)
+	}
 	if pool.Snapshot().Active != 0 || manager.Status().Active != 0 {
 		t.Fatal("cancelled operation leaked custody")
 	}
