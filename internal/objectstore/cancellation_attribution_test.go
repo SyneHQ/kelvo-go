@@ -97,7 +97,7 @@ func TestProviderTransportCancellationAttribution(t *testing.T) {
 						if provider == "gcs" {
 							version = "1"
 						}
-						_, _, err = client.GetRange(ctx, "kelvo/data", version, 0, 1)
+						_, _, err = client.(RangeClient).GetRange(ctx, "kelvo/data", version, 0, 1)
 					case "put":
 						_, err = client.Put(ctx, "kelvo/data", bytes.NewReader(nil), 0, azureTestDigest(""), Condition{Absent: true})
 					}
