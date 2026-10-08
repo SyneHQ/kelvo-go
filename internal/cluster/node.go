@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
@@ -706,7 +707,10 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ready = n.exports.Ready()
 		}
 		if ready && n.operations != nil {
-			ready = !n.operations.failed.Load() && n.operations.worker.input.ready()
+			ready = !n.operations.failed.Load() && n.operations.worker.Ready()
+		}
+		if native, ok := n.executor.(*worker.Executor); ready && ok {
+			ready = (native.ResourcePool == nil || !native.ResourcePool.Snapshot().Draining) && (native.Containment == nil || native.Containment.Err() == nil)
 		}
 		if ready && !n.cfg.RuntimeDatasets.hasRequired(n.cfg.RequiredDatasets) {
 			ready = false
@@ -822,6 +826,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	stopClient := context.AfterFunc(r.Context(), cancel)
 	defer func() { stopClient(); cancel() }()
+	var completion containment.Completion
+	ctx = containment.WithCompletion(ctx, &completion)
+	defer completion.Complete()
 	op, auditErr := n.audit.begin(ctx, n.cfg.Policy.TenantID, authority, audit.QueryExecution)
 	if auditErr != nil {
 		_ = n.finish(id, Failed, query.Stats{}, query.NewError("UNAVAILABLE", "Audit storage unavailable"))

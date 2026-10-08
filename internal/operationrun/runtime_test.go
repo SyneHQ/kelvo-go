@@ -17,11 +17,13 @@ import (
 )
 
 type backend struct {
-	mu        sync.Mutex
-	entries   map[string]ledger.Entry
-	revision  uint64
-	loseState string
-	lost      bool
+	mu                sync.Mutex
+	entries           map[string]ledger.Entry
+	revision          uint64
+	loseState         string
+	failState         string
+	loseUntilDeadline bool
+	lost              bool
 }
 
 func (b *backend) Get(ctx context.Context, key string) (ledger.Entry, error) {
@@ -53,6 +55,15 @@ func (b *backend) write(ctx context.Context, key string, value []byte, revision 
 	if (revision == 0 && ok) || (revision != 0 && (!ok || v.Revision != revision)) {
 		return 0, ledger.ErrRevision
 	}
+	var proposed struct {
+		Records []ledger.Record `json:"records"`
+	}
+	_ = json.Unmarshal(value, &proposed)
+	for _, record := range proposed.Records {
+		if b.failState != "" && record.State == b.failState {
+			return 0, errors.New("private fixture storage failure")
+		}
+	}
 	b.revision++
 	b.entries[key] = ledger.Entry{Value: append([]byte(nil), value...), Revision: b.revision}
 	var document struct {
@@ -62,6 +73,10 @@ func (b *backend) write(ctx context.Context, key string, value []byte, revision 
 	for _, record := range document.Records {
 		if !b.lost && b.loseState != "" && record.State == b.loseState {
 			b.lost = true
+			if b.loseUntilDeadline {
+				<-ctx.Done()
+				return 0, ctx.Err()
+			}
 			return 0, errors.New("private transport error after persisted write")
 		}
 	}
@@ -70,20 +85,27 @@ func (b *backend) write(ctx context.Context, key string, value []byte, revision 
 
 type prepared struct {
 	execute func(context.Context) (api.Receipt, error)
+	close   func() error
 }
 
 func (p *prepared) Execute(ctx context.Context) (api.Receipt, error) { return p.execute(ctx) }
-func (p *prepared) Close() error                                     { return nil }
+func (p *prepared) Close() error {
+	if p.close != nil {
+		return p.close()
+	}
+	return nil
+}
 
 type fixture struct {
-	t             *testing.T
-	store         *ledger.Store
-	backend       *backend
-	scope         ledger.Scope
-	request       api.Request
-	input         ledger.Submission
-	calls, audits atomic.Int32
-	execute       func(context.Context, ledger.Record, ledger.Binding) (api.Receipt, error)
+	t                    *testing.T
+	store                *ledger.Store
+	backend              *backend
+	scope                ledger.Scope
+	request              api.Request
+	input                ledger.Submission
+	calls, audits        atomic.Int32
+	execute              func(context.Context, ledger.Record, ledger.Binding) (api.Receipt, error)
+	expectedRuntimeError error
 }
 
 func newFixture(t *testing.T, timeout time.Duration) *fixture {
@@ -145,7 +167,7 @@ func (f *fixture) runtime(worker string, concurrency int, hooks Hooks) *Runtime 
 	f.t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		if err := r.Close(ctx); err != nil {
+		if err := r.Close(ctx); !errors.Is(err, f.expectedRuntimeError) {
 			f.t.Error("close", err)
 		}
 	})
@@ -239,6 +261,7 @@ func TestUnknownClaimOrStartAcknowledgementNeverDispatches(t *testing.T) {
 
 func TestCompletionSurvivesLostAckAndDeliveryError(t *testing.T) {
 	f := newFixture(t, 5*time.Second)
+	f.expectedRuntimeError = ErrDelivery
 	f.backend.loseState = string(api.Completed)
 	f.execute = func(context.Context, ledger.Record, ledger.Binding) (api.Receipt, error) {
 		return api.Receipt{Outcome: api.Completed, Effect: api.EffectCommitted}, errors.New("private response delivery failed")
@@ -250,7 +273,7 @@ func TestCompletionSurvivesLostAckAndDeliveryError(t *testing.T) {
 	if got.Receipt.Outcome != api.Completed || got.Receipt.ErrorCode != "" || f.calls.Load() != 1 {
 		t.Fatal("confirmed outcome discarded", got.State)
 	}
-	if err := r.Drain(context.Background()); err != nil {
+	if err := r.Drain(context.Background()); !errors.Is(err, ErrDelivery) {
 		t.Fatal(err)
 	}
 	if _, duplicate, err := f.store.Submit(context.Background(), f.input); err != nil || !duplicate {
