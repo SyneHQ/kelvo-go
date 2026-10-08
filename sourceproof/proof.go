@@ -103,8 +103,16 @@ func Sign(key ed25519.PrivateKey, scope Scope, grant string, now, expires time.T
 // Verify pins both the signing key and every scope field. It does not verify
 // the original grant or refresh a lease. The issuer must perform those checks.
 func Verify(key ed25519.PublicKey, envelope Envelope, expected Scope, now time.Time) (Claims, error) {
+	claims, err := verifyEnvelope(key, envelope, now)
+	if err != nil || claims.Scope != expected {
+		return Claims{}, ErrInvalid
+	}
+	return claims, nil
+}
+
+func verifyEnvelope(key ed25519.PublicKey, envelope Envelope, now time.Time) (Claims, error) {
 	bad := func() (Claims, error) { return Claims{}, ErrInvalid }
-	if len(key) != ed25519.PublicKeySize || validGrant(envelope.Grant) != nil || expected.GrantSHA256 != GrantDigest(envelope.Grant) || len(envelope.Token) > MaxTokenBytes || !strings.HasPrefix(envelope.Token, contextLabel) {
+	if len(key) != ed25519.PublicKeySize || validGrant(envelope.Grant) != nil || len(envelope.Token) > MaxTokenBytes || !strings.HasPrefix(envelope.Token, contextLabel) {
 		return bad()
 	}
 	parts := strings.Split(strings.TrimPrefix(envelope.Token, contextLabel), ".")
@@ -120,7 +128,7 @@ func Verify(key ed25519.PublicKey, envelope Envelope, expected Scope, now time.T
 		return bad()
 	}
 	var claims Claims
-	if delegation.StrictJSONLimit(payload, &claims, MaxTokenBytes) != nil || validate(claims, now) != nil || claims.Scope != expected {
+	if delegation.StrictJSONLimit(payload, &claims, MaxTokenBytes) != nil || validate(claims, now) != nil || claims.Scope.GrantSHA256 != GrantDigest(envelope.Grant) {
 		return bad()
 	}
 	return claims, nil
