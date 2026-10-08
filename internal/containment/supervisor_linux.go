@@ -40,8 +40,14 @@ type ChildSpec struct {
 // SupervisedChild exposes one exit future. Cancelling Wait does not terminate
 // the child or release any operation capacity. Signal uses its pinned pidfd.
 type SupervisedChild struct {
-	owner   *NamespaceSupervisor
-	pid     int
+	owner *NamespaceSupervisor
+	pid   int
+	state *supervisedChildState
+}
+
+// Handle copies share the same future and pinned descriptor. A copied handle
+// must never keep a stale descriptor number after the sole reaper closes it.
+type supervisedChildState struct {
 	pidfdMu sync.Mutex
 	pidfd   int
 	done    chan struct{}
@@ -236,7 +242,7 @@ func (s *NamespaceSupervisor) spawn(ctx context.Context, spec ChildSpec, hooks *
 	if hooks != nil && hooks.beforeRegistration != nil {
 		hooks.beforeRegistration(pid)
 	}
-	child := &SupervisedChild{owner: s, pid: pid, pidfd: -1, done: make(chan struct{})}
+	child := &SupervisedChild{owner: s, pid: pid, state: &supervisedChildState{pidfd: -1, done: make(chan struct{})}}
 	s.children[pid] = child
 	s.empty = false
 	openPIDFD := unix.PidfdOpen
@@ -252,22 +258,22 @@ func (s *NamespaceSupervisor) spawn(ctx context.Context, spec ChildSpec, hooks *
 		s.notify()
 		return child, errors.Join(ErrQuarantined, ErrLaunchUncertain)
 	}
-	child.pidfd = fd
+	child.state.pidfd = fd
 	s.notify()
 	return child, nil
 }
 
 func (c *SupervisedChild) Wait(ctx context.Context) (ChildExit, error) {
-	if c == nil || c.owner == nil || c.done == nil || c.pid <= 1 || ctx == nil {
+	if c == nil || c.owner == nil || c.state == nil || c.state.done == nil || c.pid <= 1 || ctx == nil {
 		return ChildExit{}, ErrInvalid
 	}
 	select {
-	case <-c.done:
-		return c.exit, nil
+	case <-c.state.done:
+		return c.state.exit, nil
 	case <-ctx.Done():
 		select {
-		case <-c.done:
-			return c.exit, nil
+		case <-c.state.done:
+			return c.state.exit, nil
 		default:
 		}
 		return ChildExit{}, ctx.Err()
@@ -275,15 +281,15 @@ func (c *SupervisedChild) Wait(ctx context.Context) (ChildExit, error) {
 }
 
 func (c *SupervisedChild) Signal(sig syscall.Signal) error {
-	if c == nil || c.owner == nil || c.done == nil || c.pid <= 1 || (sig != syscall.SIGTERM && sig != syscall.SIGKILL) {
+	if c == nil || c.owner == nil || c.state == nil || c.state.done == nil || c.pid <= 1 || (sig != syscall.SIGTERM && sig != syscall.SIGKILL) {
 		return ErrInvalid
 	}
-	c.pidfdMu.Lock()
-	defer c.pidfdMu.Unlock()
-	if c.pidfd < 0 {
+	c.state.pidfdMu.Lock()
+	defer c.state.pidfdMu.Unlock()
+	if c.state.pidfd < 0 {
 		return ErrUnavailable
 	}
-	if err := unix.PidfdSendSignal(c.pidfd, unix.Signal(sig), nil, 0); err != nil {
+	if err := unix.PidfdSendSignal(c.state.pidfd, unix.Signal(sig), nil, 0); err != nil {
 		return ErrUnavailable
 	}
 	return nil
@@ -335,18 +341,18 @@ func (s *NamespaceSupervisor) reapLoop() {
 			}
 			s.reaped++
 			if child, ok := s.children[pid]; ok {
-				child.exit = ChildExit{Code: status.ExitStatus()}
+				child.state.exit = ChildExit{Code: status.ExitStatus()}
 				if status.Signaled() {
-					child.exit.Code, child.exit.Signal = -1, syscall.Signal(status.Signal())
+					child.state.exit.Code, child.state.exit.Signal = -1, syscall.Signal(status.Signal())
 				}
-				child.pidfdMu.Lock()
-				if child.pidfd >= 0 {
-					_ = unix.Close(child.pidfd)
-					child.pidfd = -1
+				child.state.pidfdMu.Lock()
+				if child.state.pidfd >= 0 {
+					_ = unix.Close(child.state.pidfd)
+					child.state.pidfd = -1
 				}
-				child.pidfdMu.Unlock()
+				child.state.pidfdMu.Unlock()
 				delete(s.children, pid)
-				close(child.done)
+				close(child.state.done)
 			} else {
 				s.adopted++
 			}

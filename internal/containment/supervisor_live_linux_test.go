@@ -121,6 +121,7 @@ func TestNamespaceSupervisorLive(t *testing.T) {
 		return child
 	}
 	held := ready("hold", nil)
+	copyBeforeExit := *held
 	waitCtx, stopWait := context.WithTimeout(ctx, 25*time.Millisecond)
 	if _, err := held.Wait(waitCtx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("wait cancellation reported a false native exit", err)
@@ -134,6 +135,29 @@ func TestNamespaceSupervisorLive(t *testing.T) {
 	}
 	if exit, err := held.Wait(ctx); err != nil || exit.Signal != syscall.SIGTERM {
 		t.Fatal("wait cancellation lost the live child", exit, err)
+	}
+	copyAfterExit := *held
+	for _, copied := range []*SupervisedChild{&copyBeforeExit, &copyAfterExit} {
+		if exit, err := copied.Wait(ctx); err != nil || exit.Signal != syscall.SIGTERM || exit.Code != -1 {
+			t.Fatal("a copied handle reported a different native exit", exit, err)
+		}
+	}
+	replacement := ready("hold", nil)
+	for _, copied := range []*SupervisedChild{&copyBeforeExit, &copyAfterExit} {
+		if err := copied.Signal(syscall.SIGKILL); !errors.Is(err, ErrUnavailable) {
+			t.Fatal("an exited handle reused a later signal descriptor", err)
+		}
+	}
+	waitCtx, stopWait = context.WithTimeout(ctx, 25*time.Millisecond)
+	if _, err := replacement.Wait(waitCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("old handle copies signalled the replacement child", err)
+	}
+	stopWait()
+	if err := replacement.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if exit, err := replacement.Wait(ctx); err != nil || exit.Signal != syscall.SIGTERM {
+		t.Fatal("replacement lost its own termination", exit, err)
 	}
 	traced := ready("trace-stop", nil)
 	until := time.Now().Add(time.Second)

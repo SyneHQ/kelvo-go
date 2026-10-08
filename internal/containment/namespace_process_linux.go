@@ -326,14 +326,14 @@ func (p *namespaceProcess) Wait() error {
 		return ErrInvalid
 	}
 	select {
-	case <-child.done:
+	case <-child.state.done:
 	case <-p.terminateDone:
 		if p.terminateErr != nil {
 			return p.terminateErr // No native exit is implied by cleanup failure.
 		}
-		<-child.done
+		<-child.state.done
 	}
-	if child.exit.Code != 0 || child.exit.Signal != 0 {
+	if child.state.exit.Code != 0 || child.state.exit.Signal != 0 {
 		return errNativeExit
 	}
 	return nil
@@ -345,8 +345,8 @@ func (p *namespaceProcess) Exit() (ChildExit, bool) {
 	p.mu.Unlock()
 	if child != nil {
 		select {
-		case <-child.done:
-			return child.exit, true
+		case <-child.state.done:
+			return child.state.exit, true
 		default:
 		}
 	}
