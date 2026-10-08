@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
+	"github.com/SYNEHQ/kelvo-go/internal/exports"
+	"github.com/SYNEHQ/kelvo-go/internal/operationinput"
 	"github.com/SYNEHQ/kelvo-go/internal/operationrun"
 	ledger "github.com/SYNEHQ/kelvo-go/internal/operations"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
@@ -112,7 +114,7 @@ func TestOperationWorkerAutonomousTLSInputAndAudit(t *testing.T) {
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		if err := worker.Close(ctx); err != nil {
+		if err := worker.Close(ctx); !errors.Is(err, operationrun.ErrDelivery) {
 			t.Error(err)
 		}
 	})
@@ -129,8 +131,11 @@ func TestOperationWorkerAutonomousTLSInputAndAudit(t *testing.T) {
 		result = got.Record
 		return result.Terminal()
 	})
-	if err := worker.Drain(context.Background()); err != nil {
+	if err := worker.Drain(context.Background()); !errors.Is(err, operationrun.ErrDelivery) {
 		t.Fatal(err)
+	}
+	if worker.Ready() || !worker.runtime.Joined() {
+		t.Fatal("joined delivery failure remained ready")
 	}
 	if result.State != string(operations.Completed) || calls.Load() != 1 {
 		t.Fatal("autonomous execution failed", result.State, calls.Load())
@@ -138,6 +143,50 @@ func TestOperationWorkerAutonomousTLSInputAndAudit(t *testing.T) {
 	events := serviceEvents(t, journal)
 	if len(events) != 1 || events[0].Kind != audit.OperationExecution || events[0].Outcome != audit.Succeeded || events[0].Binding.PrincipalID != "api" {
 		t.Fatal("source receipt not audited", events)
+	}
+	// A joined operation failure must not skip another accepted query's drain.
+	dispatchDone := make(chan struct{})
+	close(dispatchDone)
+	node := &Node{operations: &nodeOperations{worker: worker}, dispatchCancel: func() {}, dispatchDone: dispatchDone,
+		jobs: map[string]*reservation{"accepted": {}}}
+	deadline, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	err = node.Drain(deadline)
+	cancel()
+	if !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, operationrun.ErrDelivery) {
+		t.Fatal("operation failure bypassed accepted query drain", err)
+	}
+	delete(node.jobs, "accepted")
+	if err := node.Drain(context.Background()); !errors.Is(err, operationrun.ErrDelivery) {
+		t.Fatal("drain discarded the settled lifecycle failure", err)
+	}
+	// The completed runtime may release its result store and its exclusive
+	// storage lock even though it reports a result-delivery error.
+	directory := t.TempDir()
+	custody, err := exports.OpenCustody(context.Background(), directory, f.policy.TenantID, "worker-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer custody.Close()
+	results, err := operationinput.Open(operationinput.Config{MaxInputBytes: 1 << 20, Storage: exports.Config{
+		Directory: custody.DataDirectory(), Tenant: f.policy.TenantID, MaxEntries: 2, MaxStoredBytes: 2 << 20, MaxTTL: time.Hour}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer results.Close()
+	node.operations.custody, node.operations.results = custody, results
+	if err := node.operations.close(context.Background()); !errors.Is(err, operationrun.ErrDelivery) {
+		t.Fatal("storage shutdown discarded the settled lifecycle failure", err)
+	}
+	reopened, err := exports.OpenCustody(context.Background(), directory, f.policy.TenantID, "worker-a")
+	if err != nil {
+		t.Fatal("joined operation leaked its storage ownership", err)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	current, err := f.state.store.Get(f.context, operationScope(f.claims), response.ID)
+	if err != nil || current.Record.State != string(operations.Completed) || current.Record.Receipt.Effect != operations.EffectCommitted {
+		t.Fatal("shutdown rewrote the confirmed source effect", err)
 	}
 }
 

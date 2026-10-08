@@ -85,20 +85,24 @@ func (s *nodeOperations) close(ctx context.Context) error {
 	if s == nil {
 		return nil
 	}
+	var resultErr error
 	if s.worker != nil {
 		if err := s.worker.Close(ctx); err != nil {
-			return err
+			if !s.worker.runtime.Joined() {
+				return err
+			}
+			resultErr = err
 		}
 	}
 	if s.results != nil {
 		if err := s.results.Close(); err != nil {
-			return err
+			return errors.Join(resultErr, err)
 		}
 	}
 	if s.custody != nil {
-		return s.custody.Close()
+		return errors.Join(resultErr, s.custody.Close())
 	}
-	return nil
+	return resultErr
 }
 
 func (n *Node) cleanupOperationResults() {
