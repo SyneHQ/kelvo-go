@@ -29,3 +29,5 @@ Maximum grant: 32 KiB. Maximum proof token: 8 KiB. Bound the enclosing JSON body
 Activation still needs authoritative source-to-route metadata, issuer and lease
 endpoints, inherited socketpair IPC, cancellation and saturation qualification.
 See [activation gates](private-transport-activation.md).
+
+Each proof binds the configured route ID, Rabbit token ID and positive source-binding version. The verifier requires current values. A revoked binding must prevent proof issuance and verification before a physical open. Signature validity alone does not establish current authorization.

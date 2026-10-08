@@ -15,7 +15,7 @@ func fixture(t *testing.T) (ed25519.PrivateKey, Scope, time.Time) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return key, Scope{Issuer: "application", Audience: "kelvo", ClusterTenant: "cluster", ServicePrincipal: "analytics", Tenant: "team", Source: "source", SourceRevision: strings.Repeat("a", 64), Authority: "db.private:5432", Kind: "query", ExecutionID: "job", GrantSHA256: GrantDigest("signed.original.grant"), Worker: "worker", Owner: strings.Repeat("b", 32), Claim: strings.Repeat("c", 32), WorkerIdentity: "spiffe://kelvo/tenant/cluster/worker/worker", WorkerCertSHA256: strings.Repeat("d", 64)}, time.Unix(1800000000, 0)
+	return key, Scope{Issuer: "application", Audience: "kelvo", ClusterTenant: "cluster", ServicePrincipal: "analytics", Tenant: "team", Source: "source", SourceRevision: strings.Repeat("a", 64), Authority: "db.private:5432", RouteID: "private", TokenID: "11111111-2222-3333-4444-555555555555", BindingVersion: 1, Kind: "query", ExecutionID: "job", GrantSHA256: GrantDigest("signed.original.grant"), Worker: "worker", Owner: strings.Repeat("b", 32), Claim: strings.Repeat("c", 32), WorkerIdentity: "spiffe://kelvo/tenant/cluster/worker/worker", WorkerCertSHA256: strings.Repeat("d", 64)}, time.Unix(1800000000, 0)
 }
 
 func TestProofExactScope(t *testing.T) {
@@ -28,21 +28,24 @@ func TestProofExactScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, mutate := range map[string]func(*Scope){
-		"tenant":      func(s *Scope) { s.Tenant = "other" },
-		"cluster":     func(s *Scope) { s.ClusterTenant = "other" },
-		"source":      func(s *Scope) { s.Source = "other" },
-		"revision":    func(s *Scope) { s.SourceRevision = strings.Repeat("e", 64) },
-		"authority":   func(s *Scope) { s.Authority = "other.private:5432" },
-		"kind":        func(s *Scope) { s.Kind = "operation" },
-		"execution":   func(s *Scope) { s.ExecutionID = "other" },
-		"worker":      func(s *Scope) { s.Worker = "other" },
-		"owner":       func(s *Scope) { s.Owner = strings.Repeat("e", 32) },
-		"claim":       func(s *Scope) { s.Claim = strings.Repeat("e", 32) },
-		"caller_uri":  func(s *Scope) { s.WorkerIdentity = "spiffe://other/worker" },
-		"caller_cert": func(s *Scope) { s.WorkerCertSHA256 = strings.Repeat("e", 64) },
-		"issuer":      func(s *Scope) { s.Issuer = "other" },
-		"audience":    func(s *Scope) { s.Audience = "other" },
-		"principal":   func(s *Scope) { s.ServicePrincipal = "other" },
+		"route":           func(s *Scope) { s.RouteID = "other" },
+		"token":           func(s *Scope) { s.TokenID = "22222222-2222-3333-4444-555555555555" },
+		"binding_version": func(s *Scope) { s.BindingVersion++ },
+		"tenant":          func(s *Scope) { s.Tenant = "other" },
+		"cluster":         func(s *Scope) { s.ClusterTenant = "other" },
+		"source":          func(s *Scope) { s.Source = "other" },
+		"revision":        func(s *Scope) { s.SourceRevision = strings.Repeat("e", 64) },
+		"authority":       func(s *Scope) { s.Authority = "other.private:5432" },
+		"kind":            func(s *Scope) { s.Kind = "operation" },
+		"execution":       func(s *Scope) { s.ExecutionID = "other" },
+		"worker":          func(s *Scope) { s.Worker = "other" },
+		"owner":           func(s *Scope) { s.Owner = strings.Repeat("e", 32) },
+		"claim":           func(s *Scope) { s.Claim = strings.Repeat("e", 32) },
+		"caller_uri":      func(s *Scope) { s.WorkerIdentity = "spiffe://other/worker" },
+		"caller_cert":     func(s *Scope) { s.WorkerCertSHA256 = strings.Repeat("e", 64) },
+		"issuer":          func(s *Scope) { s.Issuer = "other" },
+		"audience":        func(s *Scope) { s.Audience = "other" },
+		"principal":       func(s *Scope) { s.ServicePrincipal = "other" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			other := scope
@@ -92,5 +95,26 @@ func TestProofBoundsAndExpiry(t *testing.T) {
 		if _, err := Verify(key.Public().(ed25519.PublicKey), other, scope, now); err == nil {
 			t.Fatal("accepted invalid token")
 		}
+	}
+}
+
+func TestProofRejectsInvalidBindingScope(t *testing.T) {
+	key, scope, now := fixture(t)
+	for name, change := range map[string]func(*Scope){
+		"missing_route":      func(s *Scope) { s.RouteID = "" },
+		"route_path":         func(s *Scope) { s.RouteID = "../route" },
+		"missing_token":      func(s *Scope) { s.TokenID = "" },
+		"noncanonical_token": func(s *Scope) { s.TokenID = "AAAAAAAA-2222-3333-4444-555555555555" },
+		"missing_version":    func(s *Scope) { s.BindingVersion = 0 },
+		"negative_version":   func(s *Scope) { s.BindingVersion = -1 },
+		"overflow_version":   func(s *Scope) { s.BindingVersion = 2147483648 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := scope
+			change(&candidate)
+			if _, err := Sign(key, candidate, "signed.original.grant", now, now.Add(time.Second)); err == nil {
+				t.Fatal("invalid binding scope signed")
+			}
+		})
 	}
 }
