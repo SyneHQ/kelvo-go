@@ -71,6 +71,7 @@ def run(runtime_image, worker_image, run_id=None):
     require(len(token) == 16 and all(c in "0123456789abcdef" for c in token), "Invalid acceptance run identifier")
     label = "io.kelvo.worker-image-test"
     owned = []
+    ownership_established = False
     report = {"ok": False, "scope": "Image packaging, native DuckDB/Arrow and fd6 adapter protocol; no cluster admission or live-provider qualification", "gates": {}, "runs": []}
 
     def docker(*args, check=True, payload=None, timeout=30):
@@ -116,6 +117,9 @@ def run(runtime_image, worker_image, run_id=None):
         return result
 
     try:
+        existing = docker("ps", "-aq", "--no-trunc", "--filter", "label=" + label + "=" + token).stdout.decode().split()
+        require(not existing, "Acceptance ownership label already exists; preserve the previous trial")
+        ownership_established = True
         images = {name: json.loads(docker("image", "inspect", tag).stdout)[0]["Id"]
                   for name, tag in (("runtime", runtime_image), ("worker", worker_image))}
         report["images"] = images
@@ -161,30 +165,36 @@ def run(runtime_image, worker_image, run_id=None):
     except Exception as error:
         report["error"] = str(error)
     finally:
-        failures = []
-        discovery_failed = False
-        try:
-            # Also find a create that succeeded before its acknowledgement was lost.
-            discovered = docker("ps", "-aq", "--no-trunc", "--filter", "label=" + label + "=" + token).stdout.decode().split()
-            owned = list(dict.fromkeys(owned + discovered))
-        except Exception:
-            discovery_failed = True
-        for cid in reversed(owned):
+        if not ownership_established:
+            # Caller-supplied run IDs can refer to a previous interrupted run.
+            # Failed/unknown preflight does not grant ownership of its containers.
+            report["cleanup"] = {"ok": False, "ownership_established": False, "skipped": True}
+            report["ok"] = False
+        else:
+            failures = []
+            discovery_failed = False
             try:
-                require(inspect(cid)["Config"]["Labels"].get(label) == token, "Container ownership changed")
-                docker("rm", "-f", cid)
-                require(docker("inspect", cid, check=False).returncode != 0, "Owned container remains")
+                # Also find a create that succeeded before its acknowledgement was lost.
+                discovered = docker("ps", "-aq", "--no-trunc", "--filter", "label=" + label + "=" + token).stdout.decode().split()
+                owned = list(dict.fromkeys(owned + discovered))
             except Exception:
-                failures.append(cid)
-        try:
-            remaining = docker("ps", "-aq", "--no-trunc", "--filter", "label=" + label + "=" + token).stdout.decode().split()
-        except Exception:
-            remaining = []
-            discovery_failed = True
-        clean = not failures and not remaining and not discovery_failed
-        report["cleanup"] = {"ok": clean, "failed_removals": failures, "remaining_owned_containers": remaining,
-                             "inventory_failed": discovery_failed, "ownership_label": label + "=" + token}
-        report["ok"] = report["ok"] and clean
+                discovery_failed = True
+            for cid in reversed(owned):
+                try:
+                    require(inspect(cid)["Config"]["Labels"].get(label) == token, "Container ownership changed")
+                    docker("rm", "-f", cid)
+                    require(docker("inspect", cid, check=False).returncode != 0, "Owned container remains")
+                except Exception:
+                    failures.append(cid)
+            try:
+                remaining = docker("ps", "-aq", "--no-trunc", "--filter", "label=" + label + "=" + token).stdout.decode().split()
+            except Exception:
+                remaining = []
+                discovery_failed = True
+            clean = not failures and not remaining and not discovery_failed
+            report["cleanup"] = {"ok": clean, "failed_removals": failures, "remaining_owned_containers": remaining,
+                                 "inventory_failed": discovery_failed, "ownership_label": label + "=" + token}
+            report["ok"] = report["ok"] and clean
     return report
 
 

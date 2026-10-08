@@ -57,7 +57,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 65532 kelvo \
     && useradd --no-log-init --uid 65532 --gid 65532 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin kelvo \
-    && mkdir -p /etc/kelvo /opt/kelvo/extensions /data
+    && mkdir -p /etc/kelvo /opt/kelvo/extensions /data \
+    && install -d -m 0755 /usr/share/kelvo
 
 LABEL org.opencontainers.image.title="Kelvo Go" \
       org.opencontainers.image.vendor="SYNEHQ" \
