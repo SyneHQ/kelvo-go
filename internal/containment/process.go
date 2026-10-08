@@ -5,10 +5,11 @@ import (
 	"context"
 	"os/exec"
 	"sync"
+	"time"
 )
 
 // Process owns a command from Start through Wait and resource cleanup. After
-// Start, callers must use Wait instead of calling Cmd.Wait or Process.Wait.
+// Start, callers must use Wait instead of exec.Cmd.Wait or os.Process.Wait.
 // Finish prevents further starts and retains custody until cleanup and reaping
 // both complete. Usage belongs to the containment domain, including descendants.
 // This interface does not enable a container executor or a PID-1 reaper.
@@ -25,10 +26,10 @@ type processGroup interface {
 	Finish(context.Context) (Usage, error)
 }
 
-// PrepareProcess preserves Prepare's admission contract. On error, the caller
+// prepareProcess preserves Prepare's admission contract. On error, the caller
 // still owns release. On success, release also waits for the command's sole
 // Wait owner, including when Manager.Close cleans the group concurrently.
-func (m *Manager) PrepareProcess(limits Limits, release func()) (Process, error) {
+func prepareProcess(m *Manager, limits Limits, release func(), cleanupTimeout time.Duration) (Process, error) {
 	if m == nil {
 		return nil, ErrInvalid
 	}
@@ -44,7 +45,7 @@ func (m *Manager) PrepareProcess(limits Limits, release func()) (Process, error)
 	if err != nil {
 		return nil, err
 	}
-	return &delegatedProcess{group: job, releaseReap: reaped}, nil
+	return &delegatedProcess{group: job, releaseReap: reaped, cleanupTimeout: cleanupTimeout, quarantine: m.QuarantineOperation}, nil
 }
 
 // Delegated execution keeps os/exec as the sole wait owner. A future PID-1
@@ -56,8 +57,11 @@ type delegatedProcess struct {
 	startAttempted bool
 	finishing      bool
 	waitOnce       sync.Once
+	waitDone       chan struct{}
 	waitErr        error
 	releaseReap    func()
+	cleanupTimeout time.Duration
+	quarantine     func()
 }
 
 func (p *delegatedProcess) Start(command *exec.Cmd) error {
@@ -81,22 +85,40 @@ func (p *delegatedProcess) Start(command *exec.Cmd) error {
 }
 
 func (p *delegatedProcess) Wait() error {
+	done, err := p.startWait()
+	if err != nil {
+		return err
+	}
+	<-done
+	return p.waitErr
+}
+
+func (p *delegatedProcess) startWait() (<-chan struct{}, error) {
 	p.mu.Lock()
 	command := p.command
 	p.mu.Unlock()
 	if command == nil {
-		return ErrInvalid
+		return nil, ErrInvalid
 	}
 	p.waitOnce.Do(func() {
-		p.waitErr = command.Wait()
+		p.waitDone = make(chan struct{})
+		// Waiting starts lazily: callers can still kill a pinned process group
+		// before reaping the leader. No second waiter or adopted-child reaper
+		// competes with this owner.
+		go func() {
+			p.waitErr = command.Wait()
+			p.releaseReap()
+			close(p.waitDone)
+		}()
 	})
-	p.releaseReap()
-	return p.waitErr
+	return p.waitDone, nil
 }
 
 func (p *delegatedProcess) Usage() (Usage, error) { return p.group.Usage() }
 
 func (p *delegatedProcess) Finish(ctx context.Context) (Usage, error) {
+	ctx, cancel := context.WithTimeout(ctx, p.cleanupTimeout)
+	defer cancel()
 	p.mu.Lock()
 	p.finishing = true
 	command := p.command
@@ -104,11 +126,31 @@ func (p *delegatedProcess) Finish(ctx context.Context) (Usage, error) {
 	usage, err := p.group.Finish(ctx)
 	if command == nil {
 		p.releaseReap()
-	} else if err == nil {
-		// Group cleanup has stopped every descendant. Joining the same Wait
-		// owner also drains os/exec's pipe bookkeeping before custody returns.
-		// A nonzero child exit is an execution result, not cleanup uncertainty.
-		_ = p.Wait()
+	} else {
+		// A parent-side pipe writer can still block after every descendant has
+		// stopped. Keep the reap hold until the sole wait owner really returns;
+		// a cleanup deadline must not turn that blocked writer into free capacity.
+		done, waitErr := p.startWait()
+		if waitErr != nil {
+			p.quarantine()
+			return usage, ErrQuarantined
+		}
+		if err != nil {
+			// Keep a wait owner even when domain cleanup needs a later retry.
+			return usage, err
+		}
+		select {
+		case <-done:
+			// A nonzero child exit is execution failure, not uncertain cleanup.
+		case <-ctx.Done():
+			select {
+			case <-done:
+				return usage, nil
+			default:
+			}
+			p.quarantine()
+			return usage, ErrQuarantined
+		}
 	}
 	return usage, err
 }
