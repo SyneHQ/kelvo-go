@@ -52,7 +52,7 @@ func (o *Opener) Open(parent context.Context, request transportbroker.OpenReques
 	if raw == nil {
 		return nil, setupError(ctx)
 	}
-	conn := &tunnelConn{Conn: raw, raw: raw, authority: binding.Authority}
+	conn := &tunnelConn{conn: raw, raw: raw, authority: binding.Authority}
 	if err != nil {
 		return reject(conn, setupError(ctx))
 	}
@@ -85,7 +85,7 @@ func (o *Opener) Open(parent context.Context, request transportbroker.OpenReques
 		return certificate, nil
 	}
 	secure := tls.Client(raw, config)
-	conn.Conn = secure
+	conn.conn = secure
 	if secure.HandshakeContext(ctx) != nil {
 		return reject(conn, setupError(ctx))
 	}
@@ -137,7 +137,7 @@ func reject(conn *tunnelConn, err error) (net.Conn, error) {
 }
 
 type tunnelConn struct {
-	net.Conn
+	conn      net.Conn
 	raw       net.Conn
 	reader    *bufio.Reader
 	authority string
@@ -149,7 +149,7 @@ func (c *tunnelConn) Read(p []byte) (int, error) {
 	if c.reader != nil {
 		return c.reader.Read(p)
 	}
-	return c.Conn.Read(p)
+	return c.conn.Read(p)
 }
 
 // Closing the raw TCP socket cannot wait for a TLS close_notify write. Native
@@ -165,7 +165,7 @@ func (c *tunnelConn) Close() error {
 
 func (c *tunnelConn) RemoteAddr() net.Addr { return sourceAddress(c.authority) }
 func (c *tunnelConn) CloseWrite() error {
-	if conn, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+	if conn, ok := c.conn.(interface{ CloseWrite() error }); ok {
 		return conn.CloseWrite()
 	}
 	return transportbroker.ErrUnsupported
@@ -176,3 +176,9 @@ type sourceAddress string
 
 func (sourceAddress) Network() string  { return "tcp" }
 func (a sourceAddress) String() string { return string(a) }
+
+func (c *tunnelConn) Write(p []byte) (int, error)        { return c.conn.Write(p) }
+func (c *tunnelConn) LocalAddr() net.Addr                { return c.conn.LocalAddr() }
+func (c *tunnelConn) SetDeadline(t time.Time) error      { return c.conn.SetDeadline(t) }
+func (c *tunnelConn) SetReadDeadline(t time.Time) error  { return c.conn.SetReadDeadline(t) }
+func (c *tunnelConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWriteDeadline(t) }

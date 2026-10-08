@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -64,6 +65,15 @@ func TestOpenVerifiedMTLSPreservesPayloadHalfCloseAndSourceAuthority(t *testing.
 		t.Fatal(err)
 	}
 	defer conn.Close()
+	// A driver must not be able to replace the outer TLS transport with a
+	// different connection through an exported embedded interface.
+	replacement, unusedPeer := net.Pipe()
+	defer replacement.Close()
+	defer unusedPeer.Close()
+	_ = replacement.SetDeadline(time.Now())
+	if field := reflect.ValueOf(conn).Elem().FieldByName("Conn"); field.IsValid() && field.CanSet() {
+		field.Set(reflect.ValueOf(replacement))
+	}
 	cancel() // Setup cancellation no longer owns an accepted broker connection.
 	if conn.RemoteAddr().String() != request.Binding.Authority || conn.RemoteAddr().Network() != "tcp" {
 		t.Fatal("proxy replaced original source authority")
