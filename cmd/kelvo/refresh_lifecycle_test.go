@@ -71,10 +71,15 @@ func TestServeClusterPreservesLifecycleFailuresThroughShutdown(t *testing.T) {
 			defer ln.Close()
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			closed := false
-			err = serveCluster(ctx, ln, tc, failedDrainFixture{test.failure, test.wait}, func() { closed = true }, 20*time.Millisecond)
-			if !errors.Is(err, test.want) || !closed {
-				t.Fatal("shutdown lost its lifecycle failure or skipped close", err, closed)
+			closed := make(chan struct{})
+			err = serveCluster(ctx, ln, tc, failedDrainFixture{test.failure, test.wait}, func() { close(closed) }, 20*time.Millisecond)
+			if !errors.Is(err, test.want) {
+				t.Fatal("shutdown lost its lifecycle failure", err)
+			}
+			select {
+			case <-closed:
+			default:
+				t.Fatal("shutdown skipped close")
 			}
 		})
 	}
