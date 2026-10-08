@@ -61,6 +61,10 @@ PostgreSQL cancellation allows 5 seconds for a new connection, verified TLS and 
 
 Cancellation remains best effort during a network partition. A returned deadline does not prove the source query stopped; retain source-side query limits. The opt-in `TestLiveCancellationWaitsForDelayedTLSCancelAndPreservesOtherBackend` regression uses `KELVO_TEST_POSTGRES_CANCEL_DSN` and optional `KELVO_TEST_POSTGRES_CANCEL_CA_PEM` to verify a delayed TLS cancellation against a real PostgreSQL backend without cancelling its concurrent peer.
 
+Native `postgres` and `postgresql` queries also set a transaction-local `statement_timeout` from the remaining request budget. Lower, nonzero database settings remain in effect. Rollback restores the session setting. Kelvo rejects budgets below one millisecond and caps longer budgets at PostgreSQL's integer-millisecond maximum.
+
+PostgreSQL starts this relative timeout when it receives each statement. Network delay and privileged source code can prevent an exact request-wide deadline guarantee. Other PostgreSQL-wire adapters retain their existing timeout behavior until their settings are qualified. See [PostgreSQL timeouts](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-STATEMENT-TIMEOUT) and [SET LOCAL](https://www.postgresql.org/docs/current/sql-set.html). The live regression uses `KELVO_TEST_POSTGRES_DEADLINE_DSN` and optional `KELVO_TEST_POSTGRES_DEADLINE_CA_PEM`. It checks source timeout and session restoration while the query's client context stays active.
+
 Gateway `/health` and `/ready` bypass ordinary request permits. Readiness requires healthy lifecycle/broker state and at least one ready worker per configured tenant. [Worker checks](worker-coordination.md) use cached, verified mTLS probes; they do not reserve capacity or query sources.
 
 ## Dataset diagnostics and required readiness
