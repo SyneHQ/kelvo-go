@@ -39,6 +39,8 @@ type Dialect struct {
 	ValidateSource    func(catalog.Source) error
 	OpenSourceDB      func(catalog.Source, string) (*sql.DB, error)
 	AllowDollarParams bool
+	// ConfigureTransaction applies source-specific limits inside the transaction.
+	ConfigureTransaction func(context.Context, *sql.Tx) error
 	// ErrorCode maps driver errors to a bounded public classification, never text.
 	ErrorCode func(error) string
 }
@@ -151,6 +153,11 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	if e.dialect.ReadOnlySession != "" {
 		if _, err = tx.ExecContext(ctx, e.dialect.ReadOnlySession); err != nil {
 			return stats, e.sourceError(ctx, err, "Could not enforce read-only source transaction")
+		}
+	}
+	if e.dialect.ConfigureTransaction != nil {
+		if err = e.dialect.ConfigureTransaction(ctx, tx); err != nil {
+			return stats, e.sourceError(ctx, err, "Could not apply source transaction limits")
 		}
 	}
 	rows, err := tx.QueryContext(ctx, normalizedSQL, values...)

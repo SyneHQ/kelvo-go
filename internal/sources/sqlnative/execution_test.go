@@ -22,6 +22,7 @@ type fakeScenario struct {
 	nextErr            error
 	second, cancel     bool
 	commits, rollbacks int
+	queries            int
 }
 
 var fakeState struct {
@@ -46,6 +47,7 @@ func (fakeConn) BeginTx(context.Context, driver.TxOptions) (driver.Tx, error) { 
 func (fakeConn) QueryContext(ctx context.Context, _ string, _ []driver.NamedValue) (driver.Rows, error) {
 	fakeState.Lock()
 	s := fakeState.s
+	s.queries++
 	fakeState.Unlock()
 	if s.cancel {
 		<-ctx.Done()
