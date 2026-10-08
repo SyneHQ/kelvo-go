@@ -60,7 +60,7 @@ func newLifecycleFixture(t *testing.T, release func()) (*delegatedProcess, *life
 		t.Fatal(err)
 	}
 	group := &lifecycleGroup{complete: custody.Complete}
-	process := &delegatedProcess{group: group, releaseReap: reaped}
+	process := &delegatedProcess{group: group, releaseReap: reaped, cleanupTimeout: 3 * time.Second, quarantine: func() {}}
 	t.Cleanup(func() {
 		group.mu.Lock()
 		group.fail = nil
@@ -89,6 +89,70 @@ func TestDelegatedProcessHelper(t *testing.T) {
 		os.Exit(0)
 	case "exit":
 		os.Exit(0)
+	case "output":
+		_, _ = os.Stdout.Write([]byte("probe"))
+		os.Exit(0)
+	}
+}
+
+type blockedLifecycleWriter struct {
+	once    sync.Once
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (w *blockedLifecycleWriter) Write(value []byte) (int, error) {
+	w.once.Do(func() { close(w.entered) })
+	<-w.release
+	return len(value), nil
+}
+
+func TestProcessFinishDeadlineRetainsBlockedWait(t *testing.T) {
+	for _, callerDeadline := range []bool{true, false} {
+		t.Run(map[bool]string{true: "caller-deadline", false: "manager-deadline"}[callerDeadline], func(t *testing.T) {
+			var releases, drained atomic.Int32
+			process, _ := newLifecycleFixture(t, func() { releases.Add(1) })
+			process.quarantine = func() { drained.Add(1) }
+			writer := &blockedLifecycleWriter{entered: make(chan struct{}), release: make(chan struct{})}
+			var unblock sync.Once
+			t.Cleanup(func() { unblock.Do(func() { close(writer.release) }) })
+			command := lifecycleCommand(t, "output")
+			command.Stdout = writer
+			if err := process.Start(command); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-writer.entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("child did not reach the blocked output writer")
+			}
+			ctx := context.Background()
+			if callerDeadline {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 25*time.Millisecond)
+				defer cancel()
+			} else {
+				process.cleanupTimeout = 25 * time.Millisecond
+			}
+			finished := make(chan error, 1)
+			go func() { _, err := process.Finish(ctx); finished <- err }()
+			select {
+			case err := <-finished:
+				if !errors.Is(err, ErrQuarantined) || releases.Load() != 0 || drained.Load() != 1 {
+					t.Fatalf("blocked wait lost its custody or deadline: err=%v releases=%d drained=%d", err, releases.Load(), drained.Load())
+				}
+			case <-time.After(time.Second):
+				t.Fatal("Finish ignored its cleanup deadline")
+			}
+			unblock.Do(func() { close(writer.release) })
+			_ = process.Wait()
+			if releases.Load() != 1 {
+				t.Fatal("actual wait completion did not release existing custody")
+			}
+			if err := process.Start(lifecycleCommand(t, "exit")); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("deadline reopened process admission: %v", err)
+			}
+		})
 	}
 }
 
