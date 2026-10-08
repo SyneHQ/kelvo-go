@@ -81,6 +81,8 @@ A verified `429` means this submission was not admitted. It does not settle an e
 | `failed` | Read failure or known partial effects | Inspect step receipts |
 | `outcome_unknown` | Source effects cannot be established | Reconcile with the source; never replay automatically |
 
+Workers stop accepting operations when receipt persistence cannot be verified, resource cleanup fails, or a confirmed operation has a delivery or audit error. A confirmed committed receipt stays committed; lifecycle failure reporting never replays a source write. Shutdown reports these failures, including an expired cleanup deadline.
+
 Use a stable idempotency key for retries of the same mutation. A new key creates a new operation. Retention is bounded; keys are not permanent deduplication records.
 
 If the submission ID is lost, `POST /v1/operations/lookup` with `version: 1`, the original `idempotency_key` and `request_sha256`, plus a current operation grant. Lookup reads existing custody only. A `404` can mean retention expired; reconcile the source before deciding what to do next.
