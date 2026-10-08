@@ -388,7 +388,7 @@ func (r *ExportRuntime) RunExport(parent context.Context, claimed ExportSnapshot
 	if err != nil {
 		return result, errors.Join(err, r.failExport(j.ID, err, false))
 	}
-	processCustody, _ := containment.NewCustody(reservationBudget.Release)
+	processCustody, _ := containment.NewReservationCustody(reservationBudget)
 	defer processCustody.Complete()
 	ctx = containment.WithCustody(ctx, processCustody)
 	identity, err := exportIdentity(r.cfg.Policy, j.Authority)
