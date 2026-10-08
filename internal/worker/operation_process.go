@@ -44,10 +44,10 @@ type OperationCleanupObserver interface {
 	OperationCleaned(context.Context) error
 }
 
-type operationCleanupState struct{ prepared, process, scratch bool }
+type operationCleanupState struct{ prepared, process, scratch, pendingIO bool }
 
 func (state operationCleanupState) notify(sink query.Sink) error {
-	if !state.prepared || !state.process || !state.scratch {
+	if !state.prepared || !state.process || !state.scratch || state.pendingIO {
 		return nil
 	}
 	observer, ok := sink.(OperationCleanupObserver)
@@ -123,6 +123,7 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	input := adapter.ProcessRequest{OperationID: operationID, RequestSHA256: requestSHA256}
 	receipt = rejectedOperation(input, "INVALID_ARGUMENT")
 	var custody *containment.Custody
+	var commandIO *commandIO
 	var cleanup operationCleanupState
 	defer func() {
 		if custody != nil {
@@ -132,6 +133,15 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 			receipt, resultErr = finalizer.FinalizeOperation(receipt, resultErr)
 		}
 		resultErr = errors.Join(resultErr, cleanup.notify(sink))
+	}()
+	defer func() {
+		if commandIO != nil {
+			err := commandIO.Finish(context.Background())
+			cleanup.pendingIO = errors.Is(err, containment.ErrQuarantined)
+			if err != nil {
+				resultErr = errors.Join(resultErr, operationFailure("RESOURCE_EXHAUSTED"))
+			}
+		}
 	}()
 	if parent == nil || resolve == nil || e == nil || e.Limits.Validate() != nil || !operations.ValidID(operationID) || !operations.ValidDigest(requestSHA256) {
 		return receipt, operationFailure("INVALID_ARGUMENT")
@@ -308,7 +318,6 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	configureProcess(command)
 	command.Dir = operationDirectory
 	command.Env = operationEnvironment(operationDirectory, e.Limits.Threads)
-	command.Stderr = io.Discard
 	command.WaitDelay = query.WorkerWaitDelay
 	if workspace.lease == nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("CONFIGURATION_ERROR")
@@ -329,22 +338,15 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 		command.ExtraFiles = append(command.ExtraFiles, nil)          // fd6 reserved for snapshots.
 		command.ExtraFiles = append(command.ExtraFiles, jdbcFiles...) // fd7 Java, fd8+ JARs, final JRE directory.
 	}
-	command.Stdin = &operationPayloadReader{ctx: ctx, raw: payload}
-	stdout, err := command.StdoutPipe()
+	commandIO, err = newCommandIO(ctx, command, payload, io.Discard, custody, e.Containment.QuarantineOperation)
 	if err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
-	defer stdout.Close()
+	cleanup.pendingIO = true
 	if err := operationBinaryCurrent(binary, identity); err != nil || (sourceFile != nil && operationBinaryCurrent(sourceFile, sourceIdentity) != nil) || (jdbcFiles != nil && jdbc.current() != nil) || ctx.Err() != nil || input.CredentialsValidUntil <= time.Now().Unix() {
-		if child, ok := command.Stdout.(*os.File); ok {
-			_ = child.Close()
-		}
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
-	if err := job.Start(command); err != nil {
-		if child, ok := command.Stdout.(*os.File); ok {
-			_ = child.Close()
-		}
+	if err := commandIO.Start(func() error { return job.Start(command) }); err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
 	// Past Start, unknown source effects must never become a no-effect error.
@@ -358,42 +360,50 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 		}
 		received <- read
 	}()
-	stopClose := context.AfterFunc(ctx, func() { _ = stdout.Close() })
-	defer stopClose()
 	var readErr error
 	var observed query.Stats
 	hasher := sha256.New()
 	var candidate *os.File
+	defer func() {
+		if candidate != nil {
+			_ = candidate.Close()
+			_ = os.Remove(candidate.Name())
+		}
+	}()
 	var candidateBytes int64
-	if fileResult {
-		candidate, readErr = os.CreateTemp(workspace.path, ".file-candidate-")
-		if readErr == nil {
-			defer candidate.Close()
-			defer os.Remove(candidate.Name())
-			maximum := min(int64(50<<20), int64(e.Limits.MaxTempMB)<<20)
-			candidateBytes, readErr = io.CopyBuffer(io.MultiWriter(candidate, hasher), io.LimitReader(stdout, maximum+1), make([]byte, 64<<10))
-			if candidateBytes > maximum {
-				readErr = operationFailure("RESOURCE_EXHAUSTED")
+	readErr = commandIO.Consume(func(stdout io.Reader) error {
+		if fileResult {
+			candidate, readErr = os.CreateTemp(workspace.path, ".file-candidate-")
+			if readErr == nil {
+				maximum := min(int64(50<<20), int64(e.Limits.MaxTempMB)<<20)
+				candidateBytes, readErr = io.CopyBuffer(io.MultiWriter(candidate, hasher), io.LimitReader(stdout, maximum+1), make([]byte, 64<<10))
+				if candidateBytes > maximum {
+					readErr = operationFailure("RESOURCE_EXHAUSTED")
+				}
+			}
+		} else if arrowResult {
+			limits := e.Limits
+			limits.MaxRows = input.Limits.MaxRows
+			limits.MaxBytes = input.Limits.MaxBytes
+			observed, readErr = e.readIPC(ctx, io.TeeReader(stdout, hasher), limits, sink)
+		} else {
+			var extra [1]byte
+			n, err := stdout.Read(extra[:])
+			if n != 0 || !errors.Is(err, io.EOF) {
+				readErr = operationFailure("QUERY_FAILED")
 			}
 		}
-	} else if arrowResult {
-		limits := e.Limits
-		limits.MaxRows = input.Limits.MaxRows
-		limits.MaxBytes = input.Limits.MaxBytes
-		observed, readErr = e.readIPC(ctx, io.TeeReader(stdout, hasher), limits, sink)
-	} else {
-		var extra [1]byte
-		n, err := stdout.Read(extra[:])
-		if n != 0 || !errors.Is(err, io.EOF) {
-			readErr = operationFailure("QUERY_FAILED")
-		}
-	}
+		return readErr
+	})
 	if readErr != nil {
 		cancel()
 	}
 	// Keep the leader unreaped until its descendants receive final SIGKILL.
 	cleanupErr := finishProcess(command, ctx.Err() != nil)
 	waitErr := job.Wait()
+	if ioErr := commandIO.Finish(context.Background()); ioErr != nil {
+		waitErr = errors.Join(waitErr, ioErr)
+	}
 	// A receipt reader cannot hold admission indefinitely if a descendant kept
 	// fd3 open despite process-group cleanup. Cgroup cleanup runs in the defer.
 	_ = readReceipt.SetReadDeadline(time.Now().Add(3 * time.Second))
@@ -423,24 +433,6 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 
 func operationEnvironment(directory string, threads int) []string {
 	return []string{"PATH=/usr/bin:/bin", "HOME=" + directory, "TMPDIR=" + directory, "GOMAXPROCS=" + fmt.Sprint(threads), "KELVO_OPERATION_PROCESS=1"}
-}
-
-type operationPayloadReader struct {
-	ctx    context.Context
-	raw    []byte
-	offset int
-}
-
-func (r *operationPayloadReader) Read(out []byte) (int, error) {
-	if err := r.ctx.Err(); err != nil {
-		return 0, err
-	}
-	if r.offset == len(r.raw) {
-		return 0, io.EOF
-	}
-	n := copy(out, r.raw[r.offset:])
-	r.offset += n
-	return n, nil
 }
 
 type operationReceiptRead struct {

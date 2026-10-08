@@ -361,6 +361,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	if err != nil {
 		return stats, err
 	}
+	defer clear(payload)
 	command, args := e.Binary, []string{"worker"}
 	if e.SandboxPath != "" {
 		args, err = SandboxCommand(e.Binary, dir, cfg, e.Limits)
@@ -398,9 +399,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 			}
 		}
 	}
-	cmd.Stdin = bytes.NewReader(payload)
 	var stderr boundedBuffer
-	cmd.Stderr = &stderr
 	cmd.WaitDelay = query.WorkerWaitDelay
 	var processJob containment.Process
 	processFinished := false
@@ -441,30 +440,39 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	if dynamic && connectionValidUntil <= time.Now().Unix() {
 		return stats, connectionUnavailable()
 	}
-	stdout, err := cmd.StdoutPipe()
+	var quarantine func()
+	if e.Containment != nil {
+		quarantine = e.Containment.QuarantineOperation
+	}
+	commandIO, err := newCommandIO(ctx, cmd, payload, &stderr, custody, quarantine)
 	if err != nil {
 		return stats, err
 	}
+	defer func() {
+		if err := commandIO.Finish(context.Background()); err != nil {
+			resultErr = errors.Join(resultErr, err)
+		}
+	}()
 	phases.enter(telemetry.PhaseExecutionDelivery)
 	var childStarted time.Time
 	if e.Metrics != nil {
 		childStarted = time.Now()
 	}
-	if processJob != nil {
-		err = processJob.Start(cmd)
-	} else {
-		err = cmd.Start()
-	}
-	if err != nil {
-		_ = stdout.Close()
-		if childPipe, ok := cmd.Stdout.(*os.File); ok {
-			_ = childPipe.Close()
+	err = commandIO.Start(func() error {
+		if processJob != nil {
+			return processJob.Start(cmd)
 		}
+		return cmd.Start()
+	})
+	if err != nil {
 		return stats, err
 	}
-	stopClose := context.AfterFunc(ctx, func() { _ = stdout.Close() })
-	defer stopClose()
-	observed, readErr := e.readIPC(ctx, stdout, e.Limits, phases.sink(sink))
+	var observed query.Stats
+	readErr := commandIO.Consume(func(stdout io.Reader) error {
+		var err error
+		observed, err = e.readIPC(ctx, stdout, e.Limits, phases.sink(sink))
+		return err
+	})
 	phases.enter(telemetry.PhaseCleanup)
 	if readErr != nil {
 		cancel()
@@ -490,8 +498,10 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 			cleanupErr = containedErr
 		}
 	}
-	var outcome Outcome
-	decodeErr := json.Unmarshal(bytes.TrimSpace(stderr.Bytes()), &outcome)
+	if ioErr := commandIO.Finish(context.Background()); ioErr != nil {
+		waitErr = errors.Join(waitErr, ioErr)
+	}
+	outcome, decodeErr := decodeCommandOutcome(commandIO, &stderr)
 	if e.Metrics != nil {
 		terminated := cmd.ProcessState != nil && cmd.ProcessState.ExitCode() == -1
 		recordChildTiming(e.Metrics, ctx, outcome, decodeErr, terminated, childBound)
