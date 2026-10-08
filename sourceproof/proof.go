@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/netip"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,9 @@ const (
 	contextLabel     = "kelvo.private-source-proof.v1."
 )
 
+var routeName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+var tokenID = regexp.MustCompile(`^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
+
 var ErrInvalid = errors.New("private source proof does not match the required scope")
 
 // Scope is exact, immutable authority. Callers obtain Expected scope from a
@@ -44,6 +48,9 @@ type Scope struct {
 	Source           string `json:"source"`
 	SourceRevision   string `json:"source_revision"`
 	Authority        string `json:"authority"`
+	RouteID          string `json:"route_id"`
+	TokenID          string `json:"token_id"`
+	BindingVersion   int64  `json:"binding_version"`
 	Kind             string `json:"kind"`
 	ExecutionID      string `json:"execution_id"`
 	GrantSHA256      string `json:"grant_sha256"`
@@ -148,7 +155,7 @@ func validate(c Claims, now time.Time) error {
 	if err != nil || !text(s.WorkerIdentity, 512) || identity.Scheme != "spiffe" || identity.Host == "" || identity.User != nil || identity.RawQuery != "" || identity.ForceQuery || identity.Fragment != "" || identity.Opaque != "" || identity.RawPath != "" {
 		return ErrInvalid
 	}
-	if !authority(s.Authority) {
+	if !authority(s.Authority) || !routeName.MatchString(s.RouteID) || !tokenID.MatchString(s.TokenID) || s.BindingVersion < 1 || s.BindingVersion > 2147483647 {
 		return ErrInvalid
 	}
 	return nil
