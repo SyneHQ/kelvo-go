@@ -355,6 +355,7 @@ def main():
     parser.add_argument("--api-manifest", type=Path)
     parser.add_argument("--source-ca-cert", type=Path)
     parser.add_argument("--source-ca-key", type=Path)
+    parser.add_argument("--source-cpus", choices=("0.5", "1"), default="1", help="CPU quota for each temporary database container")
     args = parser.parse_args()
     if bool(args.api_source) != bool(args.api_manifest) or bool(args.source_ca_cert) != bool(args.source_ca_key):
         parser.error("paired API source manifest and fixture CA paths required")
@@ -372,11 +373,13 @@ def main():
     out.mkdir(mode=0o700)
     manifest = json.loads(args.source_manifest.read_text())
     report = {"scope": "real Node, TLS PostgreSQL/MySQL, tenant-scoped NATS, on-demand resolver, retained Arrow",
-              "source_digest": manifest["source_digest"], "passed": False, "stages": [], "skips": [], "failures": [], "cleanup": {}}
+              "source_digest": manifest["source_digest"], "source_cpus": args.source_cpus,
+              "passed": False, "stages": [], "skips": [], "failures": [], "cleanup": {}}
     docker = ["sudo", "-n", "docker"]
     nonce = secrets.token_hex(8)
     network = "kelvo-operation-" + nonce
     names = {kind: network + "-" + kind for kind in (("postgres", "mysql", "metadata") if args.api_source else ("postgres", "mysql"))}
+    report["fixture_scope"] = {"label": nonce, "network": network, "containers": names}
     created = {}
     network_id = None
     broker = None
@@ -545,13 +548,20 @@ def main():
         stage = "databases"
         env_file = out / "database.env"
         write(env_file, "POSTGRES_PASSWORD=" + passwords["admin"] + "\nPOSTGRES_DB=kelvo_fixture\nMYSQL_ROOT_PASSWORD=" + passwords["admin"] + "\nMYSQL_DATABASE=kelvo_fixture\n")
-        common = ["--network", network_id, "--memory", "1g", "--memory-swap", "1g", "--cpus", "1", "--pids-limit", "256", "--security-opt", "no-new-privileges:true", "--label", "kelvo.operation.fixture=" + nonce, "--env-file", str(env_file)]
+        common = ["--network", network_id, "--memory", "1g", "--memory-swap", "1g", "--cpus", args.source_cpus, "--pids-limit", "256", "--security-opt", "no-new-privileges:true", "--label", "kelvo.operation.fixture=" + nonce, "--env-file", str(env_file)]
         options = {"postgres": ["-c", "ssl=on", "-c", "ssl_cert_file=/certs/postgres.crt", "-c", "ssl_key_file=/certs/postgres.key", "-c", "ssl_ca_file=/certs/ca.crt", "-c", "shared_buffers=128MB"],
                    "mysql": ["--require-secure-transport=ON", "--ssl-ca=/certs/ca.crt", "--ssl-cert=/certs/mysql.crt", "--ssl-key=/certs/mysql.key", "--innodb-buffer-pool-size=128M", "--log-bin-trust-function-creators=ON"]}
         options["metadata"] = ["-c", "shared_buffers=64MB", "-c", "max_connections=32"]
         for kind in names:
             created[kind] = None  # Retain creation intent even if Docker loses its reply.
             created[kind] = run(docker + ["create", "--pull=never", "--name", names[kind], "--ip", addresses[kind]] + common + (["--mount", "type=bind,src=" + str(certs / kind) + ",dst=/certs,readonly"] if kind != "metadata" else []) + [images[kind]] + options[kind]).stdout.decode().strip()
+            current = json.loads(run(docker + ["inspect", created[kind]]).stdout)[0]
+            expected_limits = {"NanoCpus": int(float(args.source_cpus) * 1_000_000_000), "Memory": 1 << 30,
+                               "MemorySwap": 1 << 30, "PidsLimit": 256}
+            limits = {key: current["HostConfig"].get(key) for key in expected_limits}
+            if current["Id"] != created[kind] or current["State"]["Running"] or limits != expected_limits:
+                raise RuntimeError("source container resource limits changed before start")
+            report.setdefault("source_limits", {})[kind] = {"id": created[kind], **limits}
             run(docker + ["start", created[kind]])
         admin_file = out / "mysql-admin.cnf"
         write(admin_file, "[client]\nuser=root\npassword=" + passwords["admin"] + "\n")
