@@ -3,7 +3,7 @@ package main
 
 import (
 	"context"
-	"io"
+	"os"
 	"os/exec"
 	"time"
 
@@ -23,7 +23,7 @@ func verifyContainmentStartup(parent context.Context, executor *worker.Executor)
 	if err != nil {
 		return err
 	}
-	custody, _ := containment.NewCustody(reservation.Release)
+	custody, _ := containment.NewReservationCustody(reservation)
 	defer custody.Complete()
 	hold, _ := custody.Hold()
 	limits, err := executor.ContainmentBudget.ProcessLimits(int64(executor.Limits.MemoryMB), executor.Limits.Threads)
@@ -31,7 +31,7 @@ func verifyContainmentStartup(parent context.Context, executor *worker.Executor)
 		hold()
 		return err
 	}
-	job, err := executor.Containment.PrepareProcess(limits, hold)
+	job, err := executor.Containment.PrepareProcess(custody, limits, hold)
 	if err != nil {
 		hold()
 		return query.NewError("CONFIGURATION_ERROR", "Worker containment startup probe could not prepare")
@@ -42,10 +42,18 @@ func verifyContainmentStartup(parent context.Context, executor *worker.Executor)
 		}
 	}()
 	command := exec.CommandContext(ctx, executor.Binary, "version")
+	if containment.IsNamespaceDomain(executor.Containment) {
+		command = exec.Command(executor.Binary, "version")
+	}
+	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	defer null.Close()
+	command.Dir = "/"
 	command.Env = []string{"GOMAXPROCS=1"}
-	command.Stdout = io.Discard
-	command.Stderr = io.Discard
-	if err := job.Start(command); err != nil {
+	command.Stdin, command.Stdout, command.Stderr = null, null, null
+	if err := job.Start(ctx, command); err != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Worker containment requires usable pre-start cgroup placement inside the delegated hierarchy")
 	}
 	if err := job.Wait(); err != nil {

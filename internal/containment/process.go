@@ -3,10 +3,50 @@ package containment
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 )
+
+// ErrLaunchUncertain means the OS may already have executed the child. Callers
+// must not classify this error as no source effect or safe to replay.
+var ErrLaunchUncertain = errors.New("native process may have started; source effects are unknown")
+
+// Domain owns the native process boundary used by a worker. The application's
+// existing admission pool owns query, refresh and export reservations.
+type Domain interface {
+	PrepareProcess(*Custody, Limits, func()) (Process, error)
+	Err() error
+	QuarantineOperation()
+	SetOnQuarantine(func(error))
+	MatchesConfig(Config) bool
+	Close(context.Context) error
+}
+
+// CheckReservation applies the internal namespace backend's full-container
+// admission contract before connection resolution. Delegated groups keep their
+// existing independent process limits and do not require a pool binding.
+func CheckReservation(domain Domain, custody *Custody) error {
+	if checked, ok := domain.(interface{ checkReservation(*Custody) error }); ok {
+		return checked.checkReservation(custody)
+	}
+	return nil
+}
+
+// IsNamespaceDomain identifies the internal PID-1 backend. Worker command
+// construction must not install an os/exec context watcher for that backend.
+func IsNamespaceDomain(domain Domain) bool {
+	_, ok := domain.(interface{ namespaceDomain() })
+	return ok
+}
+
+// ChildExit is native process termination, not proof of output or domain cleanup.
+type ChildExit struct {
+	Code   int
+	Signal syscall.Signal
+}
 
 // Process owns a command from Start through Wait and resource cleanup. After
 // Start, callers must use Wait instead of exec.Cmd.Wait or os.Process.Wait.
@@ -14,8 +54,10 @@ import (
 // both complete. Usage belongs to the containment domain, including descendants.
 // This interface does not enable a container executor or a PID-1 reaper.
 type Process interface {
-	Start(*exec.Cmd) error
+	Start(context.Context, *exec.Cmd) error
+	Terminate(time.Duration) error
 	Wait() error
+	Exit() (ChildExit, bool)
 	Usage() (Usage, error)
 	Finish(context.Context) (Usage, error)
 }
@@ -59,19 +101,24 @@ type delegatedProcess struct {
 	waitOnce       sync.Once
 	waitDone       chan struct{}
 	waitErr        error
+	exit           ChildExit
+	exited         bool
 	releaseReap    func()
 	cleanupTimeout time.Duration
 	quarantine     func()
 }
 
-func (p *delegatedProcess) Start(command *exec.Cmd) error {
+func (p *delegatedProcess) Start(ctx context.Context, command *exec.Cmd) error {
 	p.mu.Lock()
-	if command == nil || p.startAttempted || p.finishing {
+	if ctx == nil || command == nil || p.startAttempted || p.finishing {
 		p.mu.Unlock()
 		return ErrInvalid
 	}
 	p.startAttempted = true
-	err := p.group.Start(command)
+	err := ctx.Err()
+	if err == nil {
+		err = p.group.Start(command)
+	}
 	if err == nil {
 		p.command = command
 	}
@@ -107,11 +154,20 @@ func (p *delegatedProcess) startWait() (<-chan struct{}, error) {
 		// competes with this owner.
 		go func() {
 			p.waitErr = command.Wait()
+			p.mu.Lock()
+			p.exit, p.exited = commandExit(command)
+			p.mu.Unlock()
 			p.releaseReap()
 			close(p.waitDone)
 		}()
 	})
 	return p.waitDone, nil
+}
+
+func (p *delegatedProcess) Exit() (ChildExit, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.exit, p.exited
 }
 
 func (p *delegatedProcess) Usage() (Usage, error) { return p.group.Usage() }
