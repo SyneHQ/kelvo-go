@@ -47,7 +47,9 @@ For each query **and refresh**, with configured DuckDB memory `M`:
 
 Each tree has zero swap, grouped OOM handling, a process-count cap, and CPU quota derived from `limits.threads`. Parent schema, codecs, and sinks still require measured service/container headroom. DuckDB materializes execution before Arrow delivery; these budgets do not promise bounded parent RSS.
 
-Reservations survive until the tree is proven empty and scratch is removed. Refresh reservations also span publication and pruning. Uncertain cleanup retains custody, drains admission/readiness, and reports failure; retrying cleanup never silently resumes admission.
+With configured resources, query reservations span process/scratch cleanup and durable result publication through Arrow EOS. Operation reservations also cover receipt persistence and prepared-resource cleanup; refresh reservations cover publication, pruning and staging cleanup.
+
+Uncertain cleanup retains capacity, drains admission/readiness and reports failure. Retrying cleanup never silently resumes admission.
 
 Recovery kills only inode-verified recorded trees. Unknown groups, corrupt records, or stale root identities fail closed. Recreating the service hierarchy with residual records requires operator repair: stop the owned service, verify its processes are gone, preserve the old state for inspection, then provision a fresh private state directory. Arbitrary reboot recovery is not automatic.
 
