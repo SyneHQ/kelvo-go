@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"net"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/operations"
@@ -32,6 +33,12 @@ type Connection struct {
 	// transient and may retain SRV/replica topology options for MongoDB.
 	Endpoint string
 	TLS      *tls.Config
+	// DialContext and DialCancellation are runtime-only, source-scoped hooks.
+	// PostgreSQL requires both hooks. MySQL uses only DialContext. A hook must
+	// open the requested source through its admitted transport or return an error.
+	// It must not fall back to a direct network connection after a denial.
+	DialContext      func(context.Context, string, string) (net.Conn, error) `json:"-"`
+	DialCancellation func(context.Context, string, string) (net.Conn, error) `json:"-"`
 }
 
 type Driver interface {

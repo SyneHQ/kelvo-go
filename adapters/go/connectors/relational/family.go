@@ -39,7 +39,7 @@ func (d PGFamily) Capabilities() operations.Capabilities {
 	return c
 }
 func (d PGFamily) Open(ctx context.Context, c adapter.Connection) (adapter.Session, error) {
-	if c.Engine != d.Engine || len(d.Capabilities().Operations) == 0 {
+	if c.Engine != d.Engine || len(d.Capabilities().Operations) == 0 || c.DialContext != nil || c.DialCancellation != nil {
 		return nil, adapter.ErrInvalid
 	}
 	c.Engine = "postgresql"
