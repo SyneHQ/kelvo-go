@@ -255,7 +255,7 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	}
 	input = resolved
 	// Resolvers never choose runtime descriptors or executable configuration.
-	if input.Runtime != nil {
+	if input.Runtime != nil || input.PrivateTransport != nil {
 		return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT")
 	}
 	var jdbcFiles []*os.File
