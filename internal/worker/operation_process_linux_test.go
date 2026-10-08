@@ -660,3 +660,17 @@ func TestContainedFileMutationPublishesOnlyVerifiedCandidate(t *testing.T) {
 		})
 	}
 }
+
+func TestContainedOperationRejectsResolverPrivateDescriptor(t *testing.T) {
+	executor, manager, pool := containedExecutor(t)
+	cfg := operationExecutable(t)
+	input := operationProcessInput(t, operations.StatementExecute, "fixture")
+	input.PrivateTransport = &adapter.PrivateTransport{ControlFD: 7}
+	receipt, err := executor.ExecuteResolvedOperation(context.Background(), cfg, input.OperationID, input.RequestSHA256, func(context.Context) (adapter.ProcessRequest, error) { return input, nil }, nil)
+	if err == nil || receipt.Outcome != operations.Rejected || receipt.Effect != operations.EffectNone {
+		t.Fatal("resolver supplied a private descriptor", receipt, err)
+	}
+	if pool.Snapshot().Active != 0 || manager.Status().Active != 0 {
+		t.Fatal("private descriptor rejection leaked custody")
+	}
+}

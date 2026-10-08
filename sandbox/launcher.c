@@ -20,6 +20,7 @@
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -341,6 +342,36 @@ static void install_dangerous_syscall_filter(void) {
 		die_errno("seccomp filter installation failed");
 }
 
+/* The private child can only use inherited sockets and parent-issued FDs.
+ * Deny io_uring too: its operations do not traverse syscall-number filters. */
+static void install_private_socket_filter(void) {
+#define DENY_PRIVATE(nr) BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, (nr), 0, 1), \
+	BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (EPERM & SECCOMP_RET_DATA))
+	struct sock_filter filter[] = {
+		BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
+		DENY_PRIVATE(SYS_socket),
+		DENY_PRIVATE(SYS_socketpair),
+		DENY_PRIVATE(SYS_connect),
+#ifdef SYS_io_uring_setup
+		DENY_PRIVATE(SYS_io_uring_setup),
+#endif
+#ifdef SYS_io_uring_enter
+		DENY_PRIVATE(SYS_io_uring_enter),
+#endif
+#ifdef SYS_io_uring_register
+		DENY_PRIVATE(SYS_io_uring_register),
+#endif
+		BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW),
+	};
+#undef DENY_PRIVATE
+	struct sock_fprog program = {
+		.len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
+		.filter = filter,
+	};
+	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &program) != 0)
+		die_errno("private socket filter installation failed");
+}
+
 static char *canonical_path(const char *path) {
 	char *resolved = realpath(path, NULL);
 	if (resolved == NULL)
@@ -427,14 +458,21 @@ static void add_operation_jdbc_rules(int ruleset, int jars) {
 int main(int argc, char **argv) {
 	/* Observe inherited fd6 before opening a ruleset or any runtime file. */
 	int has_operation_source = fcntl(6, F_GETFD) >= 0;
+	int has_fd7 = fcntl(7, F_GETFD) >= 0;
 	const char *reads[1024];
 	size_t read_count = 0;
 	const char *read_execs[64];
 	size_t read_exec_count = 0;
 	const char *write = NULL;
 	int jdbc_jars = 0;
+	int private_channel = 0;
 	int i = 1;
 	for (; i < argc && strcmp(argv[i], "--") != 0; ++i) {
+		if (strcmp(argv[i], "--operation-private") == 0) {
+			if (private_channel) die("duplicate private channel argument");
+			private_channel = 1;
+			continue;
+		}
 		if (strcmp(argv[i], "--operation-jdbc") == 0) {
 			if (++i == argc || jdbc_jars != 0 || argv[i][0] < '1' || argv[i][0] > '9')
 				die("invalid JDBC runtime argument");
@@ -474,6 +512,21 @@ int main(int argc, char **argv) {
 	if (jdbc_jars && (has_operation_source || strcmp(argv[i + 1], "/proc/self/fd/5") != 0))
 		die("JDBC runtime requires the pinned operation entrypoint");
 
+	if (private_channel) {
+		if (jdbc_jars || has_operation_source || !has_fd7 || strcmp(argv[i + 1], "/proc/self/fd/5") != 0)
+			die("private channel requires a pinned native operation");
+		int kind = 0, domain = 0;
+		socklen_t kind_size = sizeof(kind), domain_size = sizeof(domain);
+		struct sockaddr_storage peer;
+		socklen_t peer_size = sizeof(peer);
+		if (getsockopt(7, SOL_SOCKET, SO_TYPE, &kind, &kind_size) != 0 || kind != SOCK_SEQPACKET ||
+		    getsockopt(7, SOL_SOCKET, SO_DOMAIN, &domain, &domain_size) != 0 || domain != AF_UNIX ||
+		    getpeername(7, (struct sockaddr *)&peer, &peer_size) != 0)
+			die("private channel descriptor is invalid");
+	} else if (has_fd7 && !jdbc_jars) {
+		die("unexpected operation descriptor");
+	}
+
 	int ruleset = create_ruleset();
 	add_runtime_paths(ruleset);
 	add_cgroup_paths(ruleset);
@@ -509,6 +562,8 @@ int main(int argc, char **argv) {
 		die_errno("Landlock enforcement failed");
 	close(ruleset);
 	install_dangerous_syscall_filter();
+	if (private_channel)
+		install_private_socket_filter();
 
 	argv[i + 1] = worker;
 	execv(worker, &argv[i + 1]);
