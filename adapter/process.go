@@ -25,6 +25,7 @@ type ProcessRequest struct {
 	Limits                ProcessLimits            `json:"limits"`
 	Source                ConnectionSpec           `json:"source"`
 	SourceFile            *filesnapshot.Descriptor `json:"source_file,omitempty"`
+	PrivateTransport      *PrivateTransport        `json:"private_transport,omitempty"`
 	Runtime               *JDBCRuntime             `json:"runtime,omitempty"`
 	AppTeam               string                   `json:"app_team,omitempty"`
 	Input                 []byte                   `json:"input,omitempty"`
@@ -94,6 +95,9 @@ func (r ProcessRequest) ValidateAt(now time.Time) error {
 		if len(v) > 64<<10 || !utf8.ValidString(v) || strings.ContainsRune(v, 0) {
 			return ErrInvalid
 		}
+	}
+	if err := r.validatePrivateTransport(); err != nil {
+		return err
 	}
 	if err := r.validateSourceFile(); err != nil {
 		return err
