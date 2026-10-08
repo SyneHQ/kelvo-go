@@ -71,7 +71,7 @@ def run(runtime_image, worker_image, run_id=None):
     require(len(token) == 16 and all(c in "0123456789abcdef" for c in token), "Invalid acceptance run identifier")
     label = "io.kelvo.worker-image-test"
     owned = []
-    report = {"ok": False, "scope": "Image packaging, native DuckDB/Arrow and fd6 adapter protocol; no cluster admission or live-provider qualification", "gates": {}}
+    report = {"ok": False, "scope": "Image packaging, native DuckDB/Arrow and fd6 adapter protocol; no cluster admission or live-provider qualification", "gates": {}, "runs": []}
 
     def docker(*args, check=True, payload=None, timeout=30):
         result = subprocess.run(command + list(args), input=payload, capture_output=True, timeout=timeout)
@@ -103,6 +103,14 @@ def run(runtime_image, worker_image, run_id=None):
         wire = json.dumps(payload(), separators=(",", ":")).encode() if callable(payload) else payload
         result = docker("start", "-a", "-i", cid, check=False, payload=wire, timeout=25)
         state = inspect(cid)["State"]
+        # Fixtures are synthetic and contain no credentials. Keep bounded
+        # diagnostics before asserting so a failed package is reviewable.
+        report["runs"].append({"image": image, "entrypoint": entrypoint,
+            "expected_success": success, "exit_code": state["ExitCode"],
+            "docker_exit_code": result.returncode, "oom_killed": state["OOMKilled"],
+            "running": state["Running"], "stdout_bytes": len(result.stdout),
+            "stdout_sha256": hashlib.sha256(result.stdout).hexdigest(),
+            "stderr": result.stderr[-8192:].decode(errors="replace")})
         require(not state["Running"] and not state["OOMKilled"], "Container did not finish without OOM")
         require((state["ExitCode"] == 0 and result.returncode == 0) == success, "Container exit status did not match the expected outcome")
         return result
@@ -157,7 +165,7 @@ def run(runtime_image, worker_image, run_id=None):
         discovery_failed = False
         try:
             # Also find a create that succeeded before its acknowledgement was lost.
-            discovered = docker("ps", "-aq", "--filter", "label=" + label + "=" + token).stdout.decode().split()
+            discovered = docker("ps", "-aq", "--no-trunc", "--filter", "label=" + label + "=" + token).stdout.decode().split()
             owned = list(dict.fromkeys(owned + discovered))
         except Exception:
             discovery_failed = True
@@ -169,7 +177,7 @@ def run(runtime_image, worker_image, run_id=None):
             except Exception:
                 failures.append(cid)
         try:
-            remaining = docker("ps", "-aq", "--filter", "label=" + label + "=" + token).stdout.decode().split()
+            remaining = docker("ps", "-aq", "--no-trunc", "--filter", "label=" + label + "=" + token).stdout.decode().split()
         except Exception:
             remaining = []
             discovery_failed = True
