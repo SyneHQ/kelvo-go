@@ -36,7 +36,22 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     else exit 2; fi \
     && cc -O2 -Wall -Wextra -Werror -std=c11 -o /out/kelvo-landlock sandbox/launcher.c
 
-FROM debian:bookworm-slim AS runtime
+FROM build AS adapter-build
+COPY adapters/go ./adapters/go
+# Build the optional adapter against this exact SDK checkout. Its published
+# module pin remains unchanged for consumers outside this image.
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go work init . ./adapters/go \
+    && sdk_version=$(awk '$1 == "github.com/SYNEHQ/kelvo-go" { print $2 }' adapters/go/go.mod) \
+    && test -n "$sdk_version" \
+    && go work edit "-replace=github.com/SYNEHQ/kelvo-go@${sdk_version}=." \
+    && cd adapters/go \
+    && go build -mod=readonly -p 2 -tags duckdb_arrow -trimpath \
+         -ldflags "-s -w" -o /out/kelvo-adapter-go ./cmd/kelvo-adapter-go \
+    && cd /out && sha256sum kelvo-adapter-go > kelvo-adapter-go.sha256
+
+FROM debian:bookworm-slim AS runtime-base
 RUN apt-get update \
     && apt-get install --no-install-recommends -y ca-certificates libstdc++6 libgomp1 tzdata \
     && rm -rf /var/lib/apt/lists/* \
@@ -57,3 +72,12 @@ ENV HOME=/nonexistent TMPDIR=/tmp
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/local/bin/kelvo"]
 CMD ["help"]
+
+# The worker target adds the optional database-operation adapter. Containment
+# remains mandatory. This image does not grant host or cgroup privileges.
+FROM runtime-base AS worker
+COPY --from=adapter-build --chmod=0555 /out/kelvo-adapter-go /usr/local/bin/
+COPY --from=adapter-build --chmod=0444 /out/kelvo-adapter-go.sha256 /usr/share/kelvo/
+
+# Keep the default target small for gateways and read-only deployments.
+FROM runtime-base AS runtime

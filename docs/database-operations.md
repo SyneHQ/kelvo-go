@@ -36,6 +36,8 @@ transactions and checkpoints.
 
 ## Enable a worker
 
+For containers, use the [worker image target](container-images.md) and its packaged adapter checksum.
+
 Add this to a contained cluster worker with configured audit, scratch, resource budgets and an on-demand connection resolver. Paths must be private and persistent where indicated.
 
 ```yaml
