@@ -83,7 +83,7 @@ func (r uploadSeekFailure) Seek(offset int64, whence int) (int64, error) {
 
 func TestProviderPutJoinsTransportBodyOwnership(t *testing.T) {
 	for _, provider := range []string{"s3", "r2", "gcs", "azure"} {
-		for _, scenario := range []string{"delayed-close", "active-read", "do-error", "cancel", "rejected", "invalid-response", "redirect"} {
+		for _, scenario := range []string{"delayed-close", "active-read", "do-error", "cancel", "late-cancel", "rejected", "invalid-response", "redirect"} {
 			t.Run(provider+"/"+scenario, func(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.Background())
 				t.Cleanup(cancel)
@@ -99,6 +99,8 @@ func TestProviderPutJoinsTransportBodyOwnership(t *testing.T) {
 				}
 				readDone, closeDone, returned := make(chan struct{}), make(chan struct{}), make(chan struct{})
 				response := &uploadResponseBody{closed: make(chan struct{})}
+				lateFailure := &sampledTransportFailure{sampled: make(chan struct{}), proceed: make(chan struct{})}
+				t.Cleanup(lateFailure.release)
 				var calls atomic.Int32
 				var requestBody io.ReadCloser
 				client := uploadClient(t, provider, "https://objects.example.test", uploadTransport(func(r *http.Request) (*http.Response, error) {
@@ -129,6 +131,9 @@ func TestProviderPutJoinsTransportBodyOwnership(t *testing.T) {
 						<-ctx.Done()
 					}
 					defer close(returned)
+					if scenario == "late-cancel" {
+						return nil, lateFailure
+					}
 					if scenario == "do-error" || scenario == "cancel" {
 						return nil, errors.New("fixture transport failed")
 					}
@@ -147,6 +152,7 @@ func TestProviderPutJoinsTransportBodyOwnership(t *testing.T) {
 				finished := make(chan struct{})
 				t.Cleanup(func() {
 					cancel()
+					lateFailure.release()
 					releaseRead()
 					releaseClose()
 					uploadCleanupJoins(t, finished, readDone, closeDone)
@@ -161,11 +167,16 @@ func TestProviderPutJoinsTransportBodyOwnership(t *testing.T) {
 					cancel()
 				}
 				uploadWait(t, returned)
-				if scenario != "do-error" && scenario != "cancel" {
+				if scenario != "do-error" && scenario != "cancel" && scenario != "late-cancel" {
 					// A wait inside do or before response Close would deadlock here.
 					uploadWait(t, response.closed)
 				}
 				uploadPending(t, finished)
+				if scenario == "late-cancel" {
+					uploadWait(t, lateFailure.sampled)
+					cancel()
+					lateFailure.release()
+				}
 				releaseRead()
 				releaseClose()
 				uploadWait(t, finished)
@@ -177,6 +188,9 @@ func TestProviderPutJoinsTransportBodyOwnership(t *testing.T) {
 				}
 				if scenario == "cancel" && !errors.Is(putErr, context.Canceled) {
 					t.Fatalf("cancellation was not preserved: %v", putErr)
+				}
+				if scenario == "late-cancel" && errors.Is(putErr, context.Canceled) {
+					t.Fatal("late cancellation replaced the earlier transport failure")
 				}
 				before := reader.reads.Load()
 				if _, err := requestBody.Read(make([]byte, 1)); !errors.Is(err, io.ErrClosedPipe) || reader.reads.Load() != before || reader.closes.Load() != 0 || calls.Load() != 1 {

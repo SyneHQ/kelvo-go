@@ -30,7 +30,7 @@ func (l *clientLifetime) begin(parent context.Context) (*clientOperation, error)
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(parent)
-	op := &clientOperation{owner: l, ctx: ctx, cancel: cancel, methodDone: make(chan struct{}), done: make(chan struct{}), bodyEnded: true}
+	op := &clientOperation{owner: l, parent: parent, ctx: ctx, cancel: cancel, methodDone: make(chan struct{}), done: make(chan struct{}), bodyEnded: true}
 	if l.active == nil {
 		l.active = make(map[*clientOperation]struct{})
 	}
@@ -68,6 +68,7 @@ func (l *clientLifetime) close(closeIdle func()) {
 
 type clientOperation struct {
 	owner       *clientLifetime
+	parent      context.Context
 	ctx         context.Context
 	cancel      context.CancelFunc
 	mu          sync.Mutex
@@ -77,6 +78,29 @@ type clientOperation struct {
 	completed   bool
 	methodDone  chan struct{}
 	done        chan struct{}
+}
+
+// transportError samples cancellation when HTTP fails, before response/upload
+// cleanup can block. A parent Done can close before cancellation reaches its
+// child; keep the original caller to attribute that failure without a race.
+// Return only standard context sentinels or the sanitized provider fallback.
+func (op *clientOperation) transportError(err, fallback error) error {
+	if err == nil {
+		return nil
+	}
+	if cause := op.ctx.Err(); cause != nil {
+		return cause
+	}
+	if cause := op.parent.Err(); cause != nil {
+		return cause
+	}
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+	return fallback
 }
 
 // Called only after validation, with the entire decorated body. This keeps
