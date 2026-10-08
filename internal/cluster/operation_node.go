@@ -3,12 +3,14 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sync/atomic"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/filesnapshot"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/exports"
 	"github.com/SYNEHQ/kelvo-go/internal/operationinput"
 	"github.com/SYNEHQ/kelvo-go/internal/operationrun"
@@ -121,15 +123,33 @@ func (n *Node) cleanupOperationResults() {
 }
 
 type preparedNodeOperation struct {
-	node    *Node
-	state   *nodeOperations
-	record  operationstore.Record
-	request operations.Request
+	node       *Node
+	state      *nodeOperations
+	record     operationstore.Record
+	request    operations.Request
+	completion containment.Completion
+	sink       *operationResultSink
 }
 
-func (p *preparedNodeOperation) Close() error { return nil }
+func (p *preparedNodeOperation) Close() error {
+	if p.sink != nil {
+		if err := p.sink.abort(); err != nil {
+			if errors.Is(err, operationinput.ErrCleanup) || errors.Is(err, operationrun.ErrCleanup) {
+				p.state.failed.Store(true)
+				p.state.executor.Containment.QuarantineOperation()
+				return operationrun.ErrCleanup // Retain capacity while cleanup is uncertain.
+			}
+			// A settled result error is distinct from physical cleanup failure.
+			p.completion.Complete()
+			return err
+		}
+	}
+	p.completion.Complete()
+	return nil
+}
 
 func (p *preparedNodeOperation) Execute(ctx context.Context) (operations.Receipt, error) {
+	ctx = containment.WithCompletion(ctx, &p.completion)
 	ctx = worker.WithOperationFilePublisher(ctx, func(admitted context.Context, input adapter.ProcessRequest, candidate filesnapshot.Descriptor, source io.Reader) (bool, error) {
 		if input.SourceFile == nil {
 			return false, operationstore.ErrConflict
@@ -144,7 +164,7 @@ func (p *preparedNodeOperation) Execute(ctx context.Context) (operations.Receipt
 		return p.state.executor.FetchOperationFile(admitted, p.record, p.request, input.Source.Revision, *input.SourceFile, destination)
 	})
 	sink := &operationResultSink{mutating: p.request.Kind.Mutating()}
-	defer sink.abort()
+	p.sink = sink
 	var payload []byte
 	defer func() { clear(payload) }()
 	return p.state.executor.ExecuteResolvedOperation(ctx, p.node.cfg.Operations.Adapter, p.record.ID, p.record.RequestSHA256,
@@ -195,8 +215,14 @@ func (p *preparedNodeOperation) Execute(ctx context.Context) (operations.Receipt
 		}, sink)
 }
 
-func (sink *operationResultSink) FinalizeOperation(receipt operations.Receipt, executionErr error) (operations.Receipt, error) {
-	defer sink.abort()
+func (sink *operationResultSink) FinalizeOperation(receipt operations.Receipt, executionErr error) (result operations.Receipt, resultErr error) {
+	defer func() {
+		resultErr = errors.Join(resultErr, sink.abort())
+		if resultErr != nil && !sink.mutating && result.Outcome == operations.Completed {
+			result.Outcome, result.Effect, result.ErrorCode = operations.Failed, operations.EffectNone, "SOURCE_FAILED"
+			result.Result = nil
+		}
+	}()
 	if receipt.Outcome != operations.Completed {
 		return receipt, executionErr
 	}
@@ -227,6 +253,8 @@ type operationResultSink struct {
 	seen     bool
 	rows     int64
 	cleaned  func(context.Context) error
+	aborted  bool
+	abortErr error
 }
 
 func (s *operationResultSink) OperationCleaned(ctx context.Context) error {
@@ -257,13 +285,22 @@ func (s *operationResultSink) Write(batch arrow.RecordBatch) error {
 	return nil
 }
 func (s *operationResultSink) abort() error {
+	if s.aborted {
+		return s.abortErr
+	}
+	s.aborted = true
+	// A cleanup panic leaves the cached failure intact for Prepared.Close.
+	// Recovery must not reinterpret an interrupted cleanup as successful.
+	s.abortErr = operationrun.ErrCleanup
 	if s.inner != nil {
 		s.inner.Abort()
 	}
 	if s.stream != nil {
-		return s.stream.Close()
+		s.abortErr = s.stream.Close()
+	} else {
+		s.abortErr = nil
 	}
-	return nil
+	return s.abortErr
 }
 
 var _ operationrun.Prepared = (*preparedNodeOperation)(nil)

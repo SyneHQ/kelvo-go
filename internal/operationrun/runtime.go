@@ -16,6 +16,9 @@ import (
 
 var ErrInvalid = errors.New("invalid operation runtime configuration")
 var ErrClosed = errors.New("operation runtime closed")
+var ErrCompletion = errors.New("operation receipt persistence could not be verified")
+var ErrCleanup = errors.New("operation resource cleanup did not complete")
+var ErrDelivery = errors.New("confirmed operation result or audit completion failed")
 
 type Config struct {
 	WorkerID     string
@@ -54,6 +57,7 @@ type Runtime struct {
 	// Once started, the dispatcher alone adds work. Drain stops that producer
 	// before waiting for workers, so Wait never races with a fresh Add.
 	started, draining bool
+	failure           error
 	cancel            context.CancelFunc
 	stop              chan struct{}
 	dispatchDone      chan struct{}
@@ -128,10 +132,38 @@ func (r *Runtime) Drain(ctx context.Context) error {
 	r.BeginDrain()
 	select {
 	case <-r.done:
-		return nil
+		return r.Err()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// Err reports lifecycle failures without exposing storage, query or driver data.
+// A failure stops new dispatch; it does not change an operation's source effect.
+func (r *Runtime) Err() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.failure
+}
+
+// Joined reports that no dispatcher or accepted operation can still use the
+// runtime's borrowed clients. A lifecycle error can remain after this is true.
+func (r *Runtime) Joined() bool {
+	select {
+	case <-r.done:
+		return true
+	default:
+		return false
+	}
+}
+
+func (r *Runtime) fail(cause error) {
+	r.mu.Lock()
+	if !errors.Is(r.failure, cause) {
+		r.failure = errors.Join(r.failure, cause)
+	}
+	r.mu.Unlock()
+	r.BeginDrain()
 }
 
 // Close cancels in-flight work and waits within the caller's deadline. Drivers
@@ -230,6 +262,7 @@ func (r *Runtime) run(parent context.Context, queued ledger.Record) {
 	ctx, cancel := context.WithDeadline(parent, record.ExecuteBefore)
 	defer cancel()
 	started := false
+	var prepared Prepared
 	// Hook panics do not crash other tenants or leave a successful dispatch
 	// eligible for retry. Diagnostics are deliberately not copied to receipts.
 	defer func() {
@@ -239,6 +272,11 @@ func (r *Runtime) run(parent context.Context, queued ledger.Record) {
 			} else {
 				r.reject(record, binding, "UNAVAILABLE")
 			}
+		}
+		// Close follows the durable completion attempt, including on source
+		// panic. A cleanup panic must not replace a confirmed source receipt.
+		if prepared != nil && closePrepared(prepared) != nil {
+			r.fail(ErrCleanup)
 		}
 	}()
 	hookCtx, hookCancel := r.hookContext(ctx)
@@ -271,14 +309,11 @@ func (r *Runtime) run(parent context.Context, queued ledger.Record) {
 	go r.heartbeat(heartbeatCtx, cancel, heartbeatDone, record, request, binding)
 	defer func() { stopHeartbeat(); <-heartbeatDone }()
 	hookCtx, hookCancel = r.hookContext(ctx)
-	prepared, err := r.hooks.Prepare(hookCtx, record, request, binding)
+	prepared, err = r.hooks.Prepare(hookCtx, record, request, binding)
 	if err == nil {
 		err = hookCtx.Err()
 	}
 	hookCancel()
-	if prepared != nil {
-		defer prepared.Close()
-	}
 	if err != nil || prepared == nil {
 		code := "UNAVAILABLE"
 		if errors.Is(err, api.ErrUnsupported) {
@@ -311,7 +346,7 @@ func (r *Runtime) run(parent context.Context, queued ledger.Record) {
 		r.complete(record, binding, r.uncertain(record, "CANCELLED"))
 		return
 	}
-	receipt, _ := prepared.Execute(ctx)
+	receipt, executeErr := prepared.Execute(ctx)
 	// A source-confirmed receipt survives a later transport/result error. Missing
 	// confirmation remains unknown for mutations, including context deadlines.
 	if receipt.Version == 0 {
@@ -328,6 +363,18 @@ func (r *Runtime) run(parent context.Context, queued ledger.Record) {
 		receipt = r.uncertain(record, "SOURCE_FAILED")
 	}
 	r.complete(record, binding, receipt)
+	if receipt.Outcome == api.Completed && executeErr != nil {
+		r.fail(ErrDelivery)
+	}
+}
+
+func closePrepared(prepared Prepared) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = ErrCleanup
+		}
+	}()
+	return prepared.Close()
 }
 
 func (r *Runtime) authorize(ctx context.Context, record ledger.Record, request api.Request, binding ledger.Binding) error {
@@ -379,8 +426,20 @@ func (r *Runtime) reject(record ledger.Record, binding ledger.Binding, code stri
 
 func (r *Runtime) complete(record ledger.Record, binding ledger.Binding, receipt api.Receipt) {
 	ctx, cancel := context.WithTimeout(context.Background(), r.store.Policy().StorageTimeout)
-	defer cancel()
-	_, _ = r.store.Complete(ctx, record.Scope, record.ID, binding, receipt)
+	_, completionErr := r.store.Complete(ctx, record.Scope, record.ID, binding, receipt)
+	cancel()
+	if completionErr == nil {
+		return
+	}
+	// A lost acknowledgement or concurrent cancellation can already have
+	// settled this attempt. Read back once; never redispatch or overwrite it.
+	readback, stopReadback := context.WithTimeout(context.Background(), r.store.Policy().StorageTimeout)
+	defer stopReadback()
+	current, err := r.store.Get(readback, record.Scope, record.ID)
+	if err == nil && current.Record.Binding == binding && current.Record.RequestSHA256 == record.RequestSHA256 && current.Record.Terminal() {
+		return
+	}
+	r.fail(ErrCompletion)
 }
 
 func (r *Runtime) uncertain(record ledger.Record, code string) api.Receipt {

@@ -101,20 +101,21 @@ func NewOperationWorker(policy Policy, store Store, ledger *operationstore.Store
 
 func (w *OperationWorker) Start(ctx context.Context) error { return w.runtime.Start(ctx) }
 func (w *OperationWorker) Wake()                           { w.runtime.Wake() }
+func (w *OperationWorker) Ready() bool                     { return w.runtime.Err() == nil && w.input.ready() }
 func (w *OperationWorker) BeginDrain()                     { w.runtime.BeginDrain() }
 func (w *OperationWorker) Drain(ctx context.Context) error {
-	if err := w.runtime.Drain(ctx); err != nil {
-		return err
+	err := w.runtime.Drain(ctx)
+	if w.runtime.Joined() {
+		w.input.close()
 	}
-	w.input.close()
-	return nil
+	return err
 }
 func (w *OperationWorker) Close(ctx context.Context) error {
-	if err := w.runtime.Close(ctx); err != nil {
-		return err
+	err := w.runtime.Close(ctx)
+	if w.runtime.Joined() {
+		w.input.close()
 	}
-	w.input.close()
-	return nil
+	return err
 }
 
 func (w *OperationWorker) authorize(ctx context.Context, record operationstore.Record, request *operations.Request, binding operationstore.Binding) error {
