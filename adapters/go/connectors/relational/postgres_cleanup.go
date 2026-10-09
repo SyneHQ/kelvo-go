@@ -51,35 +51,76 @@ type postgresCleanupState struct {
 	errorBody                          []byte
 }
 
-// The frontend reads plaintext after the source TLS handshake. Keep only
-// bounded ErrorResponse fields; row values are neither copied nor retained.
+// The frontend reads plaintext after the source TLS handshake. Inactive reads
+// retain no row values. A read that overlaps cancellation can retain at most
+// postgresCleanupReadLimit bytes until the frontend consumes them in order.
+const postgresCleanupReadLimit = 32 << 10
+
 type postgresCleanupReader struct {
-	reader io.Reader
-	state  *postgresCleanupState
+	reader     io.Reader
+	state      *postgresCleanupState
+	pending    []byte
+	pendingErr error
+}
+
+func (s *postgresCleanupState) readLimit(size int) int {
+	if s.failed || !s.active {
+		return size
+	}
+	if s.headerN < 5 {
+		return min(size, 5-s.headerN)
+	}
+	return min(size, int(s.remaining))
 }
 
 func (r *postgresCleanupReader) Read(p []byte) (int, error) {
-	// Do not let pgproto3 read ahead across a frame boundary. It must
-	// decode each preceding frame before this observer can see ReadyForQuery.
-	// Apply this from connection startup, so cancellation cannot inherit
-	// undecoded frames that were buffered before the watcher fired.
-	r.state.mu.Lock()
-	limit := len(p)
-	if !r.state.failed {
-		if r.state.headerN < 5 {
-			limit = min(limit, 5-r.state.headerN)
-		} else {
-			limit = min(limit, int(r.state.remaining))
-		}
+	if len(p) == 0 {
+		return 0, nil
 	}
-	r.state.mu.Unlock()
+	s := r.state
+	s.mu.Lock()
+	if len(r.pending) > 0 {
+		n := s.readLimit(min(len(p), len(r.pending)))
+		copy(p, r.pending[:n])
+		clear(r.pending[:n])
+		r.pending = r.pending[n:]
+		var err error
+		if len(r.pending) == 0 {
+			r.pending = nil
+			err, r.pendingErr = r.pendingErr, nil
+		}
+		s.consumeLocked(p[:n], err)
+		s.mu.Unlock()
+		return n, err
+	}
+	limit := s.readLimit(min(len(p), postgresCleanupReadLimit))
+	s.mu.Unlock()
 	n, err := r.reader.Read(p[:limit])
-	r.state.consume(p[:n], err)
-	return n, err
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Cancellation can start while Read blocks. Recheck under the same lock
+	// used by the watcher. Deliver only this frame; pgproto3 must decode it
+	// before the observer can accept evidence from a later frame.
+	deliver := s.readLimit(n)
+	if deliver < n {
+		r.pending = append([]byte(nil), p[deliver:n]...)
+		r.pendingErr = err
+		if err != nil {
+			s.failed = true
+		}
+		err = nil
+	}
+	// Inactive bytes are classified before releasing the lock. If the
+	// watcher starts afterward, buffered frontend bytes cannot become evidence.
+	s.consumeLocked(p[:deliver], err)
+	return deliver, err
 }
 func (s *postgresCleanupState) consume(p []byte, readErr error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.consumeLocked(p, readErr)
+}
+func (s *postgresCleanupState) consumeLocked(p []byte, readErr error) {
 	if s.failed {
 		return
 	}

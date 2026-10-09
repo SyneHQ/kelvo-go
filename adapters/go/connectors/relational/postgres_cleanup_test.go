@@ -119,3 +119,125 @@ func TestCleanupObserverActivationCannotReusePartialError(t *testing.T) {
 		}
 	}
 }
+
+// This reader changes state after the caller computes its read size and before
+// it returns bytes. It exercises the same transition as a blocked socket read.
+type activateDuringRead struct {
+	reader io.Reader
+	state  *postgresCleanupState
+}
+
+func (r *activateDuringRead) Read(p []byte) (int, error) {
+	r.state.mu.Lock()
+	r.state.active = true
+	r.state.mu.Unlock()
+	return r.reader.Read(p)
+}
+
+func TestCleanupObserverOverlappingReadAtEveryOffset(t *testing.T) {
+	cancelled := pgFrame('E', []byte("C57014\x00\x00"))
+	ready := pgFrame('Z', []byte{'I'})
+	row := pgFrame('D', []byte{0, 0})
+	for _, tc := range []struct {
+		name  string
+		data  []byte
+		valid bool
+	}{
+		{"valid", append(append(append([]byte{}, row...), cancelled...), ready...), true},
+		{"unknown-before", append(append(pgFrame('?', nil), cancelled...), ready...), false},
+		{"bad-row-before", append(append(pgFrame('D', []byte{'x'}), cancelled...), ready...), false},
+		{"bad-row-between", append(append(append([]byte{}, cancelled...), pgFrame('D', []byte{'x'})...), ready...), false},
+		{"unknown-between", append(append(append([]byte{}, cancelled...), pgFrame('?', nil)...), ready...), false},
+		{"duplicate-code", append(pgFrame('E', []byte("C57014\x00C42501\x00\x00")), ready...), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for offset := 0; offset <= len(tc.data); offset++ {
+				s := &postgresCleanupState{}
+				r := &postgresCleanupReader{reader: bytes.NewReader(tc.data), state: s}
+				prefix := make([]byte, offset)
+				if _, err := io.ReadFull(r, prefix); err != nil {
+					t.Fatal(err)
+				}
+				r.reader = &activateDuringRead{reader: r.reader, state: s}
+				frontend := pgproto3.NewFrontend(io.MultiReader(bytes.NewReader(prefix), r), io.Discard)
+				for {
+					message, err := frontend.Receive()
+					if err != nil {
+						break
+					}
+					if _, ok := message.(*pgproto3.ReadyForQuery); ok {
+						break
+					}
+				}
+				want := tc.valid && offset <= len(row)
+				if got := s.ready && !s.failed; got != want {
+					t.Fatalf("offset %d: confirmation %v, want %v", offset, got, want)
+				}
+				if len(r.pending) > postgresCleanupReadLimit {
+					t.Fatal("pending bytes exceed limit")
+				}
+			}
+		})
+	}
+}
+
+type blockedCleanupReader struct {
+	entered, release chan struct{}
+	data             []byte
+	err              error
+}
+
+func (r *blockedCleanupReader) Read(p []byte) (int, error) {
+	close(r.entered)
+	<-r.release
+	return copy(p, r.data), r.err
+}
+func TestCleanupObserverBlockedReadTransitionIsBounded(t *testing.T) {
+	for _, readErr := range []error{nil, io.EOF} {
+		s := &postgresCleanupState{}
+		data := pgFrame('D', make([]byte, postgresCleanupReadLimit*2))
+		socket := &blockedCleanupReader{entered: make(chan struct{}), release: make(chan struct{}), data: data, err: readErr}
+		r := &postgresCleanupReader{reader: socket, state: s}
+		p := make([]byte, postgresCleanupReadLimit*4)
+		done := make(chan struct{})
+		var n int
+		var err error
+		go func() { n, err = r.Read(p); close(done) }()
+		<-socket.entered
+		s.mu.Lock()
+		s.active = true
+		s.mu.Unlock()
+		close(socket.release)
+		<-done
+		if n != 5 || err != nil {
+			t.Fatalf("first delivery: %d, %v", n, err)
+		}
+		if len(r.pending) != postgresCleanupReadLimit-5 || cap(r.pending) > postgresCleanupReadLimit {
+			t.Fatalf("pending len/cap: %d/%d", len(r.pending), cap(r.pending))
+		}
+		if readErr != nil && !s.failed {
+			t.Fatal("overlapping read error did not invalidate evidence")
+		}
+		n, err = r.Read(p)
+		if n != postgresCleanupReadLimit-5 || err != readErr {
+			t.Fatalf("pending delivery: %d, %v", n, err)
+		}
+		if r.pending != nil || r.pendingErr != nil {
+			t.Fatal("pending data retained after delivery")
+		}
+	}
+}
+
+func TestCleanupObserverInactiveReadKeepsFastPath(t *testing.T) {
+	data := bytes.Repeat(pgFrame('D', []byte{0, 0}), 100)
+	s := &postgresCleanupState{}
+	r := &postgresCleanupReader{reader: bytes.NewReader(data), state: s}
+	p := make([]byte, len(data))
+	n, err := r.Read(p)
+	if err != nil || n != len(data) || r.pending != nil {
+		t.Fatalf("inactive read fragmented or buffered: %d, %v", n, err)
+	}
+	if s.ready || s.cancelError {
+		t.Fatal("inactive read supplied cleanup evidence")
+	}
+}
