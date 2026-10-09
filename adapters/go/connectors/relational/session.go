@@ -10,10 +10,11 @@ import (
 
 type Session struct {
 	*sqlsession.Session
-	database          string
-	schema            string
-	defaultSchema     string
-	openMigrationPool func(context.Context) (*sql.DB, error)
+	database              string
+	schema                string
+	defaultSchema         string
+	openMigrationPool     func(context.Context) (*sql.DB, error)
+	openMySQLCancellation func(context.Context) (*sql.DB, error)
 }
 
 var _ adapter.TestSession = (*Session)(nil)
