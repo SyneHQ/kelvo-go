@@ -6,6 +6,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/resolver"
+	"github.com/SYNEHQ/kelvo-go/sourceproof"
 )
 
 // These are runtime values, never wire schemas. Every HTTP response is decoded
@@ -19,6 +20,7 @@ type connectionResolution struct {
 }
 
 type operationResolution struct {
+	privateSource  *sourceproof.Envelope
 	Version        int
 	GrantSHA256    string
 	RequestSHA256  string
