@@ -23,8 +23,14 @@ operations:
       ticket_public_key: BASE64_ED25519_PUBLIC_KEY
       max_sessions: 1
       max_data_connections: 2
-      max_data_per_session: 2
+      max_data_per_session: 1
+      accepted_key_id: rabbit-cleanup-v1
+      accepted_public_key: BASE64_ED25519_ACCEPTANCE_PUBLIC_KEY
 ```
+
+The acceptance key verifies Rabbit receipts for physical connections. Use its separate public key, not the proof or ticket key.
+
+Configure both acceptance fields together. Cleanup requires `max_data_per_session: 1`.
 
 The issuer endpoint comes from the configured resolver origin. Requests cannot change the endpoint, route, trust roots, or worker identity.
 
@@ -45,9 +51,19 @@ An invalid private proof fails the operation. The worker never retries that sour
 - Private operations support PostgreSQL and MySQL. Watcher, ingestion, and approved-change grants remain excluded.
 - SQL read operations use this path. Analytical queries, federated queries, and tangent federation need separate qualification.
 - Admission expiry and running-operation renewal are separate checks.
-- Private production activation remains blocked for both engines. A real queued PostgreSQL test returned a terminal cancellation receipt while `pg_sleep(10)` remained active for about ten seconds. An earlier MySQL fixture also left server work active after cancellation. Local process cleanup does not prove that source queries stopped.
-- Rabbit v2 cancellation capacity remains disabled. The issuer and source must confirm cancellation before this gate can pass.
+- Deployment acceptance remains required. A fixture pass does not qualify production credentials, routes or customer clients.
+- MySQL source cancellation remains unqualified. Keep private MySQL disabled.
 - Restart the worker to change these transport settings or its client certificate.
+
+## PostgreSQL cancellation
+
+The parent records Rabbit's accepted connection before the child receives it. On cancellation, ordinary execution stops and separate cleanup authority expires within five seconds.
+
+The parent sends `CancelRequest` with the original source TLS policy. The trusted adapter must decode cancellation on the original session. Capacity remains held until the child, transport and scratch cleanup finish.
+
+Missing confirmation, source revocation or a child crash returns `cleanup_unknown`. A transaction-local statement timeout limits each PostgreSQL read using the remaining operation budget. See [read deadline limits](postgres-read-deadlines.md). A closed socket alone never proves termination.
+
+Queued TLS fixtures passed normal cancellation, actual child crash, source rebinding and near-expiry cancellation. Duplicate cancellation preserved the original cutoff. The earlier false-completion defect is corrected. Complete [deployment acceptance](private-transport-activation.md) before enabling traffic.
 
 ## MySQL cancellation
 
