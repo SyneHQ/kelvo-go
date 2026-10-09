@@ -97,3 +97,6 @@ require (
 	modernc.org/strutil v1.2.0 // indirect
 	modernc.org/token v1.1.0 // indirect
 )
+
+// Keep the reviewed Oracle long-password capability patch.
+replace github.com/sijms/go-ora/v2 v2.9.0 => ./third_party/go-ora-v2.9.0

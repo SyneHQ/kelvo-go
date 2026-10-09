@@ -43,6 +43,9 @@
 !scripts/duckbridge-driver.patch
 !licenses
 !licenses/**
+!third_party
+!third_party/go-ora-v2.9.0
+!third_party/go-ora-v2.9.0/**
 **/*.pem
 **/*.key
 **/*.env

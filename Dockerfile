@@ -4,6 +4,7 @@ FROM golang:1.26.8-bookworm AS build
 WORKDIR /src
 ENV CGO_ENABLED=1 GOTOOLCHAIN=local GOMAXPROCS=2
 COPY go.mod go.sum ./
+COPY third_party/go-ora-v2.9.0 ./third_party/go-ora-v2.9.0
 COPY cmd ./cmd
 COPY internal ./internal
 COPY adapter ./adapter
@@ -48,6 +49,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     && sdk_version=$(awk '$1 == "github.com/SYNEHQ/kelvo-go" { print $2 }' adapters/go/go.mod) \
     && test -n "$sdk_version" \
     && go work edit "-replace=github.com/SYNEHQ/kelvo-go@${sdk_version}=." \
+    && go work edit -replace=github.com/sijms/go-ora/v2@v2.9.0=./third_party/go-ora-v2.9.0 \
     && cd adapters/go \
     && go build -mod=readonly -p 2 -tags duckdb_arrow -trimpath \
          -ldflags "-s -w" -o /out/kelvo-adapter-go ./cmd/kelvo-adapter-go \
@@ -69,6 +71,7 @@ LABEL org.opencontainers.image.title="Kelvo Go" \
 COPY --from=build --chmod=0555 /out/kelvo /out/kelvo-landlock /usr/local/bin/
 COPY LICENSE NOTICE /usr/share/doc/kelvo/
 COPY licenses/ /usr/share/doc/kelvo/licenses/
+COPY third_party/go-ora-v2.9.0/LICENSE third_party/go-ora-v2.9.0/PATCHES.md /usr/share/doc/kelvo/licenses/go-ora/
 USER 65532:65532
 WORKDIR /tmp
 ENV HOME=/nonexistent TMPDIR=/tmp
