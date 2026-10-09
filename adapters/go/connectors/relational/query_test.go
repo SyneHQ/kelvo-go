@@ -27,6 +27,8 @@ type readState struct {
 	mu                                                    sync.Mutex
 	args                                                  []driver.NamedValue
 	executed                                              []string
+	execArgs                                              [][]driver.NamedValue
+	execErr                                               error
 	engine                                                string
 	block                                                 bool
 }
@@ -55,10 +57,14 @@ func (c *readConn) BeginTx(_ context.Context, opts driver.TxOptions) (driver.Tx,
 	c.s.isolation.Store(int32(opts.Isolation))
 	return readTx{c.s}, nil
 }
-func (c *readConn) ExecContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Result, error) {
+func (c *readConn) ExecContext(_ context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	c.s.mu.Lock()
 	c.s.executed = append(c.s.executed, query)
+	c.s.execArgs = append(c.s.execArgs, append([]driver.NamedValue(nil), args...))
 	c.s.mu.Unlock()
+	if c.s.execErr != nil {
+		return nil, c.s.execErr
+	}
 	return driver.RowsAffected(0), nil
 }
 func (c *readConn) QueryContext(ctx context.Context, _ string, args []driver.NamedValue) (driver.Rows, error) {

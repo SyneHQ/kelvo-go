@@ -93,6 +93,11 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 	}
 	defer tx.Rollback()
 	defer finish()
+	if s.Engine == "postgresql" {
+		if err := setPostgresReadDeadline(cancellation.context, tx); err != nil {
+			return adapter.QueryStats{}, err
+		}
+	}
 	rows, err := tx.QueryContext(cancellation.context, statement, parameters...)
 	if err != nil {
 		return adapter.QueryStats{}, err
