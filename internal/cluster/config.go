@@ -190,6 +190,10 @@ func LoadNode(path string) (NodeConfig, error) {
 	c.SandboxPath = relativePath(base, c.SandboxPath)
 	if c.Operations != nil {
 		resolveTLS(base, &c.Operations.TLS)
+		for principal, private := range c.Operations.PrivateSources {
+			private.ProxyCAFile = relativePath(base, private.ProxyCAFile)
+			c.Operations.PrivateSources[principal] = private
+		}
 		c.Operations.Adapter.Binary = relativePath(base, c.Operations.Adapter.Binary)
 	}
 	if err = ValidatePolicy(c.Policy); err != nil {
