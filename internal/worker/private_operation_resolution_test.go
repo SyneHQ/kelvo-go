@@ -40,10 +40,34 @@ type privateResolutionFixture struct {
 	claimsChange func(*sourceproof.Scope)
 }
 
+type privateResolutionFixtureOptions struct {
+	Request        *operations.Request
+	DSN            string
+	SourceOptions  map[string]string
+	BeforeResponse func(context.Context, int32) error
+	Timeout        time.Duration
+}
+
 func newPrivateResolutionFixture(t *testing.T) *privateResolutionFixture {
+	return newPrivateResolutionFixtureWithOptions(t, privateResolutionFixtureOptions{})
+}
+
+func newPrivateResolutionFixtureWithOptions(t *testing.T, options privateResolutionFixtureOptions) *privateResolutionFixture {
 	t.Helper()
 	f := &privateResolutionFixture{}
 	record, request, response := operationResolverFixture(t)
+	if options.Request != nil {
+		request = *options.Request
+		digest, err := operations.Digest(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record.Kind, record.RequestSHA256, record.Scope.ConnectionID = request.Kind, digest, request.Connection.ID
+	}
+	dsn := options.DSN
+	if dsn == "" {
+		dsn = connectionFixtureDSN
+	}
 	now := time.Now()
 	public, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -82,15 +106,21 @@ func newPrivateResolutionFixture(t *testing.T) *privateResolutionFixture {
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(caCert)
-	parsedDSN, _ := url.Parse(connectionFixtureDSN)
+	parsedDSN, _ := url.Parse(dsn)
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.calls.Add(1)
+		call := f.calls.Add(1)
 		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || r.URL.Path != resolver.OperationPath {
 			t.Error("resolver request lacked verified transport")
 			w.WriteHeader(403)
 			return
 		}
-		wire := resolver.OperationResponse{Version: resolver.Version, GrantSHA256: record.AuthoritySHA256, RequestSHA256: record.RequestSHA256, SourceRevision: response.SourceRevision, ValidUntil: time.Now().Add(4 * time.Second).Unix(), Source: resolver.Source{ID: "source_1", Type: "postgres", DSNEnv: response.Source.DSNEnv}, Secrets: map[string]string{response.Source.DSNEnv: connectionFixtureDSN}}
+		if options.BeforeResponse != nil {
+			if err := options.BeforeResponse(r.Context(), call); err != nil {
+				w.WriteHeader(http.StatusGatewayTimeout)
+				return
+			}
+		}
+		wire := resolver.OperationResponse{Version: resolver.Version, GrantSHA256: record.AuthoritySHA256, RequestSHA256: record.RequestSHA256, SourceRevision: response.SourceRevision, ValidUntil: time.Now().Add(4 * time.Second).Unix(), Source: resolver.Source{ID: "source_1", Type: "postgres", DSNEnv: response.Source.DSNEnv, Options: options.SourceOptions}, Secrets: map[string]string{response.Source.DSNEnv: dsn}}
 		scope := sourceproof.Scope{Issuer: trust.Issuer, Audience: trust.Audience, ClusterTenant: trust.ClusterTenant, ServicePrincipal: trust.ServicePrincipal, Tenant: record.Scope.AppTeam, Source: record.Scope.ConnectionID, SourceRevision: wire.SourceRevision, Authority: parsedDSN.Host, RouteID: "private-route", TokenID: "12345678-1234-1234-1234-123456789abc", BindingVersion: 1, Kind: "operation", ExecutionID: record.ID, GrantSHA256: record.AuthoritySHA256, Worker: record.Binding.WorkerID, Owner: record.Binding.Owner, Claim: record.Binding.Claim, WorkerIdentity: identity, WorkerCertSHA256: hex.EncodeToString(certificateHash[:])}
 		if f.claimsChange != nil {
 			f.claimsChange(&scope)
@@ -120,7 +150,11 @@ func newPrivateResolutionFixture(t *testing.T) *privateResolutionFixture {
 		return path
 	}
 	encodedKey, _ := x509.MarshalPKCS8PrivateKey(tlsKey)
-	config := ConnectionResolverConfig{URL: server.URL + resolver.QueryPath, Timeout: time.Second, MaxConcurrent: 2, CAFile: write("ca.pem", pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})), CertFile: write("worker.pem", pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), KeyFile: write("worker-key.pem", pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: encodedKey}))}
+	timeout := options.Timeout
+	if timeout == 0 {
+		timeout = time.Second
+	}
+	config := ConnectionResolverConfig{URL: server.URL + resolver.QueryPath, Timeout: timeout, MaxConcurrent: 2, CAFile: write("ca.pem", pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})), CertFile: write("worker.pem", pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), KeyFile: write("worker-key.pem", pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: encodedKey}))}
 	connection, err := NewConnectionResolver(config, identity)
 	if err != nil {
 		t.Fatal(err)
