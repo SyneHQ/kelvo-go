@@ -7,3 +7,6 @@ Apache Arrow and DuckDB are dependencies with their own licenses and trademarks.
 Optional native federation builds include a small scoped native-connection accessor
 patch to duckdb-go v2.10506.0. DuckDB and its Go driver retain their original MIT
 licenses and copyright notices; see licenses/duckdb.txt.
+
+Application mode includes modernc.org/sqlite v1.29.6 under the BSD 3-Clause
+license. See licenses/sqlite.txt for its copyright notice and license terms.
