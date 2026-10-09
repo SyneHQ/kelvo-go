@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/transportbroker/diagnostic"
 	"github.com/SYNEHQ/kelvo-go/transportissuer"
 )
 
@@ -71,7 +72,21 @@ func TestAcceptedOpenNegotiationPreservesOriginalPayload(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			conn, err := opener.Open(context.Background(), testRequest())
+			recorder := diagnostic.New()
+			conn, err := opener.Open(diagnostic.WithRecorder(context.Background(), recorder), testRequest())
+			if mode == "valid" {
+				requireStage(t, recorder, diagnostic.AcceptedReceipt, diagnostic.Succeeded, 0)
+			} else {
+				found := false
+				for _, event := range recorder.Snapshot().Events {
+					if event.Stage == diagnostic.AcceptedReceipt && event.Result != diagnostic.Started && event.Result != diagnostic.Succeeded {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatal("invalid accepted receipt had no diagnostic failure")
+				}
+			}
 			if conn != nil {
 				defer conn.Close()
 			}
