@@ -308,7 +308,7 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 		if !private.matches(input) {
 			return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT")
 		}
-		input.PrivateTransport = &adapter.PrivateTransport{ControlFD: 7, PostgresCleanup: private.postgresCleanup != nil}
+		input.PrivateTransport = &adapter.PrivateTransport{ControlFD: 7, DataOpenTimeoutMS: private.dataOpenTimeoutMS, PostgresCleanup: private.postgresCleanup != nil}
 		args = append([]string{"--operation-private"}, args...)
 	}
 	var jdbcFiles []*os.File
