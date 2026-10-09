@@ -25,6 +25,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	operationstore "github.com/SYNEHQ/kelvo-go/internal/operations"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/transportbroker/diagnostic"
 	"github.com/SYNEHQ/kelvo-go/operations"
 	"github.com/SYNEHQ/kelvo-go/provider"
 	"github.com/SYNEHQ/kelvo-go/resolver"
@@ -241,6 +242,15 @@ func (r *ConnectionResolver) resolveOperation(ctx context.Context, record operat
 // Private proofs are admitted only by the trusted parent resolver. The public
 // wrapper continues to reject a private source instead of opening it directly.
 func (r *ConnectionResolver) resolveOperationMode(ctx context.Context, record operationstore.Record, request operations.Request, allowPrivate bool) (out operationResolution, resultErr error) {
+	diagnostic.Record(ctx, diagnostic.FreshResolver, diagnostic.Started, 0)
+	httpStatus := 0
+	defer func() {
+		result := diagnostic.ResultFor(ctx, resultErr)
+		if resultErr != nil && (httpStatus == http.StatusForbidden || httpStatus == http.StatusUnauthorized) {
+			result = diagnostic.ScopeDenied
+		}
+		diagnostic.Record(ctx, diagnostic.FreshResolver, result, httpStatus)
+	}()
 	defer func() {
 		if resultErr != nil {
 			clear(out.Secrets)
@@ -276,6 +286,7 @@ func (r *ConnectionResolver) resolveOperationMode(ctx context.Context, record op
 		}
 		return out, connectionUnavailable()
 	}
+	httpStatus = resp.StatusCode
 	defer resp.Body.Close()
 	media, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	if err != nil || media != "application/json" || resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Encoding") != "" || resp.ContentLength > maxConnectionResponseBytes {

@@ -263,10 +263,13 @@ func (r *privateOperationRuntime) prepareModeWithCleanup(ctx context.Context, e 
 	}
 	retained = true
 	var channel *privateOperationChannel
+	// Copy only the diagnostic value. Operation cancellation must not shorten
+	// the runtime context that owns physical transport cleanup.
+	channelContext := privateOpenDiagnosticLifetime(r.life, ctx)
 	if entry.cleanup != nil {
-		channel, err = newPrivatePostgresChannel(r.life, selection.input, session, selection.binding, entry.cleanup, release)
+		channel, err = newPrivatePostgresChannel(channelContext, selection.input, session, selection.binding, entry.cleanup, release)
 	} else {
-		channel, err = r.channel(r.life, selection.input, session, selection.binding, 2*r.limits.MaxDataPerSession, release)
+		channel, err = r.channel(channelContext, selection.input, session, selection.binding, 2*r.limits.MaxDataPerSession, release)
 	}
 	if err != nil {
 		// Return cleanup custody even when IPC construction fails. The operation
