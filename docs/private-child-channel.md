@@ -1,6 +1,6 @@
 # Private source child channel
 
-The Linux `childipc` package transfers database streams through inherited file descriptors. It is not wired into production workers yet.
+The Linux `childipc` package transfers database streams through inherited file descriptors for opt-in [private operations](private-operation-transport.md). Complete deployment qualification before enabling traffic.
 
 1. The trusted parent validates the original grant, source binding, execution lease and worker identity.
 2. The parent creates one channel for one source authority and one admitted child.
@@ -10,8 +10,10 @@ The Linux `childipc` package transfers database streams through inherited file d
 
 Requests contain a protocol version and a purpose. Children cannot submit routes, sources, endpoints, proofs or additional descriptors. Cancellation requires an explicit parent capability.
 
-The channel allows 1–64 active streams. Each setup exchange has a two-second deadline. The parent retains physical connection ownership until cleanup completes. A cleanup deadline or physical close error must prevent a successful completion receipt.
+The channel allows 1–64 active streams. IPC writes remain limited to two seconds. A private data-open response can wait for the configured resolver timeout plus the transport setup budget, at most 32 seconds. The trusted parent sets this bound; the operation deadline can shorten it. Ordinary opens keep their two-second default.
 
-Use an execution-cleanup context for the server. A cancelled SQL request must not remove the parent's ability to open a cancellation connection.
+The parent retains physical connection ownership until cleanup completes. A cleanup deadline or physical close error must prevent a successful completion receipt.
 
-Azure tests cover a real child process, stream integrity, incorrect PID/source, malformed messages, incoming descriptor cleanup, capacity, cancellation denial and delayed/failed physical cleanup. Worker integration and paired database tests remain required.
+Use an execution-cleanup context for the server and a separate operation context for data opens. Cancelling SQL stops pending data resolution. It must not revoke the parent's separate cleanup authority.
+
+Azure tests cover a real child process, stream integrity, incorrect PID/source, malformed messages, incoming descriptor cleanup, capacity, cancellation denial and delayed/failed physical cleanup. Complete [deployment acceptance](private-transport-activation.md) for each deployed parent and adapter pair.
