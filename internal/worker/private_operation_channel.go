@@ -27,15 +27,16 @@ type privateChildServer interface {
 // Only the verified private resolver can construct it. The ordinary resolver
 // callback cannot select a channel or a descriptor.
 type privateOperationChannel struct {
-	inputSHA256 [32]byte
-	server      privateChildServer
-	file        *os.File
-	session     *transportbroker.Session
-	binding     transportbroker.Binding
-	release     func()
-	releaseOnce sync.Once
-	closeFile   sync.Once
-	fileError   error
+	inputSHA256     [32]byte
+	postgresCleanup *privatePostgresCleanup
+	server          privateChildServer
+	file            *os.File
+	session         *transportbroker.Session
+	binding         transportbroker.Binding
+	release         func()
+	releaseOnce     sync.Once
+	closeFile       sync.Once
+	fileError       error
 }
 
 func privateInputDigest(input adapter.ProcessRequest) ([32]byte, error) {

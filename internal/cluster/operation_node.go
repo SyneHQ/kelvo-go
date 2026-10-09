@@ -228,7 +228,7 @@ func (p *preparedNodeOperation) Execute(ctx context.Context) (operations.Receipt
 			if err := authorizeOperationIngestionRun(claims, p.request, payload); err != nil {
 				return worker.OperationSourceRequest{}, err
 			}
-			return worker.OperationSourceRequest{Record: record, Request: p.request, Payload: payload, MaxResultBytes: limits.MaxBytes}, nil
+			return worker.OperationSourceRequest{Record: record, Request: p.request, Payload: payload, MaxResultBytes: limits.MaxBytes, CleanupLedger: p.state.ledger}, nil
 		}, sink)
 }
 

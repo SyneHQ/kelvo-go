@@ -29,6 +29,8 @@ import (
 // The issuer uses the provisioned resolver origin and the same worker certificate.
 type PrivateOperationConfig struct {
 	RouteID            string `yaml:"route_id"`
+	AcceptedKeyID      string `yaml:"accepted_key_id,omitempty"`
+	AcceptedPublicKey  string `yaml:"accepted_public_key,omitempty"`
 	ProxyAddress       string `yaml:"proxy_address"`
 	ProxyServerName    string `yaml:"proxy_server_name"`
 	ProxyCAFile        string `yaml:"proxy_ca_file"`
@@ -52,6 +54,14 @@ func privatePublicKey(value string) (ed25519.PublicKey, error) {
 func (c PrivateOperationConfig) Validate() error {
 	if !operations.ValidID(c.RouteID) || transportbroker.ValidateAuthority(c.ProxyAddress) != nil || transportbroker.ValidateAuthority(net.JoinHostPort(c.ProxyServerName, "443")) != nil || c.ProxyCAFile == "" || c.MaxSessions < 1 || c.MaxSessions > 64 || c.MaxDataConnections < 1 || c.MaxDataConnections > 2048 || c.MaxDataPerSession < 1 || c.MaxDataPerSession > 32 || c.MaxDataPerSession > c.MaxDataConnections {
 		return errPrivateOperationConfig
+	}
+	if c.AcceptedKeyID != "" || c.AcceptedPublicKey != "" {
+		if !operations.ValidID(c.AcceptedKeyID) || c.MaxDataPerSession != 1 {
+			return errPrivateOperationConfig
+		}
+		if _, err := privatePublicKey(c.AcceptedPublicKey); err != nil {
+			return err
+		}
 	}
 	if _, err := privatePublicKey(c.ProofPublicKey); err != nil {
 		return err
@@ -153,6 +163,10 @@ func NewPrivateOperations(e *Executor, workerID, identity string, maxConcurrent 
 		}
 		proxy := rabbitconnect.Config{ProxyAddress: c.ProxyAddress, ProxyServerName: c.ProxyServerName, RootCAPEM: proxyCA, ClientCertificatePEM: certPEM, ClientKeyPEM: keyPEM, WorkerIdentity: identity, Issuer: trust.Issuer, Audience: trust.Audience, ClusterTenant: trust.ClusterTenant, ServicePrincipal: principal, IssuerPublicKey: ticketKey}
 		issuer := rabbitconnect.HTTPIssuerConfig{Endpoint: strings.TrimSuffix(r.url, resolver.QueryPath) + transportissuer.Path, WorkerIdentity: identity, RootCAPEM: issuerCA, ClientCertificatePEM: certPEM, ClientKeyPEM: keyPEM, MaxInFlight: min(c.MaxDataConnections, 64)}
+		if c.AcceptedKeyID != "" {
+			acceptedKey, _ := privatePublicKey(c.AcceptedPublicKey)
+			proxy.AcceptedOpenTrust = &transportissuer.AcceptedOpenTrust{KeyID: c.AcceptedKeyID, PublicKey: acceptedKey}
+		}
 		runtime, err := newPrivateOperationRuntime(context.Background(), policy, proxy, issuer, transportbroker.Limits{MaxSessions: c.MaxSessions, MaxDataConnections: c.MaxDataConnections, MaxDataPerSession: c.MaxDataPerSession})
 		clear(keyPEM)
 		if err != nil {
@@ -181,6 +195,7 @@ type OperationSourceRequest struct {
 	Request        operations.Request
 	Payload        []byte
 	MaxResultBytes int64
+	CleanupLedger  *ledger.Store
 }
 
 // ExecuteDelegatedOperation runs admission before it reads source credentials.
@@ -199,7 +214,7 @@ func (e *Executor) ExecuteDelegatedOperation(ctx context.Context, private *Priva
 		}
 		if private != nil {
 			if runtime := private.runtimes[source.Record.Scope.ServicePrincipal]; runtime != nil {
-				return runtime.prepareMode(admitted, e, source.Record, source.Request, source.Payload, true, source.MaxResultBytes)
+				return runtime.prepareModeWithCleanup(admitted, e, source.Record, source.Request, source.Payload, true, source.MaxResultBytes, source.CleanupLedger)
 			}
 		}
 		input, err := e.ResolveOperationSourceWithInput(admitted, source.Record, source.Request, source.Payload)
