@@ -44,6 +44,8 @@ The sum of `max_sessions` across principals must not exceed `operations.max_conc
 4. The native adapter receives connected file descriptors. It retains the database's original TLS hostname.
 5. Shutdown waits for operation and transport cleanup before releasing capacity.
 
+Fresh resolution uses the configured resolver timeout (1–30 seconds). Verified resolution is followed by a separate transport setup budget of at most two seconds. The operation deadline still bounds the complete data open; cancellation stops resolution without removing cleanup authority. Update the worker and adapter together to use this deadline split.
+
 An invalid private proof fails the operation. The worker never retries that source through a direct connection. Without `private_sources`, private responses remain rejected.
 
 ## Current limits
