@@ -57,6 +57,12 @@ func (e *Executor) ResolveOperationSourceWithInput(ctx context.Context, record o
 	if err != nil {
 		return adapter.ProcessRequest{}, err
 	}
+	return e.operationInput(ctx, record, request, payload, response)
+}
+
+// operationInput applies the same source validation to public and private transports.
+func (e *Executor) operationInput(ctx context.Context, record operationstore.Record, request operations.Request, payload []byte, response operationResolution) (adapter.ProcessRequest, error) {
+	var err error
 	defer clear(response.Secrets)
 	var snapshot *filesnapshot.Descriptor
 	if filesnapshot.FormatSupported(response.Source.Type) {
@@ -228,7 +234,13 @@ func validateOperationTLSOptions(options map[string]string) error {
 	return nil
 }
 
-func (r *ConnectionResolver) resolveOperation(ctx context.Context, record operationstore.Record, request operations.Request) (out operationResolution, resultErr error) {
+func (r *ConnectionResolver) resolveOperation(ctx context.Context, record operationstore.Record, request operations.Request) (operationResolution, error) {
+	return r.resolveOperationMode(ctx, record, request, false)
+}
+
+// Private proofs are admitted only by the trusted parent resolver. The public
+// wrapper continues to reject a private source instead of opening it directly.
+func (r *ConnectionResolver) resolveOperationMode(ctx context.Context, record operationstore.Record, request operations.Request, requirePrivate bool) (out operationResolution, resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			clear(out.Secrets)
@@ -276,11 +288,15 @@ func (r *ConnectionResolver) resolveOperation(ctx context.Context, record operat
 		return out, connectionUnavailable()
 	}
 	// No private source proof may enter ProcessRequest or a direct connection.
-	if wire.PrivateSource != nil {
+	if (wire.PrivateSource != nil) != requirePrivate {
 		clear(wire.Secrets)
 		return out, connectionUnavailable()
 	}
 	out = resolvedOperation(wire)
+	if requirePrivate {
+		proof := *wire.PrivateSource
+		out.privateSource = &proof
+	}
 	now := time.Now()
 	peerUntil, ok := resolverCertificateExpiry(resp.TLS, now)
 	if !ok || ctx.Err() != nil || out.Version != resolver.Version || out.GrantSHA256 != record.AuthoritySHA256 || out.RequestSHA256 != record.RequestSHA256 || !operations.ValidDigest(out.SourceRevision) || out.ValidUntil <= now.Unix() || out.ValidUntil > now.Unix()+5 || out.ValidUntil > record.AuthorityUntil.Unix() {
