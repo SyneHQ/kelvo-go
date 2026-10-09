@@ -137,9 +137,15 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	var custody *containment.Custody
 	var commandIO *commandIO
 	var cleanup operationCleanupState
+	var private *privateOperationChannel
 	defer func() {
 		if custody != nil {
 			defer custody.Complete()
+		}
+		if private != nil && private.postgresCleanup != nil && cleanup.process && cleanup.scratch && !cleanup.pendingIO && !cleanup.pendingPrivate {
+			finishCtx, finishCancel := context.WithTimeout(context.Background(), time.Second)
+			resultErr = errors.Join(resultErr, private.postgresCleanup.finish(finishCtx))
+			finishCancel()
 		}
 		if finalizer, ok := sink.(OperationFinalizer); ok {
 			receipt, resultErr = finalizer.FinalizeOperation(receipt, resultErr)
@@ -262,7 +268,6 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	if err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
-	var private *privateOperationChannel
 	defer func() {
 		if private != nil {
 			cleanupContext, stop := context.WithTimeout(context.Background(), 5*time.Second)
@@ -293,7 +298,7 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 		if !private.matches(input) {
 			return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT")
 		}
-		input.PrivateTransport = &adapter.PrivateTransport{ControlFD: 7}
+		input.PrivateTransport = &adapter.PrivateTransport{ControlFD: 7, PostgresCleanup: private.postgresCleanup != nil}
 		args = append([]string{"--operation-private"}, args...)
 	}
 	var jdbcFiles []*os.File

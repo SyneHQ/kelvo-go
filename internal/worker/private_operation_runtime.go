@@ -35,9 +35,13 @@ type privateOperationRuntime struct {
 	entries        map[transportbroker.Binding]*privateOperationEntry
 	pending        int
 	closed, joined bool
+	cleanupEnabled bool
 	done           chan struct{}
 }
-type privateOperationEntry struct{ opener transportbroker.Opener }
+type privateOperationEntry struct {
+	opener  transportbroker.Opener
+	cleanup *privatePostgresCleanup
+}
 
 func newPrivateOperationRuntime(parent context.Context, p *privateOperationPolicy, proxy rabbitconnect.Config, issuer rabbitconnect.HTTPIssuerConfig, limits transportbroker.Limits) (*privateOperationRuntime, error) {
 	if parent == nil || parent.Err() != nil || p == nil || limits.MaxDataPerSession > 32 || proxy.Issuer != p.trust.Issuer || proxy.Audience != p.trust.Audience || proxy.ClusterTenant != p.trust.ClusterTenant || proxy.ServicePrincipal != p.trust.ServicePrincipal || proxy.WorkerIdentity != p.identity || issuer.WorkerIdentity != p.identity {
@@ -63,7 +67,7 @@ func newPrivateOperationRuntime(parent context.Context, p *privateOperationPolic
 		return nil, err
 	}
 	life, cancel := context.WithCancel(parent)
-	r := &privateOperationRuntime{policy: p, limits: limits, life: life, cancel: cancel, issuer: issue, entries: make(map[transportbroker.Binding]*privateOperationEntry), done: make(chan struct{}), channel: newPrivateOperationChannel}
+	r := &privateOperationRuntime{policy: p, limits: limits, life: life, cancel: cancel, issuer: issue, entries: make(map[transportbroker.Binding]*privateOperationEntry), done: make(chan struct{}), channel: newPrivateOperationChannel, cleanupEnabled: proxy.AcceptedOpenTrust != nil}
 	r.opener = func(scope sourceproof.Scope, refresh func(context.Context) (sourceproof.Envelope, error)) (transportbroker.Opener, error) {
 		return rabbitconnect.NewWithSourceProof(proxy, issue, rabbitconnect.SourceProofConfig{PublicKey: p.proofKey, Scope: scope, Refresh: refresh})
 	}
@@ -87,7 +91,22 @@ func (r *privateOperationRuntime) Open(ctx context.Context, request transportbro
 	if entry == nil || closed {
 		return nil, transportbroker.ErrClosed
 	}
-	return entry.opener.Open(ctx, request)
+	conn, err := entry.opener.Open(ctx, request)
+	if err == nil && entry.cleanup != nil {
+		accepted, ok := conn.(*rabbitconnect.AcceptedConn)
+		if !ok {
+			err = transportbroker.ErrScope
+		} else {
+			err = entry.cleanup.accept(ctx, accepted)
+		}
+		if err != nil && conn != nil {
+			if closeErr := conn.Close(); closeErr != nil {
+				return conn, transportbroker.ErrCleanup
+			}
+			return nil, err
+		}
+	}
+	return conn, err
 }
 func (r *privateOperationRuntime) finishLocked() {
 	if r.closed && !r.joined && r.pending == 0 && len(r.entries) == 0 {
@@ -130,6 +149,9 @@ func (r *privateOperationRuntime) prepare(ctx context.Context, e *Executor, reco
 }
 
 func (r *privateOperationRuntime) prepareMode(ctx context.Context, e *Executor, record operationstore.Record, request operations.Request, payload []byte, allowPublic bool, maxBytes int64) (adapter.ProcessRequest, *privateOperationChannel, error) {
+	return r.prepareModeWithCleanup(ctx, e, record, request, payload, allowPublic, maxBytes, nil)
+}
+func (r *privateOperationRuntime) prepareModeWithCleanup(ctx context.Context, e *Executor, record operationstore.Record, request operations.Request, payload []byte, allowPublic bool, maxBytes int64, store *operationstore.Store) (adapter.ProcessRequest, *privateOperationChannel, error) {
 	bad := func(err error) (adapter.ProcessRequest, *privateOperationChannel, error) {
 		return adapter.ProcessRequest{}, nil, err
 	}
@@ -207,6 +229,12 @@ func (r *privateOperationRuntime) prepareMode(ctx context.Context, e *Executor, 
 		return bad(err)
 	}
 	entry := &privateOperationEntry{opener: opener}
+	if r.cleanupEnabled {
+		entry.cleanup, err = newPrivatePostgresCleanup(store, record, selection.input)
+		if err != nil {
+			return bad(err)
+		}
+	}
 	r.mu.Lock()
 	if r.closed || r.entries[selection.binding] != nil {
 		r.mu.Unlock()
@@ -234,7 +262,12 @@ func (r *privateOperationRuntime) prepareMode(ctx context.Context, e *Executor, 
 		return bad(err)
 	}
 	retained = true
-	channel, err := r.channel(r.life, selection.input, session, selection.binding, 2*r.limits.MaxDataPerSession, release)
+	var channel *privateOperationChannel
+	if entry.cleanup != nil {
+		channel, err = newPrivatePostgresChannel(r.life, selection.input, session, selection.binding, entry.cleanup, release)
+	} else {
+		channel, err = r.channel(r.life, selection.input, session, selection.binding, 2*r.limits.MaxDataPerSession, release)
+	}
 	if err != nil {
 		// Return cleanup custody even when IPC construction fails. The operation
 		// finalizer must join this session before it releases its resource hold.
