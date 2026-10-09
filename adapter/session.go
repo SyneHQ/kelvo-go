@@ -39,6 +39,7 @@ type Connection struct {
 	// It must not fall back to a direct network connection after a denial.
 	DialContext      func(context.Context, string, string) (net.Conn, error) `json:"-"`
 	DialCancellation func(context.Context, string, string) (net.Conn, error) `json:"-"`
+	PostgresCleanup  PostgresCleanup                                         `json:"-"`
 }
 
 type Driver interface {
