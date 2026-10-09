@@ -20,7 +20,7 @@ import (
 
 var _ transportbroker.Opener = (*Opener)(nil)
 
-// Open spends one setup budget across issuance, TCP, mTLS and CONNECT. The
+// Open bounds fresh source resolution separately from issuance, TCP, mTLS and CONNECT. The
 // trusted issuer must obey its context. There are no retries or direct-source
 // fallbacks. Returning a socket with an error transfers uncertain cleanup custody.
 func (o *Opener) Open(parent context.Context, request transportbroker.OpenRequest) (net.Conn, error) {
@@ -31,7 +31,7 @@ func (o *Opener) Open(parent context.Context, request transportbroker.OpenReques
 	if binding.Issuer != o.issuer || binding.Audience != o.audience || binding.ClusterTenant != o.cluster || binding.ServicePrincipal != o.principal {
 		return nil, transportbroker.ErrScope
 	}
-	deadline := time.Now().Add(o.timeout)
+	deadline := binding.ExpiresAt
 	for _, until := range []time.Time{binding.ExpiresAt, o.certificateUntil} {
 		if until.Before(deadline) {
 			deadline = until
@@ -48,11 +48,20 @@ func (o *Opener) Open(parent context.Context, request transportbroker.OpenReques
 	issue := IssueRequest{Binding: binding, OpenID: request.ID, WorkerIdentity: o.identity, WorkerCertSHA256: o.certDigest}
 	if o.sourceProof != nil {
 		var err error
-		issue, err = o.refreshSourceProof(ctx, issue)
+		refreshContext, stopRefresh := context.WithTimeout(ctx, o.sourceProof.RefreshTimeout)
+		issue, err = o.refreshSourceProof(refreshContext, issue)
+		stopRefresh()
 		if err != nil {
 			return nil, err
 		}
 	}
+	// The operation and certificate deadlines remain authoritative across both phases.
+	// A slow resolver does not consume the short physical-connection setup budget.
+	if ctx.Err() != nil || request.ValidateAt(time.Now()) != nil || !time.Now().Before(o.certificateUntil) {
+		return nil, setupError(ctx)
+	}
+	ctx, stopSetup := context.WithTimeout(ctx, o.timeout)
+	defer stopSetup()
 	diagnostic.Record(ctx, diagnostic.TicketIssue, diagnostic.Started, 0)
 	token, err := o.tickets.Issue(ctx, issue)
 	if err != nil || ctx.Err() != nil {

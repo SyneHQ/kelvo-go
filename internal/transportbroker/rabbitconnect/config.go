@@ -1,8 +1,8 @@
 // Copyright 2026 SYNEHQ. SPDX-License-Identifier: Apache-2.0
 
-// Package rabbitconnect implements a dormant parent-side Rabbit v1 CONNECT
-// opener. No runtime constructs it. Issuer credentials, TLS keys and tickets
-// belong to the parent; native source TLS remains the driver's responsibility.
+// Package rabbitconnect implements the parent-side Rabbit v1 CONNECT opener.
+// Issuer credentials, TLS keys and tickets belong to the parent.
+// Native source TLS remains the driver's responsibility.
 package rabbitconnect
 
 import (

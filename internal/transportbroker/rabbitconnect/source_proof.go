@@ -11,21 +11,30 @@ import (
 	"github.com/SYNEHQ/kelvo-go/sourceproof"
 )
 
+// MaxSourceResolutionTime bounds the complete fresh authorization phase.
+const MaxSourceResolutionTime = 30 * time.Second
+
 // SourceProofConfig belongs to one trusted parent execution and source.
 // Scope comes from verified admission and current metadata, never from the
 // returned proof. Refresh must repeat resolver authorization for each call.
 // It must obey ctx and retain admission until its work stops.
 type SourceProofConfig struct {
-	PublicKey ed25519.PublicKey
-	Scope     sourceproof.Scope
-	Refresh   func(context.Context) (sourceproof.Envelope, error)
+	// RefreshTimeout includes resolver admission and the fresh authorization request.
+	// Zero preserves the legacy two-second bound for callers without an override.
+	RefreshTimeout time.Duration
+	PublicKey      ed25519.PublicKey
+	Scope          sourceproof.Scope
+	Refresh        func(context.Context) (sourceproof.Envelope, error)
 }
 
 // NewWithSourceProof adds fresh proof verification before each physical open.
 // It never caches proofs or extends execution custody. The original grant and
 // proof enter only the parent-owned issuer request, not driver input.
 func NewWithSourceProof(config Config, issuer Issuer, proof SourceProofConfig) (*Opener, error) {
-	if len(proof.PublicKey) != ed25519.PublicKeySize || proof.Refresh == nil {
+	if proof.RefreshTimeout == 0 {
+		proof.RefreshTimeout = MaxSetupTime
+	}
+	if len(proof.PublicKey) != ed25519.PublicKeySize || proof.Refresh == nil || proof.RefreshTimeout <= 0 || proof.RefreshTimeout > MaxSourceResolutionTime {
 		return nil, transportbroker.ErrInvalid
 	}
 	opener, err := New(config, issuer)

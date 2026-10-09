@@ -184,3 +184,142 @@ func TestProofDoesNotExtendTicketAdmission(t *testing.T) {
 		t.Fatal("overlong ticket accepted")
 	}
 }
+
+func TestSlowFreshProofPreservesShortTransportBudget(t *testing.T) {
+	f := newFixture(t)
+	request := testRequest()
+	grant := "original.signed.grant"
+	request.Binding.Execution.GrantSHA256 = sourceproof.GrantDigest(grant)
+	f.config.ProxyAddress = serveOnce(t, f.server, func(conn net.Conn) {
+		if _, err := readCONNECT(conn); err != nil {
+			return
+		}
+		_, _ = io.WriteString(conn, "HTTP/1.1 200 Connection Established\r\n\r\nok")
+	})
+	var remaining time.Duration
+	issuer := issueFunc(func(ctx context.Context, r IssueRequest) (string, error) {
+		until, _ := ctx.Deadline()
+		remaining = time.Until(until)
+		claims := claimsFor(r)
+		claims.TokenID = r.TokenID
+		claims.ExpiresAt = time.Now().Add(4 * time.Second).Unix()
+		return signTicket(f.key, claims), nil
+	})
+	base, err := New(f.config, issuer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := proofScope(base, request)
+	opener, err := NewWithSourceProof(f.config, issuer, SourceProofConfig{PublicKey: f.key.Public().(ed25519.PublicKey), Scope: scope, RefreshTimeout: 4 * time.Second, Refresh: func(ctx context.Context) (sourceproof.Envelope, error) {
+		timer := time.NewTimer(2200 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return sourceproof.Envelope{}, ctx.Err()
+		}
+		now := time.Now()
+		return sourceproof.Sign(f.key, scope, grant, now, now.Add(5*time.Second))
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	conn, err := opener.Open(ctx, request)
+	if err != nil {
+		t.Fatal("fresh resolver exceeded old 2s bound", err)
+	}
+	defer conn.Close()
+	if remaining < 1500*time.Millisecond || remaining > MaxSetupTime {
+		t.Fatalf("network setup budget %s", remaining)
+	}
+	body := make([]byte, 2)
+	if _, err := io.ReadFull(conn, body); err != nil || string(body) != "ok" {
+		t.Fatal("tunnel payload unavailable", err)
+	}
+}
+
+func TestFreshProofStopsBeforeIssueOnParentOrScopeExpiry(t *testing.T) {
+	for _, mode := range []string{"deadline", "cancel", "binding_expiry", "expired_proof", "denied", "cancel_with_nil_error", "binding_expiry_with_nil_error", "certificate_expiry_with_nil_error"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newFixture(t)
+			request := testRequest()
+			grant := "original.signed.grant"
+			request.Binding.Execution.GrantSHA256 = sourceproof.GrantDigest(grant)
+			issuer := issueFunc(func(context.Context, IssueRequest) (string, error) {
+				t.Error("failed proof reached issuer")
+				return "", errors.New("unexpected")
+			})
+			base, err := New(f.config, issuer)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scope := proofScope(base, request)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if mode == "deadline" {
+				var stop context.CancelFunc
+				ctx, stop = context.WithTimeout(ctx, 40*time.Millisecond)
+				defer stop()
+			}
+			if mode == "binding_expiry" || mode == "binding_expiry_with_nil_error" {
+				request.Binding.ExpiresAt = time.Now().Add(40 * time.Millisecond)
+			}
+			opener, err := NewWithSourceProof(f.config, issuer, SourceProofConfig{PublicKey: f.key.Public().(ed25519.PublicKey), Scope: scope, RefreshTimeout: 4 * time.Second, Refresh: func(c context.Context) (sourceproof.Envelope, error) {
+				if mode == "denied" {
+					return sourceproof.Envelope{}, errors.New("revoked")
+				}
+				if mode == "expired_proof" {
+					now := time.Now().Add(-time.Minute)
+					return sourceproof.Sign(f.key, scope, grant, now, now.Add(time.Second))
+				}
+				if mode == "cancel_with_nil_error" {
+					cancel()
+					now := time.Now()
+					return sourceproof.Sign(f.key, scope, grant, now, now.Add(time.Second))
+				}
+				if mode == "binding_expiry_with_nil_error" || mode == "certificate_expiry_with_nil_error" {
+					time.Sleep(80 * time.Millisecond)
+					now := time.Now()
+					return sourceproof.Sign(f.key, scope, grant, now, now.Add(time.Second))
+				}
+				if mode == "cancel" {
+					cancel()
+				}
+				<-c.Done()
+				return sourceproof.Envelope{}, c.Err()
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "certificate_expiry_with_nil_error" {
+				opener.certificateUntil = time.Now().Add(40 * time.Millisecond)
+			}
+			opener.dial = func(context.Context, string, string) (net.Conn, error) {
+				t.Error("failed proof reached proxy")
+				return nil, errors.New("unexpected")
+			}
+			start := time.Now()
+			conn, err := opener.Open(ctx, request)
+			if err == nil || conn != nil || time.Since(start) > time.Second {
+				t.Fatal("failed proof did not stop promptly", err)
+			}
+		})
+	}
+}
+
+func TestFreshProofTimeoutBounds(t *testing.T) {
+	f := newFixture(t)
+	request := testRequest()
+	base, err := New(f.config, f.issuer())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, timeout := range []time.Duration{-1, MaxSourceResolutionTime + 1} {
+		_, err := NewWithSourceProof(f.config, f.issuer(), SourceProofConfig{PublicKey: f.key.Public().(ed25519.PublicKey), Scope: proofScope(base, request), RefreshTimeout: timeout, Refresh: func(context.Context) (sourceproof.Envelope, error) { return sourceproof.Envelope{}, nil }})
+		if err == nil {
+			t.Fatal("invalid refresh timeout accepted")
+		}
+	}
+}
