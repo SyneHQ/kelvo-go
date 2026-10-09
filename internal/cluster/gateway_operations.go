@@ -157,6 +157,8 @@ func (g *Gateway) serveOperationHTTP(w http.ResponseWriter, r *http.Request, ten
 			return
 		}
 		g.json(w, 200, operationResponse(updated.Record))
+	case len(parts) == 4 && parts[3] == "cleanup-lease" && r.Method == http.MethodPost:
+		g.operationCleanupLease(w, r, g.tenants[tenant], state, claims, record)
 	case len(parts) == 4 && parts[3] == "connection-lease" && r.Method == http.MethodPost:
 		g.operationConnectionLease(w, r, g.tenants[tenant], state, claims, record)
 	default:

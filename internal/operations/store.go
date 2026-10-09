@@ -23,9 +23,10 @@ import (
 
 const MaxDocumentBytes = 512 << 10
 const (
-	Queued   = "queued"
-	Assigned = "assigned"
-	Running  = "running"
+	Queued     = "queued"
+	Assigned   = "assigned"
+	Running    = "running"
+	Cancelling = "cancelling"
 )
 
 var (
@@ -122,22 +123,23 @@ func (b Binding) Validate() error {
 }
 
 type Record struct {
-	ID              string       `json:"id"`
-	IdentitySHA256  string       `json:"identity_sha256"`
-	Scope           Scope        `json:"scope"`
-	Kind            api.Kind     `json:"kind"`
-	RequestSHA256   string       `json:"request_sha256"`
-	RequestRef      api.InputRef `json:"request_ref"`
-	AuthoritySHA256 string       `json:"authority_sha256"`
-	AuthorityToken  string       `json:"authority_token"`
-	CreatedAt       time.Time    `json:"created_at"`
-	ExecuteBefore   time.Time    `json:"execute_before"`
-	AuthorityUntil  time.Time    `json:"authority_until"`
-	RetainUntil     time.Time    `json:"retain_until"`
-	State           string       `json:"state"`
-	Binding         Binding      `json:"binding"`
-	LeaseUntil      time.Time    `json:"lease_until,omitempty"`
-	Receipt         *api.Receipt `json:"receipt,omitempty"`
+	ID              string           `json:"id"`
+	IdentitySHA256  string           `json:"identity_sha256"`
+	Scope           Scope            `json:"scope"`
+	Kind            api.Kind         `json:"kind"`
+	RequestSHA256   string           `json:"request_sha256"`
+	RequestRef      api.InputRef     `json:"request_ref"`
+	AuthoritySHA256 string           `json:"authority_sha256"`
+	AuthorityToken  string           `json:"authority_token"`
+	CreatedAt       time.Time        `json:"created_at"`
+	ExecuteBefore   time.Time        `json:"execute_before"`
+	AuthorityUntil  time.Time        `json:"authority_until"`
+	RetainUntil     time.Time        `json:"retain_until"`
+	State           string           `json:"state"`
+	Binding         Binding          `json:"binding"`
+	LeaseUntil      time.Time        `json:"lease_until,omitempty"`
+	Receipt         *api.Receipt     `json:"receipt,omitempty"`
+	AcceptedCleanup *AcceptedCleanup `json:"accepted_cleanup,omitempty"`
 }
 
 func (r Record) Terminal() bool { return r.Receipt != nil }
@@ -417,8 +419,14 @@ func (s *Store) RejectBeforeStart(ctx context.Context, scope Scope, id string, b
 
 func (s *Store) Cancel(ctx context.Context, scope Scope, id string) (Snapshot, error) {
 	return s.change(ctx, scope, id, func(r *Record, now time.Time) (bool, error) {
-		if r.Terminal() {
+		if r.Terminal() || r.State == Cancelling {
 			return false, nil
+		}
+		if r.State == Running && r.AcceptedCleanup != nil {
+			r.State = Cancelling
+			r.AcceptedCleanup.CancellationStartedAt = now
+			r.AcceptedCleanup.CleanupUntil = minTime(now.Add(cleanupLifetime), minTime(r.ExecuteBefore, r.AcceptedCleanup.AcceptedUntil))
+			return true, nil
 		}
 		if r.State == Running {
 			if r.Kind.Mutating() {
@@ -517,11 +525,25 @@ func (s *Store) expire(d *document, now time.Time) bool {
 		if r.Terminal() {
 			continue
 		}
+		if r.State == Cancelling {
+			if !now.Before(r.AcceptedCleanup.CleanupUntil) {
+				s.cleanupUnknown(r, now)
+				changed = true
+			}
+			continue
+		}
+		if r.AcceptedCleanup != nil && !now.Before(r.AcceptedCleanup.AcceptedUntil) {
+			s.cleanupUnknown(r, now)
+			changed = true
+			continue
+		}
 		if now.Before(r.ExecuteBefore) && (r.State == Queued || now.Before(r.LeaseUntil)) {
 			continue
 		}
 		if r.State == Running {
-			if r.Kind.Mutating() {
+			if r.AcceptedCleanup != nil {
+				s.cleanupUnknown(r, now)
+			} else if r.Kind.Mutating() {
 				s.terminal(r, now, api.OutcomeUnknown, api.EffectUnknown, "OUTCOME_UNKNOWN")
 			} else {
 				s.terminal(r, now, api.Failed, api.EffectNone, "DEADLINE_EXCEEDED")
@@ -613,6 +635,9 @@ func (s *Store) validateDocument(d document, shard int) error {
 			return ErrInvalid
 		}
 		ids[r.ID], identities[r.IdentitySHA256] = true, true
+		if validateAcceptedCleanup(r) != nil {
+			return ErrInvalid
+		}
 		if r.Terminal() {
 			if r.Receipt.Validate() != nil || r.State != string(r.Receipt.Outcome) || r.Receipt.OperationID != r.ID || r.Receipt.RequestSHA256 != r.RequestSHA256 {
 				return ErrInvalid
@@ -623,7 +648,7 @@ func (s *Store) validateDocument(d document, shard int) error {
 			if r.Binding != (Binding{}) && r.Binding.Validate() != nil {
 				return ErrInvalid
 			}
-			if (r.Receipt.Outcome == api.Completed || r.Receipt.Outcome == api.Failed || r.Receipt.Outcome == api.OutcomeUnknown) && r.Binding.Validate() != nil {
+			if (r.Receipt.Outcome == api.Completed || r.Receipt.Outcome == api.Failed || r.Receipt.Outcome == api.OutcomeUnknown || r.Receipt.Outcome == api.CleanupUnknown) && r.Binding.Validate() != nil {
 				return ErrInvalid
 			}
 		} else {
@@ -632,7 +657,7 @@ func (s *Store) validateDocument(d document, shard int) error {
 				if r.Binding != (Binding{}) || !r.LeaseUntil.IsZero() {
 					return ErrInvalid
 				}
-			case Assigned, Running:
+			case Assigned, Running, Cancelling:
 				if r.Binding.Validate() != nil || !r.LeaseUntil.After(r.CreatedAt) || r.LeaseUntil.After(r.ExecuteBefore) {
 					return ErrInvalid
 				}
