@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	ledger "github.com/SYNEHQ/kelvo-go/internal/operations"
@@ -75,11 +76,19 @@ type PrivateOperations struct {
 }
 
 func readPrivateCA(path string) ([]byte, error) {
-	f, err := os.Open(path)
+	before, err := os.Stat(path)
+	if err != nil || !before.Mode().IsRegular() || before.Size() < 1 || before.Size() > 1<<20 {
+		return nil, errPrivateOperationConfig
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, errPrivateOperationConfig
 	}
 	defer f.Close()
+	after, err := f.Stat()
+	if err != nil || !after.Mode().IsRegular() || !os.SameFile(before, after) {
+		return nil, errPrivateOperationConfig
+	}
 	data, err := io.ReadAll(io.LimitReader(f, (1<<20)+1))
 	if err != nil || len(data) == 0 || len(data) > 1<<20 {
 		return nil, errPrivateOperationConfig
