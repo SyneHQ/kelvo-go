@@ -6,12 +6,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"io"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
+	"github.com/SYNEHQ/kelvo-go/filesnapshot"
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/exports"
@@ -245,6 +247,18 @@ type preparedApplicationOperation struct {
 	sink       *operationResultSink
 }
 
+func (p *preparedApplicationOperation) currentRecord(ctx context.Context) (operationstore.Record, error) {
+	current, err := p.app.ledger.Current(ctx, p.record.Scope, p.record.ID, p.record.Binding)
+	if err != nil {
+		return operationstore.Record{}, err
+	}
+	record := current.Record
+	if err := p.app.authorize(ctx, record, p.request, record.Binding); err != nil {
+		return operationstore.Record{}, err
+	}
+	return record, nil
+}
+
 func (p *preparedApplicationOperation) Close() error {
 	if p.sink != nil {
 		if err := p.sink.abort(); err != nil {
@@ -287,16 +301,33 @@ func (p *preparedApplicationOperation) Execute(ctx context.Context) (receipt ope
 		resultErr = errors.Join(resultErr, op.finish(outcome, category))
 	}()
 	ctx = containment.WithCompletion(ctx, &p.completion)
+	ctx = worker.WithOperationFilePublisher(ctx, func(admitted context.Context, input adapter.ProcessRequest, candidate filesnapshot.Descriptor, source io.Reader) (bool, error) {
+		if input.SourceFile == nil || input.Source.Engine != "sqlite" {
+			return false, operationstore.ErrConflict
+		}
+		record, err := p.currentRecord(admitted)
+		if err != nil {
+			return false, err
+		}
+		publication := filesnapshot.Publication{Version: 1, OperationID: input.OperationID, RequestSHA256: input.RequestSHA256, Original: *input.SourceFile, Replacement: candidate}
+		return p.app.executor.PublishOperationFile(admitted, record, p.request, input.Source.Revision, publication, source)
+	})
+	ctx = worker.WithOperationFileResolver(ctx, func(admitted context.Context, input adapter.ProcessRequest, destination io.Writer) (int64, error) {
+		if input.SourceFile == nil || input.Source.Engine != "sqlite" {
+			return 0, operationstore.ErrConflict
+		}
+		record, err := p.currentRecord(admitted)
+		if err != nil {
+			return 0, err
+		}
+		return p.app.executor.FetchOperationFile(admitted, record, p.request, input.Source.Revision, *input.SourceFile, destination)
+	})
 	sink := &operationResultSink{mutating: p.request.Kind.Mutating()}
 	p.sink = sink
 	capacityExceeded := false
 	receipt, resultErr = p.app.executor.ExecuteResolvedOperation(ctx, p.app.cfg.Adapter, p.record.ID, p.record.RequestSHA256, func(admitted context.Context) (adapter.ProcessRequest, error) {
-		current, err := p.app.ledger.Current(admitted, p.record.Scope, p.record.ID, p.record.Binding)
+		record, err := p.currentRecord(admitted)
 		if err != nil {
-			return adapter.ProcessRequest{}, err
-		}
-		record := current.Record
-		if err = p.app.authorize(admitted, record, p.request, record.Binding); err != nil {
 			return adapter.ProcessRequest{}, err
 		}
 		limits := p.app.cfg.Limits
@@ -304,9 +335,7 @@ func (p *preparedApplicationOperation) Execute(ctx context.Context) (receipt ope
 		if p.request.Kind == operations.MetadataInspect {
 			limits.MaxBytes = min(limits.MaxBytes, p.app.cfg.MaxMetadataBytes)
 		}
-		// Only reads and metadata produce Arrow in the supported relational
-		// protocol. Connection checks and statements need no result reservation.
-		if p.request.Kind == operations.QueryRead || p.request.Kind == operations.MetadataInspect {
+		if applicationProducesResult(p.request) {
 			// The worker cancels its inner context before result finalization.
 			// Keep storage under the outer operation context until retention.
 			sink.stream, err = p.app.results.BeginStreamLimit(ctx, operationInputIdentity(record.Scope, record.AuthoritySHA256), record.RetainUntil, operationinput.ArrowIPC, limits.MaxBytes)
@@ -323,9 +352,7 @@ func (p *preparedApplicationOperation) Execute(ctx context.Context) (receipt ope
 		if err != nil {
 			return adapter.ProcessRequest{}, err
 		}
-		switch input.Source.Engine {
-		case "postgres", "postgresql", "mysql":
-		default:
+		if !applicationSourceSupported(input.Source.Engine, p.request) {
 			return adapter.ProcessRequest{}, operations.ErrUnsupported
 		}
 		input.Limits.MaxBytes = min(input.Limits.MaxBytes, limits.MaxBytes)
@@ -335,4 +362,29 @@ func (p *preparedApplicationOperation) Execute(ctx context.Context) (receipt ope
 		receipt.ErrorCode = "RESOURCE_EXHAUSTED"
 	}
 	return receipt, resultErr
+}
+
+func applicationProducesResult(request operations.Request) bool {
+	return request.Kind == operations.QueryRead || request.Kind == operations.MetadataInspect || request.Kind == operations.NativeRead ||
+		request.Kind == operations.NativeExecute && request.Spec.Native != nil && request.Spec.Native.ReturnResult
+}
+
+// Application mode exposes six engines and their native operation types.
+// The adapter still validates each statement, command, and transaction mode.
+func applicationSourceSupported(engine string, request operations.Request) bool {
+	switch engine {
+	case "postgres", "mysql", "clickhouse", "sqlite", "oracle":
+		switch request.Kind {
+		case operations.ConnectionTest, operations.MetadataInspect, operations.QueryRead, operations.StatementExecute:
+			return true
+		}
+	case "mongodb":
+		switch request.Kind {
+		case operations.ConnectionTest, operations.MetadataInspect:
+			return true
+		case operations.NativeRead, operations.NativeExecute:
+			return request.Spec.Native != nil && request.Spec.Native.Provider == "mongodb" && request.Spec.Native.Input == nil
+		}
+	}
+	return false
 }

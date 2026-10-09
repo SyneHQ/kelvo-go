@@ -15,6 +15,69 @@ import (
 	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
+func TestApplicationSixEngineOperationBoundary(t *testing.T) {
+	for _, engine := range []string{"postgres", "mysql", "clickhouse", "sqlite", "oracle"} {
+		for _, kind := range []operations.Kind{operations.ConnectionTest, operations.MetadataInspect, operations.QueryRead, operations.StatementExecute} {
+			if !applicationSourceSupported(engine, operations.Request{Kind: kind}) {
+				t.Fatal("supported operation rejected", engine, kind)
+			}
+		}
+		for _, kind := range []operations.Kind{operations.NativeRead, operations.NativeExecute, operations.MigrationApply, operations.WatchRead} {
+			if applicationSourceSupported(engine, operations.Request{Kind: kind, Spec: operations.Spec{Native: &operations.NativeSpec{Provider: "mongodb"}}}) {
+				t.Fatal("unrelated operation accepted", engine, kind)
+			}
+		}
+	}
+	for _, kind := range []operations.Kind{operations.NativeRead, operations.NativeExecute} {
+		request := operations.Request{Kind: kind, Spec: operations.Spec{Native: &operations.NativeSpec{Provider: "mongodb", Command: "find"}}}
+		if !applicationSourceSupported("mongodb", request) {
+			t.Fatal("MongoDB native operation rejected", kind)
+		}
+		request.Spec.Native.Provider = "other"
+		if applicationSourceSupported("mongodb", request) {
+			t.Fatal("unrelated native provider accepted")
+		}
+	}
+	for _, kind := range []operations.Kind{operations.QueryRead, operations.StatementExecute} {
+		if applicationSourceSupported("mongodb", operations.Request{Kind: kind}) {
+			t.Fatal("MongoDB SQL operation accepted", kind)
+		}
+	}
+	for _, engine := range []string{"", "postgresql", "duckdb", "csv", "redis", "sqlserver", "mariadb"} {
+		if applicationSourceSupported(engine, operations.Request{Kind: operations.ConnectionTest}) {
+			t.Fatal("seventh engine accepted", engine)
+		}
+	}
+}
+
+func TestApplicationNativeApprovalAndResultReservation(t *testing.T) {
+	c := ApplicationConfig{AppScope: "installation-a", WriteMode: "disabled"}
+	claims := operations.GrantClaims{AppTeam: c.AppScope, Subject: operations.Subject{Kind: "user"}, Operation: operations.NativeRead, Authorization: operations.Authorization{Kind: "read"}}
+	if !c.allows(claims) || !applicationProducesResult(operations.Request{Kind: operations.NativeRead}) {
+		t.Fatal("native read rejected or result not reserved")
+	}
+	claims.Operation = operations.NativeExecute
+	if c.allows(claims) {
+		t.Fatal("native mutation admitted as a read")
+	}
+	claims.Authorization.Kind = "approved_change"
+	if c.allows(claims) {
+		t.Fatal("grant enabled disabled writes")
+	}
+	c.WriteMode = "approved"
+	if !c.allows(claims) {
+		t.Fatal("approved native mutation rejected")
+	}
+	request := operations.Request{Kind: operations.NativeExecute, Spec: operations.Spec{Native: &operations.NativeSpec{Provider: "mongodb"}}}
+	if applicationProducesResult(request) {
+		t.Fatal("unrequested mutation result reserved")
+	}
+	request.Spec.Native.ReturnResult = true
+	if !applicationProducesResult(request) {
+		t.Fatal("requested mutation result not reserved")
+	}
+}
+
 func TestApplicationRetainedGrantCannotExecute(t *testing.T) {
 	public, private, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

@@ -138,9 +138,9 @@ func (c ApplicationConfig) allows(claims operations.GrantClaims) bool {
 		return false
 	}
 	switch claims.Operation {
-	case operations.ConnectionTest, operations.MetadataInspect, operations.QueryRead:
+	case operations.ConnectionTest, operations.MetadataInspect, operations.QueryRead, operations.NativeRead:
 		return claims.Authorization.Kind == "read"
-	case operations.StatementExecute:
+	case operations.StatementExecute, operations.NativeExecute:
 		return c.WriteMode == "approved" && claims.Authorization.Kind == "approved_change"
 	default:
 		return false
