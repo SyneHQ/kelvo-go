@@ -104,6 +104,12 @@ func (g *kernelGroup) populated() (bool, error) {
 	return value == 1, nil
 }
 func (g *kernelGroup) usage() (Usage, error) {
+	return readUsage(func(name string, limit int64) (string, error) {
+		return readFile(int(g.fd.Fd()), name, limit)
+	})
+}
+
+func readUsage(read func(string, int64) (string, error)) (Usage, error) {
 	var observed Usage
 	for _, target := range []struct {
 		name  string
@@ -111,7 +117,7 @@ func (g *kernelGroup) usage() (Usage, error) {
 	}{
 		{"memory.current", &observed.MemoryCurrentBytes}, {"memory.peak", &observed.MemoryPeakBytes},
 	} {
-		raw, err := readFile(int(g.fd.Fd()), target.name, 128)
+		raw, err := read(target.name, 128)
 		if err != nil {
 			return Usage{}, ErrUnavailable
 		}
@@ -128,7 +134,7 @@ func (g *kernelGroup) usage() (Usage, error) {
 		{"pids.events", map[string]*uint64{"max": &observed.PIDsLimitEvents}},
 		{"cpu.stat", map[string]*uint64{"usage_usec": &observed.CPUUsageMicros, "nr_throttled": &observed.CPUThrottledPeriods}},
 	} {
-		raw, err := readFile(int(g.fd.Fd()), target.name, controlLimit)
+		raw, err := read(target.name, controlLimit)
 		if err != nil {
 			return Usage{}, ErrUnavailable
 		}

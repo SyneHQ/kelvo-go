@@ -55,6 +55,20 @@ func TestSupervisedChildRejectsMalformedHandle(t *testing.T) {
 	}
 }
 
+func TestSupervisedChildCopiesShareFinalExitAndClosedSignalHandle(t *testing.T) {
+	state := &supervisedChildState{pidfd: -1, done: make(chan struct{})}
+	child := &SupervisedChild{owner: &NamespaceSupervisor{}, pid: 2, state: state}
+	copy := *child
+	state.exit = ChildExit{Code: -1, Signal: syscall.SIGKILL}
+	close(state.done)
+	if exit, err := copy.Wait(context.Background()); err != nil || exit != state.exit {
+		t.Fatal("copied handle observed its pre-exit zero value", exit, err)
+	}
+	if err := copy.Signal(syscall.SIGTERM); !errors.Is(err, ErrUnavailable) {
+		t.Fatal("copied handle retained a closed signal descriptor", err)
+	}
+}
+
 func TestNamespaceSupervisorRejectsAmbientProcess(t *testing.T) {
 	if os.Getpid() == 1 {
 		t.Skip("ordinary host rejection requires a non-init process")
@@ -137,5 +151,24 @@ func TestChildFileDuplicationPreservesStatusFlags(t *testing.T) {
 	}
 	if err := read.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		t.Fatal("preparing child output disabled parent deadlines", err)
+	}
+}
+
+func TestChildFilesPreserveClosedOptionalDescriptorSlots(t *testing.T) {
+	file, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	files, err := duplicateChildFiles([]*os.File{file, file, file, nil, file})
+	if err != nil || len(files) != 5 || files[3] != ^uintptr(0) {
+		t.Fatal("closed fd3 shifted the later descriptor", files, err)
+	}
+	if _, err := unix.FcntlInt(files[4], unix.F_GETFD, 0); err != nil {
+		t.Fatal("fd4 did not receive its explicit file", err)
+	}
+	closeChildFiles(files)
+	if _, err := file.Write([]byte("caller still owns this descriptor")); err != nil {
+		t.Fatal("optional-slot cleanup closed the caller's file", err)
 	}
 }

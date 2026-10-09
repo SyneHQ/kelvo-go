@@ -47,7 +47,7 @@ func TestNamespaceSupervisorLive(t *testing.T) {
 	// Hold the registry lock until the exact child is already waitable. WNOWAIT
 	// leaves its exit for the single supervisor reaper after registration.
 	observed := false
-	child, err := s.spawn(ctx, spec("exit"), func(pid int) {
+	child, err := s.spawn(ctx, spec("exit"), &spawnHooks{beforeRegistration: func(pid int) {
 		until := time.Now().Add(time.Second)
 		for time.Now().Before(until) {
 			var info unix.Siginfo
@@ -57,7 +57,7 @@ func TestNamespaceSupervisorLive(t *testing.T) {
 			}
 			time.Sleep(time.Millisecond)
 		}
-	})
+	}})
 	if err != nil || !observed {
 		t.Fatal("exit-before-registration boundary was not exercised", err)
 	}
@@ -121,6 +121,7 @@ func TestNamespaceSupervisorLive(t *testing.T) {
 		return child
 	}
 	held := ready("hold", nil)
+	copyBeforeExit := *held
 	waitCtx, stopWait := context.WithTimeout(ctx, 25*time.Millisecond)
 	if _, err := held.Wait(waitCtx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatal("wait cancellation reported a false native exit", err)
@@ -134,6 +135,29 @@ func TestNamespaceSupervisorLive(t *testing.T) {
 	}
 	if exit, err := held.Wait(ctx); err != nil || exit.Signal != syscall.SIGTERM {
 		t.Fatal("wait cancellation lost the live child", exit, err)
+	}
+	copyAfterExit := *held
+	for _, copied := range []*SupervisedChild{&copyBeforeExit, &copyAfterExit} {
+		if exit, err := copied.Wait(ctx); err != nil || exit.Signal != syscall.SIGTERM || exit.Code != -1 {
+			t.Fatal("a copied handle reported a different native exit", exit, err)
+		}
+	}
+	replacement := ready("hold", nil)
+	for _, copied := range []*SupervisedChild{&copyBeforeExit, &copyAfterExit} {
+		if err := copied.Signal(syscall.SIGKILL); !errors.Is(err, ErrUnavailable) {
+			t.Fatal("an exited handle reused a later signal descriptor", err)
+		}
+	}
+	waitCtx, stopWait = context.WithTimeout(ctx, 25*time.Millisecond)
+	if _, err := replacement.Wait(waitCtx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("old handle copies signalled the replacement child", err)
+	}
+	stopWait()
+	if err := replacement.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if exit, err := replacement.Wait(ctx); err != nil || exit.Signal != syscall.SIGTERM {
+		t.Fatal("replacement lost its own termination", exit, err)
 	}
 	traced := ready("trace-stop", nil)
 	until := time.Now().Add(time.Second)
@@ -189,13 +213,13 @@ func TestNamespaceSupervisorLive(t *testing.T) {
 	}
 	launch := make(chan launchResult, 1)
 	go func() {
-		child, err := s.spawn(ctx, spec("exit"), func(int) {
+		child, err := s.spawn(ctx, spec("exit"), &spawnHooks{beforeRegistration: func(int) {
 			close(atRegistration)
 			select {
 			case <-releaseRegistration:
 			case <-ctx.Done():
 			}
-		})
+		}})
 		launch <- launchResult{child, err}
 	}()
 	select {
@@ -239,4 +263,38 @@ func TestNamespaceSupervisorLive(t *testing.T) {
 		t.Fatal("closed namespace admitted a process", err)
 	}
 	t.Logf("SUPERVISOR_ACCEPTED early_registration=true reaped=%d adopted=%d traced_stop=true blocked_output=true close_deadline_ms=%d remaining_registered=0", state.Reaped, state.Adopted, closeElapsed.Milliseconds())
+}
+
+func TestNamespaceSupervisorUncertainLaunchLive(t *testing.T) {
+	if os.Getenv("KELVO_TEST_NAMESPACE_LAUNCH_FAILURE") != "1" {
+		t.Skip("requires a dedicated PID-1 post-ForkExec failure fixture")
+	}
+	policy := Limits{MemoryBytes: 256 << 20, MaxProcesses: 64, CPUQuotaMicros: 100000, CPUPeriodMicros: 100000}
+	s, err := OpenNamespaceSupervisor(policy, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer null.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	injected := false
+	child, err := s.spawn(ctx, ChildSpec{Path: "/probe/supervisor-probe", Args: []string{"supervisor-probe", "hold"}, Dir: "/",
+		Files: []*os.File{null, null, null, null}}, &spawnHooks{openPIDFD: func(int, int) (int, error) {
+		injected = true
+		return -1, unix.EMFILE
+	}})
+	if !injected || child == nil || !errors.Is(err, ErrLaunchUncertain) || !errors.Is(err, ErrQuarantined) {
+		t.Fatal("actual post-ForkExec failure lost possible source effects", child, err)
+	}
+	if exit, err := child.Wait(ctx); err != nil || exit.Signal != syscall.SIGKILL {
+		t.Fatal("post-launch failure lost the owned child's exit", exit, err)
+	}
+	if !s.State().Draining || s.Close(ctx) == nil {
+		t.Fatal("uncertain launch reopened the worker boot")
+	}
+	t.Log("NAMESPACE_LAUNCH_FAILURE_ACCEPTED forkexec=true source_effects=unknown native_reaped=true boot_drained=true")
 }

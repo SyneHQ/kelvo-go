@@ -27,6 +27,8 @@ import (
 // Duplicates share offsets and status flags, including O_NONBLOCK, with the
 // caller's files. The caller must prepare any blocking child pipe endpoints
 // before Spawn and must not change their flags while a child can use them.
+// Nil files are allowed only after stderr and preserve intentionally closed
+// optional descriptor slots; later descriptors keep their original numbers.
 type ChildSpec struct {
 	Path  string
 	Args  []string
@@ -35,17 +37,17 @@ type ChildSpec struct {
 	Files []*os.File
 }
 
-// ChildExit is native process termination, not proof of output or domain cleanup.
-type ChildExit struct {
-	Code   int
-	Signal syscall.Signal
-}
-
 // SupervisedChild exposes one exit future. Cancelling Wait does not terminate
 // the child or release any operation capacity. Signal uses its pinned pidfd.
 type SupervisedChild struct {
-	owner   *NamespaceSupervisor
-	pid     int
+	owner *NamespaceSupervisor
+	pid   int
+	state *supervisedChildState
+}
+
+// Handle copies share the same future and pinned descriptor. A copied handle
+// must never keep a stale descriptor number after the sole reaper closes it.
+type supervisedChildState struct {
 	pidfdMu sync.Mutex
 	pidfd   int
 	done    chan struct{}
@@ -85,6 +87,7 @@ type NamespaceSupervisor struct {
 	closeOnce      sync.Once
 	closeDone      chan struct{}
 	closeRequested atomic.Bool
+	quiescing      atomic.Bool
 	closeErr       error
 }
 
@@ -159,9 +162,13 @@ func duplicateChildFiles(files []*os.File) (_ []uintptr, resultErr error) {
 			closeChildFiles(descriptors)
 		}
 	}()
-	for _, file := range files {
+	for index, file := range files {
 		if file == nil {
-			return nil, ErrInvalid
+			if index < 3 {
+				return nil, ErrInvalid
+			}
+			descriptors = append(descriptors, ^uintptr(0))
+			continue
 		}
 		raw, err := file.SyscallConn()
 		if err != nil {
@@ -182,7 +189,9 @@ func duplicateChildFiles(files []*os.File) (_ []uintptr, resultErr error) {
 
 func closeChildFiles(files []uintptr) {
 	for _, fd := range files {
-		_ = unix.Close(int(fd))
+		if fd != ^uintptr(0) {
+			_ = unix.Close(int(fd))
+		}
 	}
 }
 
@@ -190,9 +199,14 @@ func (s *NamespaceSupervisor) Spawn(ctx context.Context, spec ChildSpec) (*Super
 	return s.spawn(ctx, spec, nil)
 }
 
-// beforeRegistration is used by native tests to hold a successful ForkExec at
-// the exit-before-registration boundary. Production Spawn never supplies it.
-func (s *NamespaceSupervisor) spawn(ctx context.Context, spec ChildSpec, beforeRegistration func(int)) (*SupervisedChild, error) {
+// Native qualification can hold the registration boundary or fail pidfd_open
+// after actual ForkExec. Production Spawn never supplies these hooks.
+type spawnHooks struct {
+	beforeRegistration func(int)
+	openPIDFD          func(int, int) (int, error)
+}
+
+func (s *NamespaceSupervisor) spawn(ctx context.Context, spec ChildSpec, hooks *spawnHooks) (*SupervisedChild, error) {
 	if s == nil || ctx == nil || !validChildSpec(spec) {
 		return nil, ErrInvalid
 	}
@@ -203,7 +217,7 @@ func (s *NamespaceSupervisor) spawn(ctx context.Context, spec ChildSpec, beforeR
 	defer closeChildFiles(files)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closeRequested.Load() || s.draining || s.closed || s.err != nil {
+	if s.closeRequested.Load() || s.quiescing.Load() || s.draining || s.closed || s.err != nil {
 		return nil, ErrDraining
 	}
 	if ctx.Err() != nil {
@@ -225,37 +239,41 @@ func (s *NamespaceSupervisor) spawn(ctx context.Context, spec ChildSpec, beforeR
 	if err != nil {
 		return nil, ErrUnavailable
 	}
-	if beforeRegistration != nil {
-		beforeRegistration(pid)
+	if hooks != nil && hooks.beforeRegistration != nil {
+		hooks.beforeRegistration(pid)
 	}
-	child := &SupervisedChild{owner: s, pid: pid, pidfd: -1, done: make(chan struct{})}
+	child := &SupervisedChild{owner: s, pid: pid, state: &supervisedChildState{pidfd: -1, done: make(chan struct{})}}
 	s.children[pid] = child
 	s.empty = false
-	fd, err := unix.PidfdOpen(pid, 0)
+	openPIDFD := unix.PidfdOpen
+	if hooks != nil && hooks.openPIDFD != nil {
+		openPIDFD = hooks.openPIDFD
+	}
+	fd, err := openPIDFD(pid, 0)
 	if err != nil {
 		// The PID is still our unreaped child: the sole reaper is excluded by
 		// this lock, so it cannot be reused during this failure cleanup signal.
 		_ = unix.Kill(pid, unix.SIGKILL)
 		s.draining, s.err = true, ErrQuarantined
 		s.notify()
-		return nil, ErrQuarantined
+		return child, errors.Join(ErrQuarantined, ErrLaunchUncertain)
 	}
-	child.pidfd = fd
+	child.state.pidfd = fd
 	s.notify()
 	return child, nil
 }
 
 func (c *SupervisedChild) Wait(ctx context.Context) (ChildExit, error) {
-	if c == nil || c.owner == nil || c.done == nil || c.pid <= 1 || ctx == nil {
+	if c == nil || c.owner == nil || c.state == nil || c.state.done == nil || c.pid <= 1 || ctx == nil {
 		return ChildExit{}, ErrInvalid
 	}
 	select {
-	case <-c.done:
-		return c.exit, nil
+	case <-c.state.done:
+		return c.state.exit, nil
 	case <-ctx.Done():
 		select {
-		case <-c.done:
-			return c.exit, nil
+		case <-c.state.done:
+			return c.state.exit, nil
 		default:
 		}
 		return ChildExit{}, ctx.Err()
@@ -263,15 +281,15 @@ func (c *SupervisedChild) Wait(ctx context.Context) (ChildExit, error) {
 }
 
 func (c *SupervisedChild) Signal(sig syscall.Signal) error {
-	if c == nil || c.owner == nil || c.done == nil || c.pid <= 1 || (sig != syscall.SIGTERM && sig != syscall.SIGKILL) {
+	if c == nil || c.owner == nil || c.state == nil || c.state.done == nil || c.pid <= 1 || (sig != syscall.SIGTERM && sig != syscall.SIGKILL) {
 		return ErrInvalid
 	}
-	c.pidfdMu.Lock()
-	defer c.pidfdMu.Unlock()
-	if c.pidfd < 0 {
+	c.state.pidfdMu.Lock()
+	defer c.state.pidfdMu.Unlock()
+	if c.state.pidfd < 0 {
 		return ErrUnavailable
 	}
-	if err := unix.PidfdSendSignal(c.pidfd, unix.Signal(sig), nil, 0); err != nil {
+	if err := unix.PidfdSendSignal(c.state.pidfd, unix.Signal(sig), nil, 0); err != nil {
 		return ErrUnavailable
 	}
 	return nil
@@ -323,18 +341,18 @@ func (s *NamespaceSupervisor) reapLoop() {
 			}
 			s.reaped++
 			if child, ok := s.children[pid]; ok {
-				child.exit = ChildExit{Code: status.ExitStatus()}
+				child.state.exit = ChildExit{Code: status.ExitStatus()}
 				if status.Signaled() {
-					child.exit.Code, child.exit.Signal = -1, syscall.Signal(status.Signal())
+					child.state.exit.Code, child.state.exit.Signal = -1, syscall.Signal(status.Signal())
 				}
-				child.pidfdMu.Lock()
-				if child.pidfd >= 0 {
-					_ = unix.Close(child.pidfd)
-					child.pidfd = -1
+				child.state.pidfdMu.Lock()
+				if child.state.pidfd >= 0 {
+					_ = unix.Close(child.state.pidfd)
+					child.state.pidfd = -1
 				}
-				child.pidfdMu.Unlock()
+				child.state.pidfdMu.Unlock()
 				delete(s.children, pid)
-				close(child.done)
+				close(child.state.done)
 			} else {
 				s.adopted++
 			}
@@ -422,6 +440,49 @@ func (s *NamespaceSupervisor) lockBefore(ctx context.Context) bool {
 		case <-ctx.Done():
 			return false
 		case <-time.After(time.Millisecond):
+		}
+	}
+}
+
+// quiesce is owned by the domain's sole active operation. It fences launch
+// while proving namespace emptiness without stopping the boot's sole reaper.
+// Any ambiguous return permanently closes launch admission for this boot.
+func (s *NamespaceSupervisor) quiesce(ctx context.Context) (resultErr error) {
+	if s == nil || ctx == nil {
+		return ErrInvalid
+	}
+	s.quiescing.Store(true)
+	defer func() {
+		if resultErr != nil {
+			s.closeRequested.Store(true)
+		} else {
+			s.quiescing.Store(false)
+		}
+	}()
+	for {
+		if ctx.Err() != nil {
+			return ErrQuarantined
+		}
+		if _, err := s.limits.Check(s.policy); err != nil {
+			return ErrQuarantined
+		}
+		if err := unix.Kill(-1, unix.SIGKILL); err != nil && !errors.Is(err, unix.ESRCH) {
+			return ErrQuarantined
+		}
+		s.notify()
+		ids, err := s.processIDs()
+		if !s.lockBefore(ctx) {
+			return ErrQuarantined
+		}
+		empty := err == nil && len(ids) == 1 && ids[0] == 1 && s.empty && len(s.children) == 0 && s.err == nil
+		s.mu.Unlock()
+		if empty {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ErrQuarantined
+		case <-time.After(10 * time.Millisecond):
 		}
 	}
 }

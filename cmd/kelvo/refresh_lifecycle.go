@@ -90,7 +90,7 @@ func withRefreshReservation(ctx context.Context, pool *admission.Pool, overhead 
 		if acquireErr != nil {
 			return acquireErr
 		}
-		custody, _ := containment.NewCustody(reservation.Release)
+		custody, _ := containment.NewReservationCustody(reservation)
 		defer func() {
 			if errors.Is(err, acceleration.ErrRefreshCleanup) {
 				// Keep the reservation while staged files or remote ownership

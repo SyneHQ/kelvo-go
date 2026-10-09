@@ -168,3 +168,16 @@ func TestRefreshFactoryPreservesRowBatchTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestRefreshFactoryWithoutContainmentKeepsNilDomain(t *testing.T) {
+	for _, options := range [][]refreshOptions{nil, {{}}} {
+		executor, err := refreshFactory("", options...)(catalog.Config{}, query.DefaultLimits())
+		if err != nil {
+			t.Fatal(err)
+		}
+		process, ok := executor.(*worker.Executor)
+		if !ok || process.Containment != nil {
+			t.Fatal("an omitted containment manager became a nonnil domain")
+		}
+	}
+}

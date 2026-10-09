@@ -1,7 +1,7 @@
 # Container supervision
 
-Kelvo has an internal Linux PID-1 supervisor. It is a prerequisite for a future
-container executor; worker configuration does not activate it.
+Kelvo has an internal Linux PID-1 supervisor and a container backend for qualification.
+Worker configuration does not activate this backend.
 
 ## Ownership
 
@@ -42,9 +42,27 @@ container execution or whole-worker crash recovery.
 Whole-worker death has no in-process cleanup callback. The external worker owner must
 fence the old incarnation and resolve its durable claims before replacement work.
 
+## Fixed container budget
+
+- Use the existing shared pool with one slot. Each query, refresh, export and adapter
+  operation reserves the full container memory cap before resolving credentials.
+- Keep the native engine budget smaller, with explicit space for PID 1 and IPC. The
+  read-only cgroup caps the whole container; it does not enforce a separate child cap.
+- Keep the same reservation identity through output, publication and cleanup. Partial,
+  foreign, copied or released admission handles cannot authorize native execution.
+- A failure after `ForkExec` can already have source effects. Mutations remain unknown
+  even if later cleanup reaps the child; never replay from a failed launch alone.
+
+The namespace backend reports cumulative container-cgroup usage. Its memory peak
+includes the supervisor and cache, and can predate a query or worker boot.
+It is not a per-query peak.
+
 The native test lives in `internal/containment/supervisor_live_linux_test.go`. It needs a
 dedicated nonroot PID-1 fixture, the compiled C probe and finite container limits.
 Running an ordinary host test suite skips this gate and does not qualify an executor.
+`TestNamespaceWorkerLive` covers physical query/adapter execution and inherited
+publication custody. `TestNamespaceSupervisorUncertainLaunchLive` requires a separate
+boot and forces a failure after actual native execution. Controllers must reject skips.
 
 [Qualification evidence](evidence/container-supervisor.json) covers the race-enabled
 native test at 1 CPU, 256 MiB and 64 kernel tasks, with independent cleanup checks.
