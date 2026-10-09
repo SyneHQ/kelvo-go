@@ -16,6 +16,8 @@ COPY operations ./operations
 COPY provider ./provider
 COPY query ./query
 COPY resolver ./resolver
+COPY sourceproof ./sourceproof
+COPY transportissuer ./transportissuer
 COPY watch ./watch
 COPY sandbox ./sandbox
 COPY scripts/provision_duckbridge.py scripts/duckbridge-driver.patch ./scripts/
