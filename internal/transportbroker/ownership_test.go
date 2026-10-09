@@ -119,3 +119,28 @@ func TestUnregisteredSessionCannotDialOrClose(t *testing.T) {
 		t.Fatal("unregistered session cancelled the original", err)
 	}
 }
+
+func TestBoundToRejectsCopiedReboundAndClosedSessions(t *testing.T) {
+	b := fixture(t, Limits{MaxSessions: 1, MaxDataConnections: 1, MaxDataPerSession: 1}, openFunc(func(context.Context, OpenRequest) (net.Conn, error) { return pipe(t), nil }))
+	expected := binding()
+	s := admit(t, b, expected)
+	if !s.BoundTo(expected) || cloneHandle(s).BoundTo(expected) {
+		t.Fatal("session ownership comparison failed")
+	}
+	other := expected
+	other.Tenant = "other-tenant"
+	if s.BoundTo(other) {
+		t.Fatal("session accepted another tenant")
+	}
+	other = expected
+	other.SourceRevision = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	if s.BoundTo(other) {
+		t.Fatal("session accepted another revision")
+	}
+	if err := s.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if s.BoundTo(expected) {
+		t.Fatal("closed session retained admission authority")
+	}
+}
