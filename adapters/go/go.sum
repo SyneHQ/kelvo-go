@@ -18,6 +18,10 @@ github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261006195007-50bdc3d8b7a2 h1:MRp
 github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261006195007-50bdc3d8b7a2/go.mod h1:lDWa9N3a+qL91VWbXplYwuis0IBUk67Y8iCUF56YIRw=
 github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261008235556-e875d87951ca h1:YR1/EyjV5MXP/715mTq7UMwczsN4teJTMAmBNGERacI=
 github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261008235556-e875d87951ca/go.mod h1:EPWEQZ4aphRA4npGYe8AgbPqjTKlDHw1tDfoH+/zcmU=
+github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261009000747-cd7ddd6155dd h1:38q8P3YHv47DVyMHzDh7KPeecUPX/Rqw8eBPJtzCIuM=
+github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261009000747-cd7ddd6155dd/go.mod h1:EPWEQZ4aphRA4npGYe8AgbPqjTKlDHw1tDfoH+/zcmU=
+github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261009001439-e4e78fa232ed h1:vm64oIRBF+9NIIfn/5eY3wi7KKyDQjbjqbt2FS/6Ckg=
+github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261009001439-e4e78fa232ed/go.mod h1:EPWEQZ4aphRA4npGYe8AgbPqjTKlDHw1tDfoH+/zcmU=
 github.com/andybalholm/brotli v1.2.3 h1:8H1qwOkl2LPfjf3YezB90JnCliZb6SInJ/OJkEbA5NQ=
 github.com/andybalholm/brotli v1.2.3/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
 github.com/apache/arrow-go/v18 v18.5.1 h1:yaQ6zxMGgf9YCYw4/oaeOU3AULySDlAYDOcnr4LdHdI=
