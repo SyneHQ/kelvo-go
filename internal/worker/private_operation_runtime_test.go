@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/internal/transportbroker"
+	"github.com/SYNEHQ/kelvo-go/internal/transportbroker/childipc"
 	"github.com/SYNEHQ/kelvo-go/internal/transportbroker/rabbitconnect"
 	"github.com/SYNEHQ/kelvo-go/operations"
 	"github.com/SYNEHQ/kelvo-go/resolver"
@@ -313,5 +315,84 @@ func TestContainedPrivateRuntimeResolvesAfterAdmission(t *testing.T) {
 				t.Fatal("private runtime did not join parent custody")
 			}
 		})
+	}
+}
+
+func TestPrivateRuntimeDataOpenUsesOperationContextAndConfiguredBudget(t *testing.T) {
+	f := newPrivateResolutionFixture(t)
+	r := privateRuntimeFixture(t, f)
+	started, joined := make(chan struct{}), make(chan struct{})
+	var remaining time.Duration
+	r.opener = func(sourceproof.Scope, func(context.Context) (sourceproof.Envelope, error)) (transportbroker.Opener, error) {
+		return privateChannelOpener(func(ctx context.Context, _ transportbroker.OpenRequest) (net.Conn, error) {
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				return nil, errors.New("data open lost operation deadline")
+			}
+			remaining = time.Until(deadline)
+			close(started)
+			<-ctx.Done()
+			close(joined)
+			return nil, ctx.Err()
+		}), nil
+	}
+	op, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, channel, err := r.prepare(op, f.executor, f.record, f.request, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := (f.policy.resolver.client.Timeout + rabbitconnect.MaxSetupTime).Milliseconds()
+	if channel.dataOpenTimeoutMS != expected {
+		t.Fatalf("IPC budget %d != configured %d", channel.dataOpenTimeoutMS, expected)
+	}
+	file := channel.file
+	channel.file = nil
+	client, err := childipc.NewClientWithDataOpenTimeout(file, channel.binding.Authority, channel.dataOpenTimeoutMS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	channel.start(os.Getpid())
+	result := make(chan error, 1)
+	go func() {
+		conn, err := client.DialContext(context.Background(), "tcp", channel.binding.Authority)
+		if conn != nil {
+			conn.Close()
+		}
+		result <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("parent opener did not start")
+	}
+	if remaining <= 0 || remaining > time.Second {
+		t.Fatal("operation deadline not propagated", remaining)
+	}
+	cancel()
+	select {
+	case <-joined:
+	case <-time.After(time.Second):
+		t.Fatal("operation cancellation did not stop parent opener")
+	}
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("cancelled open succeeded")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("child remained blocked")
+	}
+	ctx, stop := context.WithTimeout(context.Background(), time.Second)
+	defer stop()
+	if err := channel.close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if r.life.Err() != nil {
+		t.Fatal("operation cancellation revoked cleanup authority")
+	}
+	if state := r.broker.Snapshot(); state.Sessions != 0 || state.Opening != 0 || state.DataConnections != 0 || state.CleanupFailed {
+		t.Fatal("cleanup retained unexpected broker ownership", state)
 	}
 }

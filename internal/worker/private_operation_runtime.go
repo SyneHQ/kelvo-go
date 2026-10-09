@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	operationstore "github.com/SYNEHQ/kelvo-go/internal/operations"
@@ -23,20 +24,21 @@ import (
 // The runtime is shared by executions. One broker enforces total source capacity.
 // The operator must configure private operations before startup constructs it.
 type privateOperationRuntime struct {
-	mu             sync.Mutex
-	policy         *privateOperationPolicy
-	broker         *transportbroker.Broker
-	limits         transportbroker.Limits
-	life           context.Context
-	cancel         context.CancelFunc
-	issuer         *rabbitconnect.HTTPIssuer
-	opener         func(sourceproof.Scope, func(context.Context) (sourceproof.Envelope, error)) (transportbroker.Opener, error)
-	channel        func(context.Context, adapter.ProcessRequest, *transportbroker.Session, transportbroker.Binding, int, func()) (*privateOperationChannel, error)
-	entries        map[transportbroker.Binding]*privateOperationEntry
-	pending        int
-	closed, joined bool
-	cleanupEnabled bool
-	done           chan struct{}
+	mu                sync.Mutex
+	policy            *privateOperationPolicy
+	broker            *transportbroker.Broker
+	limits            transportbroker.Limits
+	life              context.Context
+	cancel            context.CancelFunc
+	issuer            *rabbitconnect.HTTPIssuer
+	opener            func(sourceproof.Scope, func(context.Context) (sourceproof.Envelope, error)) (transportbroker.Opener, error)
+	channel           func(context.Context, adapter.ProcessRequest, *transportbroker.Session, transportbroker.Binding, int, func()) (*privateOperationChannel, error)
+	entries           map[transportbroker.Binding]*privateOperationEntry
+	pending           int
+	closed, joined    bool
+	cleanupEnabled    bool
+	proxySetupTimeout time.Duration
+	done              chan struct{}
 }
 type privateOperationEntry struct {
 	opener  transportbroker.Opener
@@ -44,7 +46,7 @@ type privateOperationEntry struct {
 }
 
 func newPrivateOperationRuntime(parent context.Context, p *privateOperationPolicy, proxy rabbitconnect.Config, issuer rabbitconnect.HTTPIssuerConfig, limits transportbroker.Limits) (*privateOperationRuntime, error) {
-	if parent == nil || parent.Err() != nil || p == nil || limits.MaxDataPerSession > 32 || proxy.Issuer != p.trust.Issuer || proxy.Audience != p.trust.Audience || proxy.ClusterTenant != p.trust.ClusterTenant || proxy.ServicePrincipal != p.trust.ServicePrincipal || proxy.WorkerIdentity != p.identity || issuer.WorkerIdentity != p.identity {
+	if parent == nil || parent.Err() != nil || p == nil || p.resolver == nil || p.resolver.client == nil || p.resolver.client.Timeout < time.Second || p.resolver.client.Timeout > rabbitconnect.MaxSourceResolutionTime || limits.MaxDataPerSession > 32 || proxy.Issuer != p.trust.Issuer || proxy.Audience != p.trust.Audience || proxy.ClusterTenant != p.trust.ClusterTenant || proxy.ServicePrincipal != p.trust.ServicePrincipal || proxy.WorkerIdentity != p.identity || issuer.WorkerIdentity != p.identity {
 		return nil, transportbroker.ErrInvalid
 	}
 	for _, pairConfig := range []struct{ cert, key []byte }{{proxy.ClientCertificatePEM, proxy.ClientKeyPEM}, {issuer.ClientCertificatePEM, issuer.ClientKeyPEM}} {
@@ -66,10 +68,13 @@ func newPrivateOperationRuntime(parent context.Context, p *privateOperationPolic
 		issue.Shutdown(context.Background())
 		return nil, err
 	}
+	if proxy.SetupTimeout == 0 {
+		proxy.SetupTimeout = rabbitconnect.MaxSetupTime
+	}
 	life, cancel := context.WithCancel(parent)
-	r := &privateOperationRuntime{policy: p, limits: limits, life: life, cancel: cancel, issuer: issue, entries: make(map[transportbroker.Binding]*privateOperationEntry), done: make(chan struct{}), channel: newPrivateOperationChannel, cleanupEnabled: proxy.AcceptedOpenTrust != nil}
+	r := &privateOperationRuntime{proxySetupTimeout: proxy.SetupTimeout, policy: p, limits: limits, life: life, cancel: cancel, issuer: issue, entries: make(map[transportbroker.Binding]*privateOperationEntry), done: make(chan struct{}), channel: newPrivateOperationChannel, cleanupEnabled: proxy.AcceptedOpenTrust != nil}
 	r.opener = func(scope sourceproof.Scope, refresh func(context.Context) (sourceproof.Envelope, error)) (transportbroker.Opener, error) {
-		return rabbitconnect.NewWithSourceProof(proxy, issue, rabbitconnect.SourceProofConfig{PublicKey: p.proofKey, Scope: scope, Refresh: refresh})
+		return rabbitconnect.NewWithSourceProof(proxy, issue, rabbitconnect.SourceProofConfig{RefreshTimeout: p.resolver.client.Timeout, PublicKey: p.proofKey, Scope: scope, Refresh: refresh})
 	}
 	r.broker, err = transportbroker.New(limits, r)
 	if err != nil {
@@ -276,11 +281,20 @@ func (r *privateOperationRuntime) prepareModeWithCleanup(ctx context.Context, e 
 		// finalizer must join this session before it releases its resource hold.
 		return adapter.ProcessRequest{}, &privateOperationChannel{server: privateUnstartedChannel{}, session: session, binding: selection.binding, release: release}, err
 	}
+	setupTimeout := r.proxySetupTimeout
+	dataOpenTimeout := r.policy.resolver.client.Timeout + setupTimeout
+	if err := channel.server.ConfigureDataOpen(ctx, dataOpenTimeout); err != nil {
+		return adapter.ProcessRequest{}, channel, err
+	}
+	channel.dataOpenTimeoutMS = int64((dataOpenTimeout + time.Millisecond - 1) / time.Millisecond)
 	return selection.input, channel, nil
 }
 
 type privateUnstartedChannel struct{}
 
+func (privateUnstartedChannel) ConfigureDataOpen(context.Context, time.Duration) error {
+	return transportbroker.ErrInvalid
+}
 func (privateUnstartedChannel) Serve(int) error             { return transportbroker.ErrInvalid }
 func (privateUnstartedChannel) Close(context.Context) error { return nil }
 
