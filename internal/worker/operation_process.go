@@ -19,16 +19,18 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/transportbroker/diagnostic"
 	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
 const maximumOperationBinaryBytes = 1 << 30
 
 type OperationProcessConfig struct {
-	Binary       string               `yaml:"binary"`
-	SHA256       string               `yaml:"sha256"`
-	JDBC         *OperationJDBCConfig `yaml:"jdbc,omitempty"`
-	preparedJDBC *operationJDBCRuntime
+	Binary                 string               `yaml:"binary"`
+	SHA256                 string               `yaml:"sha256"`
+	JDBC                   *OperationJDBCConfig `yaml:"jdbc,omitempty"`
+	preparedJDBC           *operationJDBCRuntime
+	PrivateOpenDiagnostics bool `yaml:"private_open_diagnostics,omitempty"`
 }
 
 // OperationFinalizer commits or aborts a retained result while resource custody
@@ -138,13 +140,20 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	var commandIO *commandIO
 	var cleanup operationCleanupState
 	var private *privateOperationChannel
+	var recorder *diagnostic.Recorder
+	var privateDiagnosticCleanupFailed bool
+	defer func() {
+		emitPrivateOpenDiagnostic(operationID, recorder, cleanup.prepared && cleanup.process && cleanup.scratch && !cleanup.pendingIO && !cleanup.pendingPrivate && !privateDiagnosticCleanupFailed)
+	}()
 	defer func() {
 		if custody != nil {
 			defer custody.Complete()
 		}
 		if private != nil && private.postgresCleanup != nil && cleanup.process && cleanup.scratch && !cleanup.pendingIO && !cleanup.pendingPrivate {
 			finishCtx, finishCancel := context.WithTimeout(context.Background(), time.Second)
-			resultErr = errors.Join(resultErr, private.postgresCleanup.finish(finishCtx))
+			finishErr := private.postgresCleanup.finish(finishCtx)
+			privateDiagnosticCleanupFailed = finishErr != nil
+			resultErr = errors.Join(resultErr, finishErr)
 			finishCancel()
 		}
 		if finalizer, ok := sink.(OperationFinalizer); ok {
@@ -164,6 +173,7 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	if parent == nil || resolve == nil || e == nil || e.Limits.Validate() != nil || !operations.ValidID(operationID) || !operations.ValidDigest(requestSHA256) {
 		return receipt, operationFailure("INVALID_ARGUMENT")
 	}
+	parent, recorder = privateOpenDiagnosticContext(parent, cfg.PrivateOpenDiagnostics, operationID)
 	if e.ScratchRoot == nil || e.SandboxPath == "" || e.ResourcePool == nil || e.Containment == nil || containment.FromContext(parent) != nil ||
 		!e.ContainmentBudget.FitsOverhead(int64(e.Limits.MemoryMB), e.ResourceOverheadBytes>>20) {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("CONFIGURATION_ERROR")
