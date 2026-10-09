@@ -44,10 +44,10 @@ type OperationCleanupObserver interface {
 	OperationCleaned(context.Context) error
 }
 
-type operationCleanupState struct{ prepared, process, scratch, pendingIO bool }
+type operationCleanupState struct{ prepared, process, scratch, pendingIO, pendingPrivate bool }
 
 func (state operationCleanupState) notify(sink query.Sink) error {
-	if !state.prepared || !state.process || !state.scratch || state.pendingIO {
+	if !state.prepared || !state.process || !state.scratch || state.pendingIO || state.pendingPrivate {
 		return nil
 	}
 	observer, ok := sink.(OperationCleanupObserver)
@@ -120,6 +120,18 @@ func (e *Executor) ExecuteOperation(parent context.Context, cfg OperationProcess
 // The callback is called once; neither credential resolution nor execution is
 // retried here.
 func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg OperationProcessConfig, operationID, requestSHA256 string, resolve func(context.Context) (adapter.ProcessRequest, error), sink query.Sink) (receipt operations.Receipt, resultErr error) {
+	if resolve == nil {
+		return e.executeResolvedOperation(parent, cfg, operationID, requestSHA256, nil, sink)
+	}
+	return e.executeResolvedOperation(parent, cfg, operationID, requestSHA256, func(ctx context.Context) (adapter.ProcessRequest, *privateOperationChannel, error) {
+		input, err := resolve(ctx)
+		return input, nil, err
+	}, sink)
+}
+
+// A private channel can enter only through the trusted internal resolver path.
+// Public callbacks still supply only ProcessRequest and cannot choose fd7.
+func (e *Executor) executeResolvedOperation(parent context.Context, cfg OperationProcessConfig, operationID, requestSHA256 string, resolve func(context.Context) (adapter.ProcessRequest, *privateOperationChannel, error), sink query.Sink) (receipt operations.Receipt, resultErr error) {
 	input := adapter.ProcessRequest{OperationID: operationID, RequestSHA256: requestSHA256}
 	receipt = rejectedOperation(input, "INVALID_ARGUMENT")
 	var custody *containment.Custody
@@ -246,7 +258,26 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	if ctx.Err() != nil {
 		return rejectedOperation(input, "CANCELLED"), operationFailure("CANCELLED")
 	}
-	resolved, err := resolve(ctx)
+	holdPrivate, err := custody.Hold()
+	if err != nil {
+		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
+	}
+	var private *privateOperationChannel
+	defer func() {
+		if private != nil {
+			cleanupContext, stop := context.WithTimeout(context.Background(), 5*time.Second)
+			defer stop()
+			if err := private.close(cleanupContext); err != nil {
+				e.Containment.QuarantineOperation()
+				resultErr = errors.Join(resultErr, operationFailure("RESOURCE_EXHAUSTED"))
+				return // Retain custody when physical cleanup is not confirmed.
+			}
+		}
+		holdPrivate()
+		cleanup.pendingPrivate = false
+	}()
+	resolved, private, err := resolve(ctx)
+	cleanup.pendingPrivate = private != nil
 	if err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
@@ -257,6 +288,13 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	// Resolvers never choose runtime descriptors or executable configuration.
 	if input.Runtime != nil || input.PrivateTransport != nil {
 		return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT")
+	}
+	if private != nil {
+		if !private.matches(input) {
+			return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT")
+		}
+		input.PrivateTransport = &adapter.PrivateTransport{ControlFD: 7}
+		args = append([]string{"--operation-private"}, args...)
 	}
 	var jdbcFiles []*os.File
 	if adapter.JDBCProfile(input.Source.Engine) {
@@ -338,6 +376,9 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 		command.ExtraFiles = append(command.ExtraFiles, nil)          // fd6 reserved for snapshots.
 		command.ExtraFiles = append(command.ExtraFiles, jdbcFiles...) // fd7 Java, fd8+ JARs, final JRE directory.
 	}
+	if private != nil {
+		command.ExtraFiles = append(command.ExtraFiles, nil, private.file) // fd6 absent, fd7 private control.
+	}
 	commandIO, err = newCommandIO(ctx, command, payload, io.Discard, custody, e.Containment.QuarantineOperation)
 	if err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
@@ -348,6 +389,10 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 	}
 	if err := commandIO.Start(func() error { return job.Start(command) }); err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
+	}
+	if private != nil {
+		private.closeChild()
+		private.start(command.Process.Pid)
 	}
 	// Past Start, unknown source effects must never become a no-effect error.
 	receipt = uncertainOperation(input)
