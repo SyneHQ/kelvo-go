@@ -62,10 +62,16 @@ func (c *AcceptedConn) AbortPostgres(parent context.Context, target PostgresTarg
 	bounded, stop := context.WithDeadline(ctx, time.Unix(claims.ExpiresAt, 0))
 	defer stop()
 	conn, err := o.connect(bounded, c.binding.Authority, token, false, true)
+	if conn != nil {
+		retainErr := c.retainAuxiliary(conn)
+		defer func() { result = errors.Join(result, conn.Close()) }()
+		if retainErr != nil {
+			return errors.Join(err, retainErr)
+		}
+	}
 	if err != nil {
 		return err
 	}
-	defer func() { result = errors.Join(result, conn.Close()) }()
 	if c.closed.Load() {
 		return transportbroker.ErrClosed
 	}

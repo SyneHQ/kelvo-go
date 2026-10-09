@@ -7,7 +7,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -24,6 +26,8 @@ type AcceptedConn struct {
 	acceptance   transportissuer.AcceptedOpenClaims
 	receipt      string
 	abortStarted atomic.Bool
+	auxMu        sync.Mutex
+	auxiliary    *tunnelConn
 }
 
 // Accepted returns detached immutable identifiers for the durable dispatch
@@ -60,4 +64,28 @@ func (o *Opener) acceptedConnection(conn *tunnelConn, token string, binding tran
 		return nil, closeErr
 	}
 	return &AcceptedConn{tunnelConn: conn, opener: o, binding: binding, acceptance: claims, receipt: conn.acceptedReceipt}, nil
+}
+
+// Close retains both DATA and auxiliary cleanup ownership. An auxiliary close
+// failure remains observable on every later cleanup attempt.
+func (c *AcceptedConn) Close() error {
+	if c == nil {
+		return transportbroker.ErrInvalid
+	}
+	c.auxMu.Lock()
+	defer c.auxMu.Unlock()
+	err := c.tunnelConn.Close()
+	if c.auxiliary != nil {
+		err = errors.Join(err, c.auxiliary.Close())
+	}
+	return err
+}
+func (c *AcceptedConn) retainAuxiliary(conn *tunnelConn) error {
+	c.auxMu.Lock()
+	defer c.auxMu.Unlock()
+	c.auxiliary = conn
+	if c.closed.Load() {
+		return errors.Join(transportbroker.ErrClosed, conn.Close())
+	}
+	return nil
 }

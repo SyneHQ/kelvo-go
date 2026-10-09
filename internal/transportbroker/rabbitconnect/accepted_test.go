@@ -114,3 +114,36 @@ func TestCleanupIssuerUsesOriginalOriginAndSeparateAdmission(t *testing.T) {
 		t.Fatal("cleanup blocked behind data admission", err)
 	}
 }
+
+func TestCleanupHTTPDispatchCannotWaitBehindSaturatedDataLane(t *testing.T) {
+	f := newFixture(t)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var expected IssueRequest
+	client, o := httpIssuerFixture(t, f, f.server, func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		sum := sha256.Sum256(raw)
+		token := "cleanup-fixture"
+		if r.URL.Path == transportissuer.Path {
+			close(entered)
+			<-release
+			token = signTicket(f.key, claimsFor(expected))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(transportissuer.Response{Version: 1, RequestSHA256: hex.EncodeToString(sum[:]), Token: token})
+	})
+	expected = issueFor(o, testRequest())
+	done := make(chan error, 1)
+	go func() { _, err := client.Issue(context.Background(), expected); done <- err }()
+	<-entered
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	_, err := client.IssueCleanup(ctx, transportissuer.CleanupRequest{Version: 1, DataTicketSHA256: strings.Repeat("a", 64), AcceptedOpen: "receipt", OpenID: strings.Repeat("b", 64), Protocol: transportissuer.PostgresCancel})
+	cancel()
+	close(release)
+	if err != nil {
+		t.Fatal("ordinary HTTP transport blocked reserved cleanup dispatch", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal("ordinary issuance failed", err)
+	}
+}
