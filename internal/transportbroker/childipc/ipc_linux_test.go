@@ -357,3 +357,158 @@ func TestCloseReportsPhysicalCleanupFailure(t *testing.T) {
 		t.Fatalf("repeated cleanup lost failure: %v", err)
 	}
 }
+
+func TestDataOpenBudgetExceedsLegacyLimit(t *testing.T) {
+	dial, _ := echoDialer(t)
+	delayed := dialFunc(func(ctx context.Context, network, address string) (net.Conn, error) {
+		timer := time.NewTimer(2200 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return dial(ctx, network, address)
+	})
+	s, file, err := NewPair(context.Background(), "source.private:5432", delayed, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeServer(t, s)
+	op, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err = s.ConfigureDataOpen(op, 4*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	client, err := NewClientWithDataOpenTimeout(file, "source.private:5432", 4000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	go s.Serve(os.Getpid())
+	conn, err := client.DialContext(op, "tcp", "source.private:5432")
+	if err != nil {
+		t.Fatal("descriptor wait retained old two-second deadline", err)
+	}
+	defer conn.Close()
+	if _, err = conn.Write([]byte("ok")); err != nil {
+		t.Fatal(err)
+	}
+	body := make([]byte, 2)
+	if _, err = io.ReadFull(conn, body); err != nil || string(body) != "ok" {
+		t.Fatal(err)
+	}
+}
+
+func TestDataOpenCancellationJoinsResolverWithoutCancellingCustody(t *testing.T) {
+	for _, mode := range []string{"operation_cancel", "operation_deadline", "child_cancel_then_cleanup"} {
+		t.Run(mode, func(t *testing.T) {
+			entered, joined := make(chan struct{}), make(chan struct{})
+			delayed := dialFunc(func(ctx context.Context, _, _ string) (net.Conn, error) {
+				close(entered)
+				<-ctx.Done()
+				close(joined)
+				return nil, ctx.Err()
+			})
+			life, cancelLife := context.WithCancel(context.Background())
+			defer cancelLife()
+			op, cancelOp := context.WithCancel(context.Background())
+			defer cancelOp()
+			if mode == "operation_deadline" {
+				var stop context.CancelFunc
+				op, stop = context.WithTimeout(op, 80*time.Millisecond)
+				defer stop()
+			}
+			s, file, err := NewPair(life, "source.private:5432", delayed, nil, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = s.ConfigureDataOpen(op, 10*time.Second); err != nil {
+				t.Fatal(err)
+			}
+			client, err := NewClientWithDataOpenTimeout(file, "source.private:5432", 10000)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			go s.Serve(os.Getpid())
+			child, cancelChild := context.WithCancel(context.Background())
+			defer cancelChild()
+			result := make(chan error, 1)
+			go func() {
+				conn, err := client.DialContext(child, "tcp", "source.private:5432")
+				if conn != nil {
+					conn.Close()
+				}
+				result <- err
+			}()
+			select {
+			case <-entered:
+			case <-time.After(time.Second):
+				t.Fatal("resolver not entered")
+			}
+			if mode == "operation_cancel" {
+				cancelOp()
+			}
+			if mode == "child_cancel_then_cleanup" {
+				cancelChild()
+				select {
+				case err := <-result:
+					if err == nil {
+						t.Fatal("child cancellation succeeded")
+					}
+				case <-time.After(time.Second):
+					t.Fatal("child did not stop")
+				}
+				// The worker calls Close after the child exits; that call must cancel and join resolution.
+				closeServer(t, s)
+			}
+			select {
+			case <-joined:
+			case <-time.After(time.Second):
+				t.Fatal("resolver outlived cancellation/cleanup")
+			}
+			if mode != "child_cancel_then_cleanup" {
+				select {
+				case err := <-result:
+					if err == nil {
+						t.Fatal("cancelled open succeeded")
+					}
+				case <-time.After(time.Second):
+					t.Fatal("child did not observe failure")
+				}
+				closeServer(t, s)
+			}
+			if life.Err() != nil {
+				t.Fatal("data cancellation revoked runtime cleanup lifetime")
+			}
+		})
+	}
+}
+
+func TestDataOpenTimeoutDefaultsAndIntegerBounds(t *testing.T) {
+	dial, _ := echoDialer(t)
+	for _, timeout := range []int64{-1, 32001, 1 << 62} {
+		s, file, err := NewPair(context.Background(), "source.private:5432", dial, nil, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := NewClientWithDataOpenTimeout(file, "source.private:5432", timeout); err == nil {
+			t.Fatal("invalid milliseconds accepted")
+		}
+		closeServer(t, s)
+	}
+	s, file, err := NewPair(context.Background(), "source.private:5432", dial, nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeServer(t, s)
+	client, err := NewClientWithDataOpenTimeout(file, "source.private:5432", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if client.dataOpenTimeout != 2*time.Second || s.dataOpenTimeout != 2*time.Second {
+		t.Fatal("ordinary open default changed")
+	}
+}

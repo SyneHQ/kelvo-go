@@ -28,6 +28,8 @@ var ErrChannel = errors.New("private source child channel is unavailable")
 type Server struct {
 	ctx                                       context.Context
 	cancel                                    context.CancelFunc
+	dataContext                               context.Context
+	dataOpenTimeout                           time.Duration
 	control                                   *net.UnixConn
 	data, cancellation                        transportbroker.Dialer
 	authority                                 string
@@ -79,8 +81,23 @@ func NewPair(ctx context.Context, authority string, data, cancellation transport
 		return nil, nil, ErrChannel
 	}
 	lifetime, cancel := context.WithCancel(ctx)
-	s := &Server{ctx: lifetime, cancel: cancel, control: control, data: data, cancellation: cancellation, authority: authority, maximum: maxStreams, streams: map[*bridge]struct{}{}, done: make(chan struct{}), closedPhysical: make(chan struct{})}
+	s := &Server{dataContext: lifetime, dataOpenTimeout: setupLimit, ctx: lifetime, cancel: cancel, control: control, data: data, cancellation: cancellation, authority: authority, maximum: maxStreams, streams: map[*bridge]struct{}{}, done: make(chan struct{}), closedPhysical: make(chan struct{})}
 	return s, child, nil
+}
+
+// ConfigureDataOpen sets the trusted operation context and aggregate data-open
+// timeout before Serve starts. It does not shorten cleanup authority.
+func (s *Server) ConfigureDataOpen(ctx context.Context, timeout time.Duration) error {
+	if s == nil || ctx == nil || timeout <= 0 || timeout > time.Duration(adapter.MaxPrivateDataOpenTimeoutMS)*time.Millisecond {
+		return ErrChannel
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.started || s.closed {
+		return ErrChannel
+	}
+	s.dataContext, s.dataOpenTimeout = ctx, timeout
+	return nil
 }
 
 // Serve authenticates each request with kernel-provided SCM_CREDENTIALS. It
@@ -162,14 +179,38 @@ func (s *Server) Serve(childPID int) error {
 			diagnostic.Record(s.ctx, diagnostic.BrokerDial, diagnostic.Failed, 0)
 			return ErrChannel
 		}
-		ctx, cancel := context.WithTimeout(s.ctx, setupLimit)
+		openLimit := setupLimit
+		if data[1] == 1 {
+			openLimit = s.dataOpenTimeout
+		}
+		ctx, cancel := context.WithTimeout(s.ctx, openLimit)
+		stopOperation := func() bool { return true }
+		if data[1] == 1 {
+			if until, ok := s.dataContext.Deadline(); ok {
+				var stopDeadline context.CancelFunc
+				ctx, stopDeadline = context.WithDeadline(ctx, until)
+				outerCancel := cancel
+				cancel = func() { stopDeadline(); outerCancel() }
+			}
+			stopOperation = context.AfterFunc(s.dataContext, cancel)
+			if s.dataContext.Err() != nil {
+				cancel()
+			}
+		}
 		diagnostic.Record(ctx, diagnostic.BrokerDial, diagnostic.Started, 0)
 		remote, err := dialer.DialContext(ctx, "tcp", s.authority)
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		if data[1] == 1 && s.dataContext.Err() != nil {
+			err = s.dataContext.Err()
+		}
 		if err != nil || remote == nil {
 			recordDialFailure(ctx, err)
 		} else {
 			diagnostic.Record(ctx, diagnostic.BrokerDial, diagnostic.Succeeded, 0)
 		}
+		stopOperation()
 		cancel()
 		if err != nil || remote == nil {
 			if remote != nil {
@@ -383,11 +424,12 @@ func parseControl(raw []byte) (*unix.Ucred, []int, error) {
 }
 
 type Client struct {
-	control   *net.UnixConn
-	authority string
-	slot      chan struct{}
-	once      sync.Once
-	done      chan struct{}
+	dataOpenTimeout time.Duration
+	control         *net.UnixConn
+	authority       string
+	slot            chan struct{}
+	once            sync.Once
+	done            chan struct{}
 }
 
 // NewClient consumes the inherited descriptor. The child receives no parent
@@ -410,8 +452,25 @@ func NewClient(file *os.File, authority string) (*Client, error) {
 		conn.Close()
 		return nil, ErrChannel
 	}
-	return &Client{control: control, authority: authority, slot: make(chan struct{}, 1), done: make(chan struct{})}, nil
+	return &Client{dataOpenTimeout: setupLimit, control: control, authority: authority, slot: make(chan struct{}, 1), done: make(chan struct{})}, nil
 }
+
+// NewClientWithDataOpenTimeout receives a trusted parent descriptor value.
+// Validate the integer before converting it to a duration. Zero keeps legacy behavior.
+func NewClientWithDataOpenTimeout(file *os.File, authority string, milliseconds int64) (*Client, error) {
+	if milliseconds < 0 || milliseconds > adapter.MaxPrivateDataOpenTimeoutMS {
+		if file != nil {
+			file.Close()
+		}
+		return nil, ErrChannel
+	}
+	client, err := NewClient(file, authority)
+	if err == nil && milliseconds != 0 {
+		client.dataOpenTimeout = time.Duration(milliseconds) * time.Millisecond
+	}
+	return client, err
+}
+
 func (c *Client) Close() error {
 	if c == nil {
 		return ErrChannel
@@ -440,11 +499,19 @@ func (c *Client) dial(ctx context.Context, network, address string, purpose byte
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	deadline := time.Now().Add(setupLimit)
+	openLimit := setupLimit
+	if purpose == 1 {
+		openLimit = c.dataOpenTimeout
+	}
+	deadline := time.Now().Add(openLimit)
 	if until, ok := ctx.Deadline(); ok && until.Before(deadline) {
 		deadline = until
 	}
-	if c.control.SetDeadline(deadline) != nil {
+	writeDeadline := time.Now().Add(setupLimit)
+	if deadline.Before(writeDeadline) {
+		writeDeadline = deadline
+	}
+	if c.control.SetWriteDeadline(writeDeadline) != nil || c.control.SetReadDeadline(deadline) != nil {
 		c.Close()
 		return nil, ErrChannel
 	}
