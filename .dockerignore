@@ -30,6 +30,10 @@
 !query/**
 !resolver
 !resolver/**
+!sourceproof
+!sourceproof/**
+!transportissuer
+!transportissuer/**
 !watch
 !watch/**
 !sandbox
