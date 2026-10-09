@@ -45,5 +45,5 @@ An invalid private proof fails the operation. The worker never retries that sour
 - Private operations support PostgreSQL and MySQL. Watcher, ingestion, and approved-change grants remain excluded.
 - SQL read operations use this path. Analytical queries, federated queries, and tangent federation need separate qualification.
 - Admission expiry and running-operation renewal are separate checks.
-- Rabbit v2 cancellation capacity remains disabled. A returned cancellation error does not prove the database stopped executing; verify server-side cancellation for each deployed driver.
+- Rabbit v2 cancellation capacity remains disabled. In a bounded MySQL fixture, a confirmed `SLEEP(10)` stayed active for about five seconds after cancellation returned. Private MySQL production activation remains blocked until server-side cancellation is qualified.
 - Restart the worker to change these transport settings or its client certificate.
