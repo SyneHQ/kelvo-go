@@ -66,6 +66,7 @@ func (d *Driver) Open(ctx context.Context, connection adapter.Connection) (adapt
 	}
 	var pool *sql.DB
 	var openMigrationPool func(context.Context) (*sql.DB, error)
+	var openMySQLCancellation func(context.Context) (*sql.DB, error)
 	switch d.engine {
 	case "postgresql":
 		config, err := postgresConfig(connection)
@@ -87,6 +88,7 @@ func (d *Driver) Open(ctx context.Context, connection adapter.Connection) (adapt
 			return nil, adapter.ErrInvalid
 		}
 		pool = sql.OpenDB(connector)
+		openMySQLCancellation = mysqlCancellationPool(connection, config)
 		// Migration scripts have their own explicit multi-statement pool. The
 		// ordinary query, watcher and statement pool keeps this feature disabled.
 		migrationConfig := config.Clone()
@@ -121,7 +123,7 @@ func (d *Driver) Open(ctx context.Context, connection adapter.Connection) (adapt
 		_ = pool.Close()
 		return nil, err
 	}
-	session := &Session{Session: &sqlsession.Session{Pool: pool, Engine: d.engine}, database: connection.Namespace, schema: connection.Schema, openMigrationPool: openMigrationPool}
+	session := &Session{Session: &sqlsession.Session{Pool: pool, Engine: d.engine}, database: connection.Namespace, schema: connection.Schema, openMigrationPool: openMigrationPool, openMySQLCancellation: openMySQLCancellation}
 	if d.engine == "sqlserver" && connection.Schema != "" {
 		if err := pool.QueryRowContext(ctx, "SELECT SCHEMA_NAME()").Scan(&session.defaultSchema); err != nil {
 			_ = pool.Close()
