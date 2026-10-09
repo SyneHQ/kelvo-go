@@ -17,7 +17,7 @@ import (
 
 func TestCleanupLeaseUsesControlAdmissionAndFixedDeadline(t *testing.T) {
 	grant := operationFixtureGrant(t, operationFixtureRequest())
-	proof := resolver.CleanupBinding{"worker-a", strings.Repeat("a", 32), strings.Repeat("b", 32), strings.Repeat("c", 64), strings.Repeat("d", 32)}
+	proof := resolver.CleanupBinding{WorkerID: "worker-a", Owner: strings.Repeat("a", 32), Claim: strings.Repeat("b", 32), DataTicketSHA256: strings.Repeat("c", 64), AcceptanceID: strings.Repeat("d", 32)}
 	now := time.Now().Unix()
 	want := resolver.CleanupLeaseResponse{ValidUntil: now + 5, CancellationStartedAt: now}
 	server := clientFixtureServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +75,7 @@ func TestCleanupLeaseRejectsMalformedOrExtendedAuthority(t *testing.T) {
 				_, _ = w.Write([]byte(body))
 			}, tls.VersionTLS13)
 			c := clientFixtureClient(t, clientFixtureConfig(t, server))
-			proof := resolver.CleanupBinding{"worker-a", strings.Repeat("a", 32), strings.Repeat("b", 32), strings.Repeat("c", 64), strings.Repeat("d", 32)}
+			proof := resolver.CleanupBinding{WorkerID: "worker-a", Owner: strings.Repeat("a", 32), Claim: strings.Repeat("b", 32), DataTicketSHA256: strings.Repeat("c", 64), AcceptanceID: strings.Repeat("d", 32)}
 			id := "operation-a"
 			badInput := true
 			switch name {
