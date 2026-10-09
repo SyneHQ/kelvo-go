@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/internal/transportbroker"
 	"golang.org/x/sys/unix"
 )
@@ -24,21 +25,24 @@ const ancillaryBytes = 2048
 var ErrChannel = errors.New("private source child channel is unavailable")
 
 type Server struct {
-	ctx                context.Context
-	cancel             context.CancelFunc
-	control            *net.UnixConn
-	data, cancellation transportbroker.Dialer
-	authority          string
-	maximum            int
-	mu                 sync.Mutex
-	started, closed    bool
-	streams            map[*bridge]struct{}
-	workers            sync.WaitGroup
-	done               chan struct{}
-	finish             sync.Once
-	shutdown           sync.Once
-	closedPhysical     chan struct{}
-	cleanupFailed      bool
+	ctx                                       context.Context
+	cancel                                    context.CancelFunc
+	control                                   *net.UnixConn
+	data, cancellation                        transportbroker.Dialer
+	authority                                 string
+	maximum                                   int
+	mu                                        sync.Mutex
+	started, closed                           bool
+	streams                                   map[*bridge]struct{}
+	workers                                   sync.WaitGroup
+	done                                      chan struct{}
+	finish                                    sync.Once
+	shutdown                                  sync.Once
+	closedPhysical                            chan struct{}
+	cleanupFailed                             bool
+	postgresCleanup                           adapter.PostgresCleanup
+	dataOpened, registered, aborted, observed bool
+	cleanupHandle                             string
 }
 
 // NewPair creates no listener or socket pathname. The caller passes only the
@@ -101,7 +105,7 @@ func (s *Server) Serve(childPID int) error {
 		s.finish.Do(func() { close(s.done) })
 	}()
 	for {
-		var data [3]byte
+		var data [512]byte
 		oob := make([]byte, ancillaryBytes)
 		n, on, flags, _, err := s.control.ReadMsgUnix(data[:], oob)
 		credentials, rights, parseErr := parseControl(oob[:on])
@@ -114,7 +118,18 @@ func (s *Server) Serve(childPID int) error {
 			}
 			return ErrChannel
 		}
-		if parseErr != nil || flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 || n != 2 || data[0] != 1 || len(rights) != 0 || credentials == nil || int(credentials.Pid) != childPID {
+		if parseErr != nil || flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 || n < 2 || data[0] != 1 || len(rights) != 0 || credentials == nil || int(credentials.Pid) != childPID {
+			return ErrChannel
+		}
+		if data[1] >= 3 {
+			err := s.servePostgresCleanup(data[:n])
+			clear(data[:])
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		if n != 2 || s.postgresCleanup != nil && (data[1] != 1 || s.dataOpened) {
 			return ErrChannel
 		}
 		var dialer transportbroker.Dialer
@@ -173,6 +188,7 @@ func (s *Server) Serve(childPID int) error {
 			s.remove(stream)
 			return ErrChannel
 		}
+		s.dataOpened = true
 		go func() { stream.run(); s.remove(stream) }()
 	}
 }
