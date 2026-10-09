@@ -5,6 +5,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,6 +20,10 @@ import (
 )
 
 func containedExecutor(t *testing.T) (*Executor, *containment.Manager, *admission.Pool) {
+	return containedExecutorWithClose(t, nil)
+}
+
+func containedExecutorWithClose(t *testing.T, expectedClose error) (*Executor, *containment.Manager, *admission.Pool) {
 	t.Helper()
 	root, state, launcher := os.Getenv("KELVO_TEST_CGROUP_ROOT"), os.Getenv("KELVO_TEST_CGROUP_STATE"), os.Getenv("KELVO_TEST_SANDBOX")
 	if root == "" || state == "" || launcher == "" {
@@ -29,7 +34,7 @@ func containedExecutor(t *testing.T) (*Executor, *containment.Manager, *admissio
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := manager.Close(context.Background()); err != nil {
+		if err := manager.Close(context.Background()); !errors.Is(err, expectedClose) {
 			t.Error(err)
 		}
 	})
