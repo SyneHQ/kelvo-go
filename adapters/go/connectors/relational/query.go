@@ -3,7 +3,6 @@ package relational
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"time"
 
@@ -58,7 +57,11 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 		return adapter.QueryStats{}, err
 	}
 	defer conn.Close()
-	defer conn.Raw(func(any) error { return driver.ErrBadConn })
+	// This pool belongs to one operation. Configure discard only after
+	// acquisition so an authenticated private-source connection is not
+	// closed and reopened. database/sql owns rollback and driver release;
+	// do not call Raw after cancellation can close the connection.
+	s.Pool.SetMaxIdleConns(0)
 	if s.Engine == "mysql" {
 		_, err = conn.ExecContext(ctx, "SET SESSION max_execution_time = ?", int64((timeout+time.Millisecond-1)/time.Millisecond))
 	} else if s.Engine == "mariadb" {

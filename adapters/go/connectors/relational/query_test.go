@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -229,5 +230,35 @@ func TestRelationalChangeRejectsIsolationWithoutTransactionBeforeDial(t *testing
 	s, state := newReadSession(t, "postgresql")
 	if _, err := s.Execute(context.Background(), adapter.Change{Statements: []string{"UPDATE items SET n=1"}, Isolation: "serializable"}); err == nil || state.opens.Load() != 0 {
 		t.Fatal("invalid isolation reached source")
+	}
+}
+
+func TestReadDiscardsPreviouslyAdmittedPhysicalConnection(t *testing.T) {
+	for _, cancelled := range []bool{false, true} {
+		t.Run(fmt.Sprint(cancelled), func(t *testing.T) {
+			s, state := newReadSession(t, "postgresql")
+			if err := s.Pool.PingContext(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if state.opens.Load() != 1 || state.closes.Load() != 0 {
+				t.Fatal("fixture did not retain its admitted connection")
+			}
+			state.block = cancelled
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+			defer cancel()
+			sink := &readSink{}
+			defer sink.Close()
+			_, err := s.Query(ctx, readRequest(), sink)
+			if cancelled && err == nil || !cancelled && err != nil {
+				t.Fatalf("unexpected query result: %v", err)
+			}
+			deadline := time.Now().Add(time.Second)
+			for state.closes.Load() != 1 && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+			if state.opens.Load() != 1 || state.closes.Load() != 1 || state.rollbacks.Load() != 1 || s.Pool.Stats().Idle != 0 {
+				t.Fatal("admitted physical session was reopened, retained, or not rolled back")
+			}
+		})
 	}
 }

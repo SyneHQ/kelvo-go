@@ -5,7 +5,6 @@ package sqlsession
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"errors"
 	"fmt"
 	"math"
@@ -118,7 +117,11 @@ func ExecuteStatements(ctx context.Context, pool *sql.DB, engine string, stateme
 		return result, err
 	}
 	defer conn.Close()
-	defer conn.Raw(func(any) error { return driver.ErrBadConn })
+	// This pool belongs to one operation. Configure discard only after
+	// acquisition so an authenticated private-source connection is not
+	// closed and reopened. database/sql owns rollback and driver release;
+	// do not call Raw after cancellation can close the connection.
+	pool.SetMaxIdleConns(0)
 	if options.Role != "" {
 		command := `SET ROLE "` + options.Role + `"`
 		switch engine {

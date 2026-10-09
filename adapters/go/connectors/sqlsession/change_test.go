@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
@@ -112,6 +113,34 @@ func TestCommitReportsRows(t *testing.T) {
 	result, err := Execute(context.Background(), db, "postgresql", []string{"UPDATE items SET active=true"}, Options{Transaction: true})
 	if err != nil || result.Outcome != Succeeded || result.Completed != 1 || result.AffectedRows == nil || *result.AffectedRows != 7 {
 		t.Fatalf("commit result: %+v %v", result, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCancelledTransactionDiscardsPhysicalSession(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE items").WillDelayFor(time.Second).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectRollback()
+	mock.ExpectClose()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	result, err := Execute(ctx, db, "postgresql", []string{"UPDATE items SET n=1"}, Options{Transaction: true})
+	if err == nil || ctx.Err() == nil || result.Outcome == Succeeded || result.Attempted != 1 {
+		t.Fatal("cancellation was lost or reported as success")
+	}
+	deadline := time.Now().Add(time.Second)
+	for db.Stats().OpenConnections != 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if db.Stats().OpenConnections != 0 {
+		t.Fatal("cancelled physical session remains in pool")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
