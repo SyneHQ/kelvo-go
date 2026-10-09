@@ -90,8 +90,10 @@ func Validate(engine string, statements []string, options Options) error {
 	return nil
 }
 
-// Execute never returns its connection to the pool: a changed role, namespace or
-// session setting cannot leak to another operation. It does not retry writes.
+// Execute consumes pool after acquiring its connection. The caller must supply
+// an exclusive operation-owned pool and must not reuse it. The held connection
+// remains usable until cleanup; queued/new borrowers are rejected. A changed
+// role or session setting cannot pass to another operation. Writes are not retried.
 func Execute(ctx context.Context, pool *sql.DB, engine string, statements []string, options Options) (Result, error) {
 	bound := make([]Statement, len(statements))
 	for i, statement := range statements {
@@ -100,6 +102,7 @@ func Execute(ctx context.Context, pool *sql.DB, engine string, statements []stri
 	return ExecuteStatements(ctx, pool, engine, bound, options)
 }
 
+// ExecuteStatements consumes an exclusive operation-owned pool, as Execute does.
 func ExecuteStatements(ctx context.Context, pool *sql.DB, engine string, statements []Statement, options Options) (Result, error) {
 	result := Result{Outcome: Failed}
 	text := make([]string, len(statements))
@@ -117,11 +120,13 @@ func ExecuteStatements(ctx context.Context, pool *sql.DB, engine string, stateme
 		return result, err
 	}
 	defer conn.Close()
-	// This pool belongs to one operation. Configure discard only after
-	// acquisition so an authenticated private-source connection is not
-	// closed and reopened. database/sql owns rollback and driver release;
-	// do not call Raw after cancellation can close the connection.
-	pool.SetMaxIdleConns(0)
+	// Consume the operation-owned pool after acquisition. The held connection
+	// remains usable, but queued/new borrowers cannot receive this session.
+	// database/sql owns rollback and physical driver release; do not use Raw
+	// after cancellation can close the connection.
+	if err := pool.Close(); err != nil {
+		return result, err
+	}
 	if options.Role != "" {
 		command := `SET ROLE "` + options.Role + `"`
 		switch engine {

@@ -8,6 +8,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/adapters/go/connectors/sqlsession"
 )
 
+// Session owns one operation. Query, Inspect and Execute consume its SQL pool.
 type Session struct {
 	*sqlsession.Session
 	database              string
