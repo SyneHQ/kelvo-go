@@ -453,7 +453,10 @@ func (r Receipt) Validate() error {
 		if r.Effect != EffectNone || r.Result != nil || r.AffectedRows != nil || len(r.Steps) != 0 || r.ErrorCode == "" {
 			return ErrInvalid
 		}
-	case Failed:
+	case Failed, CleanupUnknown:
+		if r.Outcome == CleanupUnknown && (r.Effect != EffectNone || r.ErrorCode != "CLEANUP_UNKNOWN" || r.AffectedRows != nil || len(r.Steps) != 0) {
+			return ErrInvalid
+		}
 		if (r.Effect != EffectNone && r.Effect != EffectPartial) || r.Result != nil || r.ErrorCode == "" {
 			return ErrInvalid
 		}
@@ -466,7 +469,7 @@ func (r Receipt) Validate() error {
 	}
 	if r.ErrorCode != "" {
 		switch r.ErrorCode {
-		case "INVALID_ARGUMENT", "PERMISSION_DENIED", "UNSUPPORTED", "CONFLICT", "DATABASE_MISMATCH", "NOT_INITIALIZED", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "CANCELLED", "DEADLINE_EXCEEDED", "SOURCE_FAILED", "OUTCOME_UNKNOWN":
+		case "INVALID_ARGUMENT", "PERMISSION_DENIED", "UNSUPPORTED", "CONFLICT", "DATABASE_MISMATCH", "NOT_INITIALIZED", "RESOURCE_EXHAUSTED", "UNAVAILABLE", "CANCELLED", "DEADLINE_EXCEEDED", "SOURCE_FAILED", "OUTCOME_UNKNOWN", "CLEANUP_UNKNOWN":
 		default:
 			return ErrInvalid
 		}
@@ -513,11 +516,11 @@ func (r Response) Validate() error {
 		return ErrInvalid
 	}
 	switch r.State {
-	case "queued", "assigned", "running":
+	case "queued", "assigned", "running", "cancelling":
 		if r.Receipt != nil {
 			return ErrInvalid
 		}
-	case string(Completed), string(Rejected), string(Failed), string(CancelledBeforeStart), string(OutcomeUnknown):
+	case string(Completed), string(Rejected), string(Failed), string(CancelledBeforeStart), string(OutcomeUnknown), string(CleanupUnknown):
 		if r.Receipt == nil || r.Receipt.Validate() != nil || r.Receipt.OperationID != r.ID || r.Receipt.RequestSHA256 != r.RequestSHA256 || string(r.Receipt.Outcome) != r.State {
 			return ErrInvalid
 		}

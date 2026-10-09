@@ -187,6 +187,7 @@ const (
 	Failed               Outcome = "failed"
 	CancelledBeforeStart Outcome = "cancelled_before_start"
 	OutcomeUnknown       Outcome = "outcome_unknown"
+	CleanupUnknown       Outcome = "cleanup_unknown"
 	EffectNone           Effect  = "none"
 	EffectCommitted      Effect  = "committed"
 	EffectPartial        Effect  = "partial"
