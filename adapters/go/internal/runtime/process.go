@@ -16,7 +16,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 )
 
-// Runner's Open override is for composition/tests. Production uses openSource;
+// Runner's Open override is for ordinary composition/tests. Private sources reject it.
+// Production uses an explicit ordinary or inherited-channel source path;
 // the parent pipe supplies authority after durable dispatch and current resolve.
 type Runner struct {
 	Open func(context.Context, adapter.ConnectionSpec, operations.Request) (adapter.Session, error)
@@ -87,6 +88,26 @@ func (r Runner) execute(parent context.Context, input adapter.ProcessRequest, ou
 		return receipt, err
 	}
 	open := r.Open
+	var closePrivate func() error
+	defer func() {
+		if closePrivate != nil {
+			if err := closePrivate(); err != nil {
+				resultErr = errors.Join(resultErr, errors.New("private channel cleanup failed"))
+			}
+		}
+	}()
+	if input.PrivateTransport != nil {
+		if open != nil {
+			receipt.ErrorCode = "PERMISSION_DENIED"
+			return receipt, adapter.ErrInvalid
+		}
+		open = func(ctx context.Context, spec adapter.ConnectionSpec, request operations.Request) (adapter.Session, error) {
+			var session adapter.Session
+			var err error
+			session, closePrivate, err = openPrivateSource(ctx, spec, request, input.PrivateTransport)
+			return session, err
+		}
+	}
 	if open == nil {
 		open = openSource
 		if input.SourceFile != nil {
