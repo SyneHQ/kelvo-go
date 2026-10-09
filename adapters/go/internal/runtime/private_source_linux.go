@@ -25,7 +25,7 @@ func openPrivateSource(ctx context.Context, spec adapter.ConnectionSpec, request
 		return nil, nil, err
 	}
 	authority := net.JoinHostPort(connection.Host, strconv.Itoa(connection.Port))
-	client, err := childipc.NewClient(os.NewFile(7, "private-source-channel"), authority)
+	client, err := childipc.NewClientWithDataOpenTimeout(os.NewFile(7, "private-source-channel"), authority, descriptor.DataOpenTimeoutMS)
 	if err != nil {
 		return nil, nil, adapter.ErrInvalid
 	}
