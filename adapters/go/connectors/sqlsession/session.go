@@ -7,8 +7,9 @@ import (
 	"github.com/SYNEHQ/kelvo-go/adapter"
 )
 
-// Session owns its pool. A composition layer opens a new, credential-scoped pool
-// with an explicit driver; this package never registers or selects SQL drivers.
+// Session owns a pool for one operation. Execute consumes the pool; do not share
+// or reuse it. A composition layer opens a new credential-scoped pool with an
+// explicit driver; this package never registers or selects SQL drivers.
 type Session struct {
 	Pool   *sql.DB
 	Engine string

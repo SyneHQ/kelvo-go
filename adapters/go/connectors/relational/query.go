@@ -57,11 +57,13 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 		return adapter.QueryStats{}, err
 	}
 	defer conn.Close()
-	// This pool belongs to one operation. Configure discard only after
-	// acquisition so an authenticated private-source connection is not
-	// closed and reopened. database/sql owns rollback and driver release;
-	// do not call Raw after cancellation can close the connection.
-	s.Pool.SetMaxIdleConns(0)
+	// Consume the operation-owned pool after acquisition. The held connection
+	// remains usable, but queued/new borrowers cannot receive this session.
+	// database/sql owns rollback and physical driver release; do not use Raw
+	// after cancellation can close the connection.
+	if err := s.Pool.Close(); err != nil {
+		return adapter.QueryStats{}, err
+	}
 	if s.Engine == "mysql" {
 		_, err = conn.ExecContext(ctx, "SET SESSION max_execution_time = ?", int64((timeout+time.Millisecond-1)/time.Millisecond))
 	} else if s.Engine == "mariadb" {
