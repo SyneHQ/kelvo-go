@@ -35,6 +35,7 @@ type HTTPIssuer struct {
 	client                          *http.Client
 	transport                       *http.Transport
 	slots                           chan struct{}
+	cleanupSlots                    chan struct{}
 	ctx                             context.Context
 	cancel                          context.CancelFunc
 	mu                              sync.Mutex
@@ -99,7 +100,7 @@ func NewHTTPIssuer(c HTTPIssuerConfig) (*HTTPIssuer, error) {
 	}
 	sum := sha256.Sum256(leaf.Raw)
 	ctx, cancel := context.WithCancel(context.Background())
-	result := &HTTPIssuer{endpoint: c.Endpoint, identity: c.WorkerIdentity, fingerprint: hex.EncodeToString(sum[:]), notBefore: from, notAfter: until, slots: make(chan struct{}, c.MaxInFlight), ctx: ctx, cancel: cancel, shutdownDone: make(chan struct{})}
+	result := &HTTPIssuer{endpoint: c.Endpoint, identity: c.WorkerIdentity, fingerprint: hex.EncodeToString(sum[:]), notBefore: from, notAfter: until, slots: make(chan struct{}, c.MaxInFlight), cleanupSlots: make(chan struct{}, c.MaxInFlight), ctx: ctx, cancel: cancel, shutdownDone: make(chan struct{})}
 	config := &tls.Config{MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, RootCAs: roots, ServerName: u.Hostname(), Certificates: []tls.Certificate{pair}, NextProtos: []string{"http/1.1"}}
 	tr := &http.Transport{Proxy: nil, DisableCompression: true, DisableKeepAlives: true, ForceAttemptHTTP2: false, MaxConnsPerHost: c.MaxInFlight, MaxResponseHeaderBytes: 8192, ResponseHeaderTimeout: MaxSetupTime}
 	tr.DialTLSContext = func(ctx context.Context, network, address string) (net.Conn, error) {
@@ -174,12 +175,16 @@ func (i *HTTPIssuer) Issue(parent context.Context, r IssueRequest) (string, erro
 	}
 	b, e := r.Binding, r.Binding.Execution
 	wire := transportissuer.Request{PrivateSource: r.PrivateSource, RouteID: r.RouteID, TokenID: r.TokenID, BindingVersion: r.BindingVersion, Version: transportissuer.Version, Issuer: b.Issuer, Audience: b.Audience, ClusterTenant: b.ClusterTenant, ServicePrincipal: b.ServicePrincipal, Tenant: b.Tenant, Source: b.Source, SourceRevision: b.SourceRevision, Authority: b.Authority, ExpiresAt: b.ExpiresAt.Unix(), OpenID: r.OpenID, WorkerIdentity: r.WorkerIdentity, WorkerCertSHA256: r.WorkerCertSHA256, Execution: transportissuer.Execution{Kind: e.Kind, ID: e.ID, GrantSHA256: e.GrantSHA256, Worker: e.Worker, Owner: e.Owner, Claim: e.Claim}}
+	return i.post(ctx, i.endpoint, wire)
+}
+
+func (i *HTTPIssuer) post(ctx context.Context, endpoint string, wire any) (string, error) {
 	body, err := json.Marshal(wire)
 	if err != nil || len(body) > transportissuer.MaxRequestBytes {
 		return "", transportbroker.ErrInvalid
 	}
 	sum := sha256.Sum256(body)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, i.endpoint, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return "", transportbroker.ErrInvalid
 	}
@@ -194,7 +199,7 @@ func (i *HTTPIssuer) Issue(parent context.Context, r IssueRequest) (string, erro
 	if resp.TLS == nil || len(resp.TLS.VerifiedChains) == 0 {
 		return "", transportbroker.ErrOpen
 	}
-	now = time.Now()
+	now := time.Now()
 	for _, certificate := range resp.TLS.VerifiedChains[0] {
 		if now.Before(certificate.NotBefore) || !now.Before(certificate.NotAfter) {
 			return "", transportbroker.ErrOpen

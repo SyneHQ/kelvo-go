@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/transportbroker"
+	"github.com/SYNEHQ/kelvo-go/transportissuer"
 )
 
 var _ transportbroker.Opener = (*Opener)(nil)
@@ -55,11 +56,37 @@ func (o *Opener) Open(parent context.Context, request transportbroker.OpenReques
 	if err != nil || ctx.Err() != nil || o.verifyTicket(token, issue, time.Now()) != nil {
 		return nil, setupError(ctx)
 	}
+	if o.acceptedTrust != nil && request.Purpose != transportbroker.Data {
+		return nil, transportbroker.ErrScope
+	}
+	conn, err := o.connect(ctx, binding.Authority, token, o.acceptedTrust != nil, false)
+	if err != nil {
+		if conn == nil {
+			return nil, err
+		}
+		return conn, err
+	}
+	if o.acceptedTrust != nil {
+		accepted, err := o.acceptedConnection(conn, token, binding)
+		if err != nil {
+			if conn.closeErr != nil {
+				return conn, err
+			}
+			return nil, err
+		}
+		return accepted, nil
+	}
+	return conn, nil
+}
+
+// connect performs only outer mTLS and CONNECT. Issuance and the chosen token's
+// complete scope verification must succeed before this function is called.
+func (o *Opener) connect(ctx context.Context, authority, token string, accepted, abort bool) (*tunnelConn, error) {
 	raw, err := o.dial(ctx, "tcp", o.proxy)
 	if raw == nil {
 		return nil, setupError(ctx)
 	}
-	conn := &tunnelConn{conn: raw, raw: raw, authority: binding.Authority}
+	conn := &tunnelConn{conn: raw, raw: raw, authority: authority}
 	if err != nil {
 		return reject(conn, setupError(ctx))
 	}
@@ -101,20 +128,35 @@ func (o *Opener) Open(parent context.Context, request transportbroker.OpenReques
 		(state.NegotiatedProtocol != "" && state.NegotiatedProtocol != "http/1.1") {
 		return reject(conn, transportbroker.ErrOpen)
 	}
-	requestBytes := "CONNECT " + binding.Authority + " HTTP/1.1\r\nHost: " + binding.Authority + "\r\nProxy-Authorization: Bearer " + token + "\r\n\r\n"
+	requestBytes := "CONNECT " + authority + " HTTP/1.1\r\nHost: " + authority + "\r\nProxy-Authorization: Bearer " + token + "\r\n"
+	if accepted {
+		requestBytes += transportissuer.AcceptedOpenHeader + ": " + transportissuer.AcceptedOpenRequired + "\r\n"
+	}
+	if abort {
+		requestBytes += transportissuer.PostgresAbortHeader + ": " + transportissuer.PostgresAbortRequired + "\r\n"
+	}
+	requestBytes += "\r\n"
 	if n, err := io.WriteString(secure, requestBytes); err != nil || n != len(requestBytes) {
 		return reject(conn, setupError(ctx))
 	}
-	reader := bufio.NewReaderSize(secure, 4096)
+	reader := bufio.NewReaderSize(secure, transportissuer.MaxAcceptedOpenBytes+128)
 	// Rabbit v1 emits exactly this headerless response. ReadSlice is bounded;
 	// reject redirects, bodies, framing headers, duplicate headers and extensions.
 	line, err := reader.ReadSlice('\n')
 	if err != nil || !bytes.Equal(line, []byte("HTTP/1.1 200 Connection Established\r\n")) {
 		return reject(conn, setupError(ctx))
 	}
-	line, err = reader.ReadSlice('\n')
-	if err != nil || !bytes.Equal(line, []byte("\r\n")) {
-		return reject(conn, setupError(ctx))
+	if accepted {
+		receipt, err := readAcceptedHeader(reader)
+		if err != nil {
+			return reject(conn, err)
+		}
+		conn.acceptedReceipt = receipt
+	} else {
+		line, err = reader.ReadSlice('\n')
+		if err != nil || !bytes.Equal(line, []byte("\r\n")) {
+			return reject(conn, setupError(ctx))
+		}
 	}
 	conn.reader = reader
 	// Join a callback that may have begun closing the socket before clearing its
@@ -136,7 +178,7 @@ func setupError(ctx context.Context) error {
 	return transportbroker.ErrOpen
 }
 
-func reject(conn *tunnelConn, err error) (net.Conn, error) {
+func reject(conn *tunnelConn, err error) (*tunnelConn, error) {
 	if conn.Close() != nil {
 		return conn, transportbroker.ErrCleanup
 	}
@@ -144,12 +186,14 @@ func reject(conn *tunnelConn, err error) (net.Conn, error) {
 }
 
 type tunnelConn struct {
-	conn      net.Conn
-	raw       net.Conn
-	reader    *bufio.Reader
-	authority string
-	closeOnce sync.Once
-	closeErr  error
+	conn            net.Conn
+	raw             net.Conn
+	reader          *bufio.Reader
+	authority       string
+	closeOnce       sync.Once
+	closeErr        error
+	closed          atomic.Bool
+	acceptedReceipt string
 }
 
 func (c *tunnelConn) Read(p []byte) (int, error) {
@@ -163,6 +207,7 @@ func (c *tunnelConn) Read(p []byte) (int, error) {
 // source TLS still owns its own protocol shutdown; CloseWrite preserves outer TLS.
 func (c *tunnelConn) Close() error {
 	c.closeOnce.Do(func() {
+		c.closed.Store(true)
 		if err := c.raw.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 			c.closeErr = transportbroker.ErrCleanup
 		}
