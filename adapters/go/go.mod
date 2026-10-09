@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.4.1
-	github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261006195007-50bdc3d8b7a2
+	github.com/SYNEHQ/kelvo-go v0.1.0-preview.1.0.20261008235556-e875d87951ca
 	github.com/apache/arrow-go/v18 v18.5.1
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/gocql/gocql v1.7.0
