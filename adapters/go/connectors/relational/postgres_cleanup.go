@@ -45,6 +45,7 @@ type postgresCleanupState struct {
 	bytes                              int
 	header                             [5]byte
 	headerN                            int
+	frameActive                        bool
 	remaining                          uint32
 	kind                               byte
 	errorBody                          []byte
@@ -58,7 +59,21 @@ type postgresCleanupReader struct {
 }
 
 func (r *postgresCleanupReader) Read(p []byte) (int, error) {
-	n, err := r.reader.Read(p)
+	// Do not let pgproto3 read ahead across a frame boundary. It must
+	// decode each preceding frame before this observer can see ReadyForQuery.
+	// Apply this from connection startup, so cancellation cannot inherit
+	// undecoded frames that were buffered before the watcher fired.
+	r.state.mu.Lock()
+	limit := len(p)
+	if !r.state.failed {
+		if r.state.headerN < 5 {
+			limit = min(limit, 5-r.state.headerN)
+		} else {
+			limit = min(limit, int(r.state.remaining))
+		}
+	}
+	r.state.mu.Unlock()
+	n, err := r.reader.Read(p[:limit])
 	r.state.consume(p[:n], err)
 	return n, err
 }
@@ -77,6 +92,9 @@ func (s *postgresCleanupState) consume(p []byte, readErr error) {
 	}
 	for len(p) > 0 {
 		if s.headerN < 5 {
+			if s.headerN == 0 {
+				s.frameActive = s.active
+			}
 			n := copy(s.header[s.headerN:], p)
 			s.headerN += n
 			p = p[n:]
@@ -90,7 +108,7 @@ func (s *postgresCleanupState) consume(p []byte, readErr error) {
 			}
 			s.kind = s.header[0]
 			s.remaining = length - 4
-			if s.active && s.kind == 'E' && s.remaining > 8192 {
+			if s.active && s.frameActive && s.kind == 'E' && s.remaining > 8192 {
 				s.failed = true
 				return
 			}
@@ -102,10 +120,10 @@ func (s *postgresCleanupState) consume(p []byte, readErr error) {
 		if uint32(n) > s.remaining {
 			n = int(s.remaining)
 		}
-		if s.active && s.kind == 'E' {
+		if s.active && s.frameActive && s.kind == 'E' {
 			s.errorBody = append(s.errorBody, p[:n]...)
 		}
-		if s.active && s.kind == 'Z' && (s.remaining != 1 || n != 1 || (p[0] != 'I' && p[0] != 'T' && p[0] != 'E')) {
+		if s.active && s.frameActive && s.kind == 'Z' && (s.remaining != 1 || n != 1 || (p[0] != 'I' && p[0] != 'T' && p[0] != 'E')) {
 			s.failed = true
 			return
 		}
@@ -114,10 +132,12 @@ func (s *postgresCleanupState) consume(p []byte, readErr error) {
 		if s.remaining > 0 {
 			break
 		}
-		if s.active {
+		if s.active && s.frameActive {
 			if s.kind == 'E' {
 				fields := s.errorBody
 				valid := false
+				seenCode := false
+				codeCancelled := false
 				for len(fields) > 0 {
 					tag := fields[0]
 					fields = fields[1:]
@@ -129,8 +149,13 @@ func (s *postgresCleanupState) consume(p []byte, readErr error) {
 					if end < 0 {
 						break
 					}
-					if tag == 'C' && bytes.Equal(fields[:end], []byte("57014")) {
-						s.cancelError = true
+					if tag == 'C' {
+						if seenCode {
+							s.failed = true
+							return
+						}
+						seenCode = true
+						codeCancelled = bytes.Equal(fields[:end], []byte("57014"))
 					}
 					fields = fields[end+1:]
 				}
@@ -138,6 +163,7 @@ func (s *postgresCleanupState) consume(p []byte, readErr error) {
 					s.failed = true
 					return
 				}
+				s.cancelError = codeCancelled
 			}
 			if s.kind == 'Z' && s.cancelError {
 				s.ready = true
