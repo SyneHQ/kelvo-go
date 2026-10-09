@@ -34,7 +34,8 @@ type Connection struct {
 	Endpoint string
 	TLS      *tls.Config
 	// DialContext and DialCancellation are runtime-only, source-scoped hooks.
-	// PostgreSQL requires both hooks. MySQL uses only DialContext. A hook must
+	// PostgreSQL requires DialContext and either DialCancellation or
+	// PostgresCleanup. MySQL uses only DialContext. A hook must
 	// open the requested source through its admitted transport or return an error.
 	// It must not fall back to a direct network connection after a denial.
 	DialContext      func(context.Context, string, string) (net.Conn, error) `json:"-"`

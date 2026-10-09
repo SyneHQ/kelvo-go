@@ -38,9 +38,9 @@ func sourcePostgresConnector(config *pgx.ConnConfig, c adapter.Connection) drive
 
 func validSourceDialers(c adapter.Connection) bool {
 	if c.DialContext == nil {
-		return c.DialCancellation == nil
+		return c.DialCancellation == nil && c.PostgresCleanup == nil
 	}
-	return c.Engine == "mysql" || c.Engine == "postgresql" && c.DialCancellation != nil
+	return c.Engine == "mysql" && c.PostgresCleanup == nil || c.Engine == "postgresql" && ((c.DialCancellation != nil) != (c.PostgresCleanup != nil))
 }
 
 // The driver must retain the original source address for TLS and cancellation.
@@ -106,6 +106,10 @@ func configurePostgresSourceDialers(config *pgx.ConnConfig, c adapter.Connection
 		// connector can mark a data open; all other opens get cancellation
 		// authority. A denied cancellation never retries the data hook.
 		return cancel(ctx, network, address)
+	}
+	if c.PostgresCleanup != nil {
+		configureTypedPostgresCleanup(config, c.PostgresCleanup)
+		return
 	}
 	config.BuildContextWatcherHandler = func(conn *pgconn.PgConn) ctxwatch.Handler {
 		return &sourceCancellationWatcher{conn: conn}
