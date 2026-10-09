@@ -28,6 +28,7 @@ jobs:
           sdk_version=$(awk '$1 == "github.com/SYNEHQ/kelvo-go" { print $2 }' adapters/go/go.mod)
           test -n "$sdk_version"
           go work edit "-replace=github.com/SYNEHQ/kelvo-go@${sdk_version}=."
+          go work edit -replace=github.com/sijms/go-ora/v2@v2.9.0=./third_party/go-ora-v2.9.0
       - name: Verify the operation contracts
         run: go test -mod=readonly -race -count=1 ./operations ./adapter ./provider ./filesnapshot ./watch ./ingestion ./migration
       - name: Compile against the published SDK pin
