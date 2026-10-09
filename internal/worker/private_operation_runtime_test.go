@@ -252,7 +252,16 @@ func TestContainedPrivateRuntimeResolvesAfterAdmission(t *testing.T) {
 			executor, manager, pool := containedExecutor(t)
 			executor.connectionResolvers = f.executor.connectionResolvers
 			f.executor = executor
-			r := privateRuntimeFixture(t, f)
+			runtimes, err := NewPrivateOperations(executor, f.policy.worker, f.policy.identity, 1, privateStartupFixture(t, f))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := runtimes.Close(context.Background()); err != nil {
+					t.Error(err)
+				}
+			})
+			r := runtimes.runtimes[f.policy.trust.ServicePrincipal]
 			var opens atomic.Int32
 			f.change = func(*resolver.OperationResponse) {
 				if pool.Snapshot().Active != 1 || manager.Status().Active != 1 {
@@ -286,7 +295,13 @@ func TestContainedPrivateRuntimeResolvesAfterAdmission(t *testing.T) {
 					return nil, adapter.ErrInvalid
 				}
 			}
-			receipt, err := executor.executePrivateOperation(context.Background(), r, operationExecutable(t), f.record, f.request, nil, nil)
+			receipt, err := executor.ExecuteDelegatedOperation(context.Background(), runtimes, operationExecutable(t), f.record.ID, f.record.RequestSHA256,
+				func(context.Context) (OperationSourceRequest, error) {
+					if pool.Snapshot().Active != 1 || manager.Status().Active != 1 {
+						t.Error("input preparation ran before containment admission")
+					}
+					return OperationSourceRequest{Record: f.record, Request: f.request, MaxResultBytes: 4096}, nil
+				}, nil)
 			if broken {
 				if err == nil || receipt.Outcome != operations.Rejected || receipt.Effect != operations.EffectNone || opens.Load() != 0 {
 					t.Fatal("failed IPC setup executed source", receipt, err)

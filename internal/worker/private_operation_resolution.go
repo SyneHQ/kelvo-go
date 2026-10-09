@@ -20,7 +20,7 @@ import (
 )
 
 // This policy belongs to the trusted parent. It cannot be installed by a query,
-// a resolver response, or a child process. No startup path constructs it yet.
+// a resolver response, or a child process.
 type privateOperationPolicy struct {
 	resolver                                   *ConnectionResolver
 	trust                                      operations.GrantTrust
@@ -87,6 +87,10 @@ func (p *privateOperationPolicy) workerCertificate(now time.Time) (time.Time, bo
 }
 
 func (p *privateOperationPolicy) resolve(ctx context.Context, e *Executor, record operationstore.Record, request operations.Request, payload []byte) (privateOperationSelection, error) {
+	return p.resolveMode(ctx, e, record, request, payload, false)
+}
+
+func (p *privateOperationPolicy) resolveMode(ctx context.Context, e *Executor, record operationstore.Record, request operations.Request, payload []byte, allowPublic bool) (privateOperationSelection, error) {
 	bad := func() (privateOperationSelection, error) { return privateOperationSelection{}, connectionUnavailable() }
 	if ctx == nil || ctx.Err() != nil || e == nil || p == nil || e.connectionResolvers[record.Scope.Issuer] != p.resolver || adapter.ValidateOperationInput(request, record.Scope.AppTeam, payload) != nil || record.State != operationstore.Running || record.Scope.Validate() != nil || record.Binding.Validate() != nil || record.Binding.WorkerID != p.worker || record.AuthoritySHA256 != operations.GrantDigest(record.AuthorityToken) {
 		return bad()
@@ -100,16 +104,23 @@ func (p *privateOperationPolicy) resolve(ctx context.Context, e *Executor, recor
 	if err != nil || grant.Issuer != record.Scope.Issuer || grant.ClusterTenant != record.Scope.ClusterTenant || grant.ServicePrincipal != record.Scope.ServicePrincipal || grant.AppTeam != record.Scope.AppTeam || grant.Subject.Kind != record.Scope.SubjectKind || grant.Subject.ID != record.Scope.SubjectID || grant.Subject.JobID != record.Scope.SubjectJobID || grant.ConnectionID != record.Scope.ConnectionID || grant.Operation != record.Kind || grant.RequestSHA256 != record.RequestSHA256 || record.AuthorityUntil.Unix() > grant.ExpiresAt || !now.Before(record.AuthorityUntil) || !now.Before(record.ExecuteBefore) || record.ExecuteBefore.After(record.AuthorityUntil) {
 		return bad()
 	}
-	switch grant.Authorization.Kind {
-	case "watcher", "ingestion", "approved_change":
-		return bad()
-	}
 	response, err := p.resolver.resolveOperationMode(ctx, record, request, true)
 	if err != nil {
 		return bad()
 	}
 	defer clear(response.Secrets)
-	if response.privateSource == nil || response.privateSource.Grant != record.AuthorityToken || (response.Source.Type != "postgres" && response.Source.Type != "postgresql" && response.Source.Type != "mysql") {
+	if response.privateSource == nil {
+		if !allowPublic {
+			return bad()
+		}
+		input, err := e.operationInput(ctx, record, request, payload, response)
+		return privateOperationSelection{input: input}, err
+	}
+	switch grant.Authorization.Kind {
+	case "watcher", "ingestion", "approved_change":
+		return bad()
+	}
+	if response.privateSource.Grant != record.AuthorityToken || (response.Source.Type != "postgres" && response.Source.Type != "postgresql" && response.Source.Type != "mysql") {
 		return bad()
 	}
 	input, err := e.operationInput(ctx, record, request, payload, response)
