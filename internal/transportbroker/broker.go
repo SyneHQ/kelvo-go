@@ -332,3 +332,16 @@ func wait(ctx context.Context, done <-chan struct{}) error {
 		return errors.Join(ErrCleanup, ctx.Err())
 	}
 }
+
+// BoundTo verifies the parent-owned session without exposing its dial authority
+// to a child. A copied, closed or unregistered session never matches.
+func (s *Session) BoundTo(binding Binding) bool {
+	if s == nil || s.self != s || s.broker == nil || s.broker.self != s.broker {
+		return false
+	}
+	b := s.broker
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	_, registered := b.sessions[s]
+	return registered && !s.closing && s.ctx.Err() == nil && s.binding == binding && b.attempts[binding.attempt()] == s
+}
