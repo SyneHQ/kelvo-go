@@ -57,3 +57,18 @@ func TestPostgresCleanupDescriptorRejectsOtherEnginesAndWrites(t *testing.T) {
 		}
 	}
 }
+
+func TestPrivateTransportDataOpenTimeoutBounds(t *testing.T) {
+	for _, value := range []int64{-1, MaxPrivateDataOpenTimeoutMS + 1, 1 << 62} {
+		request := ProcessRequest{Source: ConnectionSpec{Engine: "postgresql"}, PrivateTransport: &PrivateTransport{ControlFD: 7, DataOpenTimeoutMS: value}}
+		if request.validatePrivateTransport() == nil {
+			t.Fatalf("invalid data open milliseconds accepted: %d", value)
+		}
+	}
+	for _, value := range []int64{0, 1, MaxPrivateDataOpenTimeoutMS} {
+		request := ProcessRequest{Source: ConnectionSpec{Engine: "postgresql"}, PrivateTransport: &PrivateTransport{ControlFD: 7, DataOpenTimeoutMS: value}}
+		if err := request.validatePrivateTransport(); err != nil {
+			t.Fatal("valid data open milliseconds rejected", err)
+		}
+	}
+}

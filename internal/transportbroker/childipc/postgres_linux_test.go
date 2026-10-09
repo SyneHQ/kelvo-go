@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 )
 
 type cleanupFixture struct {
@@ -17,14 +18,20 @@ type cleanupFixture struct {
 	observed             bool
 }
 
-func (f *cleanupFixture) Register(_ context.Context, pid uint32, key []byte) (string, error) {
+func (f *cleanupFixture) Register(ctx context.Context, pid uint32, key []byte) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.pid = pid
 	f.key = append([]byte(nil), key...)
 	return "opaque-handle", nil
 }
-func (f *cleanupFixture) Abort(_ context.Context, handle string) error {
+func (f *cleanupFixture) Abort(ctx context.Context, handle string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if handle != "opaque-handle" {
@@ -33,7 +40,10 @@ func (f *cleanupFixture) Abort(_ context.Context, handle string) error {
 	f.aborts++
 	return nil
 }
-func (f *cleanupFixture) Observed(_ context.Context, handle string, observed bool) error {
+func (f *cleanupFixture) Observed(ctx context.Context, handle string, observed bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if handle != "opaque-handle" {
@@ -141,5 +151,48 @@ func TestTypedPostgresRejectsReplaysAndTargetReplacement(t *testing.T) {
 				t.Fatal("accepted invalid cleanup request")
 			}
 		})
+	}
+}
+
+func TestTypedCleanupSurvivesEstablishedDataOperationCancellation(t *testing.T) {
+	dial, _ := echoDialer(t)
+	fixture := &cleanupFixture{}
+	server, file, err := NewPairWithPostgresCleanup(context.Background(), "source.private:5432", dial, fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := server.ConfigureDataOpen(operation, 4*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	client, err := NewClientWithDataOpenTimeout(file, "source.private:5432", 4000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { client.Close(); closeServer(t, server) }()
+	go server.Serve(os.Getpid())
+	connection, err := client.DialContext(operation, "tcp", "source.private:5432")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	cancel()
+	cleanup, stop := context.WithTimeout(context.Background(), time.Second)
+	defer stop()
+	handle, err := client.Register(cleanup, 23, []byte{1, 2, 3, 4})
+	if err != nil {
+		t.Fatal("operation cancellation closed cleanup channel", err)
+	}
+	if err := client.Abort(cleanup, handle); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Observed(cleanup, handle, true); err != nil {
+		t.Fatal(err)
+	}
+	fixture.mu.Lock()
+	defer fixture.mu.Unlock()
+	if fixture.pid != 23 || fixture.aborts != 1 || fixture.observations != 1 || !fixture.observed {
+		t.Fatal("typed cleanup lost authority after data cancellation")
 	}
 }
