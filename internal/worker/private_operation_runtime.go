@@ -21,7 +21,7 @@ import (
 )
 
 // The runtime is shared by executions. One broker enforces total source capacity.
-// Startup does not construct it until the paired production gates pass.
+// The operator must configure private operations before startup constructs it.
 type privateOperationRuntime struct {
 	mu             sync.Mutex
 	policy         *privateOperationPolicy
@@ -126,6 +126,10 @@ func privateSourceDigest(input adapter.ProcessRequest) ([32]byte, error) {
 // prepare runs only inside executeResolvedOperation's resource admission. Its
 // retained request is immutable and is released after physical transport cleanup.
 func (r *privateOperationRuntime) prepare(ctx context.Context, e *Executor, record operationstore.Record, request operations.Request, payload []byte) (adapter.ProcessRequest, *privateOperationChannel, error) {
+	return r.prepareMode(ctx, e, record, request, payload, false, 0)
+}
+
+func (r *privateOperationRuntime) prepareMode(ctx context.Context, e *Executor, record operationstore.Record, request operations.Request, payload []byte, allowPublic bool, maxBytes int64) (adapter.ProcessRequest, *privateOperationChannel, error) {
 	bad := func(err error) (adapter.ProcessRequest, *privateOperationChannel, error) {
 		return adapter.ProcessRequest{}, nil, err
 	}
@@ -170,9 +174,17 @@ func (r *privateOperationRuntime) prepare(ctx context.Context, e *Executor, reco
 			clear(ownedPayload)
 		}
 	}()
-	selection, err := r.policy.resolve(work, e, record, request, ownedPayload)
+	selection, err := r.policy.resolveMode(work, e, record, request, ownedPayload, allowPublic)
 	if err != nil {
 		return bad(err)
+	}
+	if maxBytes > 0 {
+		selection.input.Limits.MaxBytes = min(selection.input.Limits.MaxBytes, maxBytes)
+	}
+	if selection.binding == (transportbroker.Binding{}) {
+		// The admitted caller retains the public payload until process completion.
+		selection.input.Input = payload
+		return selection.input, nil, nil
 	}
 	sourceDigest, err := privateSourceDigest(selection.input)
 	if err != nil {

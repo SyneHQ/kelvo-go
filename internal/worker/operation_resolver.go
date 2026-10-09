@@ -240,7 +240,7 @@ func (r *ConnectionResolver) resolveOperation(ctx context.Context, record operat
 
 // Private proofs are admitted only by the trusted parent resolver. The public
 // wrapper continues to reject a private source instead of opening it directly.
-func (r *ConnectionResolver) resolveOperationMode(ctx context.Context, record operationstore.Record, request operations.Request, requirePrivate bool) (out operationResolution, resultErr error) {
+func (r *ConnectionResolver) resolveOperationMode(ctx context.Context, record operationstore.Record, request operations.Request, allowPrivate bool) (out operationResolution, resultErr error) {
 	defer func() {
 		if resultErr != nil {
 			clear(out.Secrets)
@@ -288,12 +288,12 @@ func (r *ConnectionResolver) resolveOperationMode(ctx context.Context, record op
 		return out, connectionUnavailable()
 	}
 	// No private source proof may enter ProcessRequest or a direct connection.
-	if (wire.PrivateSource != nil) != requirePrivate {
+	if wire.PrivateSource != nil && !allowPrivate {
 		clear(wire.Secrets)
 		return out, connectionUnavailable()
 	}
 	out = resolvedOperation(wire)
-	if requirePrivate {
+	if wire.PrivateSource != nil {
 		proof := *wire.PrivateSource
 		out.privateSource = &proof
 	}
