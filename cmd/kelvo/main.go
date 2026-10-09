@@ -40,6 +40,9 @@ func run(args []string) error {
 		usage()
 		return nil
 	}
+	if (args[0] == "worker" || args[0] == "version" || args[0] == "help" || args[0] == "--help") && hasNodeConfigCheckFlag(args[1:]) {
+		return query.NewError("INVALID_ARGUMENT", "The configuration check is available only for the node command")
+	}
 	if args[0] == "worker" {
 		return runWorker()
 	}

@@ -75,3 +75,28 @@ A failed control request remains unconfirmed. This does not add write rollback g
 This path requires trusted composition to supply `DialCancellation`. The private
 worker does not supply it for MySQL yet. Rabbit cancellation tickets and capacity
 reservation must pass live qualification before that runtime path is enabled.
+
+## Diagnose a private connection
+
+Operators can temporarily enable parent-side diagnostics on a worker:
+
+```yaml
+operations:
+  adapter:
+    # Keep the existing binary and sha256 values.
+    private_open_diagnostics: true
+```
+
+Check the worker configuration before restarting it:
+
+```sh
+kelvo node --check-config --config node.yml
+```
+
+This read-only check validates YAML, policies, local artifact hashes and filesystem metadata. It does not start services, make network calls or resolve source secrets. A passing check does not prove runtime dependencies are available.
+
+The default is `false`. The worker logs one `kelvo_private_open_diagnostic` JSON summary after its cleanup attempt. Each summary contains a validated operation ID, fixed stage/result codes, timing, HTTP status and `cleanup_confirmed`. It contains no source address, SQL, credentials, proof, ticket or error text.
+
+Each operation retains at most 64 events. One process-local writer uses a 16-summary queue and drops new summaries when full. Logging never waits for the output sink on the request path. Reports can be lost during overload or process exit. These operator diagnostics are not audit records or proof of source effects.
+
+A failed stage identifies the next investigation point. It does not relax TLS, tenant checks, timeouts or cleanup. Parent diagnostics end at descriptor delivery; they do not report database TLS or authentication inside the child. Disable the setting after investigation.

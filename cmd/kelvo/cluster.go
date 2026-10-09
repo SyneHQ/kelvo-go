@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -28,11 +29,22 @@ import (
 
 func runCluster(args []string) error {
 	f := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	checking := hasNodeConfigCheckFlag(args[1:])
+	if checking {
+		f.SetOutput(io.Discard)
+	}
 	file := f.String("config", "kelvo.yml", "Cluster configuration (YAML)")
 	drainTimeout := f.Duration("drain-timeout", 30*time.Second, "Grace period for accepted queries before cancellation")
+	var checkConfig bool
+	if args[0] == "node" {
+		f.BoolVar(&checkConfig, "check-config", false, "Validate YAML, policies and local artifact hashes without starting services, making network calls or resolving source secrets")
+	}
 	if err := f.Parse(args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
+		}
+		if checking {
+			return query.NewError("INVALID_ARGUMENT", "Invalid node configuration check arguments")
 		}
 		return err
 	}
@@ -41,6 +53,15 @@ func runCluster(args []string) error {
 	}
 	if f.NArg() != 0 {
 		return query.NewError("INVALID_ARGUMENT", "Unexpected positional arguments")
+	}
+	if checkConfig {
+		// LoadNode checks schema, policies, artifact hashes and filesystem
+		// metadata. It does not start the node or resolve source secrets.
+		if _, err := cluster.LoadNode(*file); err != nil {
+			return query.NewError("CONFIGURATION_ERROR", "Node configuration validation failed")
+		}
+		fmt.Fprintln(os.Stderr, "Node configuration is valid. Runtime dependencies were not checked.")
+		return nil
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
