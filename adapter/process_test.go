@@ -86,6 +86,35 @@ func TestProcessPipeStrictDecoding(t *testing.T) {
 	}
 }
 
+func TestMongoProcessDatabaseOptionMatchesSignedTarget(t *testing.T) {
+	now := time.Unix(1800000000, 0)
+	r := processFixture(t, now)
+	r.Request.Kind = operations.ConnectionTest
+	r.Request.Spec = operations.Spec{}
+	r.Request.Connection.Schema = ""
+	r.RequestSHA256, _ = operations.Digest(r.Request)
+	r.Source.Engine, r.Source.Schema = "mongodb", ""
+	r.Source.DSN = "mongodb://reader:test-only@db.example:27017/?tls=true&authSource=analytics"
+	r.Source.Options = map[string]string{"database": "analytics", "tls_server_name": "db.example"}
+	if err := r.ValidateAt(now); err != nil {
+		t.Fatal("matching MongoDB database option rejected", err)
+	}
+	for name, change := range map[string]func(*ProcessRequest){
+		"other database": func(r *ProcessRequest) { r.Source.Options = map[string]string{"database": "other"} },
+		"empty database": func(r *ProcessRequest) { r.Source.Options = map[string]string{"database": ""} },
+		"other engine":   func(r *ProcessRequest) { r.Source.Engine = "postgresql" },
+		"unknown option": func(r *ProcessRequest) { r.Source.Options = map[string]string{"authSource": "analytics"} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			bad := r
+			change(&bad)
+			if bad.ValidateAt(now) == nil {
+				t.Fatal("unbound MongoDB option accepted")
+			}
+		})
+	}
+}
+
 func TestBusinessProcessSourcesHaveNoEndpointOverrides(t *testing.T) {
 	now := time.Unix(1800000000, 0)
 	for _, kind := range []string{"salesforce_data360", "salesforce_tableau_next", "ramp", "daloopa", "motherduck", "posthog"} {

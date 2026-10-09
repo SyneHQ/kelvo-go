@@ -48,6 +48,12 @@ func sourceConnection(spec adapter.ConnectionSpec) (adapter.Connection, error) {
 		c.Engine = "postgresql"
 	}
 	for key := range spec.Options {
+		if key == "database" && c.Engine == "mongodb" {
+			if spec.Options[key] != c.Namespace {
+				return c, adapter.ErrInvalid
+			}
+			continue
+		}
 		if key == "migration_server_uuid" && c.Engine == "clickhouse" {
 			c.Options = map[string]string{key: spec.Options[key]}
 			continue
