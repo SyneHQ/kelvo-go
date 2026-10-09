@@ -16,6 +16,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/internal/transportbroker"
+	"github.com/SYNEHQ/kelvo-go/internal/transportbroker/diagnostic"
 	"golang.org/x/sys/unix"
 )
 
@@ -96,6 +97,7 @@ func (s *Server) Serve(childPID int) error {
 	}
 	s.started = true
 	s.mu.Unlock()
+	diagnostic.Record(s.ctx, diagnostic.IPCRequest, diagnostic.Started, 0)
 	stop := context.AfterFunc(s.ctx, func() { s.closeConnections() })
 	defer stop()
 	defer func() {
@@ -113,14 +115,20 @@ func (s *Server) Serve(childPID int) error {
 			unix.Close(fd)
 		}
 		if err != nil {
+			if !s.dataOpened {
+				diagnostic.Record(s.ctx, diagnostic.IPCRequest, diagnostic.ResultFor(s.ctx, err), 0)
+			}
 			if s.ctx.Err() != nil {
 				return nil
 			}
 			return ErrChannel
 		}
+		diagnostic.Record(s.ctx, diagnostic.IPCRequest, diagnostic.Succeeded, 0)
 		if parseErr != nil || flags&(unix.MSG_TRUNC|unix.MSG_CTRUNC) != 0 || n < 2 || data[0] != 1 || len(rights) != 0 || credentials == nil || int(credentials.Pid) != childPID {
+			diagnostic.Record(s.ctx, diagnostic.IPCAuthorized, diagnostic.ScopeDenied, 0)
 			return ErrChannel
 		}
+		diagnostic.Record(s.ctx, diagnostic.IPCAuthorized, diagnostic.Succeeded, 0)
 		if data[1] >= 3 {
 			err := s.servePostgresCleanup(data[:n])
 			clear(data[:])
@@ -130,6 +138,7 @@ func (s *Server) Serve(childPID int) error {
 			continue
 		}
 		if n != 2 || s.postgresCleanup != nil && (data[1] != 1 || s.dataOpened) {
+			diagnostic.Record(s.ctx, diagnostic.IPCAuthorized, diagnostic.ScopeDenied, 0)
 			return ErrChannel
 		}
 		var dialer transportbroker.Dialer
@@ -139,19 +148,28 @@ func (s *Server) Serve(childPID int) error {
 		case 2:
 			dialer = s.cancellation
 		default:
+			diagnostic.Record(s.ctx, diagnostic.IPCAuthorized, diagnostic.ScopeDenied, 0)
 			return ErrChannel
 		}
 		if dialer == nil {
+			diagnostic.Record(s.ctx, diagnostic.IPCAuthorized, diagnostic.ScopeDenied, 0)
 			return ErrChannel
 		}
 		s.mu.Lock()
 		full := len(s.streams) >= s.maximum || s.closed
 		s.mu.Unlock()
 		if full {
+			diagnostic.Record(s.ctx, diagnostic.BrokerDial, diagnostic.Failed, 0)
 			return ErrChannel
 		}
 		ctx, cancel := context.WithTimeout(s.ctx, setupLimit)
+		diagnostic.Record(ctx, diagnostic.BrokerDial, diagnostic.Started, 0)
 		remote, err := dialer.DialContext(ctx, "tcp", s.authority)
+		if err != nil || remote == nil {
+			recordDialFailure(ctx, err)
+		} else {
+			diagnostic.Record(ctx, diagnostic.BrokerDial, diagnostic.Succeeded, 0)
+		}
 		cancel()
 		if err != nil || remote == nil {
 			if remote != nil {
@@ -159,14 +177,17 @@ func (s *Server) Serve(childPID int) error {
 			}
 			return ErrChannel
 		}
+		diagnostic.Record(s.ctx, diagnostic.DescriptorSent, diagnostic.Started, 0)
 		stream, child, err := newBridge(remote)
 		if err != nil {
+			diagnostic.Record(s.ctx, diagnostic.DescriptorSent, diagnostic.Failed, 0)
 			s.recordCleanup(remote.Close())
 			return ErrChannel
 		}
 		s.mu.Lock()
 		if s.closed {
 			s.mu.Unlock()
+			diagnostic.Record(s.ctx, diagnostic.DescriptorSent, diagnostic.Cancelled, 0)
 			child.Close()
 			stream.close()
 			s.recordCleanup(stream.err)
@@ -176,6 +197,7 @@ func (s *Server) Serve(childPID int) error {
 		s.workers.Add(1)
 		s.mu.Unlock()
 		if s.control.SetWriteDeadline(time.Now().Add(setupLimit)) != nil {
+			diagnostic.Record(s.ctx, diagnostic.DescriptorSent, diagnostic.ResultFor(s.ctx, ErrChannel), 0)
 			child.Close()
 			stream.close()
 			s.remove(stream)
@@ -184,13 +206,26 @@ func (s *Server) Serve(childPID int) error {
 		written, _, err := s.control.WriteMsgUnix([]byte{1, 0}, unix.UnixRights(int(child.Fd())), nil)
 		child.Close()
 		if err != nil || written != 2 {
+			diagnostic.Record(s.ctx, diagnostic.DescriptorSent, diagnostic.ResultFor(s.ctx, ErrChannel), 0)
 			stream.close()
 			s.remove(stream)
 			return ErrChannel
 		}
+		diagnostic.Record(s.ctx, diagnostic.DescriptorSent, diagnostic.Succeeded, 0)
 		s.dataOpened = true
 		go func() { stream.run(); s.remove(stream) }()
 	}
+}
+
+// recordDialFailure keeps the disabled failure path allocation-free.
+func recordDialFailure(ctx context.Context, err error) {
+	if diagnostic.FromContext(ctx) == nil {
+		return
+	}
+	if err == nil {
+		err = ErrChannel
+	}
+	diagnostic.Record(ctx, diagnostic.BrokerDial, diagnostic.ResultFor(ctx, err), 0)
 }
 
 func (s *Server) recordCleanup(err error) {

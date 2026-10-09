@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/transportbroker"
+	"github.com/SYNEHQ/kelvo-go/internal/transportbroker/diagnostic"
 	"github.com/SYNEHQ/kelvo-go/sourceproof"
 )
 
@@ -58,15 +59,26 @@ func (o *Opener) refreshSourceProof(ctx context.Context, request IssueRequest) (
 	expected.WorkerIdentity = request.WorkerIdentity
 	expected.WorkerCertSHA256 = request.WorkerCertSHA256
 	if expected != s || ctx.Err() != nil {
+		result := diagnostic.ScopeDenied
+		if expected == s {
+			result = diagnostic.ResultFor(ctx, ctx.Err())
+		}
+		diagnostic.Record(ctx, diagnostic.ProofVerified, result, 0)
 		return IssueRequest{}, transportbroker.ErrScope
 	}
+	diagnostic.Record(ctx, diagnostic.ProofRefresh, diagnostic.Started, 0)
 	envelope, err := p.Refresh(ctx)
 	if err != nil || ctx.Err() != nil {
+		recordDiagnosticFailure(ctx, diagnostic.ProofRefresh, err, 0)
 		return IssueRequest{}, transportbroker.ErrScope
 	}
+	diagnostic.Record(ctx, diagnostic.ProofRefresh, diagnostic.Succeeded, 0)
+	diagnostic.Record(ctx, diagnostic.ProofVerified, diagnostic.Started, 0)
 	if _, err := sourceproof.Verify(p.PublicKey, envelope, expected, time.Now()); err != nil {
+		diagnostic.Record(ctx, diagnostic.ProofVerified, diagnostic.ScopeDenied, 0)
 		return IssueRequest{}, transportbroker.ErrScope
 	}
+	diagnostic.Record(ctx, diagnostic.ProofVerified, diagnostic.Succeeded, 0)
 	request.PrivateSource = &envelope
 	request.RouteID = s.RouteID
 	request.TokenID = s.TokenID

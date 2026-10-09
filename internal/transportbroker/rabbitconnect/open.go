@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/transportbroker"
+	"github.com/SYNEHQ/kelvo-go/internal/transportbroker/diagnostic"
 	"github.com/SYNEHQ/kelvo-go/transportissuer"
 )
 
@@ -52,10 +53,19 @@ func (o *Opener) Open(parent context.Context, request transportbroker.OpenReques
 			return nil, err
 		}
 	}
+	diagnostic.Record(ctx, diagnostic.TicketIssue, diagnostic.Started, 0)
 	token, err := o.tickets.Issue(ctx, issue)
-	if err != nil || ctx.Err() != nil || o.verifyTicket(token, issue, time.Now()) != nil {
+	if err != nil || ctx.Err() != nil {
+		recordDiagnosticFailure(ctx, diagnostic.TicketIssue, err, 0)
 		return nil, setupError(ctx)
 	}
+	diagnostic.Record(ctx, diagnostic.TicketIssue, diagnostic.Succeeded, 0)
+	diagnostic.Record(ctx, diagnostic.TicketVerified, diagnostic.Started, 0)
+	if o.verifyTicket(token, issue, time.Now()) != nil {
+		diagnostic.Record(ctx, diagnostic.TicketVerified, diagnostic.ScopeDenied, 0)
+		return nil, setupError(ctx)
+	}
+	diagnostic.Record(ctx, diagnostic.TicketVerified, diagnostic.Succeeded, 0)
 	if o.acceptedTrust != nil && request.Purpose != transportbroker.Data {
 		return nil, transportbroker.ErrScope
 	}
@@ -67,7 +77,9 @@ func (o *Opener) Open(parent context.Context, request transportbroker.OpenReques
 		return conn, err
 	}
 	if o.acceptedTrust != nil {
+		diagnostic.Record(ctx, diagnostic.AcceptedReceipt, diagnostic.Started, 0)
 		accepted, err := o.acceptedConnection(conn, token, binding)
+		diagnostic.Record(ctx, diagnostic.AcceptedReceipt, diagnostic.ResultFor(ctx, err), 0)
 		if err != nil {
 			if conn.closeErr != nil {
 				return conn, err
@@ -81,7 +93,15 @@ func (o *Opener) Open(parent context.Context, request transportbroker.OpenReques
 
 // connect performs only outer mTLS and CONNECT. Issuance and the chosen token's
 // complete scope verification must succeed before this function is called.
-func (o *Opener) connect(ctx context.Context, authority, token string, accepted, abort bool) (*tunnelConn, error) {
+func (o *Opener) connect(ctx context.Context, authority, token string, accepted, abort bool) (result *tunnelConn, resultErr error) {
+	stage := diagnostic.ProxyTCP
+	status := 0
+	diagnostic.Record(ctx, stage, diagnostic.Started, status)
+	defer func() {
+		if resultErr != nil {
+			diagnostic.Record(ctx, stage, diagnostic.ResultFor(ctx, resultErr), status)
+		}
+	}()
 	raw, err := o.dial(ctx, "tcp", o.proxy)
 	if raw == nil {
 		return nil, setupError(ctx)
@@ -90,6 +110,9 @@ func (o *Opener) connect(ctx context.Context, authority, token string, accepted,
 	if err != nil {
 		return reject(conn, setupError(ctx))
 	}
+	diagnostic.Record(ctx, stage, diagnostic.Succeeded, 0)
+	stage = diagnostic.ProxyTLS
+	diagnostic.Record(ctx, stage, diagnostic.Started, 0)
 	completed := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		defer close(completed)
@@ -128,6 +151,9 @@ func (o *Opener) connect(ctx context.Context, authority, token string, accepted,
 		(state.NegotiatedProtocol != "" && state.NegotiatedProtocol != "http/1.1") {
 		return reject(conn, transportbroker.ErrOpen)
 	}
+	diagnostic.Record(ctx, stage, diagnostic.Succeeded, 0)
+	stage = diagnostic.ConnectResponse
+	diagnostic.Record(ctx, stage, diagnostic.Started, 0)
 	requestBytes := "CONNECT " + authority + " HTTP/1.1\r\nHost: " + authority + "\r\nProxy-Authorization: Bearer " + token + "\r\n"
 	if accepted {
 		requestBytes += transportissuer.AcceptedOpenHeader + ": " + transportissuer.AcceptedOpenRequired + "\r\n"
@@ -143,10 +169,14 @@ func (o *Opener) connect(ctx context.Context, authority, token string, accepted,
 	// Rabbit v1 emits exactly this headerless response. ReadSlice is bounded;
 	// reject redirects, bodies, framing headers, duplicate headers and extensions.
 	line, err := reader.ReadSlice('\n')
+	status = diagnosticHTTPStatus(line)
 	if err != nil || !bytes.Equal(line, []byte("HTTP/1.1 200 Connection Established\r\n")) {
 		return reject(conn, setupError(ctx))
 	}
 	if accepted {
+		diagnostic.Record(ctx, stage, diagnostic.Succeeded, status)
+		stage = diagnostic.AcceptedReceipt
+		diagnostic.Record(ctx, stage, diagnostic.Started, 0)
 		receipt, err := readAcceptedHeader(reader)
 		if err != nil {
 			return reject(conn, err)
@@ -165,7 +195,37 @@ func (o *Opener) connect(ctx context.Context, authority, token string, accepted,
 	if ctx.Err() != nil || conn.SetDeadline(time.Time{}) != nil {
 		return reject(conn, setupError(ctx))
 	}
+	diagnostic.Record(ctx, stage, diagnostic.Succeeded, status)
 	return conn, nil
+}
+
+// recordDiagnosticFailure does not allocate or classify errors when disabled.
+func recordDiagnosticFailure(ctx context.Context, stage diagnostic.Stage, err error, status int) {
+	if diagnostic.FromContext(ctx) == nil {
+		return
+	}
+	if err == nil {
+		err = transportbroker.ErrOpen
+	}
+	diagnostic.Record(ctx, stage, diagnostic.ResultFor(ctx, err), status)
+}
+
+// diagnosticHTTPStatus retains only a three-digit status from a bounded HTTP/1.1 line.
+func diagnosticHTTPStatus(line []byte) int {
+	if len(line) < 13 || !bytes.HasPrefix(line, []byte("HTTP/1.1 ")) || line[12] != ' ' {
+		return 0
+	}
+	status := 0
+	for _, digit := range line[9:12] {
+		if digit < '0' || digit > '9' {
+			return 0
+		}
+		status = status*10 + int(digit-'0')
+	}
+	if status < 100 || status > 599 {
+		return 0
+	}
+	return status
 }
 
 func setupError(ctx context.Context) error {
