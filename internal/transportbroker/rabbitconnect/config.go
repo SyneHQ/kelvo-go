@@ -6,6 +6,7 @@
 package rabbitconnect
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/internal/transportbroker"
 	"github.com/SYNEHQ/kelvo-go/sourceproof"
+	"github.com/SYNEHQ/kelvo-go/transportissuer"
 )
 
 const MaxSetupTime = 2 * time.Second
@@ -48,10 +50,12 @@ type Config struct {
 	Issuer, Audience, ClusterTenant, ServicePrincipal string
 	IssuerPublicKey                                   ed25519.PublicKey
 	SetupTimeout                                      time.Duration
+	AcceptedOpenTrust                                 *transportissuer.AcceptedOpenTrust
 }
 
 type Opener struct {
 	sourceProof                                 *SourceProofConfig
+	acceptedTrust                               *transportissuer.AcceptedOpenTrust
 	proxy, issuer, audience, cluster, principal string
 	identity, certDigest                        string
 	certificateFrom, certificateUntil           time.Time
@@ -79,6 +83,14 @@ func New(config Config, issuer Issuer) (*Opener, error) {
 		if !textValue(value, 128) {
 			return nil, transportbroker.ErrInvalid
 		}
+	}
+	var accepted *transportissuer.AcceptedOpenTrust
+	if config.AcceptedOpenTrust != nil {
+		a := config.AcceptedOpenTrust
+		if a.KeyID == "" || len(a.PublicKey) != ed25519.PublicKeySize || bytes.Equal(a.PublicKey, config.IssuerPublicKey) {
+			return nil, transportbroker.ErrInvalid
+		}
+		accepted = &transportissuer.AcceptedOpenTrust{KeyID: a.KeyID, PublicKey: append(ed25519.PublicKey(nil), a.PublicKey...)}
 	}
 	roots := x509.NewCertPool()
 	if !roots.AppendCertsFromPEM(config.RootCAPEM) {
@@ -120,7 +132,7 @@ func New(config Config, issuer Issuer) (*Opener, error) {
 	pair.Leaf = leaf
 	digest := sha256.Sum256(leaf.Raw)
 	return &Opener{
-		proxy: config.ProxyAddress, issuer: config.Issuer, audience: config.Audience,
+		acceptedTrust: accepted, proxy: config.ProxyAddress, issuer: config.Issuer, audience: config.Audience,
 		cluster: config.ClusterTenant, principal: config.ServicePrincipal,
 		identity: config.WorkerIdentity, certDigest: hex.EncodeToString(digest[:]),
 		certificateFrom: from, certificateUntil: until,
