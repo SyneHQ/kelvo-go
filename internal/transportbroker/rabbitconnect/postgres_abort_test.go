@@ -112,3 +112,27 @@ func TestParentPostgresAbortRejectsUnverifiedTLSBeforeIssuance(t *testing.T) {
 		t.Fatal("invalid target consumed authority")
 	}
 }
+
+func TestFailedAbortConnectRetainsUncertainAuxiliaryClose(t *testing.T) {
+	f := newFixture(t)
+	issuer := abortFixtureIssuer{Issuer: f.issuer()}
+	o, _ := New(f.config, issuer)
+	now := time.Now().Unix()
+	a := transportissuer.AcceptedOpenClaims{Version: 1, DataTicketSHA256: strings.Repeat("a", 64), AcceptanceID: strings.Repeat("b", 32), AcceptedAt: now, ExpiresAt: now + 30}
+	issuer.issue = func(ctx context.Context, r transportissuer.CleanupRequest) (string, error) {
+		return transportissuer.SignPostgresAbort(transportissuer.PostgresAbortClaims{Version: 1, Issuer: o.issuer, Audience: o.audience, ID: r.OpenID, IssuedAt: now, ExpiresAt: now + 5, DataTicketSHA256: a.DataTicketSHA256, AcceptanceID: a.AcceptanceID, WorkerIdentity: o.identity, WorkerCertSHA256: o.certDigest, CancellationStartedAt: now, Protocol: transportissuer.PostgresCancel}, f.key)
+	}
+	o.tickets = issuer
+	broken := &uncertainConn{}
+	o.dial = func(context.Context, string, string) (net.Conn, error) { return broken, io.ErrUnexpectedEOF }
+	data, peer := net.Pipe()
+	defer peer.Close()
+	c := &AcceptedConn{tunnelConn: &tunnelConn{conn: data, raw: data}, opener: o, binding: testRequest().Binding, acceptance: a, receipt: "fixture"}
+	target := PostgresTarget{PID: 1, Secret: []byte{1, 2, 3, 4}, TLS: &tls.Config{MinVersion: tls.VersionTLS12, ServerName: "source", RootCAs: o.tls.RootCAs}}
+	if err := c.AbortPostgres(context.Background(), target); err == nil {
+		t.Fatal("uncertain abort socket accepted")
+	}
+	if c.auxiliary == nil || c.Close() == nil || c.Close() == nil {
+		t.Fatal("uncertain auxiliary cleanup custody disappeared")
+	}
+}

@@ -102,7 +102,7 @@ func NewHTTPIssuer(c HTTPIssuerConfig) (*HTTPIssuer, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	result := &HTTPIssuer{endpoint: c.Endpoint, identity: c.WorkerIdentity, fingerprint: hex.EncodeToString(sum[:]), notBefore: from, notAfter: until, slots: make(chan struct{}, c.MaxInFlight), cleanupSlots: make(chan struct{}, c.MaxInFlight), ctx: ctx, cancel: cancel, shutdownDone: make(chan struct{})}
 	config := &tls.Config{MinVersion: tls.VersionTLS13, MaxVersion: tls.VersionTLS13, RootCAs: roots, ServerName: u.Hostname(), Certificates: []tls.Certificate{pair}, NextProtos: []string{"http/1.1"}}
-	tr := &http.Transport{Proxy: nil, DisableCompression: true, DisableKeepAlives: true, ForceAttemptHTTP2: false, MaxConnsPerHost: c.MaxInFlight, MaxResponseHeaderBytes: 8192, ResponseHeaderTimeout: MaxSetupTime}
+	tr := &http.Transport{Proxy: nil, DisableCompression: true, DisableKeepAlives: true, ForceAttemptHTTP2: false, MaxConnsPerHost: 2 * c.MaxInFlight, MaxResponseHeaderBytes: 8192, ResponseHeaderTimeout: MaxSetupTime}
 	tr.DialTLSContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 		raw, err := (&net.Dialer{}).DialContext(ctx, network, address)
 		if err != nil {
