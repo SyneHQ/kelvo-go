@@ -22,6 +22,7 @@ import (
 )
 
 type nodeOperations struct {
+	private   *worker.PrivateOperations
 	worker    *OperationWorker
 	ledger    *operationstore.Store
 	results   *operationinput.Store
@@ -51,6 +52,19 @@ func (n *Node) initOperations(ctx context.Context) (resultErr error) {
 		}
 	}()
 	var err error
+	bindings := make(map[string]worker.PrivateOperationBinding, len(c.PrivateSources))
+	for principal, config := range c.PrivateSources {
+		trust, trustErr := operationTrust(n.cfg.Policy, principal)
+		resolver, exists := n.cfg.ConnectionResolvers[trust.Issuer]
+		if trustErr != nil || !exists {
+			return errOperationConfig
+		}
+		bindings[principal] = worker.PrivateOperationBinding{Config: config, Trust: trust, ResolverCAFile: resolver.CAFile}
+	}
+	state.private, err = worker.NewPrivateOperations(native, n.cfg.WorkerID, WorkerIdentity(n.cfg.Policy.TenantID, n.cfg.WorkerID), c.MaxConcurrent, bindings)
+	if err != nil {
+		return err
+	}
 	state.ledger, err = base.OpenOperations(ctx, false)
 	if err != nil {
 		return err
@@ -93,6 +107,9 @@ func (s *nodeOperations) close(ctx context.Context) error {
 			}
 			resultErr = err
 		}
+	}
+	if err := s.private.Close(ctx); err != nil {
+		return errors.Join(resultErr, err)
 	}
 	if s.results != nil {
 		if err := s.results.Close(); err != nil {
@@ -171,23 +188,23 @@ func (p *preparedNodeOperation) Execute(ctx context.Context) (operations.Receipt
 	p.sink = sink
 	var payload []byte
 	defer func() { clear(payload) }()
-	return p.state.executor.ExecuteResolvedOperation(ctx, p.node.cfg.Operations.Adapter, p.record.ID, p.record.RequestSHA256,
-		func(admitted context.Context) (adapter.ProcessRequest, error) {
+	return p.state.executor.ExecuteDelegatedOperation(ctx, p.state.private, p.node.cfg.Operations.Adapter, p.record.ID, p.record.RequestSHA256,
+		func(admitted context.Context) (worker.OperationSourceRequest, error) {
 			current, err := p.state.ledger.Get(admitted, p.record.Scope, p.record.ID)
 			if err != nil {
-				return adapter.ProcessRequest{}, err
+				return worker.OperationSourceRequest{}, err
 			}
 			record := current.Record
 			if record.State != operationstore.Running || record.Binding != p.record.Binding || record.RequestSHA256 != p.record.RequestSHA256 || record.AuthoritySHA256 != p.record.AuthoritySHA256 {
-				return adapter.ProcessRequest{}, operationstore.ErrConflict
+				return worker.OperationSourceRequest{}, operationstore.ErrConflict
 			}
 			trust, err := operationTrust(p.node.cfg.Policy, record.Scope.ServicePrincipal)
 			if err != nil {
-				return adapter.ProcessRequest{}, err
+				return worker.OperationSourceRequest{}, err
 			}
 			claims, err := operations.VerifyGrant(record.AuthorityToken, trust, p.request, time.Now())
 			if err != nil || operationScope(claims) != record.Scope {
-				return adapter.ProcessRequest{}, operationstore.ErrConflict
+				return worker.OperationSourceRequest{}, operationstore.ErrConflict
 			}
 			bindOperationCleanup(sink, claims, func(ctx context.Context) error {
 				return p.state.executor.CompleteOperationCleanup(ctx, record)
@@ -196,26 +213,22 @@ func (p *preparedNodeOperation) Execute(ctx context.Context) (operations.Receipt
 			// runner already holds shared process/memory/scratch admission here.
 			sink.stream, err = p.state.results.BeginStream(ctx, operationInputIdentity(record.Scope, record.AuthoritySHA256), record.RetainUntil, operationinput.ArrowIPC)
 			if err != nil {
-				return adapter.ProcessRequest{}, err
+				return worker.OperationSourceRequest{}, err
 			}
 			limits := p.node.cfg.Policy.Limits
 			limits.MaxBytes = min(limits.MaxBytes, p.node.cfg.Operations.MaxResultBytes)
 			sink.inner = worker.NewIPCSink(sink.stream, limits)
 			payload, err = p.state.worker.input.loadBulk(admitted, record, p.request)
 			if err != nil {
-				return adapter.ProcessRequest{}, err
+				return worker.OperationSourceRequest{}, err
 			}
 			if err := p.state.worker.authorize(admitted, record, &p.request, record.Binding); err != nil {
-				return adapter.ProcessRequest{}, err
+				return worker.OperationSourceRequest{}, err
 			}
 			if err := authorizeOperationIngestionRun(claims, p.request, payload); err != nil {
-				return adapter.ProcessRequest{}, err
+				return worker.OperationSourceRequest{}, err
 			}
-			input, err := p.state.executor.ResolveOperationSourceWithInput(admitted, record, p.request, payload)
-			if err == nil {
-				input.Limits.MaxBytes = min(input.Limits.MaxBytes, limits.MaxBytes)
-			}
-			return input, err
+			return worker.OperationSourceRequest{Record: record, Request: p.request, Payload: payload, MaxResultBytes: limits.MaxBytes}, nil
 		}, sink)
 }
 

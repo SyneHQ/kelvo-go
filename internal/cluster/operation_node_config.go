@@ -12,14 +12,15 @@ import (
 // Operations share query resource admission and require kernel containment.
 // Results stay on the assigned worker's persistent, private volume.
 type OperationNodeConfig struct {
-	InputURL       string                        `yaml:"input_url"`
-	TLS            TLSConfig                     `yaml:"tls"`
-	Adapter        worker.OperationProcessConfig `yaml:"adapter"`
-	Results        OperationInputConfig          `yaml:"results"`
-	MaxResultBytes int64                         `yaml:"max_result_bytes"`
-	MaxConcurrent  int                           `yaml:"max_concurrent"`
-	MaxDownloads   int                           `yaml:"max_downloads"`
-	PollInterval   time.Duration                 `yaml:"poll_interval"`
+	PrivateSources map[string]worker.PrivateOperationConfig `yaml:"private_sources,omitempty"`
+	InputURL       string                                   `yaml:"input_url"`
+	TLS            TLSConfig                                `yaml:"tls"`
+	Adapter        worker.OperationProcessConfig            `yaml:"adapter"`
+	Results        OperationInputConfig                     `yaml:"results"`
+	MaxResultBytes int64                                    `yaml:"max_result_bytes"`
+	MaxConcurrent  int                                      `yaml:"max_concurrent"`
+	MaxDownloads   int                                      `yaml:"max_downloads"`
+	PollInterval   time.Duration                            `yaml:"poll_interval"`
 }
 
 func validateNodeOperations(c NodeConfig) error {
@@ -48,7 +49,30 @@ func validateNodeOperations(c NodeConfig) error {
 	if c.Resources.OverheadMB < 8 || operationDownloadMemory(o) > (c.Resources.MemoryMB-c.Resources.BaselineMB)<<20 {
 		return errOperationConfig
 	}
+	if err := validatePrivateNodeOperations(c); err != nil {
+		return err
+	}
 	return o.Adapter.Validate()
 }
 
 func operationDownloadMemory(c *OperationNodeConfig) int64 { return 3*c.MaxResultBytes + (2 << 20) }
+
+func validatePrivateNodeOperations(c NodeConfig) error {
+	o := c.Operations
+	if o == nil {
+		return nil
+	}
+	total := 0
+	for principal, config := range o.PrivateSources {
+		trust, err := operationTrust(c.Policy, principal)
+		resolver, exists := c.ConnectionResolvers[trust.Issuer]
+		if err != nil || !exists || resolver.Validate() != nil || config.Validate() != nil {
+			return errOperationConfig
+		}
+		total += config.MaxSessions
+	}
+	if len(o.PrivateSources) > 64 || total > o.MaxConcurrent {
+		return errOperationConfig
+	}
+	return nil
+}
