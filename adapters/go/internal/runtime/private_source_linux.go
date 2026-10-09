@@ -17,7 +17,7 @@ import (
 // Only the parent-provided channel can open a private source. The descriptor
 // carries no issuer, proof, ticket, route or endpoint override.
 func openPrivateSource(ctx context.Context, spec adapter.ConnectionSpec, request operations.Request, descriptor *adapter.PrivateTransport) (adapter.Session, func() error, error) {
-	if descriptor == nil || descriptor.ControlFD != 7 || (spec.Engine != "postgresql" && spec.Engine != "mysql") || request.Kind.Watcher() || request.Kind.Ingestion() {
+	if descriptor == nil || descriptor.ControlFD != 7 || (spec.Engine != "postgresql" && spec.Engine != "mysql") || request.Kind.Watcher() || request.Kind.Ingestion() || descriptor.PostgresCleanup && (spec.Engine != "postgresql" || request.Kind.Mutating()) {
 		return nil, nil, adapter.ErrUnsupported
 	}
 	connection, err := sourceConnection(spec)
@@ -30,7 +30,9 @@ func openPrivateSource(ctx context.Context, spec adapter.ConnectionSpec, request
 		return nil, nil, adapter.ErrInvalid
 	}
 	connection.DialContext = client.DialContext
-	if connection.Engine == "postgresql" {
+	if descriptor.PostgresCleanup {
+		connection.PostgresCleanup = client
+	} else if connection.Engine == "postgresql" {
 		connection.DialCancellation = client.DialCancellation
 	}
 	registry, err := New(relational.NewPostgreSQL(), relational.NewMySQL())

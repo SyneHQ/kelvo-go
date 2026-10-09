@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"encoding/json"
+	"github.com/SYNEHQ/kelvo-go/operations"
 	"testing"
 	"time"
 )
@@ -37,5 +38,22 @@ func TestPrivateTransportDescriptorContainsOnlyFixedChannel(t *testing.T) {
 	raw, _ = json.Marshal(fields)
 	if _, err := ParseProcessRequest(raw); err == nil {
 		t.Fatal("parent authority accepted in descriptor")
+	}
+}
+
+func TestPostgresCleanupDescriptorRejectsOtherEnginesAndWrites(t *testing.T) {
+	for _, tc := range []struct {
+		engine string
+		kind   operations.Kind
+		want   bool
+	}{
+		{"postgresql", operations.QueryRead, true},
+		{"mysql", operations.QueryRead, false},
+		{"postgresql", operations.StatementExecute, false},
+	} {
+		r := ProcessRequest{Source: ConnectionSpec{Engine: tc.engine}, Request: operations.Request{Kind: tc.kind}, PrivateTransport: &PrivateTransport{ControlFD: 7, PostgresCleanup: true}}
+		if got := r.validatePrivateTransport() == nil; got != tc.want {
+			t.Fatalf("engine %s kind %s valid %v", tc.engine, tc.kind, got)
+		}
 	}
 }
