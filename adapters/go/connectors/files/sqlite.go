@@ -73,8 +73,11 @@ func (c sqliteConnector) Connect(ctx context.Context) (driver.Conn, error) {
 					return sqlite.SQLITE_OK
 				}
 			case sqlite.SQLITE_PRAGMA:
-				if c.metadata && first == "table_xinfo" {
-					return sqlite.SQLITE_OK
+				if c.metadata {
+					switch first {
+					case "table_xinfo", "foreign_key_list":
+						return sqlite.SQLITE_OK
+					}
 				}
 			}
 			return sqlite.SQLITE_DENY
@@ -177,10 +180,17 @@ func (s *Session) inspectSQLite(ctx context.Context, spec operations.MetadataSpe
 		add("string", spec.Target.Name)
 		add("string", spec.Target.Name)
 	case "columns":
-		if spec.Target.Name == "" {
-			return adapter.QueryStats{}, adapter.ErrInvalid
-		}
-		statement = "SELECT 'main' AS schema_name,? AS table_name,name,type,cid+1 AS position,CASE WHEN \"notnull\"=1 THEN 'NO' ELSE 'YES' END AS nullable,dflt_value AS default_value FROM pragma_table_xinfo(?) WHERE hidden<>1 ORDER BY cid"
+		statement = "SELECT 'main' AS schema_name,s.name AS table_name,p.name,p.type,p.cid+1 AS position,CASE WHEN p.\"notnull\"=1 THEN 'NO' ELSE 'YES' END AS nullable,p.dflt_value AS default_value FROM sqlite_schema s JOIN pragma_table_xinfo(s.name) p WHERE s.type IN ('table','view') AND s.name NOT LIKE 'sqlite_%' AND p.hidden<>1 AND (?='' OR s.name=?) ORDER BY s.name,p.cid"
+		add("string", spec.Target.Name)
+		add("string", spec.Target.Name)
+	case "primary_keys":
+		// SQLite does not expose constraint names through its PRAGMA tables.
+		// Stable names group columns without parsing the stored CREATE statement.
+		statement = "SELECT 'main' AS schema_name,s.name AS table_name,'pk_'||s.name AS name,p.name AS column_name,p.pk AS position FROM sqlite_schema s JOIN pragma_table_xinfo(s.name) p WHERE s.type='table' AND s.name NOT LIKE 'sqlite_%' AND p.pk>0 AND (?='' OR s.name=?) ORDER BY s.name,p.pk"
+		add("string", spec.Target.Name)
+		add("string", spec.Target.Name)
+	case "foreign_keys", "relationships":
+		statement = "SELECT 'main' AS schema_name,s.name AS table_name,'fk_'||s.name||'_'||f.id AS name,f.\"from\" AS column_name,f.seq+1 AS position,'main' AS referenced_schema,f.\"table\" AS referenced_table,COALESCE(NULLIF(f.\"to\",''),p.name) AS referenced_column FROM sqlite_schema s JOIN pragma_foreign_key_list(s.name) f LEFT JOIN pragma_table_xinfo(f.\"table\") p ON p.pk=f.seq+1 WHERE s.type='table' AND s.name NOT LIKE 'sqlite_%' AND (?='' OR s.name=?) ORDER BY s.name,f.id,f.seq"
 		add("string", spec.Target.Name)
 		add("string", spec.Target.Name)
 	default:

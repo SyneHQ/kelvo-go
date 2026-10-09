@@ -5,7 +5,7 @@ It uses local SQLite state. It does not require NATS, a catalog, or Infisical.
 The application stores encrypted credentials and owns user authentication.
 Kelvo obtains credentials through the existing private resolver protocol.
 
-This mode supports PostgreSQL and MySQL. It accepts these operations:
+This mode supports six database engines. It accepts these operations:
 
 | Operation           | Purpose                                                         |
 | ------------------- | --------------------------------------------------------------- |
@@ -13,10 +13,27 @@ This mode supports PostgreSQL and MySQL. It accepts these operations:
 | `metadata.inspect`  | Read schemas, tables, columns, keys, and relations.             |
 | `query.read`        | Execute a read-only query.                                      |
 | `statement.execute` | Execute an approved statement when the operator enables writes. |
+| `native.read`       | Execute a bounded MongoDB command.                              |
+| `native.execute`    | Execute an approved MongoDB command.                            |
+
+| Engine | Protocol | Read | Approved write | Metadata |
+| --- | --- | --- | --- | --- |
+| PostgreSQL | Verified TLS | SQL | Transaction or autocommit | Schemas, tables, columns, primary keys, foreign keys |
+| MySQL | Verified TLS | SQL | Transaction or autocommit | Schemas, tables, columns, primary keys, foreign keys |
+| ClickHouse | HTTPS, usually port 8443 | SQL | Autocommit | Database, tables, columns |
+| MongoDB | Verified TLS, usually port 27017 | Native commands | Native commands | Database and collections |
+| SQLite | Verified file snapshot | SQL | Transaction or autocommit | Main schema, tables, columns, primary keys, foreign keys |
+| Oracle | TCPS, usually port 2484 | SQL | Transaction or autocommit | Schemas, tables, columns, primary keys, foreign keys |
+
+The existing adapter validates each transaction mode and statement.
+An atomic transaction rejects statements that can commit implicitly.
+ClickHouse primary keys do not prove row uniqueness. MongoDB collections have no declared SQL column schema.
+The application must not infer editable rows or foreign keys from sampled documents.
 
 `write_mode: disabled` is the default. `write_mode: approved` requires an exact
 `approved_change` grant. The mode rejects `trusted_app`, API-key, and job grants.
-It has no federation, acceleration, ingestion, file sources, or private Rabbit transport.
+It has no federation, acceleration, ingestion, or private Rabbit transport.
+SQLite is the only supported file format in this mode.
 
 ## State and execution
 
@@ -40,6 +57,49 @@ The resolver must implement `/internal/kelvo/resolve-operation` and
 `/internal/kelvo/complete-operation`. The configured resolver URL remains
 `https://<application>/internal/kelvo/resolve`. The completion callback reports
 physical cleanup. It does not report a transaction result.
+
+### SQLite files
+
+The application owns an explicit managed directory and saved relative file paths.
+It must reject absolute paths, path escapes, links, and active SQLite sidecar files.
+Kelvo receives a size and SHA-256 descriptor. It never receives a host file path.
+The signed connection uses database `main` and an empty schema.
+Metadata requests can select schema `main`.
+
+The resolver implements `/internal/kelvo/operation-file` and
+`/internal/kelvo/operation-file-commit`. Both callbacks use the existing mutual TLS protocol.
+Each callback checks the exact grant, request, connection revision, and current operation lease.
+The read callback verifies the complete snapshot before it sends bytes.
+It confirms the digest and final lease in HTTP trailers.
+
+An approved write changes a private copy in the contained adapter.
+The resolver verifies the replacement and compares the current source with the original snapshot.
+It publishes the replacement only while source and authorization locks remain held.
+A successful response means durable publication. A lost response can leave an unknown write result.
+The application must not retry that write.
+
+SQLite metadata uses stable names to group key columns.
+`pk_<table>` and `fk_<table>_<id>` are generated names, not stored constraint names.
+Composite keys retain their declared column order.
+
+### MongoDB commands
+
+The application uses `native.read` and `native.execute` for MongoDB.
+SQL operations are rejected for this engine in application mode.
+The native specification selects provider `mongodb` and an explicit command.
+It contains one `json` parameter whose value holds the collection and command fields.
+
+Read commands are `find`, `find_one`, `aggregate`, `count`, and `list_indexes`.
+Write commands include insert, update, delete, collection, and index operations.
+The existing adapter rejects unknown commands, irrelevant fields, and write stages in reads.
+It rejects server JavaScript and arbitrary `runCommand` input.
+Authentication uses an explicit database name. The default is `admin`.
+The driver verifies TLS and disables automatic read and write retries.
+
+Results contain one Arrow binary column named `document`.
+Each value contains UTF-8 canonical Extended JSON.
+This preserves ObjectIds, integer widths, decimals, dates, and binary values.
+Native writes return result data only when the signed request sets `return_result: true`.
 
 ## API
 
@@ -90,7 +150,8 @@ migration. Do not delete state to recover an uncertain write.
 The defaults permit two concurrent operations and retain receipts for one hour.
 The ledger holds at most 512 operations. Results use a separate 1 GiB storage budget.
 Queries can return at most 4 MiB. Each metadata operation can return at most 1 MiB.
-Connection checks and statements reserve no result storage.
+Connection checks and SQL statements reserve no result storage.
+Native reads and requested native write results reserve the query result limit.
 
 Kelvo reserves the complete result limit before it obtains database credentials.
 This reservation remains until the result expires. The charge includes Arrow,
