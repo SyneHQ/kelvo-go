@@ -59,8 +59,11 @@ func operationFixtureMain() int {
 			return 4
 		}
 	}
-	if (input.SourceFile == nil && input.Source.Password != "fixture-private-value") || len(os.Environ()) != 5 {
+	if (input.SourceFile == nil && input.PrivateTransport == nil && input.Source.Password != "fixture-private-value") || len(os.Environ()) != 5 {
 		return 5
+	}
+	if input.PrivateTransport != nil && privateOperationFixtureChannel(input) != nil {
+		return 32
 	}
 	if input.SourceFile != nil {
 		var st unix.Stat_t
