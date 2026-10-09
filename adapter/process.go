@@ -144,6 +144,10 @@ func (r ProcessRequest) ValidateAt(now time.Time) error {
 		}
 		switch key {
 		case "tls_ca_pem", "tls_server_name":
+		case "database":
+			if r.Source.Engine != "mongodb" || value == "" || value != r.Source.Database {
+				return ErrInvalid
+			}
 		case "migration_server_uuid":
 			if r.Source.Engine != "clickhouse" || !migration.ValidServerUUID(value) {
 				return ErrInvalid

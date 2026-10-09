@@ -40,7 +40,7 @@ func TestMongoConnectionDisablesReplayAndVerifiesTLS(t *testing.T) {
 			t.Fatal("unsafe option accepted", suffix)
 		}
 	}
-	for _, endpoint := range []string{"mongodb://reader:test@db.example/?tls=true&authSource=admin", "mongodb://db.example/app?tls=true&authSource=admin", "mongodb://db.example/?tls=false&authSource=admin", "mongodb://db.example/?tls=true&authSource=other", "mongodb+srv://127.0.0.1/?tls=true&authSource=admin", "mongodb://one.example,two.example/?tls=true&authSource=admin"} {
+	for _, endpoint := range []string{"mongodb://reader:test@db.example/?tls=true&authSource=admin", "mongodb://db.example/app?tls=true&authSource=admin", "mongodb://db.example/?tls=false&authSource=admin", "mongodb://db.example/?tls=true&authSource=", "mongodb://db.example/?tls=true&authSource=bad%2Fname", "mongodb://db.example/?tls=true&authSource=%24external", "mongodb+srv://127.0.0.1/?tls=true&authSource=admin", "mongodb://one.example,two.example/?tls=true&authSource=admin"} {
 		bad := connection
 		bad.Endpoint = endpoint
 		if _, err := ConnectionOptions(bad); err == nil {
@@ -52,6 +52,11 @@ func TestMongoConnectionDisablesReplayAndVerifiesTLS(t *testing.T) {
 	bad.TLS.InsecureSkipVerify = true
 	if _, err := ConnectionOptions(bad); err == nil {
 		t.Fatal("unverified TLS accepted")
+	}
+	connection.Endpoint = "mongodb://db.example/?tls=true&authSource=app"
+	opts, err = ConnectionOptions(connection)
+	if err != nil || opts.Auth == nil || opts.Auth.AuthSource != "app" || opts.Auth.Username != connection.Username || opts.RetryWrites == nil || *opts.RetryWrites {
+		t.Fatal("explicit authentication database changed", err)
 	}
 }
 
