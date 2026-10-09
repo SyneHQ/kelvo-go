@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -112,6 +113,23 @@ func newPrivateResolutionFixtureWithOptions(t *testing.T, options privateResolut
 		if r.TLS == nil || len(r.TLS.VerifiedChains) == 0 || r.URL.Path != resolver.OperationPath {
 			t.Error("resolver request lacked verified transport")
 			w.WriteHeader(403)
+			return
+		}
+		// Consume and validate the request before a callback waits for cancellation.
+		// HTTP/1 disconnect detection starts after the request body reaches EOF.
+		raw, readErr := io.ReadAll(io.LimitReader(r.Body, resolver.MaxOperationRequestBytes+1))
+		closeErr := r.Body.Close()
+		defer clear(raw)
+		var input resolver.OperationRequest
+		if readErr != nil || closeErr != nil || len(raw) > resolver.MaxOperationRequestBytes || operations.DecodeStrict(raw, &input, resolver.MaxOperationRequestBytes) != nil {
+			t.Error("fixture resolver request body is invalid")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		requestSHA, digestErr := operations.Digest(input.Operation)
+		if digestErr != nil || input.Grant != record.AuthorityToken || requestSHA != record.RequestSHA256 || input.OperationID != record.ID || input.WorkerID != record.Binding.WorkerID || input.Owner != record.Binding.Owner || input.Claim != record.Binding.Claim {
+			t.Error("fixture resolver request does not match the admitted operation")
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 		if options.BeforeResponse != nil {
@@ -259,5 +277,46 @@ func TestPrivateOperationPolicyPinsActualResolverCertificate(t *testing.T) {
 	wrong[len(wrong)-1] ^= 1
 	if _, err := newPrivateOperationPolicy(f.policy.resolver, f.policy.trust, f.policy.proofKey, f.policy.route, f.policy.worker, f.policy.identity, wrong); err == nil {
 		t.Fatal("mismatched resolver and broker worker certificate accepted")
+	}
+}
+
+func TestPrivateOperationFixtureReadsBodyBeforeCancellation(t *testing.T) {
+	entered := make(chan struct{})
+	cancelled := make(chan struct{})
+	f := newPrivateResolutionFixtureWithOptions(t, privateResolutionFixtureOptions{BeforeResponse: func(ctx context.Context, _ int32) error {
+		close(entered)
+		select {
+		case <-ctx.Done():
+			close(cancelled)
+			return ctx.Err()
+		case <-time.After(time.Second):
+			return context.DeadlineExceeded
+		}
+	}})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	finished := make(chan error, 1)
+	go func() {
+		_, err := f.policy.resolve(ctx, f.executor, f.record, f.request, nil)
+		finished <- err
+	}()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("fixture resolver handler did not start")
+	}
+	cancel()
+	select {
+	case err := <-finished:
+		if err == nil {
+			t.Fatal("cancelled resolver request succeeded")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancelled resolver request did not finish")
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("fixture resolver did not observe client cancellation")
 	}
 }
