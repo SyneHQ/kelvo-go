@@ -1,0 +1,55 @@
+# Replace every example identity, key, digest, and path before startup.
+version: 1
+listen: 127.0.0.1:8443
+state_directory: /var/lib/kelvo/application
+token_env: KELVO_TOKEN
+instance_id: oos-0000000000000000000000000000
+app_scope: installation-id
+issuer: synehq_oos
+audience: kelvo_application
+service_principal: synehq_oos
+public_key: REPLACE_WITH_BASE64_ED25519_PUBLIC_KEY
+write_mode: disabled
+tls:
+  cert_file: /etc/kelvo/tls/server.crt
+  key_file: /etc/kelvo/tls/server.key
+resolver:
+  url: https://application:3001/internal/kelvo/resolve
+  ca_file: /etc/kelvo/tls/ca.crt
+  cert_file: /etc/kelvo/tls/worker.crt
+  key_file: /etc/kelvo/tls/worker.key
+  timeout: 5s
+  max_concurrent: 4
+adapter:
+  binary: /usr/local/bin/kelvo-operation-adapter
+  sha256: REPLACE_WITH_LOWERCASE_SHA256
+sandbox_path: /usr/local/bin/kelvo-sandbox
+scratch_directory: /var/lib/kelvo/scratch
+limits:
+  max_rows: 10000
+  max_bytes: 4194304
+  timeout: 30s
+  memory_mb: 128
+  threads: 1
+  max_temp_mb: 64
+resources:
+  max_concurrent: 2
+  memory_mb: 1024
+  baseline_mb: 128
+  overhead_mb: 256
+  scratch_mb: 128
+containment:
+  root: /sys/fs/cgroup/kelvo-application
+  state_directory: /var/lib/kelvo/containment
+  max_groups: 2
+  cleanup_timeout: 5s
+  native_overhead_mb: 64
+  parent_overhead_mb: 64
+  max_processes: 64
+max_retained: 512
+retention: 1h
+max_concurrent: 2
+max_http_requests: 16
+max_result_bytes: 4194304
+max_metadata_bytes: 1048576
+max_stored_bytes: 1073741824

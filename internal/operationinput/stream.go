@@ -25,10 +25,18 @@ type StreamWriter struct {
 }
 
 func (s *Store) BeginStream(ctx context.Context, identity exports.Identity, expiry time.Time, format Format) (*StreamWriter, error) {
-	if s == nil || s.storage == nil || ctx == nil || !validFormat(format) || ctx.Err() != nil {
+	if s == nil {
 		return nil, ErrInvalid
 	}
-	maximum := s.maximum
+	return s.BeginStreamLimit(ctx, identity, expiry, format, s.maximum)
+}
+
+// BeginStreamLimit reserves and enforces a smaller per-stream byte limit.
+// The limit cannot exceed the store limit. Retained charges remain unchanged.
+func (s *Store) BeginStreamLimit(ctx context.Context, identity exports.Identity, expiry time.Time, format Format, maximum int64) (*StreamWriter, error) {
+	if s == nil || s.storage == nil || ctx == nil || !validFormat(format) || ctx.Err() != nil || maximum < 1 || maximum > s.maximum {
+		return nil, ErrInvalid
+	}
 	if format == OperationRequest {
 		maximum = min(maximum, int64(operations.MaxRequestBytes))
 	}
