@@ -58,7 +58,7 @@ func ConnectionOptions(c adapter.Connection) (*options.ClientOptions, error) {
 		}
 	}
 	params, err := url.ParseQuery(u.RawQuery)
-	if err != nil || params.Get("tls") != "true" || params.Get("authSource") != "admin" {
+	if err != nil || params.Get("tls") != "true" || !validDatabase(params.Get("authSource")) {
 		return nil, adapter.ErrInvalid
 	}
 	for key, values := range params {
@@ -90,7 +90,7 @@ func ConnectionOptions(c adapter.Connection) (*options.ClientOptions, error) {
 	// An empty ServerName lets TLS verify each discovered replica/SRV endpoint.
 	// An explicitly supplied name is retained for approved private PKI routing.
 	client := options.Client().ApplyURI(u.String()).SetTLSConfig(config).
-		SetAuth(options.Credential{AuthSource: "admin", Username: c.Username, Password: c.Password}).
+		SetAuth(options.Credential{AuthSource: params.Get("authSource"), Username: c.Username, Password: c.Password}).
 		SetAppName("kelvo-go").SetMaxPoolSize(1).SetMinPoolSize(0).SetMaxConnecting(1).
 		SetRetryReads(false).SetRetryWrites(false).SetReadPreference(readpref.Primary()).
 		SetWriteConcern(writeconcern.Majority()).SetConnectTimeout(5 * time.Second).

@@ -39,6 +39,7 @@ The optional worker needs CGO and the Arrow build tag. Run on the validation VM:
 go work init . ./adapters/go
 sdk_version=$(awk '$1 == "github.com/SYNEHQ/kelvo-go" { print $2 }' adapters/go/go.mod)
 go work edit "-replace=github.com/SYNEHQ/kelvo-go@${sdk_version}=."
+go work edit -replace=github.com/sijms/go-ora/v2@v2.9.0=./third_party/go-ora-v2.9.0
 go test -mod=readonly -race ./adapter ./operations
 cd adapters/go
 CGO_ENABLED=1 go test -mod=readonly -race -tags duckdb_arrow ./...

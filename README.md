@@ -37,11 +37,11 @@ bin/kelvo query --config examples/kelvo.yml --sources sales \
 
 The [15 Colab and Jupyter lessons](notebooks/README.md) include public data, setup, answer checks and cleanup. No database account or GPU is needed for the default examples.
 
-| Start with | Open in Colab |
-| --- | --- |
-| First query: Palmer Penguins | [Lesson 01](https://colab.research.google.com/github/SYNEHQ/kelvo-go/blob/cargo/notebooks/01-first-query.ipynb) |
-| Analytical SQL: NYC Taxi trips | [Lesson 03](https://colab.research.google.com/github/SYNEHQ/kelvo-go/blob/cargo/notebooks/03-taxi-parquet-exploration.ipynb) |
-| Authenticated HTTP API | [Lesson 15](https://colab.research.google.com/github/SYNEHQ/kelvo-go/blob/cargo/notebooks/15-authenticated-http-gateway.ipynb) |
+| Start with                     | Open in Colab                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| First query: Palmer Penguins   | [Lesson 01](https://colab.research.google.com/github/SYNEHQ/kelvo-go/blob/cargo/notebooks/01-first-query.ipynb)                |
+| Analytical SQL: NYC Taxi trips | [Lesson 03](https://colab.research.google.com/github/SYNEHQ/kelvo-go/blob/cargo/notebooks/03-taxi-parquet-exploration.ipynb)   |
+| Authenticated HTTP API         | [Lesson 15](https://colab.research.google.com/github/SYNEHQ/kelvo-go/blob/cargo/notebooks/15-authenticated-http-gateway.ipynb) |
 
 ## How Kelvo fits
 
@@ -50,6 +50,8 @@ The [15 Colab and Jupyter lessons](notebooks/README.md) include public data, set
 Analytics overview. One query runs on one worker. Add workers to run more independent queries. [Architecture](docs/architecture.md) · [Security model](SECURITY.md)
 
 ## Use Kelvo behind your API
+
+For one explorer installation, [application mode](docs/application-mode.md) uses local SQLite state for PostgreSQL and MySQL operations. It keeps credential resolution and contained execution without NATS.
 
 Any application can use the [HTTP API](docs/usage.md#http-api) with configured sources. In cluster mode, your own authorization and credential resolver can also supply saved connections on demand, without individual entries in Kelvo YAML.
 
@@ -65,13 +67,13 @@ On-demand analytical queries do not yet support acceleration or durable exports.
 
 ## Execution and sources
 
-| Path | Sources |
-| --- | --- |
-| DuckDB attachments | CSV, Parquet, DuckDB, SQLite, PostgreSQL, MySQL |
-| Optional native federation bridge | ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery, Databricks, [Flight SQL](docs/federation-flight-sql.md) |
-| Native queries | The federation sources above, MongoDB, D1, Trino/Presto, Elasticsearch, Exasol, Spanner, Ignite 2, Athena, DynamoDB, Cosmos DB |
-| External query services | Separately operated [Flight SQL or legacy `dbapi` HTTP services](docs/sources-adapters.md) |
-| Contained operation adapters | Saved-connection reads, supported writes, metadata and jobs through [Go adapters](adapters/go/README.md) or [JDBC runtimes](docs/jdbc-runtime.md) |
+| Path                              | Sources                                                                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DuckDB attachments                | CSV, Parquet, DuckDB, SQLite, PostgreSQL, MySQL                                                                                                   |
+| Optional native federation bridge | ClickHouse, PostgreSQL, MySQL, SQL Server, Oracle, Snowflake, BigQuery, Databricks, [Flight SQL](docs/federation-flight-sql.md)                   |
+| Native queries                    | The federation sources above, MongoDB, D1, Trino/Presto, Elasticsearch, Exasol, Spanner, Ignite 2, Athena, DynamoDB, Cosmos DB                    |
+| External query services           | Separately operated [Flight SQL or legacy `dbapi` HTTP services](docs/sources-adapters.md)                                                        |
+| Contained operation adapters      | Saved-connection reads, supported writes, metadata and jobs through [Go adapters](adapters/go/README.md) or [JDBC runtimes](docs/jdbc-runtime.md) |
 
 Use the [coverage matrix](docs/source-coverage.md) for exact modes, types and validation. Native connector support does not imply federation support. Live sources have no shared transaction snapshot.
 
@@ -101,23 +103,23 @@ Four workflows query **22,612,607 NYC Taxi trips** with CTEs, joins and windows.
 
 Median seconds over three sequential trials, including startup and Arrow file persistence. Local Azure runs use identical Parquet, two execution threads, a 1536 MiB service cap and LZ4 output.
 
-| Workflow | Kelvo / DuckDB | DuckDB / Python | Polars / Python |
-| --- | ---: | ---: | ---: |
-| Daily KPIs + 7-day windows | 0.484 | 0.634 | 0.636 |
-| Hourly borough hotspots | 1.035 | 1.052 | 1.464 |
-| Route joins + distance mix | 1.497 | 1.816 | 1.064 |
-| Monthly zone momentum | 0.606 | 0.691 | 0.749 |
+| Workflow                   | Kelvo / DuckDB | DuckDB / Python | Polars / Python |
+| -------------------------- | -------------: | --------------: | --------------: |
+| Daily KPIs + 7-day windows |          0.484 |           0.634 |           0.636 |
+| Hourly borough hotspots    |          1.035 |           1.052 |           1.464 |
+| Route joins + distance mix |          1.497 |           1.816 |           1.064 |
+| Monthly zone momentum      |          0.606 |           0.691 |           0.749 |
 
 Kelvo and Python use DuckDB 1.5.6; Polars uses 1.44.2. Startup and binding overhead affect these command timings. They do not show Kelvo accelerating DuckDB itself.
 
 With live ClickHouse on Azure, native queries compute at the source; federation transfers rows for local DuckDB execution:
 
-| Workflow | Azure native | Oracle native | Azure federation | Oracle federation |
-| --- | ---: | ---: | ---: | ---: |
-| Daily KPIs + 7-day windows | 0.627 | 1.480 | 1.508 | 33.490 |
-| Hourly borough hotspots | 2.171 | 3.727 | 4.096 | 42.922 |
-| Route joins + distance mix | 1.822 | 2.358 | 3.180 | 62.275 |
-| Monthly zone momentum | 0.911 | 1.630 | 1.861 | 40.274 |
+| Workflow                   | Azure native | Oracle native | Azure federation | Oracle federation |
+| -------------------------- | -----------: | ------------: | ---------------: | ----------------: |
+| Daily KPIs + 7-day windows |        0.627 |         1.480 |            1.508 |            33.490 |
+| Hourly borough hotspots    |        2.171 |         3.727 |            4.096 |            42.922 |
+| Route joins + distance mix |        1.822 |         2.358 |            3.180 |            62.275 |
+| Monthly zone momentum      |        0.911 |         1.630 |            1.861 |            40.274 |
 
 Oracle used a burstable Always Free E2.1.Micro (951 MiB RAM, 1/8 OCPU entitlement) and SSH forwarding. All 24 Oracle trials fit a 640 MiB service cap; sampled peak process RSS was 379.3 MiB. Source and tunnel memory were outside the cap. Azure's federated hotspot query hit its 640 MiB cap and spilled.
 
@@ -133,16 +135,17 @@ These are measurements of recorded binaries and workloads, not throughput guaran
 
 ## Documentation
 
-| Task | Guide |
-| --- | --- |
-| Query or integrate | [CLI/API](docs/usage.md) · [Go SDK](docs/application-sdk.md) · [Application example](examples/application/) |
-| Connect saved customer databases | [On-demand queries](docs/on-demand-connections.md) · [Database operations](docs/database-operations.md) |
-| Run supported writes and jobs | [Go adapters](adapters/go/README.md) · [JDBC runtimes](docs/jdbc-runtime.md) · [Validation](docs/database-operations-validation.md) |
-| Join sources or add a federation adapter | [Federation](docs/federation.md) · [Adapter SDK](docs/federation-adapters.md) |
-| Refresh and recover datasets | [Acceleration](docs/acceleration.md) · [Backups](docs/snapshot-backup.md) |
-| Deploy and troubleshoot | [Deployment](deploy/README.md) · [Operations](docs/operations.md) |
-| Tune batching and inspect overhead | [Throughput tuning](docs/throughput-tuning.md) |
-| Find a specific guide | [Documentation index](docs/README.md) |
+| Task                                     | Guide                                                                                                                               |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Query or integrate                       | [CLI/API](docs/usage.md) · [Go SDK](docs/application-sdk.md) · [Application example](examples/application/)                         |
+| Connect saved customer databases         | [On-demand queries](docs/on-demand-connections.md) · [Database operations](docs/database-operations.md)                             |
+| Run one explorer installation            | [Application mode](docs/application-mode.md) · [Configuration](examples/application.yml)                                            |
+| Run supported writes and jobs            | [Go adapters](adapters/go/README.md) · [JDBC runtimes](docs/jdbc-runtime.md) · [Validation](docs/database-operations-validation.md) |
+| Join sources or add a federation adapter | [Federation](docs/federation.md) · [Adapter SDK](docs/federation-adapters.md)                                                       |
+| Refresh and recover datasets             | [Acceleration](docs/acceleration.md) · [Backups](docs/snapshot-backup.md)                                                           |
+| Deploy and troubleshoot                  | [Deployment](deploy/README.md) · [Operations](docs/operations.md)                                                                   |
+| Tune batching and inspect overhead       | [Throughput tuning](docs/throughput-tuning.md)                                                                                      |
+| Find a specific guide                    | [Documentation index](docs/README.md)                                                                                               |
 
 ## Build with us
 

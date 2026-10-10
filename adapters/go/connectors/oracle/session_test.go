@@ -4,6 +4,7 @@ package oracle
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
@@ -26,6 +27,34 @@ import (
 
 func validConnection() adapter.Connection {
 	return adapter.Connection{Engine: "oracle", TenantID: "tenant", ConnectionID: "saved", Revision: "revision", Host: "db.example", Port: 2484, Namespace: "service", Username: "reader", Password: "test-only", Schema: "APP"}
+}
+
+func TestOracleChecksConfiguredTLSNameAfterDriverReplacement(t *testing.T) {
+	c := validConnection()
+	calls := 0
+	c.TLS = &tls.Config{ServerName: "private.example", VerifyConnection: func(tls.ConnectionState) error {
+		calls++
+		return nil
+	}}
+	_, config, err := connectionDSN(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ServerName = c.Host
+	wrong := tls.ConnectionState{PeerCertificates: []*x509.Certificate{{DNSNames: []string{c.Host}}}}
+	if config.VerifyConnection(wrong) == nil || config.VerifyConnection(tls.ConnectionState{}) == nil || calls != 0 {
+		t.Fatal("driver replacement bypassed the configured TLS name")
+	}
+	valid := tls.ConnectionState{PeerCertificates: []*x509.Certificate{{DNSNames: []string{"private.example"}}}}
+	if config.VerifyConnection(valid) != nil || calls != 1 || c.TLS.ServerName != "private.example" || config.InsecureSkipVerify {
+		t.Fatal("configured TLS verification or caller configuration changed")
+	}
+	denied := errors.New("caller rejects the peer")
+	c.TLS.VerifyConnection = func(tls.ConnectionState) error { return denied }
+	_, config, err = connectionDSN(c)
+	if err != nil || !errors.Is(config.VerifyConnection(valid), denied) {
+		t.Fatal("caller TLS verification was bypassed")
+	}
 }
 
 func TestOracleConnectionUsesOnlyVerifiedTCPS(t *testing.T) {

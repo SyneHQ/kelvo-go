@@ -31,6 +31,15 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
+func TestMongoAuthenticationDatabaseCannotSelectExternalCredentials(t *testing.T) {
+	for _, authSource := range []string{"", "%24external", "bad%2Fname", "bad%5Cname", "bad.name", "bad%20name", "bad%00name", "bad%0Aname", strings.Repeat("a", 64)} {
+		dsn := "mongodb://reader:fixture-password@database.example:27017/?tls=true&authSource=" + authSource
+		if validConnectionDSN("mongodb", dsn, "analytics") {
+			t.Fatal("invalid authentication database accepted", authSource)
+		}
+	}
+}
+
 const connectionFixtureDSN = "postgres://reader:fixture-password@database.example:5432/analytics?connect_timeout=5&sslmode=verify-full"
 
 func connectionFixture(t *testing.T) (query.Request, delegation.Execution, connectionResolution) {
@@ -256,6 +265,7 @@ func TestConnectionCatalogAcceptsExplicitNativeContracts(t *testing.T) {
 		{kind: "sqlserver", database: "analytics", dsn: "sqlserver://reader:fixture-password@database.example:1433?database=analytics&encrypt=true&TrustServerCertificate=false&connection+timeout=5"},
 		{kind: "oracle", database: "analytics", dsn: "oracle://reader:fixture-password@database.example:2484/analytics?SSL=enable&SSL+VERIFY=true"},
 		{kind: "mongodb", database: "analytics", dsn: "mongodb://reader:fixture-password@database.example:27017/?authSource=admin&tls=true", options: map[string]string{"database": "analytics"}},
+		{kind: "mongodb", database: "analytics", dsn: "mongodb://reader:fixture-password@database.example:27017/?authSource=users&tls=true", options: map[string]string{"database": "analytics"}},
 		{kind: "databricks", database: "analytics", url: "https://workspace.example:443", options: map[string]string{"warehouse_id": "ab123", "catalog": "analytics"}},
 		{kind: "d1", database: "01234567-89ab-cdef-0123-456789abcdef", url: "https://api.cloudflare.com", options: map[string]string{"account_id": "0123456789abcdef0123456789abcdef", "database_id": "01234567-89ab-cdef-0123-456789abcdef"}},
 		{kind: "clickhouse", database: "analytics", url: "https://database.example:8443?database=analytics"},

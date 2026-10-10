@@ -286,7 +286,8 @@ func validConnectionDSN(kind, raw, database string) bool {
 	case "oracle":
 		return u.Scheme == "oracle" && u.Path == "/"+database && exactConnectionOptions(params, map[string]string{"SSL": "enable", "SSL VERIFY": "true"})
 	case "mongodb":
-		if (u.Scheme != "mongodb" && u.Scheme != "mongodb+srv") || u.Path != "/" || params.Get("tls") != "true" || params.Get("authSource") != "admin" || len(database) > 63 || strings.ContainsAny(database, "/\\.\"$ ") {
+		authSource := params.Get("authSource")
+		if (u.Scheme != "mongodb" && u.Scheme != "mongodb+srv") || u.Path != "/" || params.Get("tls") != "true" || authSource == "" || len(authSource) > 63 || !utf8.ValidString(authSource) || strings.ContainsAny(authSource, "/\\.\"$ \x00\r\n") || len(database) > 63 || strings.ContainsAny(database, "/\\.\"$ ") {
 			return false
 		}
 		for key, values := range params {

@@ -68,6 +68,11 @@ func TestSQLiteMetadataLimitsAndCancellation(t *testing.T) {
 	if err != nil || stats.Rows != 3 {
 		t.Fatal(stats, err)
 	}
+	allColumns := &capture{}
+	stats, err = s.Inspect(context.Background(), operations.MetadataSpec{Object: "columns", Limit: 100}, adapter.Limits{MaxRows: 100, MaxBytes: 1 << 20, BatchRows: 2}, allColumns)
+	if err != nil || stats.Rows != 5 || len(allColumns.rows) != 5 || allColumns.rows[0][1] != "dates" || allColumns.rows[1][1] != "mixed" || allColumns.rows[2][1] != "trips" {
+		t.Fatal("whole-schema column metadata changed", allColumns.rows, err)
+	}
 	q := testQuery("SELECT id FROM trips")
 	q.MaxRows = 1
 	if _, err = s.Query(context.Background(), q, &capture{}); !errors.Is(err, adapter.ErrLimit) {
@@ -81,5 +86,50 @@ func TestSQLiteMetadataLimitsAndCancellation(t *testing.T) {
 	stop := errors.New("sink stopped")
 	if _, err = s.Query(context.Background(), testQuery("SELECT id FROM trips"), &capture{fail: stop}); !errors.Is(err, stop) {
 		t.Fatal(err)
+	}
+}
+
+func TestSQLitePrimaryAndForeignKeyMetadataPreservesCompositeOrder(t *testing.T) {
+	path := t.TempDir() + "/keys.sqlite"
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE parents(region TEXT, number INTEGER, PRIMARY KEY(region,number))`,
+		`CREATE TABLE children(id INTEGER PRIMARY KEY, region TEXT, number INTEGER, FOREIGN KEY(region,number) REFERENCES parents)`,
+		`CREATE TABLE explicit_child(id INTEGER PRIMARY KEY, parent_number INTEGER, parent_region TEXT, FOREIGN KEY(parent_region,parent_number) REFERENCES parents(region,number))`,
+	} {
+		if _, err = db.Exec(statement); err != nil {
+			_ = db.Close()
+			t.Fatal(err)
+		}
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s := openFixture(t, path, "sqlite")
+	limits := adapter.Limits{MaxRows: 100, MaxBytes: 1 << 20, BatchRows: 2}
+	primary := &capture{}
+	_, err = s.Inspect(context.Background(), operations.MetadataSpec{Object: "primary_keys", Target: operations.ObjectRef{Name: "parents"}, Limit: 100}, limits, primary)
+	if err != nil || len(primary.rows) != 2 || primary.rows[0][3] != "region" || primary.rows[1][3] != "number" || primary.rows[0][4] != int64(1) || primary.rows[1][4] != int64(2) {
+		t.Fatal("composite primary key changed", primary.rows, err)
+	}
+	for _, table := range []string{"children", "explicit_child"} {
+		foreign := &capture{}
+		_, err = s.Inspect(context.Background(), operations.MetadataSpec{Object: "foreign_keys", Target: operations.ObjectRef{Name: table}, Limit: 100}, limits, foreign)
+		if err != nil || len(foreign.rows) != 2 || foreign.rows[0][4] != int64(1) || foreign.rows[1][4] != int64(2) || foreign.rows[0][6] != "parents" || foreign.rows[0][7] != "region" || foreign.rows[1][7] != "number" {
+			t.Fatal("composite foreign key changed", table, foreign.rows, err)
+		}
+	}
+	page := &capture{}
+	_, err = s.Inspect(context.Background(), operations.MetadataSpec{Object: "relationships", Target: operations.ObjectRef{Name: "children"}, Limit: 1, Cursor: "1"}, limits, page)
+	if err != nil || len(page.rows) != 1 || page.rows[0][4] != int64(2) {
+		t.Fatal("relationship page changed", page.rows, err)
+	}
+	for _, statement := range []string{`SELECT * FROM pragma_foreign_key_list('children')`, `SELECT * FROM pragma_table_xinfo('parents')`} {
+		if _, err := s.Query(context.Background(), testQuery(statement), &capture{}); err == nil {
+			t.Fatal("metadata-only PRAGMA accepted in query", statement)
+		}
 	}
 }

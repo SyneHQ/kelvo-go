@@ -30,3 +30,15 @@ func TestMongoResolutionSeparatesCredentialsAndPreservesTopology(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMongoResolutionBindsDatabaseOptionAndAuthenticationDatabase(t *testing.T) {
+	spec := adapter.ConnectionSpec{Engine: "mongodb", DSN: "mongodb://reader:test-only@db.example:27017/?tls=true&authSource=users", TenantID: "tenant", ConnectionID: "saved", Revision: "revision", Database: "app", Options: map[string]string{"database": "app"}}
+	c, err := sourceConnection(spec)
+	if err != nil || c.Namespace != "app" || !strings.Contains(c.Endpoint, "authSource=users") || c.TLS.InsecureSkipVerify {
+		t.Fatal("resolver database option rejected or changed", err)
+	}
+	spec.Options["database"] = "other"
+	if _, err := sourceConnection(spec); err == nil {
+		t.Fatal("different database option accepted")
+	}
+}

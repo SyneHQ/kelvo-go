@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/exports"
+	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
 func TestStreamReservesBeforeProducerAndCommitsExactBytes(t *testing.T) {
@@ -100,5 +101,55 @@ func TestStreamExcessNeverPublishesAReference(t *testing.T) {
 	_, _ = w.Write(bytes.Repeat([]byte("x"), ChunkBytes+10))
 	if ref, err := w.Commit(); !errors.Is(err, ErrLimit) || ref.ID != "" {
 		t.Fatal("oversized stream published", ref, err)
+	}
+}
+
+func TestStreamLimitBoundsReservationAndPayload(t *testing.T) {
+	s, config := testStore(t, 64, MaxInputBytes)
+	ctx := context.Background()
+	expiry := time.Now().Add(time.Minute)
+	for _, maximum := range []int64{0, -1, MaxInputBytes + 1} {
+		if _, err := s.BeginStreamLimit(ctx, identity, expiry, ArrowIPC, maximum); !errors.Is(err, ErrInvalid) {
+			t.Fatal("invalid stream limit accepted", maximum, err)
+		}
+	}
+	var last operations.InputRef
+	// Four full-size reservations exceed this store's 64 MiB budget. Small
+	// metadata results must retain their selected budget across reopen.
+	for range 20 {
+		stream, err := s.BeginStreamLimit(ctx, identity, expiry, ArrowIPC, ChunkBytes)
+		if err != nil {
+			t.Fatal("small result charged the full store limit", err)
+		}
+		if _, err := stream.Write([]byte("retained metadata")); err != nil {
+			t.Fatal(err)
+		}
+		last, err = stream.Commit()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := stream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if raw, err := s.Load(ctx, identity, last); err != nil || string(raw) != "retained metadata" {
+		t.Fatal("bounded result did not survive reopen", err)
+	}
+	stream, err := s.BeginStreamLimit(ctx, identity, expiry, ArrowIPC, ChunkBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	_, _ = stream.Write(bytes.Repeat([]byte("x"), ChunkBytes+1))
+	if ref, err := stream.Commit(); !errors.Is(err, ErrLimit) || ref.ID != "" {
+		t.Fatal("bounded result exceeded its reserved limit", ref, err)
 	}
 }

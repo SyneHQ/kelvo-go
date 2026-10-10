@@ -75,3 +75,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
+
+// Keep the reviewed Oracle long-password capability patch.
+replace github.com/sijms/go-ora/v2 v2.9.0 => ../../third_party/go-ora-v2.9.0

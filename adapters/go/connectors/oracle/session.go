@@ -58,6 +58,18 @@ func connectionDSN(c adapter.Connection) (string, *tls.Config, error) {
 	if config.ServerName == "" {
 		config.ServerName = c.Host
 	}
+	// The upstream driver replaces ServerName with its DSN host. Keep the
+	// signed name as an additional check without disabling standard TLS checks.
+	expectedName, verifyConnection := config.ServerName, config.VerifyConnection
+	config.VerifyConnection = func(state tls.ConnectionState) error {
+		if len(state.PeerCertificates) == 0 || state.PeerCertificates[0].VerifyHostname(expectedName) != nil {
+			return adapter.ErrInvalid
+		}
+		if verifyConnection != nil {
+			return verifyConnection(state)
+		}
+		return nil
+	}
 	endpoint := url.URL{Scheme: "oracle", Host: net.JoinHostPort(c.Host, strconv.Itoa(c.Port)), User: url.UserPassword(c.Username, c.Password), Path: "/" + c.Namespace, RawQuery: url.Values{"SSL": {"enable"}, "SSL VERIFY": {"true"}, "CONNECTION TIMEOUT": {"5"}, "PREFETCH_ROWS": {"128"}}.Encode()}
 	return endpoint.String(), config, nil
 }

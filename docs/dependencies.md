@@ -10,7 +10,7 @@ Use this list when reviewing upgrades or distributing Kelvo. Versions are pinned
 | [NATS Go v1.54.0](https://github.com/nats-io/nats.go/tree/v1.54.0) | Durable cluster jobs, KV state and authenticated broker connections | Apache-2.0 |
 | [Go YAML v3.0.5](https://github.com/yaml/go-yaml/tree/v3.0.5) | Strict YAML source configuration | MIT and Apache-2.0, by file |
 | [Microsoft SQL Server driver v1.9.8](https://github.com/microsoft/go-mssqldb/tree/v1.9.8) | Native SQL Server connector | BSD-3-Clause |
-| [go-ora v2.9.0](https://github.com/sijms/go-ora/tree/v2.9.0) | Native Oracle connector | MIT |
+| [go-ora v2.9.0](https://github.com/sijms/go-ora/tree/v2.9.0) | Native Oracle connector with one reviewed long-password capability patch | MIT |
 | [MongoDB Go Driver v2.9.1](https://github.com/mongodb/mongo-go-driver/tree/v2.9.1) | Native MongoDB connector | Apache-2.0 |
 | [zero-sql b01a7e8](https://github.com/SyneHQ/zero-sql/commit/b01a7e87002271a661ebd68060824be013347845) | Restricted MongoDB SQL compiler | Apache-2.0 |
 | [pgx v5.11.0](https://github.com/jackc/pgx/tree/v5.11.0) | Native PostgreSQL protocol connections | MIT |
@@ -22,6 +22,11 @@ Use this list when reviewing upgrades or distributing Kelvo. Versions are pinned
 | Go standard library | HTTP, subprocess lifecycle, configuration and CLI | Go BSD-style license |
 
 ClickHouse supplies ArrowStream. The cloud, search, Trino/Presto, Spanner, Cosmos DB and Ignite connectors use documented APIs with bounded JSON conversion. Exasol uses its driver's DSN parser with Kelvo's exact-number WebSocket path, avoiding the stock driver's float64 decoding and background-context operations. Optional adapter services and their drivers remain external.
+
+Oracle uses a local copy of the pinned v2 module with one capability bit changed.
+The change enables authentication with the existing 48-byte password and preserves the typed result path.
+Both Go modules use a version-specific local replacement. No other dependency source is copied.
+The [patch record](../third_party/go-ora-v2.9.0/PATCHES.md) contains the original checksums, exact change, license, reason, and update gate.
 
 Object storage uses the AWS core signer for S3/R2/GCS XML and standard HTTPS with explicit Azure SAS tokens. No ambient credential chain is loaded. The Go parent owns cloud TLS and conditional reads; DuckDB's matching signed `httpfs` extension reads anonymous loopback ranges.
 
