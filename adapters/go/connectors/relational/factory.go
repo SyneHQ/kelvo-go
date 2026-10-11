@@ -180,18 +180,36 @@ func postgresConfig(c adapter.Connection) (*pgx.ConnConfig, error) {
 			return nil, adapter.ErrInvalid
 		}
 	}
-	tlsConfig, err := sourceTLS(c)
-	if err != nil {
-		return nil, err
+	// TLS stays verified unless the saved connection explicitly turned it off.
+	plaintext := c.Options["sslmode"] == "disable"
+	var tlsConfig *tls.Config
+	if !plaintext {
+		var err error
+		if tlsConfig, err = sourceTLS(c); err != nil {
+			return nil, err
+		}
 	}
 	endpoint := url.URL{Scheme: "postgresql", Host: net.JoinHostPort(c.Host, strconv.Itoa(c.Port)), User: url.UserPassword(c.Username, c.Password), Path: "/" + c.Namespace}
 	params := url.Values{"sslmode": {"verify-full"}, "sslrootcert": {"system"}, "sslcert": {""}, "sslkey": {""}, "passfile": {""}, "connect_timeout": {"10"}, "application_name": {"kelvo-go"}, "timezone": {"UTC"}}
+	if plaintext {
+		params.Set("sslmode", "disable")
+		params.Del("sslrootcert")
+	}
 	endpoint.RawQuery = params.Encode()
 	config, err := pgx.ParseConfigWithOptions(endpoint.String(), pgx.ParseConfigOptions{ParseConfigOptions: pgconn.ParseConfigOptions{ConnStringAllowedKeys: []string{"host", "port", "user", "password", "database", "sslmode", "sslrootcert", "sslcert", "sslkey", "passfile", "connect_timeout", "application_name", "timezone"}}})
-	if err != nil || config.TLSConfig == nil || config.TLSConfig.InsecureSkipVerify || len(config.Fallbacks) != 0 {
+	if err != nil || len(config.Fallbacks) != 0 {
 		return nil, adapter.ErrInvalid
 	}
-	config.TLSConfig = tlsConfig
+	if plaintext {
+		if config.TLSConfig != nil {
+			return nil, adapter.ErrInvalid
+		}
+	} else {
+		if config.TLSConfig == nil || config.TLSConfig.InsecureSkipVerify {
+			return nil, adapter.ErrInvalid
+		}
+		config.TLSConfig = tlsConfig
+	}
 	if c.Schema != "" {
 		config.RuntimeParams["search_path"] = pgx.Identifier{c.Schema}.Sanitize()
 	}
