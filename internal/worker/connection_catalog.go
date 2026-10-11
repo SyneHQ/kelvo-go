@@ -104,6 +104,13 @@ var connectionAccount = regexp.MustCompile(`^[a-fA-F0-9]{32}$`)
 var connectionDatabaseUUID = regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$`)
 
 func validateConnectionCatalog(response connectionResolution, claims delegation.Claims, request query.Request) error {
+	return validateConnectionCatalogWith(response, claims, request, false)
+}
+
+// validateConnectionCatalogWith is shared by analytics and single-source
+// operations. Only operations may pass plaintextOK, never a wire field: it
+// admits the saved PostgreSQL connection owner's explicit sslmode=disable.
+func validateConnectionCatalogWith(response connectionResolution, claims delegation.Claims, request query.Request, plaintextOK bool) error {
 	bad := connectionUnavailable()
 	if len(response.Sources) != len(claims.Sources) || len(response.Sources) == 0 || len(response.Sources) > 32 || len(response.Secrets) > 32*5 {
 		return bad
@@ -132,7 +139,7 @@ func validateConnectionCatalog(response connectionResolution, claims delegation.
 			}
 			refs[ref.name] = true
 		}
-		if !validConnectionSource(source, selected, response.Secrets) {
+		if !validConnectionSource(source, selected, response.Secrets, plaintextOK) {
 			return bad
 		}
 		if request.Mode == "native" {
@@ -163,7 +170,7 @@ func validateConnectionCatalog(response connectionResolution, claims delegation.
 	return nil
 }
 
-func validConnectionSource(s catalog.Source, selected delegation.Source, secrets map[string]string) bool {
+func validConnectionSource(s catalog.Source, selected delegation.Source, secrets map[string]string, plaintextOK bool) bool {
 	if len(s.Options) > 4 {
 		return false
 	}
@@ -182,11 +189,11 @@ func validConnectionSource(s catalog.Source, selected delegation.Source, secrets
 	urlToken := s.URLEnv != "" && s.TokenEnv != "" && s.DSNEnv == "" && s.UsernameEnv == "" && s.PasswordEnv == ""
 	switch s.Type {
 	case "postgres", "cockroachdb", "alloydb", "redshift":
-		return dsnOnly && postgres.ValidateSourceOptions(s.Options) == nil && validConnectionDSN(s.Type, secrets[s.DSNEnv], selected.Database)
+		return dsnOnly && postgres.ValidateSourceOptions(s.Options) == nil && validConnectionDSN(s.Type, secrets[s.DSNEnv], selected.Database, plaintextOK)
 	case "mysql", "mariadb", "sqlserver", "oracle":
-		return dsnOnly && len(s.Options) == 0 && validConnectionDSN(s.Type, secrets[s.DSNEnv], selected.Database)
+		return dsnOnly && len(s.Options) == 0 && validConnectionDSN(s.Type, secrets[s.DSNEnv], selected.Database, plaintextOK)
 	case "mongodb":
-		return dsnOnly && len(s.Options) == 1 && s.Options["database"] != "" && s.Options["database"] == selected.Database && s.Federation == nil && validConnectionDSN(s.Type, secrets[s.DSNEnv], selected.Database)
+		return dsnOnly && len(s.Options) == 1 && s.Options["database"] != "" && s.Options["database"] == selected.Database && s.Federation == nil && validConnectionDSN(s.Type, secrets[s.DSNEnv], selected.Database, plaintextOK)
 	case "databricks":
 		if !urlToken || !connectionComponent.MatchString(s.Options["warehouse_id"]) || !validConnectionHTTPS(secrets[s.URLEnv]) {
 			return false
@@ -238,7 +245,7 @@ func validConnectionHTTPS(raw string) bool {
 // Dynamic credentials have a narrower contract than an operator's static DSN.
 // In particular they cannot select local sockets, certificate files, ambient
 // authentication, or a database different from the signed request.
-func validConnectionDSN(kind, raw, database string) bool {
+func validConnectionDSN(kind, raw, database string, plaintextOK bool) bool {
 	if database == "" || strings.ContainsAny(raw, "\x00\r\n") {
 		return false
 	}
@@ -280,7 +287,11 @@ func validConnectionDSN(kind, raw, database string) bool {
 	}
 	switch kind {
 	case "postgres", "cockroachdb", "alloydb", "redshift":
-		return u.Scheme == "postgres" && u.Path == "/"+database && exactConnectionOptions(params, map[string]string{"sslmode": "verify-full", "connect_timeout": "5"})
+		mode := params.Get("sslmode")
+		if mode != "verify-full" && !(plaintextOK && mode == "disable") {
+			return false
+		}
+		return u.Scheme == "postgres" && u.Path == "/"+database && exactConnectionOptions(params, map[string]string{"sslmode": mode, "connect_timeout": "5"})
 	case "sqlserver":
 		return u.Scheme == "sqlserver" && u.Path == "" && exactConnectionOptions(params, map[string]string{"database": database, "encrypt": "true", "TrustServerCertificate": "false", "connection timeout": "5"})
 	case "oracle":

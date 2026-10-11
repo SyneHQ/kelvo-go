@@ -116,8 +116,8 @@ func (e *Executor) operationInput(ctx context.Context, record operationstore.Rec
 			if err := validateOperationCQLCatalog(validatedSource, response.Secrets, request); err != nil {
 				return adapter.ProcessRequest{}, err
 			}
-		} else if err := validateConnectionCatalog(connectionResolution{Sources: []catalog.Source{validatedSource}, Secrets: response.Secrets},
-			delegation.Claims{Sources: []delegation.Source{selection}}, query.Request{Mode: "native", ConnectionID: selection.Alias}); err != nil {
+		} else if err := validateConnectionCatalogWith(connectionResolution{Sources: []catalog.Source{validatedSource}, Secrets: response.Secrets},
+			delegation.Claims{Sources: []delegation.Source{selection}}, query.Request{Mode: "native", ConnectionID: selection.Alias}, true); err != nil {
 			return adapter.ProcessRequest{}, err
 		}
 	}
