@@ -47,10 +47,28 @@ func TestSourceConnectionOnlyAcceptsExplicitVerifiedCredentials(t *testing.T) {
 	}
 }
 
+func TestSourceConnectionAllowsExplicitPlaintextOnlyAsDisable(t *testing.T) {
+	disabled, err := sourceConnection(adapter.ConnectionSpec{Engine: "postgresql", DSN: "postgresql://reader:test-only@db.example:5432/app?sslmode=disable&connect_timeout=5", Database: "app"})
+	if err != nil || disabled.Options["sslmode"] != "disable" || disabled.Host != "db.example" || disabled.Port != 5432 {
+		t.Fatalf("explicit sslmode=disable not accepted: %v %+v", err, disabled.Options)
+	}
+	verified, err := sourceConnection(adapter.ConnectionSpec{Engine: "postgresql", DSN: "postgresql://reader:test-only@db.example/app?sslmode=verify-full", Database: "app"})
+	if err != nil || verified.Options["sslmode"] != "" {
+		t.Fatalf("verified connection must not carry a plaintext marker: %v %+v", err, verified.Options)
+	}
+	for _, mode := range []string{"require", "prefer", "allow", "verify-ca", ""} {
+		if _, err := sourceConnection(adapter.ConnectionSpec{Engine: "postgresql", DSN: "postgresql://reader:test-only@db.example/app?sslmode=" + mode, Database: "app"}); err == nil {
+			t.Fatalf("unverified middle mode %q accepted", mode)
+		}
+	}
+	if _, err := sourceConnection(adapter.ConnectionSpec{Engine: "postgresql", DSN: "postgresql://reader:test-only@db.example/app?sslmode=disable&sslrootcert=/tmp/ca", Database: "app"}); err == nil {
+		t.Fatal("client TLS file option accepted with sslmode=disable")
+	}
+}
+
 func TestSourceConnectionRejectsPlaintextAndClientFileInjection(t *testing.T) {
 	for _, dsn := range []string{
 		"postgresql://reader:test-only@db.example/app?sslmode=require",
-		"postgresql://reader:test-only@db.example/app?sslmode=disable",
 		"postgresql://reader:test-only@db.example/app?sslmode=verify-full&passfile=/tmp/key",
 		"postgresql://reader:test-only@db.example/app?sslmode=verify-full&host=/var/run/postgresql",
 		"postgresql://reader:test-only@db.example/app?sslmode=verify-full&options=-csearch_path=other",

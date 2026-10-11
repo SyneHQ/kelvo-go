@@ -72,8 +72,16 @@ func sourceConnection(spec adapter.ConnectionSpec) (adapter.Connection, error) {
 			return c, adapter.ErrInvalid
 		}
 		params, err := url.ParseQuery(u.RawQuery)
-		if err != nil || params.Get("sslmode") != "verify-full" {
+		// Only the two explicit modes exist. "disable" is the saved connection's
+		// own TLS-off choice (databases without TLS, or hosts reached through an
+		// already encrypted Rabbit tunnel). "require", "prefer" and other
+		// unverified middle modes stay rejected.
+		sslmode := params.Get("sslmode")
+		if err != nil || (sslmode != "verify-full" && sslmode != "disable") {
 			return c, adapter.ErrInvalid
+		}
+		if sslmode == "disable" {
+			c.Options = map[string]string{"sslmode": "disable"}
 		}
 		for key, values := range params {
 			if len(values) != 1 {

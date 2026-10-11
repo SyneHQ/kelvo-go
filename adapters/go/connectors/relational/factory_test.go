@@ -46,6 +46,29 @@ func TestPostgresConfigUsesExplicitIdentityAndVerifiedTLS(t *testing.T) {
 	}
 }
 
+func TestPostgresConfigPlaintextOnlyWhenExplicitlyDisabled(t *testing.T) {
+	cleanPostgresEnvironment(t)
+	c := testConnection()
+	c.Options = map[string]string{"sslmode": "disable"}
+	config, err := postgresConfig(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.TLSConfig != nil || len(config.Fallbacks) != 0 || config.Host != c.Host || config.User != c.Username {
+		t.Fatalf("explicit plaintext source not plain or lost identity: tls=%v fallbacks=%d", config.TLSConfig != nil, len(config.Fallbacks))
+	}
+	c.Options = nil
+	c.TLS = &tls.Config{MinVersion: tls.VersionTLS12, ServerName: "source.example"}
+	config, err = postgresConfig(c)
+	if err != nil || config.TLSConfig == nil || config.TLSConfig.InsecureSkipVerify {
+		t.Fatalf("default must remain verified TLS: %v", err)
+	}
+	c.Options = map[string]string{"sslmode": "require"}
+	if config, err = postgresConfig(c); err != nil || config.TLSConfig == nil {
+		t.Fatal("unknown option value must not weaken TLS")
+	}
+}
+
 func TestMySQLConfigDisablesUnsafeDriverFeatures(t *testing.T) {
 	c := testConnection()
 	c.Engine = "mysql"
