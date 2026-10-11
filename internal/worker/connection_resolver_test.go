@@ -34,7 +34,7 @@ import (
 func TestMongoAuthenticationDatabaseCannotSelectExternalCredentials(t *testing.T) {
 	for _, authSource := range []string{"", "%24external", "bad%2Fname", "bad%5Cname", "bad.name", "bad%20name", "bad%00name", "bad%0Aname", strings.Repeat("a", 64)} {
 		dsn := "mongodb://reader:fixture-password@database.example:27017/?tls=true&authSource=" + authSource
-		if validConnectionDSN("mongodb", dsn, "analytics") {
+		if validConnectionDSN("mongodb", dsn, "analytics", false) {
 			t.Fatal("invalid authentication database accepted", authSource)
 		}
 	}
