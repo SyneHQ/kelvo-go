@@ -20,7 +20,8 @@ import (
 // Production uses an explicit ordinary or inherited-channel source path;
 // the parent pipe supplies authority after durable dispatch and current resolve.
 type Runner struct {
-	Open func(context.Context, adapter.ConnectionSpec, operations.Request) (adapter.Session, error)
+	Open         func(context.Context, adapter.ConnectionSpec, operations.Request) (adapter.Session, error)
+	SessionCache *SessionCache
 }
 
 func (r Runner) Run(parent context.Context, input io.Reader, output io.Writer, receiptOutput io.Writer) error {
@@ -155,6 +156,11 @@ func (r Runner) execute(parent context.Context, input adapter.ProcessRequest, ou
 	}
 	receipt.Outcome = operations.Failed
 	receipt.ErrorCode = "SOURCE_FAILED"
+	return executeInvocation(ctx, input, invocation, session, output, receipt)
+}
+
+func executeInvocation(ctx context.Context, input adapter.ProcessRequest, invocation adapter.Invocation, session adapter.Session, output io.Writer, receipt operations.Receipt) (operations.Receipt, error) {
+	limits := adapter.Limits{MaxRows: input.Limits.MaxRows, MaxBytes: input.Limits.MaxBytes, BatchRows: input.Limits.BatchRows}
 	switch {
 	case invocation.Migration != nil:
 		return executeMigration(ctx, input, session, output, receipt)
@@ -212,6 +218,7 @@ func (r Runner) execute(parent context.Context, input adapter.ProcessRequest, ou
 		wire := &boundedHashWriter{writer: output, hash: sha256.New(), maximum: input.Limits.MaxBytes}
 		sink := &arrowSink{ctx: ctx, wire: wire, maxRows: input.Limits.MaxRows, batchRows: int64(input.Limits.BatchRows)}
 		var stats adapter.QueryStats
+		var err error
 		if invocation.Query != nil {
 			s, ok := session.(adapter.QuerySession)
 			if !ok {
