@@ -172,6 +172,33 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	if parent == nil || resolve == nil || e == nil || e.Limits.Validate() != nil || !operations.ValidID(operationID) || !operations.ValidDigest(requestSHA256) {
 		return receipt, operationFailure("INVALID_ARGUMENT")
 	}
+	var resolvedOnce bool
+	var cachedResolved adapter.ProcessRequest
+	var cachedPrivate *privateOperationChannel
+	var cachedResolveErr error
+	wrappedResolve := func(ctx context.Context) (adapter.ProcessRequest, *privateOperationChannel, error) {
+		if !resolvedOnce {
+			cachedResolved, cachedPrivate, cachedResolveErr = resolve(ctx)
+			resolvedOnce = true
+		}
+		return cachedResolved, cachedPrivate, cachedResolveErr
+	}
+	if e.WarmPool != nil && e.WarmPool.Config().Enabled {
+		resolvedInput, priv, err := wrappedResolve(parent)
+		if err == nil && priv == nil && e.WarmPool.IsEligible(resolvedInput) {
+			warmReceipt, warmErr := e.WarmPool.Execute(parent, e, cfg, resolvedInput, sink)
+			if finalizer, ok := sink.(OperationFinalizer); ok {
+				warmReceipt, warmErr = finalizer.FinalizeOperation(warmReceipt, warmErr)
+			}
+			if observer, ok := sink.(OperationCleanupObserver); ok {
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				_ = observer.OperationCleaned(cleanupCtx)
+				cancel()
+			}
+			return warmReceipt, warmErr
+		}
+	}
+	resolve = wrappedResolve
 	parent, recorder = privateOpenDiagnosticContext(parent, cfg.PrivateOpenDiagnostics, operationID)
 	if e.ScratchRoot == nil || e.SandboxPath == "" || e.ResourcePool == nil || e.Containment == nil || containment.FromContext(parent) != nil ||
 		!e.ContainmentBudget.FitsOverhead(int64(e.Limits.MemoryMB), e.ResourceOverheadBytes>>20) {

@@ -52,6 +52,12 @@ func (n *Node) initOperations(ctx context.Context) (resultErr error) {
 		}
 	}()
 	var err error
+	if c.WarmPool != nil && c.WarmPool.Enabled {
+		native.WarmPool, err = worker.NewWarmPoolManager(*c.WarmPool, nil)
+		if err != nil {
+			return err
+		}
+	}
 	bindings := make(map[string]worker.PrivateOperationBinding, len(c.PrivateSources))
 	for principal, config := range c.PrivateSources {
 		trust, trustErr := operationTrust(n.cfg.Policy, principal)
@@ -114,6 +120,11 @@ func (s *nodeOperations) close(ctx context.Context) error {
 	if s.results != nil {
 		if err := s.results.Close(); err != nil {
 			return errors.Join(resultErr, err)
+		}
+	}
+	if s.executor != nil && s.executor.WarmPool != nil {
+		if err := s.executor.WarmPool.Drain(ctx); err != nil {
+			resultErr = errors.Join(resultErr, err)
 		}
 	}
 	if s.custody != nil {
