@@ -291,12 +291,13 @@ func TestWarmPool_RevisionChangeEviction(t *testing.T) {
 	}
 }
 
-func TestWarmPool_CredentialExpiryEviction(t *testing.T) {
+// Source credentials live for seconds. A lapsed window must not evict an idle
+// worker; the next authorized request for the same revision reuses it and
+// brings its own window.
+func TestWarmPool_IdleWorkerSurvivesCredentialWindow(t *testing.T) {
 	cfg := DefaultWarmPoolConfig()
 	cfg.Enabled = true
-	launcher := &mockLauncher{}
-
-	mgr, err := NewWarmPoolManager(cfg, launcher)
+	mgr, err := NewWarmPoolManager(cfg, &mockLauncher{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,27 +305,22 @@ func TestWarmPool_CredentialExpiryEviction(t *testing.T) {
 
 	exec := &Executor{Limits: query.Limits{MemoryMB: 64, Timeout: 5 * time.Second}}
 	req := testProcessRequest("op-cred", "tenant-a", "team-a", "conn-1", strings.Repeat("1", 64))
-	// Valid until 1 second from now
-	req.CredentialsValidUntil = time.Now().Unix() + 1
-
 	w, release, err := mgr.Acquire(context.Background(), exec, OperationProcessConfig{}, req)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Artificially expire worker credentials
 	w.credentialsValidUntil = time.Now().Unix() - 1
 	release(nil)
+	mgr.reapExpired()
 
-	// Next acquire should evict it due to credential expiry
 	req2 := testProcessRequest("op-cred2", "tenant-a", "team-a", "conn-1", strings.Repeat("1", 64))
-	_, release2, err := mgr.Acquire(context.Background(), exec, OperationProcessConfig{}, req2)
+	w2, release2, err := mgr.Acquire(context.Background(), exec, OperationProcessConfig{}, req2)
 	if err != nil {
 		t.Fatal(err)
 	}
 	release2(nil)
-
-	if mgr.Metrics().EvictionsTTL.Load() < 1 {
-		t.Fatalf("expected credential eviction count >= 1, got %d", mgr.Metrics().EvictionsTTL.Load())
+	if w2 != w || w2.credentialsValidUntil != req2.CredentialsValidUntil || mgr.Metrics().Hits.Load() != 1 || mgr.Metrics().EvictionsTTL.Load() != 0 {
+		t.Fatalf("idle worker was not reused after its credential window: hits=%d evictions=%d", mgr.Metrics().Hits.Load(), mgr.Metrics().EvictionsTTL.Load())
 	}
 }
 

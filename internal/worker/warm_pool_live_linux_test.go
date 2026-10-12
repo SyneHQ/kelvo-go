@@ -227,7 +227,7 @@ func TestContainedWarmAdapterReusesPostgresConnection(t *testing.T) {
 			Limits: adapter.ProcessLimits{MaxRows: 100, MaxBytes: 1 << 20, BatchRows: 10, TimeoutMS: 10000},
 			Source: adapter.ConnectionSpec{Engine: "postgres", DSN: dsn, TenantID: "tenant-a", ConnectionID: request.Connection.ID,
 				Revision: "revision-1", Database: database, Schema: "public"},
-			CredentialsValidUntil: now + 30, ExpiresAt: now + 60}
+			CredentialsValidUntil: now + 5, ExpiresAt: now + 60}
 		var values []int64
 		sink := &workerTestSink{write: func(batch arrow.RecordBatch) error {
 			values = append(values, batch.Column(0).(*array.Int64).Int64Values()...)
@@ -255,7 +255,10 @@ func TestContainedWarmAdapterReusesPostgresConnection(t *testing.T) {
 			_ = mgr.Drain(context.Background())
 		}
 	}()
-	first, second, third := backend("warm-1"), backend("warm-2"), backend("warm-3")
+	first, second := backend("warm-1"), backend("warm-2")
+	// Outlast the five-second credential window of the earlier requests.
+	time.Sleep(6 * time.Second)
+	third := backend("warm-3")
 	metrics := mgr.Metrics()
 	if first != second || second != third || metrics.Spawns.Load() != 1 || metrics.Hits.Load() != 2 || metrics.Fallbacks.Load() != 0 {
 		t.Fatal("warm worker did not reuse one PostgreSQL connection", first, second, third, metrics.Spawns.Load(), metrics.Hits.Load(), metrics.Fallbacks.Load())
