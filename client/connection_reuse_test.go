@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/SYNEHQ/kelvo-go/internal/connreuse"
+	"github.com/SYNEHQ/kelvo-go/client/connreuse"
 )
 
 // Sequential calls share one connection, and a call that fails ambiguously on
