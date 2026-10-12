@@ -21,6 +21,7 @@ type OperationNodeConfig struct {
 	MaxConcurrent  int                                      `yaml:"max_concurrent"`
 	MaxDownloads   int                                      `yaml:"max_downloads"`
 	PollInterval   time.Duration                            `yaml:"poll_interval"`
+	WarmPool       *worker.WarmPoolConfig                   `yaml:"warm_pool,omitempty"`
 }
 
 func validateNodeOperations(c NodeConfig) error {
@@ -48,6 +49,11 @@ func validateNodeOperations(c NodeConfig) error {
 	// IPC/serialization overhead. Persistent result disk has a separate budget.
 	if c.Resources.OverheadMB < 8 || operationDownloadMemory(o) > (c.Resources.MemoryMB-c.Resources.BaselineMB)<<20 {
 		return errOperationConfig
+	}
+	if o.WarmPool != nil {
+		if err := o.WarmPool.Validate(); err != nil {
+			return errOperationConfig
+		}
 	}
 	if err := validatePrivateNodeOperations(c); err != nil {
 		return err

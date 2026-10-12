@@ -92,6 +92,7 @@ type Executor struct {
 	// delegation issuer. No resolver identity or proof enters child stdin.
 	connectionResolvers map[string]*ConnectionResolver
 	connectionSourceIDs map[string]string
+	WarmPool            *WarmPoolManager
 }
 
 type boundCatalog struct {
