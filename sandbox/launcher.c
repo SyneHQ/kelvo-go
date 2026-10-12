@@ -227,7 +227,10 @@ static void add_runtime_paths(int ruleset) {
 		"/usr/share/ca-certificates", NULL,
 	};
 	static const char *const config_files[] = {
-		"/etc/hosts", "/etc/resolv.conf", "/etc/nsswitch.conf", "/etc/ld.so.cache", NULL,
+		"/etc/hosts", "/etc/resolv.conf", "/etc/nsswitch.conf", "/etc/ld.so.cache",
+		// modernc.org/libc (linked through the SQLite operation store) reads
+		// these at init and panics on any error other than ENOENT.
+		"/etc/protocols", "/etc/services", NULL,
 	};
 	for (size_t i = 0; executable_trees[i] != NULL; ++i)
 		add_optional_runtime_rule(ruleset, executable_trees[i], fs_runtime);
