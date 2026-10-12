@@ -176,9 +176,11 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	var cachedResolved adapter.ProcessRequest
 	var cachedPrivate *privateOperationChannel
 	var cachedResolveErr error
+	// Captured before resolve is reassigned below; calling resolve here would recurse.
+	resolveOnce := resolve
 	wrappedResolve := func(ctx context.Context) (adapter.ProcessRequest, *privateOperationChannel, error) {
 		if !resolvedOnce {
-			cachedResolved, cachedPrivate, cachedResolveErr = resolve(ctx)
+			cachedResolved, cachedPrivate, cachedResolveErr = resolveOnce(ctx)
 			resolvedOnce = true
 		}
 		return cachedResolved, cachedPrivate, cachedResolveErr
