@@ -1,0 +1,45 @@
+name: Qualification build
+# Builds the exact native release binaries for a qualification pair from the
+# repository Dockerfile. Runs only on qual/** branches; publishes nothing.
+on:
+  push:
+    branches: ['qual/**']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: new
+            sha: bd93afa70a6554ec67b5fb90be52fea72c27ddfc
+            bridge: '0'
+            target: adapter-build
+          - name: new-bridge
+            sha: bd93afa70a6554ec67b5fb90be52fea72c27ddfc
+            bridge: '1'
+            target: build
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ matrix.sha }}
+      - name: Build from the release Dockerfile
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ matrix.sha }}"
+          docker buildx build --target ${{ matrix.target }} --build-arg DUCKBRIDGE=${{ matrix.bridge }} \
+            --build-arg VERSION=${{ matrix.sha }} --load -t qual:${{ matrix.name }} .
+          id=$(docker create qual:${{ matrix.name }})
+          docker cp "$id:/out" out
+          docker rm "$id"
+          cd out
+          rm -f kelvo-adapter-go.sha256
+          sha256sum * | tee SHA256SUMS
+          git -C .. rev-parse HEAD > SOURCE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kelvo-native-${{ matrix.name }}-${{ matrix.sha }}
+          path: out/
+          retention-days: 14
