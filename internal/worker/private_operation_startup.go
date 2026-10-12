@@ -10,7 +10,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"strings"
 	"syscall"
@@ -126,8 +125,8 @@ func NewPrivateOperations(e *Executor, workerID, identity string, maxConcurrent 
 		if r == nil || r.client == nil {
 			return fail()
 		}
-		tr, ok := r.client.Transport.(*http.Transport)
-		if !ok || tr.TLSClientConfig == nil || len(tr.TLSClientConfig.Certificates) != 1 {
+		tr := r.transport
+		if tr == nil || tr.TLSClientConfig == nil || len(tr.TLSClientConfig.Certificates) != 1 {
 			return fail()
 		}
 		pair := tr.TLSClientConfig.Certificates[0]

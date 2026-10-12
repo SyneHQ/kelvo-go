@@ -10,7 +10,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -30,7 +29,7 @@ import (
 func privateRuntimeFixture(t *testing.T, f *privateResolutionFixture) *privateOperationRuntime {
 	t.Helper()
 	p := f.policy
-	pair := p.resolver.client.Transport.(*http.Transport).TLSClientConfig.Certificates[0]
+	pair := p.resolver.transport.TLSClientConfig.Certificates[0]
 	key, err := x509.MarshalPKCS8PrivateKey(pair.PrivateKey)
 	if err != nil {
 		t.Fatal(err)

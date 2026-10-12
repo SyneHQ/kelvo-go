@@ -283,7 +283,7 @@ func newBudgetFixtureProxy(t *testing.T, f *privateResolutionFixture, source str
 	}}
 	p.server.StartTLS()
 	t.Cleanup(func() { p.close(t) })
-	pair := f.policy.resolver.client.Transport.(*http.Transport).TLSClientConfig.Certificates[0]
+	pair := f.policy.resolver.transport.TLSClientConfig.Certificates[0]
 	privateDER, err := x509.MarshalPKCS8PrivateKey(pair.PrivateKey)
 	if err != nil {
 		t.Fatal(err)
