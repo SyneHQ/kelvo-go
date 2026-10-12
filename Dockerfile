@@ -5,6 +5,8 @@ WORKDIR /src
 ENV CGO_ENABLED=1 GOTOOLCHAIN=local GOMAXPROCS=2
 COPY go.mod go.sum ./
 COPY third_party/go-ora-v2.9.0 ./third_party/go-ora-v2.9.0
+# Only the bounded-reuse transport: the worker shares it with the public SDK.
+COPY client/connreuse ./client/connreuse
 COPY cmd ./cmd
 COPY internal ./internal
 COPY adapter ./adapter
