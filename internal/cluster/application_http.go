@@ -175,7 +175,7 @@ func (a *Application) ready() bool {
 	a.mu.Lock()
 	draining := a.draining || a.closed
 	a.mu.Unlock()
-	return a.started.Load() && !draining && !a.failed.Load() && a.runtime.Err() == nil && a.audit.Ready() && a.executor.Containment.Healthy()
+	return a.started.Load() && !draining && !a.failed.Load() && a.runtime.Err() == nil && a.audit.Ready() && a.executor.Containment.Err() == nil
 }
 
 func applicationBody(w http.ResponseWriter, r *http.Request, limit int64) ([]byte, error) {
