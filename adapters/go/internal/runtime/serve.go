@@ -191,6 +191,10 @@ func (r Runner) Serve(parent context.Context, input io.Reader, output io.Writer)
 	}
 }
 
+// reusableSession is implemented by sessions that can serve several requests
+// on one source connection once KeepOpen has been called.
+type reusableSession interface{ KeepOpen() }
+
 func (r Runner) executeServeRequest(
 	ctx context.Context,
 	cache *SessionCache,
@@ -221,7 +225,11 @@ func (r Runner) executeServeRequest(
 
 	openCtx, stopOpen := context.WithDeadline(ctx, time.Unix(input.CredentialsValidUntil, 0))
 	session, err := cache.Get(openCtx, key, func(c context.Context) (adapter.Session, error) {
-		return open(c, input.Source, input.Request)
+		opened, err := open(c, input.Source, input.Request)
+		if keep, ok := opened.(reusableSession); ok && err == nil {
+			keep.KeepOpen()
+		}
+		return opened, err
 	})
 	stopOpen()
 
@@ -247,7 +255,14 @@ func (r Runner) executeServeRequest(
 		return execReceipt, execErr
 	}
 
-	// Success: keep connection warm in cache
+	// Only a session that declared reuse support stays warm. Every other
+	// session is single-use by contract and is closed like a one-shot run.
+	if _, ok := session.(reusableSession); !ok {
+		if err := session.Close(); err != nil {
+			return execReceipt, errors.New("adapter session cleanup failed")
+		}
+		return execReceipt, nil
+	}
 	cache.Put(key, session)
 	return execReceipt, nil
 }

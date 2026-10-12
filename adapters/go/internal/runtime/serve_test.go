@@ -22,6 +22,7 @@ import (
 )
 
 type fakeQuerySession struct {
+	kept   bool
 	closed bool
 	mu     sync.Mutex
 	err    error
@@ -33,6 +34,8 @@ func (s *fakeQuerySession) Close() error {
 	s.closed = true
 	return nil
 }
+
+func (s *fakeQuerySession) KeepOpen() { s.kept = true }
 
 func (s *fakeQuerySession) isClosed() bool {
 	s.mu.Lock()
@@ -430,3 +433,75 @@ func TestServeLoop_ExpiredCredentialsRejected(t *testing.T) {
 var _ = sha256.New
 var _ = hex.EncodeToString
 var _ = bytes.NewReader
+
+// singleUseSession does not declare reuse support, like every session whose
+// first read consumes its connection.
+type singleUseSession struct{ inner *fakeQuerySession }
+
+func (s singleUseSession) Close() error { return s.inner.Close() }
+func (s singleUseSession) Query(ctx context.Context, q adapter.Query, sink adapter.Sink) (adapter.QueryStats, error) {
+	return s.inner.Query(ctx, q, sink)
+}
+
+func serveOneRequest(t *testing.T, in io.Writer, out io.Reader, opID string) {
+	t.Helper()
+	request := validTestProcessRequest(opID, "tenant-1", "team-1", "conn-1", strings.Repeat("a", 64), operations.QueryRead)
+	raw, err := adapter.EncodeProcessRequest(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := frame.WriteRequest(in, raw); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		kind, payload, err := frame.Read(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kind == frame.Receipt {
+			var receipt operations.Receipt
+			if json.Unmarshal(payload, &receipt) != nil || receipt.Outcome != operations.Completed {
+				t.Fatalf("request %s did not complete: %s", opID, payload)
+			}
+			return
+		}
+		if kind != frame.Result {
+			t.Fatalf("unexpected frame type: %v", kind)
+		}
+	}
+}
+
+// A session is kept warm only after it accepted KeepOpen. A single-use session
+// is closed after each request and opened again for the next one.
+func TestServeLoop_OnlyReusableSessionsStayWarm(t *testing.T) {
+	for _, reusable := range []bool{true, false} {
+		inR, inW := io.Pipe()
+		outR, outW := io.Pipe()
+		var opened []*fakeQuerySession
+		runner := Runner{SessionCache: &SessionCache{TTL: 30 * time.Minute, Max: 4},
+			Open: func(context.Context, adapter.ConnectionSpec, operations.Request) (adapter.Session, error) {
+				session := &fakeQuerySession{}
+				opened = append(opened, session)
+				if reusable {
+					return session, nil
+				}
+				return singleUseSession{session}, nil
+			}}
+		done := make(chan error, 1)
+		go func() { done <- runner.Serve(context.Background(), inR, outW) }()
+		serveOneRequest(t, inW, outR, "op-1")
+		serveOneRequest(t, inW, outR, "op-2")
+		if reusable && (len(opened) != 1 || !opened[0].kept || opened[0].isClosed()) {
+			t.Fatalf("reusable session was not kept warm: opens=%d", len(opened))
+		}
+		if !reusable && (len(opened) != 2 || opened[0].kept || !opened[0].isClosed() || !opened[1].isClosed()) {
+			t.Fatalf("single-use session was reused or left open: opens=%d", len(opened))
+		}
+		if err := frame.WriteClose(inW); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
