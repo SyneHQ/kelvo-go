@@ -29,6 +29,33 @@ five-second credentials and grants expire before they are used.
 
 Raising limits does not fix this. Four workers queued; forty collapsed.
 
+## Product workloads
+
+Kelvo and db-api serve a DataGrip-style product: a database explorer, a query
+console, charts and dashboards, and data-analysis jobs, across many sources and
+tenants. These are different workloads and the engine has to treat them
+differently. Today it has two paths, a transient query and a durable operation,
+and the product's traffic is spread over them by accident of history.
+
+| Workload | Shape | Needs | Right path |
+| --- | --- | --- | --- |
+| **Explorer**: schema tree, table list, columns, row preview (`LIMIT 50`), counts | Bursts of 20-50 tiny reads when a page opens; same connection; results small | Sub-second, no durability, never refused on a burst | Pooled read worker. Metadata inspection moves here too |
+| **Console**: user-typed SQL, paged results, cancel | One or two at a time per session; results can be large; writes possible | Streaming results, prompt cancellation, writes with receipts | Reads: pooled worker. Writes and migrations: durable operation |
+| **Dashboards and charts**: N panels, periodic refresh, many viewers of one dashboard | Parallel small aggregates; the same query repeats across viewers and refreshes | Seconds are fine; dedupe and cache identical queries; a dashboard must not starve the explorer | Pooled worker behind a result cache, or an accelerated snapshot |
+| **Analysis jobs**: AI-driven query sequences, cross-source joins, exports | Minutes; parallel inside a job; federated through DuckDB | Durable, resumable, receipts, per-job memory, queued behind a fair scheduler | Durable operation with the DuckDB child, in its own capacity class |
+
+Two consequences drive the rest of this document:
+
+1. **Explorer and dashboard traffic is interactive and small; it must not share
+   a process-per-query engine or a durable store with analysis jobs.** Today
+   metadata inspection is a durable operation (`operation_submit`), which is why
+   explorer page opens fill the operation store and fail with 409 under load.
+2. **Capacity is per workload class, not one number.** Kelvo's admission pool
+   already has classes (interactive, refresh, export). The read worker pool is
+   the interactive class; analysis jobs and refreshes take the background class;
+   neither can take the other's slots. Within a class, per-tenant and
+   per-connection caps keep one dashboard from starving another tenant.
+
 ## What is wrong with the current read path
 
 1. **One process per read.** `Executor.execute` (`internal/worker/worker.go`)
@@ -53,16 +80,23 @@ Raising limits does not fix this. Four workers queued; forty collapsed.
 
 ## Goals
 
-- A read on a warm connection costs one query round trip to the source and no
-  process start, no connect, no credential resolve.
-- One customer connection can run 50 reads at once on the current 2 vCPU node.
+- Explorer and dashboard reads on a warm connection cost one query round trip
+  to the source: no process start, no connect, no credential resolve.
+- One customer connection can run 50 interactive reads at once on the current
+  2 vCPU node; an explorer page open never produces an error from capacity.
+- Metadata inspection leaves the durable path and shares the read worker.
+- Identical dashboard queries within a short window are served once.
+- Analysis jobs keep durability, receipts and per-job limits, in a capacity
+  class that cannot delay interactive reads.
 - A burst above capacity waits briefly, then gets a clear retryable answer.
-- Parallelism is a node setting that takes effect on restart.
+- Parallelism per class is a node setting that takes effect on restart.
 - Isolation between tenants and between connections is unchanged.
 
 ## Non-goals
 
-- Analytical and federated queries. They keep the DuckDB child and its limits.
+- Changing how analysis jobs execute. Federated and analytical queries keep the
+  DuckDB child, durability and per-job limits; this design only fences their
+  capacity off from interactive reads.
 - Writes, migrations, ingestion, file sources, JDBC and private-transport
   (tunnel) sources. They keep the one-shot operation path for now.
 - Cross-node pooling or routing.
@@ -189,7 +223,9 @@ PostgreSQL, like the two gates added in #209.
 | --- | --- | --- |
 | 0 | Release #211 and db.api.go#60; caller logs error codes | Trace shows one gateway connection per burst; a 3x-capacity burst returns no errors |
 | 1 | Stream IDs and `Cancel` in the frame protocol; concurrent serve loop; connection pool in the relational session | 50 concurrent reads on one worker; `pg_backend_pid()` shows at most `pool_size` backends; one failing read does not disturb the others |
-| 2 | In-flight accounting in the pool manager; route native reads to read workers; fallback | Dashboard replay: 50 parallel reads on the 2 vCPU node, no failure, p50 and p95 recorded |
+| 2 | In-flight accounting in the pool manager; route native reads **and metadata inspection** to read workers; fallback | Explorer page replay: 50 parallel reads and inspections on the 2 vCPU node, no failure, p50 and p95 recorded |
+| 2b | Admission classes: interactive (read workers) and background (durable operations, refreshes) with separate slots; per-tenant and per-connection caps | A 5-minute analysis job running at full background capacity does not change explorer p95 |
+| 2c | Dashboard result cache: identical (tenant, connection, revision, SQL, params) within `cache_ttl` served from one execution | Ten viewers of one dashboard produce one source query per panel per refresh |
 | 3 | Credentials once per connection; periodic re-authorization; revision eviction under load | Revoked or changed source is refused within `reauthorize_every` |
 | 4 | Read capacity out of cluster metadata; audit journal no longer bound to `max_pending` | Capacity change by restart only |
 | 5 | Single-call transient read between caller and gateway | Trace shows one request per read |
@@ -215,3 +251,6 @@ To be confirmed by the phase 2 gate, not promised here:
 4. Does the transient read keep using the query API, or become a transient
    operation kind so that reads and metadata inspection share one path?
 5. How are read workers accounted when several nodes serve one tenant?
+6. Dashboard cache: what `cache_ttl`, and does a viewer ever need to bypass it?
+7. Console writes: keep the durable operation path, or add a lighter
+   "interactive write" with a receipt but no 30-minute retention?
