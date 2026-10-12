@@ -311,7 +311,6 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			busy:                  true,
 		}
 		m.workers[workerID] = entry
-		m.metrics.Spawns.Add(1)
 		m.mu.Unlock()
 
 		// Launch process outside mutex
@@ -325,6 +324,8 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			return nil, nil, err
 		}
 
+		// Count only workers that actually started; refused launches are fallbacks.
+		m.metrics.Spawns.Add(1)
 		entry.proc = proc
 		entry.cleanup = cleanup
 
