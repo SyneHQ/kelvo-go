@@ -38,6 +38,8 @@ func init() {
 	switch os.Args[1] {
 	case "worker":
 		os.Exit(operationFixtureMain())
+	case "serve":
+		os.Exit(operationFixtureServe())
 	case "--operation-descendant":
 		time.Sleep(time.Hour)
 		os.Exit(0)
