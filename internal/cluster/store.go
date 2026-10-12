@@ -36,7 +36,28 @@ type NATSStore struct {
 	js       jetstream.JetStream
 	kv       jetstream.KeyValue
 	consumer jetstream.Consumer
+	now      func() time.Time // nil means time.Now; tests set it
 }
+
+func (s *NATSStore) clock() time.Time {
+	if s.now != nil {
+		return s.now().UTC()
+	}
+	return time.Now().UTC()
+}
+
+// A terminal job keeps its slot for this long after its last transition. The
+// client confirms a job's state after it has read the result stream; a slot
+// reused before that confirmation turns a completed query into NOT_FOUND.
+// The lease duration already bounds how long a worker may stay silent, so it
+// also bounds the client's confirmation round trip.
+func (s *NATSStore) slotReusable(j Job, now time.Time) bool {
+	if now.After(j.ExpiresAt) {
+		return true
+	}
+	return j.Terminal() && now.Sub(j.HeartbeatAt) >= s.policy.LeaseDuration
+}
+
 type workerLease struct {
 	Owner       string    `json:"owner"`
 	HeartbeatAt time.Time `json:"heartbeat_at"`
@@ -157,7 +178,7 @@ func OpenStore(parent context.Context, c NATSConfig, p Policy, initialize bool) 
 	if err := validateResources(ctx, js, meta, kv, st, co, p); err != nil {
 		return fail(err)
 	}
-	return &NATSStore{p, nc, js, kv, co}, nil
+	return &NATSStore{policy: p, nc: nc, js: js, kv: kv, consumer: co}, nil
 }
 
 func workerCapacity(p Policy) int {
@@ -328,7 +349,7 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 	if err != nil {
 		return Snapshot{}, err
 	}
-	now := time.Now().UTC()
+	now := s.clock()
 	for n := 0; n < s.policy.MaxQueries; n++ {
 		key := fmt.Sprintf("slot.%x", n)
 		id, err := newID(n)
@@ -355,7 +376,7 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 		if e != nil {
 			return Snapshot{}, errors.New("job store unavailable")
 		}
-		if !prev.Terminal() && !now.After(prev.ExpiresAt) {
+		if !s.slotReusable(prev, now) {
 			continue
 		}
 		rev, e = s.kv.Update(ctx, key, b, old.Revision())

@@ -221,6 +221,15 @@ func TestNATSStoreAdmissionCASAndReuse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("commit successful result: %v", err)
 	}
+	// The client confirms the terminal state after reading the result stream.
+	// Until the lease duration has passed, the slot is not handed out again.
+	if _, err = store.Submit(ctx, request); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("terminal slot was reused before the client could confirm it: %v", err)
+	}
+	if got, err := store.Get(ctx, succeeded.Job.ID); err != nil || got.Job.State != Succeeded {
+		t.Fatalf("terminal job unreadable during its grace: %v %v", got.Job.State, err)
+	}
+	store.now = func() time.Time { return time.Now().Add(store.policy.LeaseDuration + time.Second) }
 	replacement, err := store.Submit(ctx, request)
 	if err != nil {
 		t.Fatalf("reuse terminal slot: %v", err)
