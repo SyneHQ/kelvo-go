@@ -1,0 +1,47 @@
+name: Qualification build
+# Builds the exact native release binaries for a qualification pair from the
+# repository Dockerfile. Runs only on qual/** branches; publishes nothing.
+on:
+  push:
+    branches: ['qual/**']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: old
+            sha: 3fd0728b2382d1d31d955e189a60a0be27ddd396
+          - name: new
+            sha: 73e57abed6fdfe65bf4ee7703eb3ab967969fe07
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ matrix.sha }}
+      - name: Build from the release Dockerfile
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ matrix.sha }}"
+          docker buildx build --target adapter-build --build-arg DUCKBRIDGE=0 \
+            --build-arg VERSION=${{ matrix.sha }} --load -t qual:${{ matrix.name }} .
+          id=$(docker create qual:${{ matrix.name }})
+          docker cp "$id:/out" out
+          docker rm "$id"
+          cd out
+          sha256sum kelvo kelvo-landlock kelvo-adapter-go | tee SHA256SUMS
+          git -C .. rev-parse HEAD > SOURCE
+          git -C .. archive --format=tar HEAD | sha256sum | cut -d' ' -f1 > SOURCE_ARCHIVE_SHA256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kelvo-native-${{ matrix.name }}-${{ matrix.sha }}
+          path: |
+            out/kelvo
+            out/kelvo-landlock
+            out/kelvo-adapter-go
+            out/SHA256SUMS
+            out/SOURCE
+            out/SOURCE_ARCHIVE_SHA256
+          retention-days: 14
