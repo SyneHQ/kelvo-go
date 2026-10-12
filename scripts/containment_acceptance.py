@@ -40,6 +40,7 @@ WORKER_GATES = [
     "TestContainedOperationResolvesOnlyAfterAdmission", "TestContainedOperationCleanupObserverAfterPhysicalDrain",
     "TestContainedFileMutationPublishesOnlyVerifiedCandidate",
     "TestContainedOperationUncertainLaunchKeepsSourceEffectsUnknown",
+    "TestContainedWarmWorkerServesRepeatedRequests",
 ]
 OPERATION_LEAVES = {
     "TestContainedOperationCleanupObserverAfterPhysicalDrain": (
