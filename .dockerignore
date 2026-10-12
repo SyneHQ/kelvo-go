@@ -3,6 +3,9 @@
 !go.sum
 !LICENSE
 !NOTICE
+!client
+!client/connreuse
+!client/connreuse/**
 !cmd
 !cmd/**
 !internal
