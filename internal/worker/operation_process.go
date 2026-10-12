@@ -189,15 +189,16 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 		resolvedInput, priv, err := wrappedResolve(parent)
 		if err == nil && priv == nil && e.WarmPool.IsEligible(resolvedInput) {
 			warmReceipt, warmErr := e.WarmPool.Execute(parent, e, cfg, resolvedInput, sink)
-			if finalizer, ok := sink.(OperationFinalizer); ok {
-				warmReceipt, warmErr = finalizer.FinalizeOperation(warmReceipt, warmErr)
+			// errWarmUnavailable: nothing reached a worker; run one-shot below.
+			if !errors.Is(warmErr, errWarmUnavailable) {
+				if observer, ok := sink.(OperationCleanupObserver); ok {
+					cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					_ = observer.OperationCleaned(cleanupCtx)
+					cancel()
+				}
+				// The deferred finalizer above runs exactly once for this result.
+				return warmReceipt, warmErr
 			}
-			if observer, ok := sink.(OperationCleanupObserver); ok {
-				cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				_ = observer.OperationCleaned(cleanupCtx)
-				cancel()
-			}
-			return warmReceipt, warmErr
 		}
 	}
 	resolve = wrappedResolve
