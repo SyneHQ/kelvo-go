@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 	"os/exec"
 	"time"
 
@@ -21,7 +20,7 @@ type linuxWorkerProcess struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
-	job    containment.Job
+	job    containment.Process
 }
 
 func (p *linuxWorkerProcess) Stdin() io.Writer { return p.stdin }
@@ -101,7 +100,7 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 		return nil, nil, err
 	}
 
-	job, err := e.Containment.PrepareProcess(processLimits, holdProcess)
+	job, err := e.Containment.PrepareProcess(custody, processLimits, holdProcess)
 	if err != nil {
 		holdProcess()
 		_ = binary.Close()
@@ -135,7 +134,7 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 		return nil, nil, err
 	}
 
-	if err := job.Start(command); err != nil {
+	if err := job.Start(ctx, command); err != nil {
 		_ = stdinPipe.Close()
 		_ = stdoutPipe.Close()
 		_ = binary.Close()
