@@ -206,9 +206,11 @@ func (m *WarmPoolManager) reapExpired() {
 
 	for id, w := range m.workers {
 		if !w.busy {
-			expiredTTL := now.Sub(w.lastActive) >= m.cfg.IdleTTL
-			expiredCred := now.Unix() >= w.credentialsValidUntil
-			if expiredTTL || expiredCred {
+			// Source credentials are valid for seconds, far shorter than the idle
+			// TTL. An idle worker is not evicted when they lapse: it can do nothing
+			// until a request with a fresh, re-authorized grant for the same
+			// revision reaches it.
+			if now.Sub(w.lastActive) >= m.cfg.IdleTTL {
 				delete(m.workers, id)
 				toEvict = append(toEvict, w)
 				m.metrics.EvictionsTTL.Add(1)
@@ -266,15 +268,11 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 	// Look for existing idle worker for key
 	for _, w := range m.workers {
 		if !w.busy && w.key == key {
-			// Check credential expiration
-			if now.Unix() >= w.credentialsValidUntil {
-				delete(m.workers, w.id)
-				m.metrics.EvictionsTTL.Add(1)
-				go m.killWorker(w)
-				continue
-			}
+			// This request was resolved and authorized on its own; the worker
+			// now serves under its credential window, not the first request's.
 			w.busy = true
 			w.lastActive = now
+			w.credentialsValidUntil = input.CredentialsValidUntil
 			m.metrics.Hits.Add(1)
 			m.mu.Unlock()
 
