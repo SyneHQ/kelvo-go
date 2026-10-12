@@ -61,8 +61,12 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 	// remains usable, but queued/new borrowers cannot receive this session.
 	// database/sql owns rollback and physical driver release; do not use Raw
 	// after cancellation can close the connection.
-	if err := s.Pool.Close(); err != nil {
-		return adapter.QueryStats{}, err
+	// A warm worker keeps the pool: the connection returns to it idle and the
+	// next read on this session receives the same one.
+	if !s.reusable {
+		if err := s.Pool.Close(); err != nil {
+			return adapter.QueryStats{}, err
+		}
 	}
 	if s.Engine == "mysql" {
 		_, err = conn.ExecContext(ctx, "SET SESSION max_execution_time = ?", int64((timeout+time.Millisecond-1)/time.Millisecond))

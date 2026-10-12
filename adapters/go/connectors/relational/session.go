@@ -16,6 +16,22 @@ type Session struct {
 	defaultSchema         string
 	openMigrationPool     func(context.Context) (*sql.DB, error)
 	openMySQLCancellation func(context.Context) (*sql.DB, error)
+	// reusable is set only by a long-lived warm worker. See KeepOpen.
+	reusable bool
+}
+
+// KeepOpen lets a warm worker run several reads on this session's single
+// connection. One-shot operations never call it: their first read consumes the
+// pool so nothing else can borrow the session. A warm worker instead exits on
+// any failed or cancelled request, which closes the connection with it.
+func (s *Session) KeepOpen() {
+	if s == nil || s.Session == nil || s.Pool == nil {
+		return
+	}
+	s.reusable = true
+	// The worker's idle TTL bounds the connection, not the pool's own timers.
+	s.Pool.SetConnMaxLifetime(0)
+	s.Pool.SetConnMaxIdleTime(0)
 }
 
 var _ adapter.TestSession = (*Session)(nil)
