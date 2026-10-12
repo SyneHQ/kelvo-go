@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SYNEHQ/kelvo-go/internal/connreuse"
+	"github.com/SYNEHQ/kelvo-go/client/connreuse"
 	"github.com/SYNEHQ/kelvo-go/operations"
 )
 

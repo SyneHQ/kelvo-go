@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/client/connreuse"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
-	"github.com/SYNEHQ/kelvo-go/internal/connreuse"
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
