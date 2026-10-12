@@ -302,3 +302,69 @@ jobs:
           path: artifacts/export-*.json
           if-no-files-found: warn
           retention-days: 14
+
+  warm-adapter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CGO_ENABLED: '1'
+      GOMAXPROCS: '2'
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.8'
+          cache-dependency-path: |
+            go.sum
+            adapters/go/go.sum
+      - name: Start a disposable PostgreSQL fixture
+        run: |
+          umask 077
+          mkdir -p artifacts
+          chmod 755 artifacts
+          mkdir -m 700 artifacts/warm-private
+          password=$(openssl rand -hex 16)
+          docker run -d --name kelvo-warm-postgres -p 127.0.0.1:55432:5432 \
+            -e POSTGRES_PASSWORD="$password" -e POSTGRES_DB=kelvo_fixture postgres:17.6 >/dev/null
+          for attempt in $(seq 1 60); do
+            if docker exec -e PGPASSWORD="$password" kelvo-warm-postgres \
+                psql -h 127.0.0.1 -U postgres -d kelvo_fixture -Atc 'select 1' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec -e PGPASSWORD="$password" kelvo-warm-postgres psql -h 127.0.0.1 -U postgres -d kelvo_fixture -Atc 'select 1' >/dev/null
+          printf 'postgres://postgres:%s@127.0.0.1:55432/kelvo_fixture?sslmode=disable&connect_timeout=5\n' "$password" > artifacts/warm-private/postgres.dsn
+      - name: Build the adapter against this source
+        run: |
+          work=$(mktemp -d)
+          export GOWORK="$work/go.work"
+          (cd "$work" && go work init "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/adapters/go")
+          sdk_version=$(awk '$1 == "github.com/SYNEHQ/kelvo-go" { print $2 }' adapters/go/go.mod)
+          test -n "$sdk_version"
+          go work edit "-replace=github.com/SYNEHQ/kelvo-go@${sdk_version}=$GITHUB_WORKSPACE"
+          go work edit "-replace=github.com/sijms/go-ora/v2@v2.9.0=$GITHUB_WORKSPACE/third_party/go-ora-v2.9.0"
+          cd adapters/go
+          go build -mod=readonly -p 2 -tags duckdb_arrow -trimpath \
+            -o "$GITHUB_WORKSPACE/artifacts/warm-private/kelvo-adapter-go" ./cmd/kelvo-adapter-go
+      - name: Verify one warm adapter reuses one PostgreSQL connection
+        run: |
+          python3 scripts/warm_adapter_acceptance.py --go go \
+            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --postgres-dsn-file artifacts/warm-private/postgres.dsn \
+            --output artifacts/warm-private/run
+      - name: Retain the sanitized warm adapter report
+        if: always()
+        run: |
+          mkdir -p artifacts/warm-adapter
+          cp artifacts/warm-private/run/report.json artifacts/warm-private/run/worker.test.log artifacts/warm-adapter/ 2>/dev/null || true
+          rm -f artifacts/warm-private/postgres.dsn
+          docker rm -f -v kelvo-warm-postgres >/dev/null 2>&1 || true
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: warm-adapter-evidence
+          path: artifacts/warm-adapter/
+          if-no-files-found: warn
+          retention-days: 14

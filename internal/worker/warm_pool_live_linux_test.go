@@ -11,8 +11,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/url"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/adapter/frame"
@@ -175,4 +179,99 @@ func TestContainedWarmWorkerServesRepeatedRequests(t *testing.T) {
 	if reclaimed, err := executor.ScratchRoot.Reclaim(); err != nil || reclaimed != 0 {
 		t.Fatal("drain left warm scratch behind", reclaimed, err)
 	}
+}
+
+// This gate runs the real kelvo-adapter-go binary in serve mode through the
+// real launcher against a real PostgreSQL server. pg_backend_pid() identifies
+// the server-side connection: a warm worker must answer every request on the
+// same one, and one-shot operations must each open their own.
+func TestContainedWarmAdapterReusesPostgresConnection(t *testing.T) {
+	adapterPath, dsn := os.Getenv("KELVO_TEST_WARM_ADAPTER_BINARY"), os.Getenv("KELVO_TEST_WARM_POSTGRES_DSN")
+	if adapterPath == "" || dsn == "" {
+		t.Skip("set KELVO_TEST_WARM_ADAPTER_BINARY and KELVO_TEST_WARM_POSTGRES_DSN for the real adapter gate")
+	}
+	parsed, err := url.Parse(dsn)
+	if err != nil || strings.Trim(parsed.Path, "/") == "" {
+		t.Fatal("invalid PostgreSQL fixture address")
+	}
+	database := strings.Trim(parsed.Path, "/")
+	adapterPath, err = filepath.EvalSymlinks(adapterPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(adapterPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	cfg := OperationProcessConfig{Binary: adapterPath, SHA256: hex.EncodeToString(sum[:])}
+
+	executor, manager, _ := containedExecutor(t)
+	pool, err := admission.New(admission.Limits{MaxConcurrent: 2, MemoryBytes: 512 << 20, ScratchBytes: 64 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.ResourcePool = pool
+
+	backend := func(label string) int64 {
+		t.Helper()
+		request := operations.Request{Version: operations.Version, Kind: operations.QueryRead,
+			Connection: operations.ConnectionRef{ID: "warm-postgres", Database: database, Schema: "public"},
+			Spec:       operations.Spec{Query: &operations.QuerySpec{SQL: "SELECT pg_backend_pid()::bigint AS pid"}}}
+		digest, err := operations.Digest(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().Unix()
+		input := adapter.ProcessRequest{Version: adapter.ProcessVersion, OperationID: "operation-test", RequestSHA256: digest, Request: request,
+			Limits: adapter.ProcessLimits{MaxRows: 100, MaxBytes: 1 << 20, BatchRows: 10, TimeoutMS: 10000},
+			Source: adapter.ConnectionSpec{Engine: "postgres", DSN: dsn, TenantID: "tenant-a", ConnectionID: request.Connection.ID,
+				Revision: "revision-1", Database: database, Schema: "public"},
+			CredentialsValidUntil: now + 30, ExpiresAt: now + 60}
+		var values []int64
+		sink := &workerTestSink{write: func(batch arrow.RecordBatch) error {
+			values = append(values, batch.Column(0).(*array.Int64).Int64Values()...)
+			return nil
+		}}
+		ctx, cancel := context.WithCancel(context.Background())
+		receipt, err := executor.ExecuteOperation(ctx, cfg, input, sink)
+		cancel()
+		if err != nil || receipt.Outcome != operations.Completed || len(values) != 1 || values[0] < 1 {
+			t.Fatal(label, "query failed", receipt.Outcome, receipt.ErrorCode, err, values)
+		}
+		return values[0]
+	}
+
+	warm := DefaultWarmPoolConfig()
+	warm.Enabled = true
+	mgr, err := NewWarmPoolManager(warm, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.WarmPool = mgr
+	drained := false
+	defer func() {
+		if !drained {
+			_ = mgr.Drain(context.Background())
+		}
+	}()
+	first, second, third := backend("warm-1"), backend("warm-2"), backend("warm-3")
+	metrics := mgr.Metrics()
+	if first != second || second != third || metrics.Spawns.Load() != 1 || metrics.Hits.Load() != 2 || metrics.Fallbacks.Load() != 0 {
+		t.Fatal("warm worker did not reuse one PostgreSQL connection", first, second, third, metrics.Spawns.Load(), metrics.Hits.Load(), metrics.Fallbacks.Load())
+	}
+	drained = true
+	if err := mgr.Drain(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if pool.Snapshot().Active != 0 || manager.Status().Active != 0 {
+		t.Fatal("drain leaked the warm adapter", pool.Snapshot().Active, manager.Status().Active)
+	}
+
+	executor.WarmPool = nil
+	coldA, coldB := backend("cold-1"), backend("cold-2")
+	if coldA == coldB || coldA == first || coldB == first {
+		t.Fatal("one-shot operations shared a PostgreSQL connection", first, coldA, coldB)
+	}
+	t.Logf("warm backend %d served three requests; one-shot backends %d and %d", first, coldA, coldB)
 }
