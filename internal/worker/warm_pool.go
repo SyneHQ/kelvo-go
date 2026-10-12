@@ -31,6 +31,10 @@ type WarmPoolConfig struct {
 	WorkerMemoryMB int           `yaml:"worker_memory_mb"`  // default 64
 }
 
+// errWarmUnavailable means no warm worker could be obtained and nothing was
+// sent to one. The caller runs the operation on the one-shot path instead.
+var errWarmUnavailable = errors.New("warm_pool: no warm worker available")
+
 func DefaultWarmPoolConfig() WarmPoolConfig {
 	return WarmPoolConfig{
 		Enabled:        false,
@@ -78,6 +82,7 @@ type WarmPoolMetrics struct {
 	EvictionsRev   atomic.Int64
 	EvictionsErr   atomic.Int64
 	EvictionsDrain atomic.Int64
+	Fallbacks      atomic.Int64
 }
 
 // WorkerProcess represents an interactive worker process with framed IO.
@@ -411,7 +416,13 @@ func (m *WarmPoolManager) releaseWorker(w *warmWorkerEntry, err error) {
 func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest, sink query.Sink) (operations.Receipt, error) {
 	w, release, err := m.Acquire(ctx, e, cfg, input)
 	if err != nil {
-		return rejectedOperation(input, "RESOURCE_EXHAUSTED"), err
+		if ctx.Err() != nil {
+			return rejectedOperation(input, "CANCELLED"), ctx.Err()
+		}
+		// Launch failure, a full pool or a queue timeout: nothing reached a
+		// worker, so the one-shot path can still run this operation safely.
+		m.metrics.Fallbacks.Add(1)
+		return operations.Receipt{}, errWarmUnavailable
 	}
 
 	receipt, execErr := m.executeOnWorker(ctx, e, w.proc, input, sink)

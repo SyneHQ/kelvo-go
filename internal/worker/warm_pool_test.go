@@ -610,3 +610,41 @@ func TestWarmPool_BenchmarkTiming_ColdVsWarm(t *testing.T) {
 
 // Suppress unused imports
 var _ = bytes.NewBuffer
+
+type failingLauncher struct{ calls int }
+
+func (l *failingLauncher) Launch(context.Context, *Executor, OperationProcessConfig, query.Limits) (WorkerProcess, func() error, error) {
+	l.calls++
+	return nil, nil, errors.New("sandbox refused the worker")
+}
+
+// A warm worker that cannot start must hand the operation back to the
+// one-shot path instead of rejecting it, and must not leak a pool entry.
+func TestWarmPool_LaunchFailureFallsBackToOneShot(t *testing.T) {
+	cfg := DefaultWarmPoolConfig()
+	cfg.Enabled = true
+	launcher := &failingLauncher{}
+	mgr, err := NewWarmPoolManager(cfg, launcher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = mgr.Drain(context.Background()) }()
+	exec := &Executor{Limits: query.Limits{MemoryMB: 64, Timeout: 5 * time.Second}}
+	req := testProcessRequest("op-1", "tenant-a", "team-a", "conn-1", strings.Repeat("1", 64))
+	for i := 0; i < 2; i++ {
+		if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, req, nil); !errors.Is(err, errWarmUnavailable) {
+			t.Fatalf("launch failure was not reported as unavailable: %v", err)
+		}
+	}
+	mgr.mu.Lock()
+	leaked := len(mgr.workers)
+	mgr.mu.Unlock()
+	if launcher.calls != 2 || leaked != 0 || mgr.metrics.Fallbacks.Load() != 2 {
+		t.Fatalf("calls=%d leaked=%d fallbacks=%d", launcher.calls, leaked, mgr.metrics.Fallbacks.Load())
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := mgr.Execute(ctx, exec, OperationProcessConfig{}, req, nil); errors.Is(err, errWarmUnavailable) || err == nil {
+		t.Fatalf("a cancelled request must not fall back: %v", err)
+	}
+}

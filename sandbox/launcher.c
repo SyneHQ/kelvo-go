@@ -510,8 +510,15 @@ int main(int argc, char **argv) {
 		die("usage: --read PATH... --write JOBDIR -- /absolute/kelvo worker");
 	if (argv[i + 1][0] != '/')
 		die("worker executable must be absolute");
-	if (strcmp(argv[i + 2], "worker") != 0 || i + 3 != argc)
+	// "serve" is the long-lived warm adapter entrypoint. It is confined exactly
+	// like a one-shot native operation and never combines with a source file,
+	// a JDBC runtime or a private channel.
+	int serve = strcmp(argv[i + 2], "serve") == 0;
+	if ((strcmp(argv[i + 2], "worker") != 0 && !serve) || i + 3 != argc)
 		die("launcher may only exec the kelvo worker entrypoint");
+	if (serve && (jdbc_jars || private_channel || has_operation_source || has_fd7 ||
+		      strcmp(argv[i + 1], "/proc/self/fd/5") != 0))
+		die("serve requires a plain pinned native operation");
 	if (jdbc_jars && (has_operation_source || strcmp(argv[i + 1], "/proc/self/fd/5") != 0))
 		die("JDBC runtime requires the pinned operation entrypoint");
 

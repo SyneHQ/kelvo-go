@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 )
 
 type linuxWorkerProcess struct {
+	cancel context.CancelFunc
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
@@ -26,8 +28,12 @@ type linuxWorkerProcess struct {
 func (p *linuxWorkerProcess) Stdin() io.Writer { return p.stdin }
 func (p *linuxWorkerProcess) Stdout() io.Reader { return p.stdout }
 func (p *linuxWorkerProcess) Kill() error {
-	if p.cmd != nil && p.cmd.Process != nil {
-		_ = p.cmd.Process.Kill()
+	if p.cancel != nil {
+		p.cancel()
+	}
+	if p.job != nil {
+		// Kills the whole process group, not only the launcher's leader.
+		return p.job.Terminate(0)
 	}
 	return nil
 }
@@ -49,6 +55,11 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 		return nil, nil, errors.New("warm_pool: executor runtime unavailable")
 	}
 
+	// A warm worker keeps its reservation while idle. Never let it take the
+	// node's last execution slot: one-shot operations must stay admissible.
+	if snapshot := e.ResourcePool.Snapshot(); snapshot.Limits.MaxConcurrent-snapshot.Active < 2 {
+		return nil, nil, errWarmUnavailable
+	}
 	memoryBytes := int64(limits.MemoryMB) << 20
 	reservation, err := e.ResourcePool.Acquire(ctx, admission.Request{
 		MemoryBytes:  memoryBytes + e.ResourceOverheadBytes,
@@ -109,16 +120,40 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 		return nil, nil, err
 	}
 
-	command := exec.CommandContext(ctx, e.SandboxPath, args...)
+	// The worker outlives the request that spawned it, so it owns its context.
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	placeholder, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		cancelWorker()
+		holdProcess()
+		_ = binary.Close()
+		_ = workspace.cleanup()
+		custody.Complete()
+		return nil, nil, err
+	}
+	defer placeholder.Close()
+	command := exec.CommandContext(workerCtx, e.SandboxPath, args...)
 	configureProcess(command)
 	command.Dir = workspace.path
 	command.Env = operationEnvironment(workspace.path, limits.Threads)
 	command.WaitDelay = query.WorkerWaitDelay
+	// Same descriptor layout as a one-shot operation: fd3 is the receipt pipe
+	// there and unused here, fd4 the scratch lease, fd5 the pinned executable.
+	command.ExtraFiles = []*os.File{placeholder}
 	workspace.attach(command)
-	command.ExtraFiles = append(command.ExtraFiles, binary) // fd5 executable
+	if len(command.ExtraFiles) != 2 {
+		cancelWorker()
+		holdProcess()
+		_ = binary.Close()
+		_ = workspace.cleanup()
+		custody.Complete()
+		return nil, nil, errWarmUnavailable
+	}
+	command.ExtraFiles = append(command.ExtraFiles, binary)
 
 	stdinPipe, err := command.StdinPipe()
 	if err != nil {
+		cancelWorker()
 		_ = binary.Close()
 		_ = workspace.cleanup()
 		custody.Complete()
@@ -127,6 +162,7 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 
 	stdoutPipe, err := command.StdoutPipe()
 	if err != nil {
+		cancelWorker()
 		_ = stdinPipe.Close()
 		_ = binary.Close()
 		_ = workspace.cleanup()
@@ -134,7 +170,8 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 		return nil, nil, err
 	}
 
-	if err := job.Start(ctx, command); err != nil {
+	if err := job.Start(workerCtx, command); err != nil {
+		cancelWorker()
 		_ = stdinPipe.Close()
 		_ = stdoutPipe.Close()
 		_ = binary.Close()
@@ -144,6 +181,7 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 	}
 
 	cleanup := func() error {
+		cancelWorker()
 		_ = binary.Close()
 		finishCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -154,6 +192,7 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 	}
 
 	proc := &linuxWorkerProcess{
+		cancel: cancelWorker,
 		cmd:    command,
 		stdin:  stdinPipe,
 		stdout: stdoutPipe,
