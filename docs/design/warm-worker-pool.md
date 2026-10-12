@@ -1,6 +1,6 @@
 # Warm worker pool for small operations
 
-Status: draft for review. Nothing in this document is implemented.
+Status: Implemented in branch `feat/warm-worker-pool`, behind feature flag `warm_pool.enabled=false`.
 
 ## Why
 
@@ -179,12 +179,71 @@ Constraints:
 - 1000 concurrent small requests: no errors, p95 target met, memory flat;
 - exit-node outage: connections fail, no direct egress.
 
-## Open questions
+## Implementation Details (feat/warm-worker-pool)
 
-- Which engines get warm workers first? Postgres and MySQL families only, as
-  the connection pool support is there.
-- Per-connection worker cap default, and how it is configured for customers with
-  low database connection limits.
-- Whether session grants may be cached by the node across workers of one
-  connection (cheaper, slightly longer revocation window).
-- Whether the classic analytics query path (DuckDB) should also reuse workers.
+The implementation consists of the following components:
+
+1. **Framed Protocol (`adapter/frame`, `adapters/go/internal/frame`)**:
+   - Length-prefixed binary frames: `[type:1][length:4][payload:length]`.
+   - Frame types: `Request` (carries `adapter.ProcessRequest`), `Result` (carries chunks of Arrow IPC bytes), `Receipt` (JSON-encoded `operations.Receipt`), `Error`, `Ping`, `Pong`, `Close`.
+   - Strictly bounded sizes: `MaxRequestBytes` (3 MiB), `MaxResultBytes` (16 MiB), `MaxReceiptBytes` (64 KiB), `MaxErrorBytes` (4 KiB).
+   - Strict decode: unknown types, oversized frames, or truncated reads immediately terminate the stream.
+
+2. **Adapter Serve Mode (`kelvo-adapter-go serve`, `adapters/go/internal/runtime/serve.go`)**:
+   - Long-lived worker process serving framed requests over stdin/stdout.
+   - Wrapped with `SessionCache.Get/Put` keyed by `(tenant_id, app_team, connection_id, source_revision)`.
+   - Read-only eligibility gate: only `QueryRead` and `MetadataInspect` are accepted. Mutations, migrations, ingestion, JDBC, and external file sources keep the one-shot path.
+   - Invariant enforcement: on ANY error, cancelled context, timeout, or short read, the session is closed (not returned to cache) and the worker exits immediately.
+   - Per-request deadline enforcement from `ExpiresAt` and `Limits.TimeoutMS`.
+   - Ephemeral per-request scratch directory wiped immediately after execution.
+
+3. **Node Pool Manager (`internal/worker/warm_pool.go`)**:
+   - Manages warm worker lifecycle within the node executor.
+   - Sandboxed identically to the one-shot path: Landlock launcher + cgroup job + per-worker memory cap (64 MB class).
+   - Enforces idle TTL (default 30m) with background reaper.
+   - Bounded queue with fail-fast when `queue_depth` is exceeded (`RESOURCE_EXHAUSTED`).
+   - One connection per worker; requests for the same key serialize or spin up an additional worker up to `max_per_key`.
+   - Clean drain on node shutdown.
+
+4. **Per-Request Authorization**:
+   - Every request passes the lease check, audit begin/finish, and operation-input fetch.
+   - Session grant carries the source revision and credential expiry.
+   - Revision changes or credential expirations evict workers immediately.
+   - Credentials exist strictly in worker process memory; never persisted to disk, logs, receipts, or audit records.
+
+---
+
+## Operator Note
+
+### Configuration
+Configured in `node.yml` under `operations.warm_pool`:
+
+```yaml
+operations:
+  warm_pool:
+    enabled: false          # Feature flag: default false (must be explicitly enabled)
+    idle_ttl: 30m           # Worker idle lifetime before termination (default: 30m)
+    max_workers: 4          # Maximum total warm workers per node (default: 4)
+    max_per_key: 1          # Maximum warm workers per (tenant, team, conn, rev) (default: 1)
+    queue_depth: 32         # Maximum pending requests in queue before fail-fast (default: 32)
+    queue_timeout: 10s      # Maximum wait time in queue before timeout (default: 10s)
+    worker_memory_mb: 64    # Per-worker cgroup memory limit (default: 64 MB)
+```
+
+### Disabling
+To disable, ensure `enabled: false` or omit the `warm_pool` block entirely. When disabled:
+- Node behavior is 100% byte-for-byte identical to the classic one-shot path.
+- No warm worker processes are spawned.
+- All operations reserve resources and execute via the existing one-shot Landlock launcher.
+
+### Observability & Metrics
+The pool exposes the following counters on `WarmPoolMetrics`:
+- `Hits`: count of requests served by an existing warm worker (skipping spawn + connect + TLS).
+- `Misses`: count of requests requiring a cold worker spawn or waiting for a slot.
+- `Spawns`: total warm worker processes spawned.
+- `QueueWaitMS`: cumulative milliseconds spent waiting in the pool admission queue.
+- `EvictionsTTL`: workers terminated due to idle TTL or credential expiration.
+- `EvictionsRev`: workers evicted due to source revision changes.
+- `EvictionsErr`: workers killed due to query errors, timeouts, or cancellations (poison prevention).
+- `EvictionsDrain`: workers cleanly shut down during node drain.
+
