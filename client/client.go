@@ -15,7 +15,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/connreuse"
 	"github.com/SYNEHQ/kelvo-go/operations"
+)
+
+// A kept connection is dropped after connectionIdle without use and carries no
+// new request once connectionMaxAge has passed since it was dialed.
+const (
+	connectionIdle   = 15 * time.Second
+	connectionMaxAge = time.Minute
 )
 
 const (
@@ -85,16 +93,23 @@ func New(cfg Config) (*Client, error) {
 		tlsConfig.RootCAs = tlsConfig.RootCAs.Clone()
 	}
 	tlsConfig.ClientSessionCache = tls.NewLRUClientSessionCache((cfg.MaxConcurrent + cfg.MaxControlConcurrent) * 2)
-	// A fresh HTTP/1 connection prevents net/http from replaying a single-consumer
-	// GET on a reused connection. TLS sessions may still resume between calls.
 	transport := &http.Transport{Proxy: nil, TLSClientConfig: tlsConfig,
 		DialContext:         (&net.Dialer{Timeout: min(cfg.Timeout, 10*time.Second)}).DialContext,
 		TLSHandshakeTimeout: min(cfg.Timeout, 10*time.Second), ResponseHeaderTimeout: cfg.Timeout,
-		DisableKeepAlives: true, DisableCompression: true, MaxConnsPerHost: cfg.MaxConcurrent + cfg.MaxControlConcurrent,
+		DisableCompression: true, MaxConnsPerHost: cfg.MaxConcurrent + cfg.MaxControlConcurrent,
 		MaxResponseHeaderBytes: 16 << 10, TLSNextProto: map[string]func(string, *tls.Conn) http.RoundTripper{}}
+	// One call used to pay a TCP and TLS handshake. Connections are now kept
+	// for a short time: the wrapper never replays a request, so a
+	// single-consumer GET is still sent at most once, and send keeps checking
+	// the verified chain's expiry on every response. The idle bound stays
+	// below the gateway's 30 s idle timeout.
+	reuse, err := connreuse.New(transport, connectionIdle, connectionMaxAge)
+	if err != nil {
+		return nil, failure("INVALID_CONFIG")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{cfg: cfg, origin: "https://" + u.Host, token: cfg.BearerToken, transport: transport,
-		http:    &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		http:    &http.Client{Transport: reuse, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		permits: make(chan struct{}, cfg.MaxConcurrent), control: make(chan struct{}, cfg.MaxControlConcurrent), ctx: ctx, cancel: cancel, closeDone: make(chan struct{})}, nil
 }
 

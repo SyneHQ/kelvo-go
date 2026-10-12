@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
+	"github.com/SYNEHQ/kelvo-go/internal/connreuse"
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
@@ -595,12 +596,18 @@ func TestConnectionResolverTLSRequiresWorkerIdentity(t *testing.T) {
 	if _, err := resolver.resolve(context.Background(), execution, request); err != nil {
 		t.Fatal(err)
 	}
-	if connections.Load() != 2 {
-		t.Fatal("resolver reused a TLS connection instead of revalidating certificate lifetime")
+	// Both requests share one bounded connection. Certificate lifetime is
+	// revalidated on every response instead of by a new handshake; see
+	// resolverCertificateExpiry and its pooled-connection test below.
+	if connections.Load() != 1 {
+		t.Fatal("resolver did not reuse its bounded connection", connections.Load())
 	}
-	transport := resolver.client.Transport.(*http.Transport)
-	if !transport.DisableKeepAlives || transport.TLSClientConfig.ClientSessionCache != nil {
-		t.Fatal("resolver cached certificate authority across requests")
+	transport := resolver.transport
+	if transport.DisableKeepAlives || transport.IdleConnTimeout != resolverConnectionIdle || transport.MaxIdleConnsPerHost != config.MaxConcurrent || transport.TLSClientConfig.ClientSessionCache != nil {
+		t.Fatal("resolver connection reuse is not bounded as configured")
+	}
+	if _, ok := resolver.client.Transport.(*connreuse.Transport); !ok {
+		t.Fatal("resolver bypasses the no-replay, maximum-age transport")
 	}
 	if _, err := NewConnectionResolver(config, "spiffe://kelvo/tenant/other/worker/one"); err == nil {
 		t.Fatal("wrong worker identity accepted")

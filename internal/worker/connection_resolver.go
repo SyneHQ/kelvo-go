@@ -17,12 +17,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/connreuse"
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/resolver"
 )
 
 const maxConnectionResponseBytes = resolver.MaxResponseBytes
+
+// A resolver connection is dropped after resolverConnectionIdle without use
+// and carries no new request once resolverConnectionMaxAge has passed.
+const (
+	resolverConnectionIdle   = 10 * time.Second
+	resolverConnectionMaxAge = 30 * time.Second
+)
 
 // ConnectionResolverConfig belongs to the operator, never a query. Resolver
 // URLs are also pinned into the authenticated principal's immutable policy.
@@ -49,7 +57,10 @@ func (c ConnectionResolverConfig) Validate() error {
 type ConnectionResolver struct {
 	url    string
 	client *http.Client
-	slots  chan struct{}
+	// transport is the configured TLS transport behind client. It is nil when
+	// a test substitutes the client's RoundTripper.
+	transport *http.Transport
+	slots     chan struct{}
 }
 
 // WithConnectionResolvers snapshots the issuer registry. Mutating a caller's
@@ -114,13 +125,19 @@ func NewConnectionResolver(c ConnectionResolverConfig, workerIdentity string) (*
 		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: []tls.Certificate{cert}},
 		TLSHandshakeTimeout: 5 * time.Second, ResponseHeaderTimeout: c.Timeout,
 		MaxResponseHeaderBytes: 16 << 10, MaxConnsPerHost: c.MaxConcurrent,
-		// Credential delivery always performs a fresh peer-certificate check.
-		// TLS sessions and pooled connections must not outlive trust validity.
-		DisableKeepAlives: true, DisableCompression: true,
+		DisableCompression: true,
+	}
+	// Credential delivery checks the verified peer chain against the current
+	// time on every response (see resolve), pooled or not. A pooled connection
+	// is additionally retired after resolverConnectionMaxAge, so the peer is
+	// re-authenticated at that interval, and requests are never replayed.
+	reuse, err := connreuse.New(transport, resolverConnectionIdle, resolverConnectionMaxAge)
+	if err != nil {
+		return nil, bad
 	}
 	return &ConnectionResolver{
-		url: c.URL, slots: make(chan struct{}, c.MaxConcurrent),
-		client: &http.Client{Transport: transport, Timeout: c.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
+		url: c.URL, slots: make(chan struct{}, c.MaxConcurrent), transport: transport,
+		client: &http.Client{Transport: reuse, Timeout: c.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}, nil
 }
 

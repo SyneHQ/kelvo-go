@@ -9,7 +9,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
-	"net/http"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
@@ -53,8 +52,8 @@ func (p *privateOperationPolicy) workerCertificate(now time.Time) (time.Time, bo
 	if p == nil || p.resolver == nil || p.resolver.client == nil {
 		return time.Time{}, false
 	}
-	transport, ok := p.resolver.client.Transport.(*http.Transport)
-	if !ok || transport.TLSClientConfig == nil {
+	transport := p.resolver.transport
+	if transport == nil || transport.TLSClientConfig == nil {
 		return time.Time{}, false
 	}
 	config := transport.TLSClientConfig
