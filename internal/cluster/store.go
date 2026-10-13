@@ -36,14 +36,6 @@ type NATSStore struct {
 	js       jetstream.JetStream
 	kv       jetstream.KeyValue
 	consumer jetstream.Consumer
-	now      func() time.Time // nil means time.Now; tests set it
-}
-
-func (s *NATSStore) clock() time.Time {
-	if s.now != nil {
-		return s.now().UTC()
-	}
-	return time.Now().UTC()
 }
 
 // A terminal job's slot is handed out again only when nothing else is free
@@ -351,7 +343,7 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 	if err != nil {
 		return Snapshot{}, err
 	}
-	now := s.clock()
+	now := time.Now().UTC()
 	for _, strict := range []bool{true, false} {
 		for n := 0; n < s.policy.MaxQueries; n++ {
 			key := fmt.Sprintf("slot.%x", n)
