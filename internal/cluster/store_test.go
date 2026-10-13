@@ -221,15 +221,6 @@ func TestNATSStoreAdmissionCASAndReuse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("commit successful result: %v", err)
 	}
-	// The client confirms the terminal state after reading the result stream.
-	// Until the lease duration has passed, the slot is not handed out again.
-	if _, err = store.Submit(ctx, request); !errors.Is(err, ErrCapacity) {
-		t.Fatalf("terminal slot was reused before the client could confirm it: %v", err)
-	}
-	if got, err := store.Get(ctx, succeeded.Job.ID); err != nil || got.Job.State != Succeeded {
-		t.Fatalf("terminal job unreadable during its grace: %v %v", got.Job.State, err)
-	}
-	store.now = func() time.Time { return time.Now().Add(store.policy.LeaseDuration + time.Second) }
 	replacement, err := store.Submit(ctx, request)
 	if err != nil {
 		t.Fatalf("reuse terminal slot: %v", err)
@@ -454,5 +445,52 @@ func TestNATSAccountIsolation(t *testing.T) {
 	}
 	if _, err = bSub.NextMsg(250 * time.Millisecond); !errors.Is(err, nats.ErrTimeout) {
 		t.Fatalf("account B received account A subject: %v", err)
+	}
+}
+
+// With another slot free, a submission does not take the slot of a job that
+// just finished, so the client of that job can still confirm its state. Only
+// when nothing else is free is a fresh terminal slot reused.
+func TestNATSStoreSubmitPrefersAgedSlots(t *testing.T) {
+	store := openFixture(t)
+	ctx := context.Background()
+	request := query.Request{Mode: "federated", SQL: "select 6"}
+	first, err := store.Submit(ctx, request)
+	if err != nil {
+		t.Fatalf("first: %v", err)
+	}
+	finished := failJob(t, store, first)
+	second, err := store.Submit(ctx, request)
+	if err != nil {
+		t.Fatalf("second: %v", err)
+	}
+	defer failJob(t, store, second)
+	if a, _ := slot(finished.Job.ID); func() bool { b, _ := slot(second.Job.ID); return a == b }() {
+		t.Fatal("submission took the slot of a job that just finished while another slot was free")
+	}
+	if got, err := store.Get(ctx, finished.Job.ID); err != nil || got.Job.State != Failed {
+		t.Fatalf("finished job no longer confirmable: %v %v", got.Job.State, err)
+	}
+	third, err := store.Submit(ctx, request)
+	if err != nil {
+		t.Fatalf("third: %v", err)
+	}
+	defer failJob(t, store, third)
+	if a, _ := slot(finished.Job.ID); func() bool { b, _ := slot(third.Job.ID); return a != b }() {
+		t.Fatal("saturated store did not fall back to the fresh terminal slot")
+	}
+	if _, err = store.Submit(ctx, request); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("capacity beyond max_queries was accepted: %v", err)
+	}
+	// Past the lease duration the slot counts as aged and is taken first.
+	store.now = func() time.Time { return time.Now().Add(store.policy.LeaseDuration + time.Second) }
+	failJob(t, store, third)
+	fourth, err := store.Submit(ctx, request)
+	if err != nil {
+		t.Fatalf("fourth: %v", err)
+	}
+	defer failJob(t, store, fourth)
+	if a, _ := slot(third.Job.ID); func() bool { b, _ := slot(fourth.Job.ID); return a != b }() {
+		t.Fatal("aged terminal slot was not reused")
 	}
 }

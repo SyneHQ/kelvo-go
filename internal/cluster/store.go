@@ -46,16 +46,18 @@ func (s *NATSStore) clock() time.Time {
 	return time.Now().UTC()
 }
 
-// A terminal job keeps its slot for this long after its last transition. The
+// A terminal job's slot is handed out again only when nothing else is free
+// until the policy's lease duration has passed since its last transition. The
 // client confirms a job's state after it has read the result stream; a slot
-// reused before that confirmation turns a completed query into NOT_FOUND.
-// The lease duration already bounds how long a worker may stay silent, so it
-// also bounds the client's confirmation round trip.
-func (s *NATSStore) slotReusable(j Job, now time.Time) bool {
-	if now.After(j.ExpiresAt) {
-		return true
+// reused inside that window turns a completed query into NOT_FOUND. Expired
+// jobs are always reusable. When every slot is busy or fresh, the freshest
+// terminal slot is reused rather than refusing the submission, so capacity
+// stays what max_queries says; size max_queries so that saturation is rare.
+func (s *NATSStore) slotReusable(j Job, now time.Time, strict bool) bool {
+	if now.After(j.ExpiresAt) || !j.Terminal() {
+		return now.After(j.ExpiresAt)
 	}
-	return j.Terminal() && now.Sub(j.HeartbeatAt) >= s.policy.LeaseDuration
+	return !strict || now.Sub(j.HeartbeatAt) >= s.policy.LeaseDuration
 }
 
 type workerLease struct {
@@ -350,41 +352,43 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 		return Snapshot{}, err
 	}
 	now := s.clock()
-	for n := 0; n < s.policy.MaxQueries; n++ {
-		key := fmt.Sprintf("slot.%x", n)
-		id, err := newID(n)
-		if err != nil {
-			return Snapshot{}, errors.New("query ID generation failed")
-		}
-		j := Job{Trace: copyJobTraceValue(tracing.CarrierFromContext(ctx)), Authority: authority, ID: id, TenantID: s.policy.TenantID, State: Queued, Request: r, CreatedAt: now, ExpiresAt: now.Add(s.policy.JobTTL), HeartbeatAt: now}
-		b, err := encodePersistedJob(&j)
-		if err != nil {
-			return Snapshot{}, err
-		}
-		rev, e := s.kv.Create(ctx, key, b)
-		if e == nil {
-			return Snapshot{j, rev}, nil
-		}
-		old, getErr := s.kv.Get(ctx, key)
-		if getErr != nil {
-			if errors.Is(getErr, jetstream.ErrKeyNotFound) {
+	for _, strict := range []bool{true, false} {
+		for n := 0; n < s.policy.MaxQueries; n++ {
+			key := fmt.Sprintf("slot.%x", n)
+			id, err := newID(n)
+			if err != nil {
+				return Snapshot{}, errors.New("query ID generation failed")
+			}
+			j := Job{Trace: copyJobTraceValue(tracing.CarrierFromContext(ctx)), Authority: authority, ID: id, TenantID: s.policy.TenantID, State: Queued, Request: r, CreatedAt: now, ExpiresAt: now.Add(s.policy.JobTTL), HeartbeatAt: now}
+			b, err := encodePersistedJob(&j)
+			if err != nil {
+				return Snapshot{}, err
+			}
+			rev, e := s.kv.Create(ctx, key, b)
+			if e == nil {
+				return Snapshot{j, rev}, nil
+			}
+			old, getErr := s.kv.Get(ctx, key)
+			if getErr != nil {
+				if errors.Is(getErr, jetstream.ErrKeyNotFound) {
+					continue
+				}
+				return Snapshot{}, errors.New("job store unavailable")
+			}
+			prev, e := dec(old.Value())
+			if e != nil {
+				return Snapshot{}, errors.New("job store unavailable")
+			}
+			if !s.slotReusable(prev, now, strict) {
 				continue
 			}
-			return Snapshot{}, errors.New("job store unavailable")
-		}
-		prev, e := dec(old.Value())
-		if e != nil {
-			return Snapshot{}, errors.New("job store unavailable")
-		}
-		if !s.slotReusable(prev, now) {
-			continue
-		}
-		rev, e = s.kv.Update(ctx, key, b, old.Revision())
-		if e == nil {
-			return Snapshot{j, rev}, nil
-		}
-		if !errors.Is(e, jetstream.ErrKeyRevisionMismatch) {
-			return Snapshot{}, errors.New("job store unavailable")
+			rev, e = s.kv.Update(ctx, key, b, old.Revision())
+			if e == nil {
+				return Snapshot{j, rev}, nil
+			}
+			if !errors.Is(e, jetstream.ErrKeyRevisionMismatch) {
+				return Snapshot{}, errors.New("job store unavailable")
+			}
 		}
 	}
 	return Snapshot{}, ErrCapacity
