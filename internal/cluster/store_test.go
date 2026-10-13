@@ -455,42 +455,49 @@ func TestNATSStoreSubmitPrefersAgedSlots(t *testing.T) {
 	store := openFixture(t)
 	ctx := context.Background()
 	request := query.Request{Mode: "federated", SQL: "select 6"}
-	first, err := store.Submit(ctx, request)
+	// The bucket is shared with earlier tests; take both slots to own them.
+	aged, err := store.Submit(ctx, request)
 	if err != nil {
-		t.Fatalf("first: %v", err)
+		t.Fatalf("aged: %v", err)
 	}
-	finished := failJob(t, store, first)
-	second, err := store.Submit(ctx, request)
+	fresh, err := store.Submit(ctx, request)
 	if err != nil {
-		t.Fatalf("second: %v", err)
+		t.Fatalf("fresh: %v", err)
 	}
-	defer failJob(t, store, second)
-	if a, _ := slot(finished.Job.ID); func() bool { b, _ := slot(second.Job.ID); return a == b }() {
-		t.Fatal("submission took the slot of a job that just finished while another slot was free")
-	}
-	if got, err := store.Get(ctx, finished.Job.ID); err != nil || got.Job.State != Failed {
-		t.Fatalf("finished job no longer confirmable: %v %v", got.Job.State, err)
-	}
-	third, err := store.Submit(ctx, request)
+	agedDone := failJob(t, store, aged)
+	freshDone := failJob(t, store, fresh)
+	// Make the first terminal job older than the lease duration.
+	old := agedDone.Job
+	old.HeartbeatAt = time.Now().UTC().Add(-store.policy.LeaseDuration - time.Second)
+	value, err := encodeJob(old)
 	if err != nil {
-		t.Fatalf("third: %v", err)
+		t.Fatalf("encode aged job: %v", err)
 	}
-	defer failJob(t, store, third)
-	if a, _ := slot(finished.Job.ID); func() bool { b, _ := slot(third.Job.ID); return a != b }() {
+	agedSlot, _ := slot(old.ID)
+	if _, err = store.kv.Update(ctx, "slot."+strconv.FormatInt(int64(agedSlot), 16), value, agedDone.Revision); err != nil {
+		t.Fatalf("age terminal job: %v", err)
+	}
+	next, err := store.Submit(ctx, request)
+	if err != nil {
+		t.Fatalf("next: %v", err)
+	}
+	defer failJob(t, store, next)
+	if n, _ := slot(next.Job.ID); n != agedSlot {
+		t.Fatal("submission took the slot of a job that just finished while an aged slot was free")
+	}
+	if got, err := store.Get(ctx, freshDone.Job.ID); err != nil || got.Job.State != Failed {
+		t.Fatalf("fresh terminal job no longer confirmable: %v %v", got.Job.State, err)
+	}
+	// Saturated: only the fresh terminal slot is left, and it is reused.
+	last, err := store.Submit(ctx, request)
+	if err != nil {
+		t.Fatalf("last: %v", err)
+	}
+	defer failJob(t, store, last)
+	if a, _ := slot(freshDone.Job.ID); func() bool { b, _ := slot(last.Job.ID); return a != b }() {
 		t.Fatal("saturated store did not fall back to the fresh terminal slot")
 	}
 	if _, err = store.Submit(ctx, request); !errors.Is(err, ErrCapacity) {
 		t.Fatalf("capacity beyond max_queries was accepted: %v", err)
-	}
-	// Past the lease duration the slot counts as aged and is taken first.
-	store.now = func() time.Time { return time.Now().Add(store.policy.LeaseDuration + time.Second) }
-	failJob(t, store, third)
-	fourth, err := store.Submit(ctx, request)
-	if err != nil {
-		t.Fatalf("fourth: %v", err)
-	}
-	defer failJob(t, store, fourth)
-	if a, _ := slot(third.Job.ID); func() bool { b, _ := slot(fourth.Job.ID); return a != b }() {
-		t.Fatal("aged terminal slot was not reused")
 	}
 }
