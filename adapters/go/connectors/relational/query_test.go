@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -34,6 +35,8 @@ type readState struct {
 	queryErr                                              atomic.Bool
 	gate                                                  chan struct{}
 	started                                               chan struct{}
+	rollbackGate                                          chan struct{}
+	rollbackErr                                           error
 }
 type readConnector struct{ s *readState }
 
@@ -61,6 +64,20 @@ func (c *readConn) BeginTx(_ context.Context, opts driver.TxOptions) (driver.Tx,
 	return readTx{c.s}, nil
 }
 func (c *readConn) ExecContext(_ context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	// Postgres runs its transaction control as plain statements.
+	if query == "ROLLBACK" {
+		if c.s.rollbackGate != nil {
+			<-c.s.rollbackGate
+		}
+		c.s.rollbacks.Add(1)
+		if c.s.rollbackErr != nil {
+			return nil, c.s.rollbackErr
+		}
+		return driver.RowsAffected(0), nil
+	}
+	if strings.HasPrefix(query, "BEGIN READ ONLY; ") {
+		c.s.readOnly.Store(true)
+	}
 	c.s.mu.Lock()
 	c.s.executed = append(c.s.executed, query)
 	c.s.execArgs = append(c.s.execArgs, append([]driver.NamedValue(nil), args...))
@@ -295,6 +312,7 @@ func runRead(s *Session, ctx context.Context) error {
 	sink := &readSink{}
 	defer sink.Close()
 	_, err := s.Query(ctx, readRequest(), sink)
+	waitRollbacks() // a healthy read's rollback finishes in the background
 	return err
 }
 
@@ -405,5 +423,54 @@ func TestOneShotReadStillClosesPool(t *testing.T) {
 	}
 	if err := s.Pool.PingContext(context.Background()); err == nil || state.closes.Load() != 1 {
 		t.Fatal("one-shot read left its pool open")
+	}
+}
+
+// A warm worker's successful read returns to the caller before ROLLBACK
+// completes, but its connection must not be reusable until it has.
+func TestKeepOpenRollbackIsOffCriticalPathButHoldsConnection(t *testing.T) {
+	s, state, _, release := newPoolSession(t)
+	close(release)
+	s.Pool.SetMaxOpenConns(1)
+	state.rollbackGate = make(chan struct{})
+	sink := &readSink{}
+	defer sink.Close()
+	if _, err := s.Query(context.Background(), readRequest(), sink); err != nil {
+		t.Fatal("read waited on or failed from its rollback: ", err)
+	}
+	if state.rollbacks.Load() != 0 {
+		t.Fatal("rollback finished before it was released")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := s.Query(ctx, readRequest(), &readSink{}); err == nil || state.opens.Load() != 1 {
+		t.Fatal("connection reused before its rollback completed")
+	}
+	close(state.rollbackGate)
+	waitRollbacks()
+	if state.rollbacks.Load() != 1 || s.Pool.Stats().Idle != 1 {
+		t.Fatal("connection not returned after rollback")
+	}
+	if err := runRead(s, context.Background()); err != nil || state.opens.Load() != 1 {
+		t.Fatal("healthy connection was not reused")
+	}
+}
+
+func TestKeepOpenFailedRollbackDiscardsConnection(t *testing.T) {
+	s, state, _, release := newPoolSession(t)
+	close(release)
+	state.rollbackErr = errors.New("rollback failed")
+	if err := runRead(s, context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if state.closes.Load() != 1 || s.Pool.Stats().OpenConnections != 0 {
+		t.Fatal("connection with a failed rollback returned to the pool")
+	}
+}
+
+// waitRollbacks blocks until every background rollback has released its connection.
+func waitRollbacks() {
+	for end := time.Now().Add(5 * time.Second); asyncRollbacks.Load() != 0 && time.Now().Before(end); {
+		time.Sleep(time.Millisecond)
 	}
 }

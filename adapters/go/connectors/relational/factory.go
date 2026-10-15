@@ -76,7 +76,7 @@ func (d *Driver) Open(ctx context.Context, connection adapter.Connection) (adapt
 		if connection.DialContext != nil {
 			pool = sql.OpenDB(sourcePostgresConnector(config, connection))
 		} else {
-			pool = stdlib.OpenDB(*config)
+			pool = stdlib.OpenDB(*config, stdlib.OptionShouldPing(postgresShouldPing))
 		}
 	case "mysql", "mariadb":
 		config, err := mysqlConfig(connection)

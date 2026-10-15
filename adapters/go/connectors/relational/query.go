@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
@@ -15,6 +17,9 @@ import (
 )
 
 var _ adapter.QuerySession = (*Session)(nil)
+
+// asyncRollbacks counts background rollbacks that still own a connection.
+var asyncRollbacks atomic.Int64
 
 func (s *Session) Query(ctx context.Context, request adapter.Query, sink adapter.Sink) (adapter.QueryStats, error) {
 	if s == nil || s.Session == nil || request.Validate() != nil {
@@ -66,7 +71,13 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 	// our own Close. Our Rollback therefore always owns the tx; ErrTxDone
 	// would mean something else released it, so skip Raw then.
 	var rollbackErr error
+	var rollback func() error
+	// handed is set when a background rollback owns conn and will release it.
+	var handed bool
 	defer func() {
+		if handed {
+			return
+		}
 		taken := errors.Is(rollbackErr, sql.ErrTxDone)
 		if s.reusable && !taken && (resultErr != nil || rollbackErr != nil) {
 			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
@@ -86,10 +97,13 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 			return adapter.QueryStats{}, err
 		}
 	}
+	// The values are server-built integers or decimals, never caller text, and
+	// the no-argument form runs as one text-protocol round trip (a bound
+	// parameter would add a PREPARE round trip).
 	if s.Engine == "mysql" {
-		_, err = conn.ExecContext(ctx, "SET SESSION max_execution_time = ?", int64((timeout+time.Millisecond-1)/time.Millisecond))
+		_, err = conn.ExecContext(ctx, "SET SESSION max_execution_time = "+strconv.FormatInt(int64((timeout+time.Millisecond-1)/time.Millisecond), 10))
 	} else if s.Engine == "mariadb" {
-		_, err = conn.ExecContext(ctx, "SET SESSION max_statement_time = ?", timeout.Seconds())
+		_, err = conn.ExecContext(ctx, "SET SESSION max_statement_time = "+strconv.FormatFloat(timeout.Seconds(), 'f', -1, 64))
 	}
 	if err != nil {
 		return adapter.QueryStats{}, err
@@ -109,20 +123,62 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 		}
 	}
 	defer finish()
-	tx, err := conn.BeginTx(context.WithoutCancel(cancellation.context), &sql.TxOptions{ReadOnly: s.Engine != "sqlserver"})
-	if err != nil {
-		return adapter.QueryStats{}, err
-	}
+	// The rollback is not on the caller's critical path: the result is fully
+	// streamed, so a healthy warm connection finishes its rollback in the
+	// background and only then returns to the pool. A one-shot session or a
+	// failed read still rolls back before returning.
 	defer func() {
-		rollbackErr = tx.Rollback()
+		if rollback == nil {
+			return
+		}
+		if s.reusable && resultErr == nil {
+			handed = true
+			asyncRollbacks.Add(1)
+			go func() {
+				defer asyncRollbacks.Add(-1)
+				err := rollback()
+				if err != nil && !errors.Is(err, sql.ErrTxDone) {
+					_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+				}
+				_ = conn.Close()
+			}()
+			return
+		}
+		rollbackErr = rollback()
 	}()
-	defer finish()
+	// The tx (or, for postgres, the explicit BEGIN) is begun on a non-cancelling
+	// context (statements still carry the real one), so database/sql's awaitDone
+	// never races our rollback for the Conn: it could close the Conn and make Raw
+	// panic, or lose the discard to our own Close.
+	var run func(context.Context, string, ...any) (*sql.Rows, error)
 	if s.Engine == "postgresql" {
-		if err := setPostgresReadDeadline(cancellation.context, tx); err != nil {
+		// One simple-protocol round trip carries BEGIN READ ONLY and the
+		// server-enforced deadline; both are server-built text (the deadline is
+		// an integer of milliseconds).
+		prelude, err := postgresReadPrelude(cancellation.context)
+		if err != nil {
 			return adapter.QueryStats{}, err
 		}
+		if _, err := conn.ExecContext(cancellation.context, prelude); err != nil {
+			return adapter.QueryStats{}, err
+		}
+		rollback = func() error {
+			c, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer stop()
+			_, err := conn.ExecContext(c, "ROLLBACK")
+			return err
+		}
+		run = conn.QueryContext
+	} else {
+		tx, err := conn.BeginTx(context.WithoutCancel(cancellation.context), &sql.TxOptions{ReadOnly: s.Engine != "sqlserver"})
+		if err != nil {
+			return adapter.QueryStats{}, err
+		}
+		rollback = tx.Rollback
+		run = tx.QueryContext
 	}
-	rows, err := tx.QueryContext(cancellation.context, statement, parameters...)
+	defer finish()
+	rows, err := run(cancellation.context, statement, parameters...)
 	if err != nil {
 		return adapter.QueryStats{}, err
 	}

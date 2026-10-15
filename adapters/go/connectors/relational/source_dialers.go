@@ -33,7 +33,7 @@ func (c sourceConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	return c.Connector.Connect(context.WithValue(ctx, dataPurpose{}, c.scope))
 }
 func sourcePostgresConnector(config *pgx.ConnConfig, c adapter.Connection) driver.Connector {
-	return sourceConnector{Connector: stdlib.GetConnector(*config), scope: dialScope(c)}
+	return sourceConnector{Connector: stdlib.GetConnector(*config, stdlib.OptionShouldPing(postgresShouldPing)), scope: dialScope(c)}
 }
 
 func validSourceDialers(c adapter.Connection) bool {
