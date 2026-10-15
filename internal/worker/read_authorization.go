@@ -152,12 +152,12 @@ func (m *WarmPoolManager) retireAuthorization(key string, observed *readAuthoriz
 	}
 }
 
-// revokeAuthorization ends observed after a definitive denial. A source or
-// connection that is gone (NOT_FOUND) is gone for every principal: its
-// workers are killed, whoever else's authorization used them, and those
-// authorizations end too. A principal no longer permitted (PERMISSION_DENIED)
-// loses only its own authorization; the workers stay for the others. It waits
-// for kills up to ctx.
+// revokeAuthorization ends observed after a definitive denial. A source that
+// is gone for everyone (sourceGone) has its workers killed, whoever else's
+// authorization used them, and those authorizations end too. Any other
+// definitive denial (this principal not permitted, or a connection this
+// principal can no longer see) ends only this principal's authorization; the
+// workers stay for the others. It waits for kills up to ctx.
 func (m *WarmPoolManager) revokeAuthorization(ctx context.Context, key string, observed *readAuthorization, denial error) error {
 	if observed == nil {
 		return nil
@@ -329,9 +329,16 @@ func definitiveDenial(err error) bool {
 	return errors.As(err, &public) && (public.Code == "PERMISSION_DENIED" || public.Code == "NOT_FOUND")
 }
 
-// sourceGone reports a definitive denial that holds for every principal: the
-// saved connection or its credential no longer exists.
+// errSourceCredentialGone is an operator source whose credential is no longer
+// in the node's secret store: gone for every principal.
+var errSourceCredentialGone = query.NewError("NOT_FOUND", "Source credential not found")
+
+// sourceGone reports a denial that unambiguously holds for every principal.
+// Only the node's own secret store says so today. A connection resolver
+// answer is bound to one principal's delegation (job, worker, claim), and
+// db-api answers 403 for a deleted or revoked connection as for any other
+// refusal (404 only for a misrouted request), so a resolver denial ends that
+// principal's authorization only.
 func sourceGone(err error) bool {
-	var public *query.Error
-	return errors.As(err, &public) && public.Code == "NOT_FOUND"
+	return errors.Is(err, errSourceCredentialGone)
 }
