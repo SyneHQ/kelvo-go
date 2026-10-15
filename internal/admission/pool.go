@@ -284,6 +284,14 @@ func (p *Pool) notify() {
 	p.wakeHeads()
 }
 
+// Changed is closed at the next release or drain. Take it before reading a
+// Snapshot to wait for capacity without missing a release.
+func (p *Pool) Changed() <-chan struct{} {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.changed
+}
+
 // Release is safe to call concurrently and multiple times.
 func (r *Reservation) Release() {
 	if r == nil || r.identity == nil {

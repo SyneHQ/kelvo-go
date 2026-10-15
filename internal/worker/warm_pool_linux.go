@@ -50,22 +50,61 @@ func (p *linuxWorkerProcess) Wait() error {
 	return nil
 }
 
+// reserveWorker takes a worker's node reservation. Short of capacity it
+// refuses at once, unless the pool let this launch wait (withCapacityWait);
+// then it waits in the node's FIFO until that deadline. Either way a lack of
+// capacity is errWarmUnavailable, never a launch failure.
+func reserveWorker(ctx context.Context, pool *admission.Pool, request admission.Request) (*admission.Reservation, error) {
+	deadline, wait := capacityWait(ctx)
+	for {
+		changed := pool.Changed()
+		// A warm worker keeps its reservation while idle. Never let it take the
+		// node's last execution slot: one-shot operations must stay admissible.
+		snapshot := pool.Snapshot()
+		if snapshot.Limits.MaxConcurrent-snapshot.Active >= 2 {
+			break
+		}
+		if !wait {
+			return nil, errWarmUnavailable
+		}
+		timer := time.NewTimer(time.Until(deadline))
+		select {
+		case <-changed:
+			timer.Stop()
+		case <-timer.C:
+			return nil, errWarmUnavailable
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		}
+	}
+	if !wait {
+		reservation, err := pool.TryAcquire(request)
+		if errors.Is(err, admission.ErrBusy) {
+			return nil, errWarmUnavailable
+		}
+		return reservation, err
+	}
+	reserveCtx, cancel := context.WithDeadline(ctx, deadline)
+	defer cancel()
+	reservation, err := pool.Acquire(reserveCtx, request)
+	if err != nil && ctx.Err() == nil && reserveCtx.Err() != nil {
+		return nil, errWarmUnavailable
+	}
+	return reservation, err
+}
+
 func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg OperationProcessConfig, limits query.Limits) (WorkerProcess, func() error, error) {
 	if e == nil || e.ResourcePool == nil || e.ScratchRoot == nil || e.Containment == nil {
 		return nil, nil, errors.New("warm_pool: executor runtime unavailable")
 	}
 
-	// A warm worker keeps its reservation while idle. Never let it take the
-	// node's last execution slot: one-shot operations must stay admissible.
-	if snapshot := e.ResourcePool.Snapshot(); snapshot.Limits.MaxConcurrent-snapshot.Active < 2 {
-		return nil, nil, errWarmUnavailable
-	}
 	// The node buffers the worker's streams inside its reservation's overhead.
 	if m := e.WarmPool; m != nil && m.cfg.FitsOverhead(e.ResourceOverheadBytes) != nil {
 		return nil, nil, errWarmUnavailable
 	}
 	memoryBytes := int64(limits.MemoryMB) << 20
-	reservation, err := e.ResourcePool.Acquire(ctx, admission.Request{
+	reservation, err := reserveWorker(ctx, e.ResourcePool, admission.Request{
 		MemoryBytes:  memoryBytes + e.ResourceOverheadBytes,
 		ScratchBytes: int64(limits.MaxTempMB) << 20,
 	})
