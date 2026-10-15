@@ -184,8 +184,8 @@ Constraints:
 The implementation consists of the following components:
 
 1. **Framed Protocol (`adapter/frame`, `adapters/go/internal/frame`)**:
-   - Length-prefixed binary frames: `[type:1][length:4][payload:length]`.
-   - Frame types: `Request` (carries `adapter.ProcessRequest`), `Result` (carries chunks of Arrow IPC bytes), `Receipt` (JSON-encoded `operations.Receipt`), `Error`, `Ping`, `Pong`, `Close`.
+   - Length-prefixed binary frames, protocol v2: `[type:1][stream:4][length:4][payload:length]`. Stream 0 carries connection-level frames; every request uses its own non-zero stream (see `pooled-read-worker.md`).
+   - Frame types: `Request` (carries `adapter.ProcessRequest`), `Result` (carries chunks of Arrow IPC bytes), `Receipt` (JSON-encoded `operations.Receipt`), `Error`, `Cancel`, `Ping`, `Pong`, `Close`, and `Hello` (protocol version, exchanged once when the worker starts).
    - Strictly bounded sizes: `MaxRequestBytes` (3 MiB), `MaxResultBytes` (16 MiB), `MaxReceiptBytes` (64 KiB), `MaxErrorBytes` (4 KiB).
    - Strict decode: unknown types, oversized frames, or truncated reads immediately terminate the stream.
 
