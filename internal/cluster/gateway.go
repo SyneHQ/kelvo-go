@@ -806,7 +806,9 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 	// state confirms success: clients treat EOS as a complete result even if
 	// the HTTP connection is aborted immediately afterwards.
 	tail := &arrowEOSTail{w: w}
-	written, e := io.CopyBuffer(tail, limited, make([]byte, 32<<10))
+	buffer := relayBuffers.Get().(*[]byte)
+	written, e := io.CopyBuffer(tail, limited, *buffer)
+	relayBuffers.Put(buffer)
 	if e != nil || written > t.store.Policy().Limits.MaxBytes {
 		g.fail(t, s, "Arrow stream failed")
 		panic(http.ErrAbortHandler)
@@ -1090,3 +1092,7 @@ func (g *Gateway) cancelUnfinished(t gatewayTenant, id string) {
 		}
 	}
 }
+
+// relayBuffers holds the 32 KiB copy buffers of result relays, so a read does
+// not allocate one.
+var relayBuffers = sync.Pool{New: func() any { b := make([]byte, 32<<10); return &b }}

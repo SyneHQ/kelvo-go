@@ -437,3 +437,27 @@ func TestStreamHeaderAlsoOnTrailingSlashPath(t *testing.T) {
 		t.Fatalf("anon status=%d marker=%q", anon.StatusCode, anon.Header.Get(streamHeader))
 	}
 }
+
+// BenchmarkStreamQueryHandler is the gateway's own cost of one single-call
+// read, with a fake store and a fake worker (no broker): allocations and time
+// of streamQuery plus the HTTP plumbing around it.
+func BenchmarkStreamQueryHandler(b *testing.B) {
+	t := &testing.T{}
+	g, store, _, _, _, _ := streamFixture(t, 0, time.Second, 0)
+	store.mu.Lock()
+	snapshot := store.snapshot
+	store.mu.Unlock()
+	b.ReportAllocs()
+	for range b.N {
+		store.mu.Lock()
+		store.snapshot = snapshot
+		store.mu.Unlock()
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/v1/queries/stream", strings.NewReader(streamBody))
+		r.Header.Set("Authorization", "Bearer "+streamToken)
+		g.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			b.Fatalf("status %d", w.Code)
+		}
+	}
+}
