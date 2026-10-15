@@ -111,6 +111,7 @@ func testProcessRequest(opID, tenant, team, conn, rev string) adapter.ProcessReq
 		},
 		Source: adapter.ConnectionSpec{
 			Engine:       "postgres",
+			DSN:          "postgres://reader:secret@db.internal/testdb?sslmode=verify-full",
 			TenantID:     tenant,
 			ConnectionID: conn,
 			Revision:     rev,
@@ -238,39 +239,59 @@ func TestWarmPool_TTLExpiry(t *testing.T) {
 	}
 }
 
-func TestWarmPool_RevisionChangeEviction(t *testing.T) {
-	cfg := DefaultWarmPoolConfig()
-	cfg.Enabled = true
-	launcher := &mockLauncher{}
-
-	mgr, err := NewWarmPoolManager(cfg, launcher)
-	if err != nil {
-		t.Fatal(err)
+// A credential rotation (a new revision for the same authorization) drains
+// the old revision's workers: no new streams, the in-flight one finishes,
+// then the worker exits. It is not a revocation.
+func TestWarmPool_RotationDrainsOldRevision(t *testing.T) {
+	release := make(chan struct{})
+	fs := &fakeSet{serve: cancelServe("receipt")}
+	fs.serve = func(p *fakeWorkerProcess) {
+		var mu sync.Mutex
+		serveFake(p, func(f frame.Frame) {
+			if f.Type != frame.Request {
+				return
+			}
+			var r adapter.ProcessRequest
+			_ = json.Unmarshal(f.Payload, &r)
+			if r.OperationID == "op-hold" {
+				go func() { <-release; mu.Lock(); replyOK(p.stdoutW, f.Stream, f.Payload); mu.Unlock() }()
+				return
+			}
+			mu.Lock()
+			replyOK(p.stdoutW, f.Stream, f.Payload)
+			mu.Unlock()
+		})
 	}
-	defer func() { _ = mgr.Drain(context.Background()) }()
+	mgr, exec := newTestPool(t, fs.launcher())
+	old := opReq("op-hold")
+	oldKey := warmKey(old.Source.TenantID, old.AppTeam, old.Source.ConnectionID, old.Source.Database, old.Source.Schema, old.Source.Revision)
+	mgr.storeAuthorization("principal", &readAuthorization{revision: old.Source.Revision, workerKey: oldKey, at: time.Now()})
+	held := make(chan error, 1)
+	go func() {
+		_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, old, &workerTestSink{})
+		held <- err
+	}()
+	waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 1 })
 
-	exec := &Executor{Limits: query.Limits{MemoryMB: 64, Timeout: 5 * time.Second}}
-	req1 := testProcessRequest("op-rev1", "tenant-a", "team-a", "conn-1", strings.Repeat("1", 64))
-
-	_, release1, err := mgr.Acquire(context.Background(), exec, OperationProcessConfig{}, req1)
-	if err != nil {
-		t.Fatal(err)
+	rotated := opReq("op-new")
+	rotated.Source.Revision = strings.Repeat("2", 64)
+	mgr.storeAuthorization("principal", &readAuthorization{revision: rotated.Source.Revision,
+		workerKey: warmKey(rotated.Source.TenantID, rotated.AppTeam, rotated.Source.ConnectionID, rotated.Source.Database, rotated.Source.Schema, rotated.Source.Revision), at: time.Now()})
+	// A read on the old revision gets no stream on the draining worker.
+	again := opReq("op-old-again")
+	if _, err := mgr.Execute(withReadAuthorization(context.Background(), "principal"), exec, OperationProcessConfig{}, again, &workerTestSink{}); !errors.Is(err, errNeedsCredentials) {
+		t.Fatal("a draining worker took a new stream, or a stale revision started a worker:", err)
 	}
-	release1(nil)
-
-	// Now request arrives with revision 2 for same connection
-	req2 := testProcessRequest("op-rev2", "tenant-a", "team-a", "conn-1", strings.Repeat("2", 64))
-	_, release2, err := mgr.Acquire(context.Background(), exec, OperationProcessConfig{}, req2)
-	if err != nil {
-		t.Fatal(err)
+	if fs.procs[0].killed.Load() {
+		t.Fatal("rotation killed a worker with a read in flight")
 	}
-	release2(nil)
-
-	// Give async evict goroutine a moment
-	time.Sleep(20 * time.Millisecond)
-
-	if mgr.Metrics().EvictionsRev.Load() < 1 {
-		t.Fatalf("expected revision eviction count >= 1, got %d", mgr.Metrics().EvictionsRev.Load())
+	close(release)
+	if err := <-held; err != nil {
+		t.Fatal("the in-flight read did not finish on the draining worker:", err)
+	}
+	waitFor(t, func() bool { return fs.procs[0].killed.Load() })
+	if mgr.metrics.Rotations.Load() != 1 || mgr.metrics.EvictionsAuth.Load() != 0 {
+		t.Fatal("rotation counted as a revocation", mgr.metrics.Rotations.Load(), mgr.metrics.EvictionsAuth.Load())
 	}
 }
 

@@ -189,6 +189,10 @@ func (r *ConnectionResolver) resolve(ctx context.Context, execution delegation.E
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
 		return out, query.NewError("PERMISSION_DENIED", "On-demand connection access denied")
 	}
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		// A definitive answer, like a denial: the saved connection is gone.
+		return out, query.NewError("NOT_FOUND", "On-demand connection not found")
+	}
 	mediaType, _, contentErr := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	if resp.StatusCode != http.StatusOK || contentErr != nil || mediaType != "application/json" || resp.Header.Get("Content-Encoding") != "" || resp.ContentLength > maxConnectionResponseBytes {
 		return out, connectionUnavailable()
