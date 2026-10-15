@@ -31,7 +31,7 @@ jobs:
         include:
           # max_workers 4 is the default pool: 20 customers do not fit.
           - {name: 2c1g-light-patched, profile: 2c1g, patched: true, set: '--loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
-          - {name: 2c1g-light-unpatched, profile: 2c1g, patched: false, set: '--loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
+          - {name: 2c1g-light-shared-alias, profile: 2c1g, patched: true, set: '--loadgen-arg=-alias=shared --loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
     env:
       CGO_ENABLED: '1'
       GOTOOLCHAIN: local

@@ -126,6 +126,17 @@ func nonce() string {
 	return hex.EncodeToString(raw[:])
 }
 
+// aliasMode "connection" gives each saved connection its own query alias; "shared"
+// sends source_1 for every connection, as the application example does.
+var aliasMode = "connection"
+
+func alias(c int) string {
+	if aliasMode == "shared" {
+		return "source_1"
+	}
+	return fmt.Sprintf("c%02d", c)
+}
+
 func team(c int) string { return fmt.Sprintf("team-%02d", c/4) } // four connections per team
 
 // grant signs the delegation for one request, as the application would.
@@ -137,7 +148,7 @@ func (d *driver) grant(c int, user string, r query.Request) (string, error) {
 	now := time.Now().Unix()
 	return delegation.Sign(delegation.Claims{Version: 1, Issuer: d.node.Issuer, Audience: d.node.Audience, ClusterTenant: d.node.ClusterTenant, ServicePrincipal: d.node.ServicePrincipal,
 		AppTeam: team(c), Subject: delegation.Subject{Kind: "user", ID: user}, ID: nonce(), IssuedAt: now - 1, ExpiresAt: now + 120, QuerySHA256: digest,
-		Sources: []delegation.Source{{Alias: "source_1", ConnectionID: fmt.Sprintf("cust-%02d", c), Database: fmt.Sprintf("cust%02d", c), Schema: "public"}}}, d.key)
+		Sources: []delegation.Source{{Alias: alias(c), ConnectionID: fmt.Sprintf("cust-%02d", c), Database: fmt.Sprintf("cust%02d", c), Schema: "public"}}}, d.key)
 }
 
 var (
@@ -163,7 +174,7 @@ func errorCode(err error) (string, float64) {
 
 // read runs one single-call read and records it under class.
 func (d *driver) read(class string, c int, user string, r query.Request) (rows int64, ok bool) {
-	r.Mode, r.ConnectionID = "native", "source_1"
+	r.Mode, r.ConnectionID = "native", alias(c)
 	ctx, cancel := context.WithTimeout(context.Background(), d.timeout)
 	defer cancel()
 	began := time.Now()
@@ -394,6 +405,7 @@ func main() {
 	maxConcurrent := flag.Int("max-concurrent", 256, "client MaxConcurrent, as db-api would configure")
 	timeout := flag.Duration("request-timeout", 30*time.Second, "per-request deadline")
 	pgAdmin := flag.String("pg-admin-dsn", "", "direct admin DSN of the source, for pg_stat_statements")
+	flag.StringVar(&aliasMode, "alias", "connection", "query alias per request: connection or shared (source_1)")
 	label := flag.String("label", "", "free text copied to the report")
 	flag.Parse()
 
