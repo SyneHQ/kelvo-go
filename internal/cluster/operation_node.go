@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"sync/atomic"
@@ -25,15 +26,17 @@ import (
 )
 
 type nodeOperations struct {
-	private   *worker.PrivateOperations
-	worker    *OperationWorker
-	ledger    *operationstore.Store
-	results   *operationinput.Store
-	custody   *exports.Custody
-	executor  *worker.Executor
-	caps      *admission.Caps // tenant and connection caps for durable operations
-	downloads chan struct{}
-	failed    atomic.Bool
+	// slimLauncher is set when read workers run on the slim relational adapter.
+	slimLauncher *worker.SlimFallbackLauncher
+	private      *worker.PrivateOperations
+	worker       *OperationWorker
+	ledger       *operationstore.Store
+	results      *operationinput.Store
+	custody      *exports.Custody
+	executor     *worker.Executor
+	caps         *admission.Caps // tenant and connection caps for durable operations
+	downloads    chan struct{}
+	failed       atomic.Bool
 }
 
 func (n *Node) initOperations(ctx context.Context) (resultErr error) {
@@ -65,20 +68,25 @@ func (n *Node) initOperations(ctx context.Context) (resultErr error) {
 		queueWait = 10 * time.Second
 	}
 	if wp := n.cfg.effectiveWarmPool(); wp != nil && wp.Enabled {
-		var launcher worker.WorkerLauncher // nil: the default launcher and adapter pool size
+		// Native reads and inspections from the query path use the pool's adapter:
+		// the slim relational one when it is pinned and verifies, else the full one.
+		adapter, slim := readAdapter(n.cfg.ReadWorkers, c.Adapter, func(a worker.OperationProcessConfig) bool { return worker.OperationBinaryUsable(ctx, a) })
+		var launcher worker.WorkerLauncher // nil: the default launcher and the adapter's own pool size
 		if size := n.cfg.readPoolSize(); size > 0 {
 			launcher = worker.NewServeLauncher(size)
+		}
+		if slim {
+			// A slim binary that stops verifying never fails a read: launches fall back to the full adapter.
+			state.slimLauncher = worker.NewSlimFallbackLauncher(launcher, adapter, c.Adapter)
+			launcher = state.slimLauncher
+		} else if n.cfg.ReadWorkers != nil && n.cfg.ReadWorkers.RelationalAdapter != nil {
+			log.Print("kelvo: configured relational read adapter is not usable; read workers use the full adapter")
 		}
 		native.WarmPool, err = worker.NewWarmPoolManager(*wp, launcher)
 		if err != nil {
 			return err
 		}
-		// Native reads and inspections from the query path use the same adapter.
-		adapter, slim := readAdapter(n.cfg.ReadWorkers, c.Adapter, func(a worker.OperationProcessConfig) bool { return worker.OperationBinaryUsable(ctx, a) })
 		native.WarmPool.Adapter = adapter
-		if n.cfg.ReadWorkers != nil && n.cfg.ReadWorkers.RelationalAdapter != nil && !slim {
-			log.Print("kelvo: configured relational read adapter is not usable; read workers use the full adapter")
-		}
 	}
 	bindings := make(map[string]worker.PrivateOperationBinding, len(c.PrivateSources))
 	for principal, config := range c.PrivateSources {
@@ -378,4 +386,18 @@ var _ query.Sink = (*operationResultSink)(nil)
 func operationCapTenant(scope operationstore.Scope) string {
 	identity, _ := json.Marshal([]string{scope.Issuer, scope.ClusterTenant, scope.AppTeam})
 	return string(identity)
+}
+
+// writeReadAdapterMetrics appends the slim read adapter's state to /metrics.
+func (n *Node) writeReadAdapterMetrics(w io.Writer) {
+	if n.operations == nil || n.operations.slimLauncher == nil {
+		return
+	}
+	l := n.operations.slimLauncher
+	active := 1
+	if l.Degraded() {
+		active = 0
+	}
+	_, _ = fmt.Fprintf(w, "# HELP kelvo_read_adapter_slim_active Whether read workers launch on the slim relational adapter (0 after it failed its launch check).\n# TYPE kelvo_read_adapter_slim_active gauge\nkelvo_read_adapter_slim_active %d\n"+
+		"# HELP kelvo_read_adapter_slim_fallbacks_total Read worker launches run on the full adapter because the slim one was not usable.\n# TYPE kelvo_read_adapter_slim_fallbacks_total counter\nkelvo_read_adapter_slim_fallbacks_total %d\n", active, l.Fallbacks())
 }

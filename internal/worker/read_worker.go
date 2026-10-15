@@ -187,6 +187,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 			receipt, err = pool.execute(bounded(quotaCtx), e, pool.Adapter, input, sink, nil)
 		}
 		if dsn != "" || errors.Is(err, errNeedsCredentials) || errors.Is(err, errCredentialsExpired) || errors.Is(err, errWarmUnavailable) {
+			warmTried := dsn == "" && errors.Is(err, errWarmUnavailable)
 			if dsn == "" {
 				if input, err = withCredentials(); err != nil {
 					if errors.Is(err, errWarmUnavailable) {
@@ -195,8 +196,21 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 					return stats, err, true
 				}
 			}
-			// The operation path falls back to a one-shot adapter itself.
-			receipt, err = e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), pool.Adapter, input, sink)
+			// Credentials are in hand: a worker first, on the pool's adapter (the
+			// slim relational build when configured). Only when none is available
+			// does the operation path run the inspection, on the full operation
+			// adapter: it falls back to a one-shot child, and a slim build has no
+			// one-shot mode.
+			if !warmTried {
+				receipt, err = pool.execute(bounded(quotaCtx), e, pool.Adapter, input, sink, nil)
+			}
+			if warmTried || errors.Is(err, errWarmUnavailable) {
+				oneShot := e.OperationAdapter
+				if oneShot.Binary == "" {
+					oneShot = pool.Adapter
+				}
+				receipt, err = e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), oneShot, input, sink)
+			}
 		}
 		return receiptStats(receipt, err), receiptError(receipt, err), true
 	}
