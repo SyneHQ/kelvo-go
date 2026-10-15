@@ -218,7 +218,7 @@ func TestReadWorkerKeyedBySavedConnection(t *testing.T) {
 			}
 		})
 	}
-	e, _ := readWorkerExecutor(t, fs)
+	e, mgr := readWorkerExecutor(t, fs)
 	resolverClient := fixtureConnectionResolver(t, func(w http.ResponseWriter, r *http.Request) {
 		var body resolver.QueryRequest
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -230,6 +230,11 @@ func TestReadWorkerKeyedBySavedConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if mgr.cache.Hits() != 1 {
+			t.Error("expected exactly the repeat read of saved-a from the cache", mgr.cache.Hits())
+		}
+	}()
 	read := func(saved string) {
 		r := query.Request{Mode: "native", ConnectionID: "selected", SQL: "SELECT 1", Delegation: "grant-" + saved}
 		digest, _ := delegation.QueryDigest(r)
@@ -245,7 +250,9 @@ func TestReadWorkerKeyedBySavedConnection(t *testing.T) {
 	read("saved-a")
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
-	if len(fs.procs) != 2 || len(seen) != 3 || seen[0].Source.ConnectionID != "saved-a" || seen[1].Source.ConnectionID != "saved-b" || seen[0].Request.Connection.ID != "saved-a" {
+	// The repeat read of saved-a is a cache hit; saved-b never reuses saved-a's
+	// result: the cache is keyed by the saved connection too.
+	if len(fs.procs) != 2 || len(seen) != 2 || seen[0].Source.ConnectionID != "saved-a" || seen[1].Source.ConnectionID != "saved-b" || seen[0].Request.Connection.ID != "saved-a" {
 		t.Fatalf("workers keyed by alias: procs=%d first=%q second=%q", len(fs.procs), seen[0].Source.ConnectionID, seen[1].Source.ConnectionID)
 	}
 }
