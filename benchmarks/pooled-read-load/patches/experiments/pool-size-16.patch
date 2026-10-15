@@ -1,0 +1,13 @@
+diff --git a/adapters/go/connectors/relational/session.go b/adapters/go/connectors/relational/session.go
+index 6d90603..81dc656 100644
+--- a/adapters/go/connectors/relational/session.go
++++ b/adapters/go/connectors/relational/session.go
+@@ -21,7 +21,7 @@ type Session struct {
+ }
+ 
+ // PoolSize is the number of source connections a warm session may hold.
+-const PoolSize = 4
++const PoolSize = 16
+ 
+ // KeepOpen lets a warm worker run several reads on this session's single
+ // pool of PoolSize connections, safe for concurrent reads; a failed or
