@@ -398,3 +398,48 @@ func TestNodeLateRenewalErrorPreservesCompletedHandoff(t *testing.T) {
 		t.Fatalf("late renewal error replaced durable handoff: %+v writes=%d err=%v", got.Job, base.writes.Load(), err)
 	}
 }
+
+// Publishing the result starts from the node's own latest write of the job: no
+// read first. If someone wrote in between, the update conflicts and the node
+// falls back to a read.
+func TestNodeResultPublicationStartsFromItsOwnLastWrite(t *testing.T) {
+	n, s, id := leaseTestNode()
+	if err := n.mutate(context.Background(), id, func(j *Job) error { j.HeartbeatAt = time.Now().Add(-time.Hour); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	s.reads.Store(0)
+	s.writes.Store(0)
+	if err := n.finish(id, ResultReady, query.Stats{Rows: 7}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if s.reads.Load() != 0 || s.writes.Load() != 1 {
+		t.Fatalf("reads=%d writes=%d, want a single update with no read", s.reads.Load(), s.writes.Load())
+	}
+	got, _ := s.nodeTestStore.Get(context.Background(), id)
+	if got.Job.State != ResultReady || got.Job.Stats.Rows != 7 {
+		t.Fatalf("result not published: %+v", got.Job)
+	}
+}
+
+func TestNodeResultPublicationFallsBackToAReadWhenTheJobMovedOn(t *testing.T) {
+	n, s, id := leaseTestNode()
+	if err := n.mutate(context.Background(), id, func(j *Job) error { j.HeartbeatAt = time.Now().Add(-time.Hour); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	// Another writer (the gateway's claim, a cancellation) advances the record.
+	other := s.jobs[id]
+	other.Job.HeartbeatAt = time.Now()
+	other.Revision++
+	s.jobs[id] = other
+	s.reads.Store(0)
+	if err := n.finish(id, ResultReady, query.Stats{Rows: 9}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if s.reads.Load() != 1 {
+		t.Fatalf("reads=%d, want the fallback read", s.reads.Load())
+	}
+	got, _ := s.nodeTestStore.Get(context.Background(), id)
+	if got.Job.State != ResultReady || got.Job.Stats.Rows != 9 {
+		t.Fatalf("result not published after fallback: %+v", got.Job)
+	}
+}

@@ -133,19 +133,22 @@ func replayRead(ctx context.Context, gateway, node Store) error {
 		return err
 	}
 	// The node starts it, then publishes the result (Node.mutate: get, then swap).
-	for _, next := range []func(*Job){
-		func(j *Job) { j.State = Running },
-		func(j *Job) { j.State, j.Stats = ResultReady, query.Stats{Rows: 50, Batches: 1, WireBytes: 3128} },
-	} {
-		s, err := node.Get(ctx, id)
-		if err != nil {
-			return err
-		}
-		j := s.Job
-		next(&j)
-		if _, err = node.CompareAndSwap(ctx, s, j); err != nil {
-			return err
-		}
+	// Node.mutate: the first transition reads the job (the gateway wrote it
+	// since the node's own write); the second starts from the node's own latest
+	// write, which nobody has replaced.
+	s, err := node.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	j := s.Job
+	j.State = Running
+	if s, err = node.CompareAndSwap(ctx, s, j); err != nil {
+		return err
+	}
+	j = s.Job
+	j.State, j.Stats = ResultReady, query.Stats{Rows: 50, Batches: 1, WireBytes: 3128}
+	if _, err = node.CompareAndSwap(ctx, s, j); err != nil {
+		return err
 	}
 	// The gateway commits (commitResult: read, then swap).
 	final, err := gateway.Get(ctx, id)
