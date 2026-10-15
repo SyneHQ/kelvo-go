@@ -93,6 +93,9 @@ type Executor struct {
 	connectionResolvers map[string]*ConnectionResolver
 	connectionSourceIDs map[string]string
 	WarmPool            *WarmPoolManager
+	// OperationCaps bounds durable operations per tenant and per connection
+	// inside the background class. Nil means no caps.
+	OperationCaps *admission.Caps
 }
 
 type boundCatalog struct {
@@ -261,7 +264,14 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		}
 		phases.enter(telemetry.PhaseNodeAdmission)
 		waitStart := time.Now()
+		// Federated queries are analysis work and take the background class;
+		// native reads that did not reach a read worker stay interactive.
+		class := admission.ClassInteractive
+		if r.Mode == "federated" {
+			class = admission.ClassOperation
+		}
 		reservation, err := e.ResourcePool.Acquire(ctx, admission.Request{
+			Class:        class,
 			MemoryBytes:  memoryBytes + e.ResourceOverheadBytes,
 			ScratchBytes: int64(e.Limits.MaxTempMB) << 20,
 		})

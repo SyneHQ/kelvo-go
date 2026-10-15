@@ -16,6 +16,10 @@ type ResourceConfig struct {
 	QueryReserveSlots     int                  `yaml:"query_reserve_slots,omitempty"`
 	QueryReserveMemoryMB  int64                `yaml:"query_reserve_memory_mb,omitempty"`
 	QueryReserveScratchMB int64                `yaml:"query_reserve_scratch_mb,omitempty"`
+	// SeparateClasses makes the query reserve the interactive class's own
+	// share (read workers, native reads) and the rest the background share
+	// (durable operations, refreshes, analysis): neither takes the other's.
+	SeparateClasses bool `yaml:"separate_classes,omitempty"`
 
 	MaxConcurrent int   `yaml:"max_concurrent"`
 	MemoryMB      int64 `yaml:"memory_mb"`
@@ -28,7 +32,7 @@ func (c ResourceConfig) NewPool() (*admission.Pool, error) {
 	if c.QueryReserveMemoryMB < 0 || c.QueryReserveMemoryMB > 1<<30 || c.QueryReserveScratchMB < 0 || c.QueryReserveScratchMB > 1<<30 || c.MemoryMB <= 0 || c.MemoryMB > 1<<30 || c.BaselineMB <= 0 || c.BaselineMB >= c.MemoryMB || c.OverheadMB <= 0 || c.OverheadMB > c.MemoryMB-c.BaselineMB || c.ScratchMB < 1 || c.ScratchMB > 1<<30 || c.MaxConcurrent < 1 || c.MaxConcurrent > 64 {
 		return nil, errors.New("invalid node resource budgets")
 	}
-	limits := admission.Limits{ReservedSlots: c.QueryReserveSlots, ReservedMemoryBytes: c.QueryReserveMemoryMB << 20, ReservedScratchBytes: c.QueryReserveScratchMB << 20, MaxConcurrent: c.MaxConcurrent, MemoryBytes: (c.MemoryMB - c.BaselineMB) << 20, ScratchBytes: c.ScratchMB << 20}
+	limits := admission.Limits{ReservedSlots: c.QueryReserveSlots, ReservedMemoryBytes: c.QueryReserveMemoryMB << 20, ReservedScratchBytes: c.QueryReserveScratchMB << 20, MaxConcurrent: c.MaxConcurrent, MemoryBytes: (c.MemoryMB - c.BaselineMB) << 20, ScratchBytes: c.ScratchMB << 20, SeparateClasses: c.SeparateClasses}
 	if c.Export != nil {
 		if c.Export.MaxConcurrent < 1 || c.Export.MaxConcurrent > 64 || c.Export.MemoryMB < 1 || c.Export.MemoryMB > 1<<30 || c.Export.ScratchMB < 0 || c.Export.ScratchMB > 1<<30 {
 			return nil, errors.New("invalid export resource budgets")
@@ -76,9 +80,14 @@ func (c ResourceConfig) Fits(l query.Limits, refresh bool) bool {
 	}
 	memoryCapacity := (c.MemoryMB - c.BaselineMB) << 20
 	scratchCapacity := c.ScratchMB << 20
-	if refresh {
+	if refresh || c.SeparateClasses {
 		memoryCapacity -= c.QueryReserveMemoryMB << 20
 		scratchCapacity -= c.QueryReserveScratchMB << 20
+	}
+	// A query may run in either share when classes are separate.
+	if c.SeparateClasses && !refresh {
+		memoryCapacity = min(memoryCapacity, c.QueryReserveMemoryMB<<20)
+		scratchCapacity = min(scratchCapacity, c.QueryReserveScratchMB<<20)
 	}
 	return (int64(l.MemoryMB)+c.OverheadMB)<<20 <= memoryCapacity && scratch <= scratchCapacity
 }

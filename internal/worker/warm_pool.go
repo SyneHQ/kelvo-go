@@ -16,20 +16,24 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/adapter/frame"
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
 // WarmPoolConfig configures the warm worker pool for small read-only operations.
 type WarmPoolConfig struct {
-	Enabled        bool          `yaml:"enabled"`
-	IdleTTL        time.Duration `yaml:"idle_ttl"`         // default 30m
-	MaxWorkers     int           `yaml:"max_workers"`      // default 4
-	MaxPerKey      int           `yaml:"max_per_key"`      // default 1
-	MaxInFlight    int           `yaml:"max_in_flight"`    // default 16, reads in flight per worker
-	QueueDepth     int           `yaml:"queue_depth"`      // default 64, reads waiting for a full worker
-	QueueTimeout   time.Duration `yaml:"queue_timeout"`    // default 10s
-	WorkerMemoryMB int           `yaml:"worker_memory_mb"` // default 64
+	Enabled     bool          `yaml:"enabled"`
+	IdleTTL     time.Duration `yaml:"idle_ttl"`      // default 30m
+	MaxWorkers  int           `yaml:"max_workers"`   // default 4
+	MaxPerKey   int           `yaml:"max_per_key"`   // default 1
+	MaxInFlight int           `yaml:"max_in_flight"` // default 16, reads in flight per worker
+	// Caps inside the interactive class; 0 takes the default.
+	MaxPerTenant     int           `yaml:"max_per_tenant"`     // default 32 reads in flight per tenant
+	MaxPerConnection int           `yaml:"max_per_connection"` // default max_per_key × max_in_flight
+	QueueDepth       int           `yaml:"queue_depth"`        // default 64, reads waiting for a full worker
+	QueueTimeout     time.Duration `yaml:"queue_timeout"`      // default 10s
+	WorkerMemoryMB   int           `yaml:"worker_memory_mb"`   // default 64
 }
 
 // errWarmUnavailable means no warm worker could be obtained and nothing was
@@ -69,6 +73,9 @@ func (c WarmPoolConfig) Validate() error {
 	if c.MaxInFlight < 0 || c.MaxInFlight > 64 {
 		return errors.New("warm_pool: max_in_flight must be between 1 and 64")
 	}
+	if c.MaxPerTenant < 0 || c.MaxPerTenant > 4096 || c.MaxPerConnection < 0 || c.MaxPerConnection > 4096 {
+		return errors.New("warm_pool: max_per_tenant and max_per_connection must be between 0 and 4096")
+	}
 	if c.QueueDepth < 1 || c.QueueDepth > 1024 {
 		return errors.New("warm_pool: queue_depth must be between 1 and 1024")
 	}
@@ -88,6 +95,17 @@ func (c WarmPoolConfig) maxInFlight() int {
 		return 16
 	}
 	return c.MaxInFlight
+}
+
+func (c WarmPoolConfig) caps() *admission.Caps {
+	tenant, connection := c.MaxPerTenant, c.MaxPerConnection
+	if tenant == 0 {
+		tenant = 32
+	}
+	if connection == 0 {
+		connection = c.MaxPerKey * c.maxInFlight()
+	}
+	return &admission.Caps{MaxPerTenant: tenant, MaxPerConnection: connection}
 }
 
 // WarmPoolMetrics records observability counters for the warm pool.
@@ -144,6 +162,7 @@ type WarmPoolManager struct {
 	cfg      WarmPoolConfig
 	metrics  WarmPoolMetrics
 	launcher WorkerLauncher
+	caps     *admission.Caps
 	// Adapter is the pinned adapter binary for reads routed from the query
 	// path; operations pass their own.
 	Adapter OperationProcessConfig
@@ -167,6 +186,7 @@ func NewWarmPoolManager(cfg WarmPoolConfig, launcher WorkerLauncher) (*WarmPoolM
 	mgr := &WarmPoolManager{
 		cfg:      cfg,
 		launcher: launcher,
+		caps:     cfg.caps(),
 		workers:  make(map[string]*warmWorkerEntry),
 		changed:  make(chan struct{}),
 		stopRpr:  make(chan struct{}),
@@ -292,6 +312,10 @@ func (m *WarmPoolManager) evictStaleRevisionsLocked(tenantID, appTeam, connectio
 // errWorkerBusy is a full worker that stayed full for queue_timeout. It is not
 // a fallback: fifty one-shot children is the collapse the pool exists to avoid.
 var errWorkerBusy = query.NewError("RESOURCE_EXHAUSTED", "Read worker is busy; retry after 1s")
+
+// errTenantBusy is a tenant or connection at its interactive cap for
+// queue_timeout.
+var errTenantBusy = query.NewError("RESOURCE_EXHAUSTED", "Read capacity for this tenant or connection is in use; retry after 1s")
 
 // Acquire takes a stream slot on a warm worker for input's key, launching one
 // when the key has none. A key whose workers are all full waits up to
@@ -584,6 +608,18 @@ func (m *WarmPoolManager) releaseWorker(w *warmWorkerEntry, err error) {
 
 // Execute runs an operation on a warm worker, streaming results to sink.
 func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest, sink query.Sink) (operations.Receipt, error) {
+	// One tenant or connection cannot take the whole interactive class: past
+	// its cap a read waits queue_timeout like a read for a full worker.
+	capCtx, cancelCap := context.WithTimeout(ctx, m.cfg.QueueTimeout)
+	releaseCaps, err := m.caps.Acquire(capCtx, input.Source.TenantID, input.Source.ConnectionID)
+	cancelCap()
+	if err != nil {
+		if ctx.Err() != nil {
+			return rejectedOperation(input, "CANCELLED"), ctx.Err()
+		}
+		return rejectedOperation(input, "RESOURCE_EXHAUSTED"), errTenantBusy
+	}
+	defer releaseCaps()
 	w, release, err := m.Acquire(ctx, e, cfg, input)
 	if err != nil {
 		if ctx.Err() != nil {

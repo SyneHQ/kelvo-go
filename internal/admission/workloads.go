@@ -9,12 +9,16 @@ const (
 	ClassInteractive Class = "interactive"
 	ClassExport      Class = "export"
 	ClassRefresh     Class = "refresh"
+	// ClassOperation is background work: durable operations and analysis
+	// (federated) queries. Read workers stay interactive.
+	ClassOperation Class = "operation"
 )
 
 const (
 	interactiveIndex = iota
 	exportIndex
 	refreshIndex
+	operationIndex
 	classCount
 )
 
@@ -46,6 +50,8 @@ func classIndex(class Class) (int, error) {
 		return exportIndex, nil
 	case ClassRefresh:
 		return refreshIndex, nil
+	case ClassOperation:
+		return operationIndex, nil
 	default:
 		return 0, ErrInvalid
 	}

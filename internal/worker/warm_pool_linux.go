@@ -57,11 +57,13 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 
 	// A warm worker keeps its reservation while idle. Never let it take the
 	// node's last execution slot: one-shot operations must stay admissible.
-	if snapshot := e.ResourcePool.Snapshot(); snapshot.Limits.MaxConcurrent-snapshot.Active < 2 {
+	// Separate classes already keep background capacity out of its reach.
+	if snapshot := e.ResourcePool.Snapshot(); !snapshot.Limits.SeparateClasses && snapshot.Limits.MaxConcurrent-snapshot.Active < 2 {
 		return nil, nil, errWarmUnavailable
 	}
 	memoryBytes := int64(limits.MemoryMB) << 20
 	reservation, err := e.ResourcePool.Acquire(ctx, admission.Request{
+		Class:        admission.ClassInteractive,
 		MemoryBytes:  memoryBytes + e.ResourceOverheadBytes,
 		ScratchBytes: int64(limits.MaxTempMB) << 20,
 	})

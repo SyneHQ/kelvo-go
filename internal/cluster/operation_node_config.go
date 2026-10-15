@@ -22,6 +22,10 @@ type OperationNodeConfig struct {
 	MaxDownloads   int                                      `yaml:"max_downloads"`
 	PollInterval   time.Duration                            `yaml:"poll_interval"`
 	WarmPool       *worker.WarmPoolConfig                   `yaml:"warm_pool,omitempty"`
+	// Caps on concurrent durable operations inside the background class; 0
+	// means no cap.
+	MaxPerTenant     int `yaml:"max_per_tenant,omitempty"`
+	MaxPerConnection int `yaml:"max_per_connection,omitempty"`
 }
 
 func validateNodeOperations(c NodeConfig) error {
@@ -31,6 +35,7 @@ func validateNodeOperations(c NodeConfig) error {
 	o := c.Operations
 	if c.Policy.Operations == nil || o == nil || c.Audit == nil || c.Resources == nil || c.Containment == nil || c.ScratchDirectory == "" || c.SandboxPath == "" ||
 		!validEndpoint(o.InputURL) || o.TLS.CAFile == "" || o.TLS.CertFile == "" || o.TLS.KeyFile == "" || o.TLS.Trust != nil || o.TLS.IdentityFile != "" || o.TLS.ReloadInterval != 0 ||
+		o.MaxPerTenant < 0 || o.MaxPerTenant > 64 || o.MaxPerConnection < 0 || o.MaxPerConnection > 64 ||
 		o.MaxConcurrent < 1 || o.MaxConcurrent > c.Policy.Workers[c.WorkerID] || o.MaxConcurrent > c.Resources.MaxConcurrent || o.MaxDownloads < 1 || o.MaxDownloads > 64 ||
 		o.PollInterval < 10*time.Millisecond || o.PollInterval > time.Second || o.MaxResultBytes < 1024 || o.MaxResultBytes > operationinput.MaxInputBytes || o.MaxResultBytes > c.Policy.Limits.MaxBytes ||
 		o.Results.MaxEntries < 1 || o.Results.MaxEntries > 4096 || o.Results.MaxStoredBytes < 2*o.MaxResultBytes || o.Results.MaxStoredBytes > 1<<40 ||

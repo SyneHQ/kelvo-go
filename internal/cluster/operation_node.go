@@ -3,6 +3,7 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"sync/atomic"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/filesnapshot"
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/exports"
 	"github.com/SYNEHQ/kelvo-go/internal/operationinput"
@@ -52,6 +54,9 @@ func (n *Node) initOperations(ctx context.Context) (resultErr error) {
 		}
 	}()
 	var err error
+	if c.MaxPerTenant > 0 || c.MaxPerConnection > 0 {
+		native.OperationCaps = &admission.Caps{MaxPerTenant: c.MaxPerTenant, MaxPerConnection: c.MaxPerConnection}
+	}
 	if c.WarmPool != nil && c.WarmPool.Enabled {
 		native.WarmPool, err = worker.NewWarmPoolManager(*c.WarmPool, nil)
 		if err != nil {
@@ -184,6 +189,7 @@ func (p *preparedNodeOperation) Close() error {
 
 func (p *preparedNodeOperation) Execute(ctx context.Context) (operations.Receipt, error) {
 	ctx = containment.WithCompletion(ctx, &p.completion)
+	ctx = worker.WithOperationScope(ctx, operationCapTenant(p.record.Scope), p.record.Scope.ConnectionID)
 	ctx = worker.WithOperationFilePublisher(ctx, func(admitted context.Context, input adapter.ProcessRequest, candidate filesnapshot.Descriptor, source io.Reader) (bool, error) {
 		if input.SourceFile == nil {
 			return false, operationstore.ErrConflict
@@ -335,3 +341,10 @@ func (s *operationResultSink) abort() error {
 
 var _ operationrun.Prepared = (*preparedNodeOperation)(nil)
 var _ query.Sink = (*operationResultSink)(nil)
+
+// operationCapTenant is the tenant a durable operation is capped under: one
+// app team of one cluster tenant at one issuer.
+func operationCapTenant(scope operationstore.Scope) string {
+	identity, _ := json.Marshal([]string{scope.Issuer, scope.ClusterTenant, scope.AppTeam})
+	return string(identity)
+}
