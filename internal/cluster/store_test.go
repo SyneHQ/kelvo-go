@@ -502,9 +502,41 @@ func TestNATSStoreSubmitPrefersAgedSlots(t *testing.T) {
 	}
 }
 
-// A finished transient job's slot is free at once, and is taken before a slot
+// succeedJob drives a job through the whole lifecycle to Succeeded, as the node
+// and gateway do.
+func succeedJob(t *testing.T, store *NATSStore, snap Snapshot) Snapshot {
+	t.Helper()
+	ctx := context.Background()
+	step := func(s Snapshot, mutate func(*Job)) Snapshot {
+		j := s.Job
+		mutate(&j)
+		next, err := store.CompareAndSwap(ctx, s, j)
+		if err != nil {
+			t.Fatalf("to %s: %v", j.State, err)
+		}
+		return next
+	}
+	s := step(snap, func(j *Job) { j.State, j.WorkerID, j.Owner = Assigned, "worker-a", randomHex(16) })
+	s = step(s, func(j *Job) { j.State, j.Claim = Claimed, randomHex(16) })
+	s = step(s, func(j *Job) { j.State = Running })
+	s = step(s, func(j *Job) { j.State, j.Stats = ResultReady, query.Stats{Rows: 1} })
+	return step(s, func(j *Job) { j.State = Succeeded })
+}
+
+func cancelJob(t *testing.T, store *NATSStore, snap Snapshot) Snapshot {
+	t.Helper()
+	j := snap.Job
+	j.State, j.Error = Cancelled, query.PublicError(query.NewError("CANCELLED", "Query cancelled"))
+	next, err := store.CompareAndSwap(context.Background(), snap, j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return next
+}
+
+// A completed transient read's slot is free at once, and is taken before a slot
 // whose job a client may still confirm.
-func TestNATSStoreTransientSlotIsReusedBeforeAConfirmableOne(t *testing.T) {
+func TestNATSStoreCompletedTransientSlotIsReusedBeforeAConfirmableOne(t *testing.T) {
 	store := openFixture(t)
 	ctx := context.Background()
 	request := query.Request{Mode: "federated", SQL: "select 1"}
@@ -517,18 +549,55 @@ func TestNATSStoreTransientSlotIsReusedBeforeAConfirmableOne(t *testing.T) {
 		t.Fatalf("transient submit: %v", err)
 	}
 	failJob(t, store, keep)
-	failJob(t, store, transient)
+	succeedJob(t, store, transient)
 	next, err := store.SubmitTransient(ctx, request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if next.Job.ID == transient.Job.ID || !sameSlot(t, next.Job.ID, transient.Job.ID) {
-		t.Fatalf("next job %s did not reuse the transient job's slot %s", next.Job.ID, transient.Job.ID)
+		t.Fatalf("next job %s did not reuse the completed transient job's slot %s", next.Job.ID, transient.Job.ID)
 	}
 	if got, err := store.Get(ctx, keep.Job.ID); err != nil || got.Job.State != Failed {
 		t.Fatalf("a confirmable terminal job lost its slot: %v %+v", err, got.Job.State)
 	}
-	failJob(t, store, next)
+	succeedJob(t, store, next)
+}
+
+// A cancelled or failed transient read keeps its slot until the lease window
+// passes, even when every other slot is taken: its node may still be running it,
+// and reuse would let that work escape max_queries.
+func TestNATSStoreCancelledOrFailedTransientSlotIsHeldNotReused(t *testing.T) {
+	for name, end := range map[string]func(*testing.T, *NATSStore, Snapshot) Snapshot{"cancelled": cancelJob, "failed": failJob} {
+		t.Run(name, func(t *testing.T) {
+			store := openFixture(t)
+			ctx := context.Background()
+			request := query.Request{Mode: "federated", SQL: "select 1"}
+			first, err := store.SubmitTransient(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			second, err := store.SubmitTransient(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			end(t, store, first)
+			succeedJob(t, store, second)
+			// The completed slot is reused; the ended-early one must not be.
+			third, err := store.SubmitTransient(ctx, request)
+			if err != nil || !sameSlot(t, third.Job.ID, second.Job.ID) {
+				t.Fatalf("completed slot not reused: %v", err)
+			}
+			if _, err := store.SubmitTransient(ctx, request); !errors.Is(err, ErrCapacity) {
+				t.Fatalf("a slot whose job ended early was reused inside the lease window: %v", err)
+			}
+			if got, err := store.Get(ctx, first.Job.ID); err != nil || got.Job.State == Queued {
+				t.Fatalf("held slot was overwritten: %v %+v", err, got.Job.State)
+			}
+			succeedJob(t, store, third)
+			// Leave the broker as found: wait out the held slot's lease window.
+			time.Sleep(store.Policy().LeaseDuration + 200*time.Millisecond)
+		})
+	}
 }
 
 func sameSlot(t *testing.T, a, b string) bool {
@@ -539,7 +608,7 @@ func sameSlot(t *testing.T, a, b string) bool {
 }
 
 // Round trips are the cost being cut: a transition is one request, and a submit
-// that reuses a slot this process saw finish is one request.
+// that reuses a slot this process saw complete is one request.
 func TestNATSStoreTransitionAndReusedSubmitCostOneRequestEach(t *testing.T) {
 	store := openFixture(t)
 	ctx := context.Background()
@@ -548,21 +617,38 @@ func TestNATSStoreTransitionAndReusedSubmitCostOneRequestEach(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s := first
+	for _, to := range []string{Assigned, Claimed, Running, ResultReady} {
+		j := s.Job
+		j.State = to
+		switch to {
+		case Assigned:
+			j.WorkerID, j.Owner = "worker-a", randomHex(16)
+		case Claimed:
+			j.Claim = randomHex(16)
+		}
+		if s, err = store.CompareAndSwap(ctx, s, j); err != nil {
+			t.Fatal(err)
+		}
+	}
 	before := store.nc.Stats().OutMsgs
-	failed := failJob(t, store, first) // one compare-and-swap
+	j := s.Job
+	j.State = Succeeded
+	if _, err := store.CompareAndSwap(ctx, s, j); err != nil { // one compare-and-swap
+		t.Fatal(err)
+	}
 	if sent := store.nc.Stats().OutMsgs - before; sent != 1 {
 		t.Fatalf("compare-and-swap sent %d requests, want 1", sent)
 	}
 	before = store.nc.Stats().OutMsgs
-	second, err := store.SubmitTransient(ctx, request) // reuses the slot just freed
+	second, err := store.SubmitTransient(ctx, request) // reuses the slot just completed
 	if err != nil {
 		t.Fatal(err)
 	}
 	if sent := store.nc.Stats().OutMsgs - before; sent != 1 {
 		t.Fatalf("submit into a freed slot sent %d requests, want 1", sent)
 	}
-	_ = failed
-	failJob(t, store, second)
+	succeedJob(t, store, second)
 }
 
 // A stale snapshot is still refused: the revision check moved into the update.

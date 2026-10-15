@@ -65,7 +65,16 @@ func (s *NATSStore) slotReusable(j Job, now time.Time, strict bool) bool {
 		return now.After(j.ExpiresAt)
 	}
 	if j.Transient {
-		return true // its caller read the outcome from the response itself
+		// Its caller read the outcome from the response itself, so a completed
+		// read's slot is free at once. A cancelled or failed one is not: its
+		// node may still be executing until it next renews its lease (up to
+		// about a second), and a slot reused now would let that work run outside
+		// max_queries. Those wait out the lease window, in the saturated pass
+		// too: a transient job that did not complete is never taken early.
+		if j.State == Succeeded {
+			return true
+		}
+		return now.Sub(j.HeartbeatAt) >= s.policy.LeaseDuration
 	}
 	return !strict || now.Sub(j.HeartbeatAt) >= s.policy.LeaseDuration
 }
@@ -358,8 +367,9 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 }
 
 // SubmitTransient stores a single-call read. It differs from Submit only in
-// the slot's lifetime: the job is marked Transient, so its slot is reused as
-// soon as it is terminal instead of after the lease window.
+// the slot's lifetime: the job is marked Transient, so once it has Succeeded
+// its slot is reused at once instead of after the lease window. A cancelled or
+// failed one keeps the lease window.
 func (s *NATSStore) SubmitTransient(ctx context.Context, r query.Request) (Snapshot, error) {
 	return s.submit(ctx, r, true)
 }
@@ -590,8 +600,8 @@ func (s *NATSStore) CompareAndSwap(ctx context.Context, old Snapshot, next Job) 
 		}
 		return Snapshot{}, errors.New("job store unavailable")
 	}
-	if next.Transient && next.Terminal() {
-		s.pushFreed(n, rev)
+	if next.Transient && next.State == Succeeded {
+		s.pushFreed(n, rev) // only a completed read frees its slot at once
 	}
 	return Snapshot{Job: next, Revision: rev, raw: b}, nil
 }

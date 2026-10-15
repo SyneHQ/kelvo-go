@@ -66,8 +66,8 @@ type Job struct {
 	Owner       string           `json:"owner,omitempty"`
 	Claim       string           `json:"claim,omitempty"`
 	// Transient marks a single-call read: its caller learns the outcome from the
-	// same response, never polls it afterwards, so a finished job's slot is free
-	// at once. Immutable after Submit.
+	// same response, never polls it afterwards, so a completed job's slot is
+	// free at once (a cancelled or failed one's is not). Immutable after Submit.
 	Transient bool         `json:"transient,omitempty"`
 	Stats     query.Stats  `json:"stats"`
 	Error     *query.Error `json:"error,omitempty"`

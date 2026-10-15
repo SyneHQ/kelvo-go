@@ -43,10 +43,19 @@ type Config struct {
 	WriteTimeout time.Duration `yaml:"write_timeout" json:"write_timeout_ns"`
 }
 
+// groupCommitWindow is the longest the writer waits for company before syncing
+// a group of operations while others keep arriving (see journal_linux.go).
+// minimumWriteTimeout keeps an operation's own deadline above that wait plus an
+// allowance for the fsync itself, so grouping can never be what times it out.
+const (
+	groupCommitWindow   = 2 * time.Millisecond
+	minimumWriteTimeout = groupCommitWindow + 50*time.Millisecond
+)
+
 func (c Config) Validate() error {
 	if !filepath.IsAbs(c.Directory) || filepath.Clean(c.Directory) != c.Directory || c.Directory == "/" || len(c.Directory) > 4096 ||
 		c.MaxEntries < 1 || c.MaxEntries > maximumEntries || c.MaxPending < 1 || c.MaxPending > maximumPending || c.MaxPending > c.MaxEntries ||
-		c.Retention <= 0 || c.Retention > 30*24*time.Hour || c.WriteTimeout <= 0 || c.WriteTimeout > 30*time.Second {
+		c.Retention <= 0 || c.Retention > 30*24*time.Hour || c.WriteTimeout < minimumWriteTimeout || c.WriteTimeout > 30*time.Second {
 		return ErrInvalid
 	}
 	return nil

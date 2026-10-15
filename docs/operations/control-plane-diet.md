@@ -15,26 +15,32 @@ about 21 broker round trips plus polls, 6 audit fsyncs, 9-20 Ed25519 verificatio
 | --- | --- | --- | --- |
 | `NATSStore.CompareAndSwap` no longer reads the record first | get + update per transition | update only | The update still fails on any newer revision. A snapshot carries the record it was read at and the checks run against a private decode of it, so a caller mutating a pointer inside it (trace, authority, parameters) still cannot change what is compared (`TestClusterTraceDurableAdmissionAndImmutableCAS`). A snapshot not produced by the store is compared against a fresh read. |
 | `Submit` probes from a rotating slot and reuses a slot this process saw finish, one update | a create and a get per occupied slot in the strict pass: **209 gateway messages per read** with every slot recently used | 1 | Same admission rule (`max_queries`), same preference for aged slots over fresh terminal ones; only the order of the probe changed. |
-| Single-call jobs are marked `Transient`; a finished one is reusable at once | slot held for the lease window | free | The caller reads the outcome from the response (receipt trailer), never polls it. Confirmable (three-call) terminal jobs keep the window; a transient slot is taken first (`TestNATSStoreTransientSlotIsReusedBeforeAConfirmableOne`). |
+| Single-call jobs are marked `Transient`; a **completed** one is reusable at once | slot held for the lease window | free | The caller reads the outcome from the response (receipt trailer), never polls it. A cancelled or failed transient job keeps the lease window, in the saturated pass too: its node may still be executing until its next lease tick (up to about a second), and early reuse would let that work run outside `max_queries` (`TestNATSStoreCancelledOrFailedTransientSlotIsHeldNotReused`). Confirmable (three-call) terminal jobs keep the window; a completed transient slot is taken first (`TestNATSStoreCompletedTransientSlotIsReusedBeforeAConfirmableOne`). |
 | A job just submitted is enqueued without reading it back | get + publish | publish | It is Queued by construction; the message ID makes a repeat harmless. |
-| Node publishes the result from its own last write | get + get + update | update (falls back to a read on a conflict) | A newer revision (cancellation, claim) conflicts and the attempt repeats from a read. |
+| Node publishes the result from its own last write | get + get + update | update (falls back to a read on a conflict; at most one wasted update per call, since the hint is used once) | A newer revision (cancellation, claim) conflicts and the attempt repeats from a read. |
 | Verified-grant cache in `internal/delegation` (`VerifyCached`, `VerifyClaimsCached`) | 65 us, 14 KB, 351 allocations per verification, about six per read on the gateway and again on the node | once per token per process; a hit is 1.1 us, 1.2 KB | Keyed by token digest, trust (issuer, audience, tenant, principal, key) and, when bound, the exact request. The claims' two clock checks run on every hit, so a grant is never accepted past its own expiry; failures are not cached. The principal's current authority, the request's key authorization and the job's stored authority are still checked on every read. A grant has no per-token revocation to miss: it ends by expiry, or when its principal or trust changes (a different key here). |
-| Audit group commit (`internal/audit`) | one fsync per begin and per finish: 6 per read | operations that arrive together share one | No operation completes and no receipt escapes before the sync covering its writes returns; a failed sync fails every operation that wrote with `ErrUncertain` and faults the journal. Header and `Config` untouched (the 2 ms window is a constant). A lone operation is not delayed. |
+| Audit group commit (`internal/audit`) | one fsync per begin and per finish: 6 per read | operations that arrive together share one; `write_timeout` must now be at least 52 ms (the window plus 50 ms for an fsync) | No operation completes and no receipt escapes before the sync covering its writes returns; a failed sync fails every operation that wrote with `ErrUncertain` and faults the journal. Header and `Config` untouched (the 2 ms window is a constant). A lone operation is synced at once, even right after a group (`TestAuditLoneOperationAfterAGroupIsNotDelayed`). |
 | Result relay copy buffer pooled | 32 KiB per read | 0 | none involved |
 
-## Measured here
+## Measured here: a store-call replay, not an end-to-end measurement
 
 Local JetStream (nats 2.10, TLS), 64 slots all holding recently finished jobs, 16
-concurrent replays of the exact store calls one single-call read makes
-(`TestMeasureTransientReadStoreCost`, `KELVO_MEASURE_READS=640`):
+concurrent replays of the store calls one single-call read makes
+(`TestMeasureTransientReadStoreCost`, `KELVO_MEASURE_READS=640`). The replay is
+hand-written in the order the gateway and node perform the calls. It leaves out
+the node's lease renewals, the resolver's lease reads (each custody check is
+several gets), the gateway's result-wait polls and re-reads, audit, and the
+result stream, so its totals are lower bounds of what a read costs. It now fails
+if the store's cost regresses. Real per-read CPU, allocations and broker messages
+need the profile's harness on the integration branch.
 
 | | Before | After |
 | --- | --- | --- |
-| Broker messages per read, gateway | 208.9 | 6.0 |
-| Broker messages per read, node | 11.0 | 7.0 |
-| **Broker messages per read, total (excluding polls)** | **219.9** | **13.0** |
-| Allocations per read (store calls only) | 806 KB, 10,103 objects | 45 KB, 600 objects |
-| CPU per read (test process, includes the NATS client) | 10.4 ms | 0.71 ms |
+| Broker messages per read, gateway (replay) | 208.9 | 6.0 |
+| Broker messages per read, node (replay) | 11.0 | 7.0 |
+| **Broker messages per read, total (replay, excluding polls, renewals, resolver reads)** | **219.9** | **13.0** |
+| Allocations per read (store-call replay) | 806 KB, 10,103 objects | 45 KB, 600 objects |
+| CPU per read (store-call replay, includes the NATS client) | 10.4 ms | 0.71 ms |
 
 Ed25519 verification (`BenchmarkVerifyUncachedVersusCached`): 65.4 us, 14.2 KB, 351
 allocations uncached; 1.09 us, 1.2 KB, 20 allocations cached. Verifications per
@@ -105,3 +111,24 @@ balancing), the gateway/node protocol (one new endpoint), and the per-gateway
 bound on queued transient reads (today enforced by the shared slot count; here
 each gateway also needs an in-flight limit). It needs the owner's decision and a
 security review of the new endpoint; it is not in this PR.
+
+## What ephemeral job state would take, if the end-to-end numbers miss
+
+If the profile harness shows CPU above 6 ms, allocations above 300 KB or more than
+5 broker round trips per read, the lever is the durable record itself, and the plan
+above is the smallest version that keeps what the resolver reads. A fully
+in-memory job would additionally need:
+
+1. A custody proof the resolver can check without the record: for example the
+   gateway signing a short-lived statement "this node runs this read" that
+   db-api verifies, replacing `connectionLease`'s read of the record. That changes
+   the resolver protocol on both sides (db-api and the SDK's lease validator).
+2. A single owner for a read's state, since the resolver's lease calls reach any
+   gateway instance: sticky routing of lease calls by job ID, or shared state
+   again.
+3. A per-gateway in-flight bound standing in for `max_queries`, and the loss of
+   the queue's global fairness across nodes.
+4. Cancellation and loss handling without `Reconcile`: the node's lease tick and
+   the gateway's request context become the only fences.
+
+Each of these is a security-reviewed protocol change; none is in this PR.

@@ -20,7 +20,7 @@ import (
 
 func TestAuditBlockedStartRetainsSingleWriterAndFencesLateReceipt(t *testing.T) {
 	cfg := testConfig(t.TempDir())
-	cfg.WriteTimeout = 25 * time.Millisecond
+	cfg.WriteTimeout = minimumWriteTimeout
 	operations := defaultIO()
 	var enabled, blocked atomic.Bool
 	var calls atomic.Int32
@@ -184,7 +184,7 @@ func TestAuditBlockedFinishNeverReturnsLateSuccessOrStartsAnotherWriter(t *testi
 
 func TestAuditQueuedStartCannotRunAfterWriterUncertainty(t *testing.T) {
 	cfg := testConfig(t.TempDir())
-	cfg.WriteTimeout = 50 * time.Millisecond
+	cfg.WriteTimeout = minimumWriteTimeout
 	cfg.MaxPending = 2
 	operations := defaultIO()
 	var enabled, blocked atomic.Bool
