@@ -274,9 +274,9 @@ gain. Phase 3 is the security-sensitive one.
 
 ## Phase 2b as built
 
-- Admission gains an `operation` class for durable operations and analysis
-  (federated) queries; with refresh and export it is background work. Read
-  workers and native reads stay interactive.
+- Admission gains an `operation` class for durable operations (analysis jobs
+  run as durable operations); with refresh and export it is background work.
+  Query API reads, federated or native, and read workers stay interactive.
 - `resources.separate_classes: true` makes the query reserve
   (`query_reserve_slots`, `_memory_mb`, `_scratch_mb`) the interactive share
   and the rest the background share. Background never had the reserve; now
