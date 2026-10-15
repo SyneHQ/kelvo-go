@@ -170,6 +170,11 @@ func TestAuditGroupCommitSyncFailureFailsTheWholeGroupWithoutReceipts(t *testing
 // A burst that forms a group must not make the operation after it wait: a lone
 // operation is written and synced at once, whatever came before.
 func TestAuditLoneOperationAfterAGroupIsNotDelayed(t *testing.T) {
+	// A long window makes waiting for company obvious: a lone operation that
+	// waited would take about this long, however loaded the runner is.
+	const longWindow = 400 * time.Millisecond
+	defer func(previous time.Duration) { groupWindow = previous }(groupWindow)
+	groupWindow = longWindow
 	tracked := newTrackedIO(2 * time.Millisecond)
 	j := openTracked(t, groupConfig(t, 256, 32), tracked)
 	var wg sync.WaitGroup
@@ -193,7 +198,9 @@ func TestAuditLoneOperationAfterAGroupIsNotDelayed(t *testing.T) {
 			t.Fatal(err)
 		}
 		overhead := time.Since(started) - time.Duration(tracked.syncNS.Load()-syncBefore)
-		if overhead > groupCommitWindow || tracked.syncs.Load()-groupsBefore != 1 {
+		// Waiting for company would cost the whole window; a loaded runner adds
+		// scheduling noise, nowhere near that.
+		if tracked.syncs.Load()-groupsBefore != 1 || overhead > longWindow/4 {
 			t.Fatalf("a lone begin after a group added %s beyond its sync (%d syncs)", overhead, tracked.syncs.Load()-groupsBefore)
 		}
 		if err := r.Finish(context.Background(), Succeeded, None); err != nil {

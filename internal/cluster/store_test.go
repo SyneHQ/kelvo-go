@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"strconv"
@@ -563,40 +564,73 @@ func TestNATSStoreCompletedTransientSlotIsReusedBeforeAConfirmableOne(t *testing
 	succeedJob(t, store, next)
 }
 
-// A cancelled or failed transient read keeps its slot until the lease window
-// passes, even when every other slot is taken: its node may still be running it,
-// and reuse would let that work escape max_queries.
-func TestNATSStoreCancelledOrFailedTransientSlotIsHeldNotReused(t *testing.T) {
-	for name, end := range map[string]func(*testing.T, *NATSStore, Snapshot) Snapshot{"cancelled": cancelJob, "failed": failJob} {
-		t.Run(name, func(t *testing.T) {
-			store := openFixture(t)
-			ctx := context.Background()
-			request := query.Request{Mode: "federated", SQL: "select 1"}
-			first, err := store.SubmitTransient(ctx, request)
-			if err != nil {
-				t.Fatal(err)
-			}
-			second, err := store.SubmitTransient(ctx, request)
-			if err != nil {
-				t.Fatal(err)
-			}
-			end(t, store, first)
-			succeedJob(t, store, second)
-			// The completed slot is reused; the ended-early one must not be.
-			third, err := store.SubmitTransient(ctx, request)
-			if err != nil || !sameSlot(t, third.Job.ID, second.Job.ID) {
-				t.Fatalf("completed slot not reused: %v", err)
-			}
-			if _, err := store.SubmitTransient(ctx, request); !errors.Is(err, ErrCapacity) {
-				t.Fatalf("a slot whose job ended early was reused inside the lease window: %v", err)
-			}
-			if got, err := store.Get(ctx, first.Job.ID); err != nil || got.Job.State == Queued {
-				t.Fatalf("held slot was overwritten: %v %+v", err, got.Job.State)
-			}
-			succeedJob(t, store, third)
-			// Leave the broker as found: wait out the held slot's lease window.
-			time.Sleep(store.Policy().LeaseDuration + 200*time.Millisecond)
-		})
+// claimJob takes a job to Claimed, as the gateway does once the node assigned it.
+func claimJob(t *testing.T, store *NATSStore, snap Snapshot) Snapshot {
+	t.Helper()
+	ctx := context.Background()
+	j := snap.Job
+	j.State, j.WorkerID, j.Owner = Assigned, "worker-a", randomHex(16)
+	s, err := store.CompareAndSwap(ctx, snap, j)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j = s.Job
+	j.State, j.Claim = Claimed, randomHex(16)
+	if s, err = store.CompareAndSwap(ctx, s, j); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// A cancelled or failed transient read that was claimed keeps its slot until the
+// lease window passes, even when every other slot is taken: its node may still be
+// running it, and reuse would let that work escape max_queries. One that ended
+// before any claim cannot be executing, so its slot is free at once.
+func TestNATSStoreTransientSlotAfterCancelOrFailureIsHeldOnlyIfClaimed(t *testing.T) {
+	ends := map[string]func(*testing.T, *NATSStore, Snapshot) Snapshot{"cancelled": cancelJob, "failed": failJob}
+	for name, end := range ends {
+		for _, claimed := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s claimed=%v", name, claimed), func(t *testing.T) {
+				store := openFixture(t)
+				ctx := context.Background()
+				request := query.Request{Mode: "federated", SQL: "select 1"}
+				first, err := store.SubmitTransient(ctx, request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				second, err := store.SubmitTransient(ctx, request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if claimed {
+					first = claimJob(t, store, first)
+				}
+				end(t, store, first)
+				succeedJob(t, store, second)
+				third, err := store.SubmitTransient(ctx, request)
+				if err != nil {
+					t.Fatalf("completed slot not reused: %v", err)
+				}
+				fourth, err := store.SubmitTransient(ctx, request)
+				if claimed {
+					if !errors.Is(err, ErrCapacity) {
+						t.Fatalf("a claimed job's slot was reused inside the lease window: %v", err)
+					}
+					if got, err := store.Get(ctx, first.Job.ID); err != nil || got.Job.State == Queued {
+						t.Fatalf("held slot was overwritten: %v %+v", err, got.Job.State)
+					}
+				} else {
+					if err != nil || !sameSlot(t, fourth.Job.ID, first.Job.ID) {
+						t.Fatalf("a never-claimed job's slot was held: %v", err)
+					}
+					succeedJob(t, store, fourth)
+				}
+				succeedJob(t, store, third)
+				if claimed { // leave the broker as found: wait out the held slot's lease window
+					time.Sleep(store.Policy().LeaseDuration + 200*time.Millisecond)
+				}
+			})
+		}
 	}
 }
 
