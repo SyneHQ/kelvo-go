@@ -43,7 +43,9 @@ def inside(args):
     env.update(GOMAXPROCS="1", KELVO_TEST_CGROUP_ROOT=str(jobs), KELVO_TEST_CGROUP_STATE=str(state),
                KELVO_TEST_SANDBOX=str(out / "kelvo-landlock"), KELVO_TEST_WARM_ADAPTER_BINARY=str(out / "kelvo-adapter-go"),
                KELVO_TEST_WARM_POSTGRES_DSN=(out / "postgres.dsn").read_text().strip())
-    result = subprocess.run([str(out / "worker.test"), "-test.v", "-test.run=^" + args.gate + "$", "-test.timeout=120s"],
+    if (out / "kelvo").exists():
+        env["KELVO_TEST_BINARY"] = str(out / "kelvo")  # the node's query child
+    result = subprocess.run([str(out / "gate.test"), "-test.v", "-test.run=^" + args.gate + "$", "-test.timeout=120s"],
                             env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=150)
     (out / "worker.test.log").write_bytes(result.stdout)
     log = result.stdout.decode(errors="replace")
@@ -64,7 +66,8 @@ def main():
     parser.add_argument("--adapter", type=Path, help="prebuilt kelvo-adapter-go from this source")
     parser.add_argument("--postgres-dsn-file", type=Path, help="file holding one PostgreSQL URL for a disposable fixture")
     parser.add_argument("--output", type=Path, required=True, help="new private directory for binaries, logs and the report")
-    parser.add_argument("--gate", default=GATE, help="Test name in ./internal/worker to run inside the service")
+    parser.add_argument("--gate", default=GATE, help="Test name to run inside the service")
+    parser.add_argument("--package", default="./internal/worker", choices=("./internal/worker", "./internal/cluster"), help="Package holding the gate")
     parser.add_argument("--inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--unit", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -81,7 +84,10 @@ def main():
     dsn = out / "postgres.dsn"
     dsn.touch(mode=0o600)
     dsn.write_text(args.postgres_dsn_file.read_text().strip() + "\n")
-    for command in ([args.go, "test", "-p", "1", "-c", "-o", str(out / "worker.test"), "./internal/worker"],
+    builds = [[args.go, "test", "-p", "1", "-c", "-o", str(out / "gate.test"), args.package]]
+    if args.package == "./internal/cluster":  # a node needs the query child for its startup probe
+        builds.append([args.go, "build", "-tags", "duckdb_arrow", "-o", str(out / "kelvo"), "./cmd/kelvo"])
+    for command in (*builds,
                     ["cc", "-O2", "-Wall", "-Wextra", "-Werror", "sandbox/launcher.c", "-o", str(out / "kelvo-landlock")]):
         subprocess.run(command, cwd=repo, check=True, timeout=900)
     unit = "kelvo-warm-adapter-" + secrets.token_hex(6)
