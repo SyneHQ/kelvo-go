@@ -38,6 +38,14 @@ const readWorkerMaxRows, readWorkerMaxBytes = 1_000_000, 64 << 20
 // the pool is off, the source or limits do not qualify, or no worker could be
 // obtained and nothing was sent. A worker holds its own reservation, so a read
 // here takes none of its own.
+//
+// Caller authority (principal, policy, delegation) has been checked for this
+// read before it gets here. What is reused is each principal's source
+// authorization: its first read for a connection resolves credentials and
+// they go to the worker; later reads within the authorization's window carry
+// no secrets. Past the window, or when a new worker is needed, a read
+// authorizes again. A definitive denial kills the workers of the authorization
+// it ended; a new revision (credential rotation) drains them.
 func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation.Execution, dynamic bool, resolverRequest, r query.Request, sink query.Sink) (stats query.Stats, resultErr error, handled bool) {
 	// The job's rows and batches must be what this caller's sink received:
 	// the client checks both against what it decoded.
@@ -47,70 +55,71 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 	pool := e.WarmPool
 	eligible := pool != nil && pool.Config().Enabled && pool.Adapter.Binary != "" && r.Mode == "native" && r.Mongo == nil && !r.ScanDiagnostics &&
 		!access.Restricted(ctx) && e.Limits.MaxRows <= readWorkerMaxRows && e.Limits.MaxBytes <= readWorkerMaxBytes
-	// resolve finds the source and its credentials for this read.
-	// ponytail: resolves before any reservation; the node's job permits bound
-	// it today. Phase 3 resolves once per worker instead of once per read.
-	resolve := func() (*Executor, readIdentity, int64, error) {
-		id := readIdentity{tenant: "static", saved: r.ConnectionID}
-		if !dynamic {
-			return e, id, time.Now().Unix() + 5, nil
+	id, saved, principal := readPrincipal(execution, dynamic, r.ConnectionID)
+	// oneShotInspect runs an inspection the read worker cannot take on a
+	// one-shot adapter, the path inspections took before read workers.
+	oneShotInspect := func() (query.Stats, error, bool) {
+		source, until := e, time.Now().Unix()+5
+		if dynamic {
+			resolved, validUntil, err := e.resolveConnections(ctx, execution, resolverRequest)
+			if err != nil {
+				return query.Stats{}, err, true
+			}
+			source, until = resolved, validUntil
 		}
-		resolved, until, err := e.resolveConnections(ctx, execution, resolverRequest)
-		selected := execution.Claims.Sources[0]
-		id.database, id.schema = selected.Database, selected.Schema
-		// Workers are keyed by the saved connection, not the request's alias:
-		// apps reuse one alias for every connection.
-		id.saved = selected.ConnectionID
-		id.tenant, id.team = readTenant(execution, dynamic)
-		return resolved, id, until, err
+		stats, err := e.inspectOneShot(ctx, source, id, until, r, sink)
+		return stats, err, true
 	}
 	if !eligible {
 		if r.Inspect == nil {
 			return stats, nil, false
 		}
-		// An inspection the read worker cannot take runs on a one-shot adapter,
-		// the path inspections took before read workers.
-		source, id, until, err := resolve()
-		if err != nil {
-			return stats, err, true
-		}
-		stats, err = e.inspectOneShot(ctx, source, id, until, r, sink)
-		return stats, err, true
+		return oneShotInspect()
 	}
-	source, id, validUntil, err := resolve()
-	if err != nil {
-		return stats, err, true
-	}
-	tenant, team, database, schema := id.tenant, id.team, id.database, id.schema
-	unavailable := func() (query.Stats, error, bool) {
-		if r.Inspect == nil {
-			return query.Stats{}, nil, false
-		}
-		stats, err := e.inspectOneShot(ctx, source, id, validUntil, r, sink)
-		return stats, err, true
-	}
-	sources, err := source.Config.Select([]string{r.ConnectionID})
-	if err != nil {
-		return stats, query.NewError("INVALID_ARGUMENT", "Unknown or duplicate source"), true
-	}
-	s := sources[0]
-	dsn := ""
-	if readWorkerSourceShape(s) {
-		v, ok, err := source.resolveSecret(ctx, s.DSNEnv)
-		if err != nil {
-			return stats, err, true
-		}
-		if ok {
-			dsn = v
-		}
-	}
-	db, ok := readWorkerDatabase(dsn, database)
-	if !ok {
-		return unavailable()
-	}
-	database = db
 
-	request := operations.Request{Version: operations.Version, Connection: operations.ConnectionRef{ID: id.saved, Database: database, Schema: schema}}
+	authKey := readAuthKeyFor(id, r.ConnectionID, saved, principal)
+	ctx = withReadAuthorization(ctx, authKey)
+	auth, dsn := pool.freshAuthorization(authKey), ""
+	// authorize resolves the source again; ok is false when it no longer
+	// qualifies for a read worker.
+	authorize := func() (ok bool, err error) {
+		a, secret, err := pool.authorizeOnce(ctx, authKey, func() (*readAuthorization, string, error) {
+			observed := pool.currentAuthorization(authKey)
+			a, secret, err := e.authorizeReadSource(ctx, execution, dynamic, resolverRequest, r.ConnectionID, id, pool.cfg.reauthorizeEvery())
+			switch {
+			case err != nil:
+				// Revoke only on a definitive denial, and only the authorization
+				// this read observed: never on a cancel, deadline or outage.
+				if definitiveDenial(err) {
+					revokeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+					_ = pool.revokeAuthorization(revokeCtx, authKey, observed)
+					cancel()
+				}
+			case a == nil:
+				pool.retireAuthorization(authKey, observed)
+			default:
+				pool.storeAuthorization(authKey, a)
+			}
+			return a, secret, err
+		})
+		if err != nil || a == nil {
+			return false, err
+		}
+		auth, dsn = a, secret
+		return true, nil
+	}
+	if auth == nil {
+		if ok, err := authorize(); err != nil {
+			return stats, err, true
+		} else if !ok {
+			if r.Inspect != nil {
+				return oneShotInspect()
+			}
+			return stats, nil, false
+		}
+	}
+
+	request := operations.Request{Version: operations.Version, Connection: operations.ConnectionRef{ID: id.saved, Schema: id.schema}}
 	if r.Inspect != nil {
 		request.Kind, request.Spec.Metadata = operations.MetadataInspect, r.Inspect
 	} else {
@@ -120,41 +129,79 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		}
 		request.Kind, request.Spec.Query = operations.QueryRead, &operations.QuerySpec{SQL: r.SQL, Parameters: parameters}
 	}
-	digest, err := operations.Digest(request)
-	if err != nil {
-		return stats, query.NewError("INVALID_ARGUMENT", "Invalid read request"), true
-	}
-	// The revision binds the source definition and its credentials, so a
-	// rotated password or changed source gets a new worker and evicts the old.
-	definition, _ := json.Marshal(s)
-	revision := sha256.Sum256(append(append(definition, 0), dsn...))
 	expires, timeoutMS, ok := readDeadline(ctx, e.Limits.Timeout)
 	if !ok {
 		return stats, query.NewError("DEADLINE_EXCEEDED", "Read deadline passed before it could be sent"), true
 	}
-	input := adapter.ProcessRequest{Version: adapter.ProcessVersion, OperationID: readOperationID(), RequestSHA256: digest, Request: request, AppTeam: team,
-		Source:                adapter.ConnectionSpec{Engine: s.Type, DSN: dsn, Options: s.Options, TenantID: tenant, ConnectionID: id.saved, Revision: hex.EncodeToString(revision[:]), Database: database, Schema: schema},
-		Limits:                adapter.ProcessLimits{MaxRows: e.Limits.MaxRows, MaxBytes: e.Limits.MaxBytes, BatchRows: 1024, TimeoutMS: timeoutMS},
-		CredentialsValidUntil: credentialWindow(validUntil, expires), ExpiresAt: expires}
-	if input.Validate() != nil || !pool.IsEligible(input) {
-		return unavailable()
+	// build makes the worker request from the current authorization; it
+	// carries credentials only when this read just resolved them.
+	build := func() (adapter.ProcessRequest, bool) {
+		request.Connection.Database = auth.database
+		digest, err := operations.Digest(request)
+		now := time.Now()
+		source := adapter.ConnectionSpec{Engine: auth.def.Type, TenantID: id.tenant, ConnectionID: id.saved, Revision: auth.revision, Database: auth.database, Schema: id.schema}
+		if dsn != "" {
+			source.DSN, source.Options = dsn, auth.def.Options
+		}
+		input := adapter.ProcessRequest{Version: adapter.ProcessVersion, OperationID: readOperationID(), RequestSHA256: digest, Request: request, AppTeam: id.team, Source: source,
+			Limits:                adapter.ProcessLimits{MaxRows: e.Limits.MaxRows, MaxBytes: e.Limits.MaxBytes, BatchRows: 1024, TimeoutMS: timeoutMS},
+			CredentialsValidUntil: min(auth.credentialsValidUntil(now, pool.cfg.reauthorizeEvery()), expires), ExpiresAt: expires}
+		return input, err == nil && input.Validate() == nil && pool.IsEligible(input)
+	}
+	// bounded carries the current authorization's credential bound, so the
+	// window is stamped when the request is sent, not when the read queued.
+	bounded := func(ctx context.Context) context.Context {
+		return withCredentialBound(ctx, min(auth.credentialBound(pool.cfg.reauthorizeEvery()), expires))
+	}
+	input, ok := build()
+	if !ok {
+		if r.Inspect != nil {
+			return oneShotInspect()
+		}
+		return stats, nil, false
+	}
+	// withCredentials authorizes again a read that found no worker holding
+	// credentials of its current authorization, and rebuilds it with them.
+	withCredentials := func() (adapter.ProcessRequest, error) {
+		if ok, err := authorize(); err != nil {
+			return input, err
+		} else if !ok {
+			return input, errWarmUnavailable
+		}
+		if input, ok = build(); !ok {
+			return input, errWarmUnavailable
+		}
+		return input, nil
 	}
 
 	if r.Inspect != nil {
-		quotaCtx, releaseQuota, err := source.acquireSourceQuota(ctx, r)
+		quotaCtx, releaseQuota, err := auth.source.acquireSourceQuota(ctx, r)
 		if err != nil {
 			return stats, err, true
 		}
 		defer releaseQuota()
-		// Inspection has no one-shot query child; the operation path falls back
-		// to a one-shot adapter itself.
-		receipt, err := e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), pool.Adapter, input, sink)
+		var receipt operations.Receipt
+		if dsn == "" {
+			receipt, err = pool.execute(bounded(quotaCtx), e, pool.Adapter, input, sink, nil)
+		}
+		if dsn != "" || errors.Is(err, errNeedsCredentials) || errors.Is(err, errCredentialsExpired) || errors.Is(err, errWarmUnavailable) {
+			if dsn == "" {
+				if input, err = withCredentials(); err != nil {
+					if errors.Is(err, errWarmUnavailable) {
+						return oneShotInspect()
+					}
+					return stats, err, true
+				}
+			}
+			// The operation path falls back to a one-shot adapter itself.
+			receipt, err = e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), pool.Adapter, input, sink)
+		}
 		return receiptStats(receipt, err), receiptError(receipt, err), true
 	}
 
 	// execute runs the read on a worker, copying its result to tee if any.
 	execute := func(ctx context.Context, sink query.Sink, tee *cappedBuffer) (query.Stats, error) {
-		quotaCtx, releaseQuota, err := source.acquireSourceQuota(ctx, r)
+		quotaCtx, releaseQuota, err := auth.source.acquireSourceQuota(ctx, r)
 		if err != nil {
 			return query.Stats{}, err
 		}
@@ -163,28 +210,108 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		if tee != nil {
 			copyTo = tee
 		}
-		receipt, err := pool.execute(withCredentialBound(quotaCtx, min(validUntil, expires)), e, pool.Adapter, input, sink, copyTo)
+		receipt, err := pool.execute(bounded(quotaCtx), e, pool.Adapter, input, sink, copyTo)
+		// A worker without this read's credentials, or a read that outwaited
+		// its authorization while queued: authorize again (shared) and resend.
+		if errors.Is(err, errNeedsCredentials) || errors.Is(err, errCredentialsExpired) {
+			if input, err = withCredentials(); err != nil {
+				return query.Stats{}, err
+			}
+			receipt, err = pool.execute(bounded(quotaCtx), e, pool.Adapter, input, sink, copyTo)
+		}
 		return receiptStats(receipt, err), receiptError(receipt, err)
 	}
 	if pool.cache == nil {
-		stats, err = execute(ctx, sink, nil)
-	} else {
-		key := resultCacheKey(tenant, team, id.saved, database, schema, input.Source.Revision, r, e.Limits)
-		stats, err = pool.cache.do(ctx, key, tenant, r.BypassCache, sink, execute, func(entry *cacheEntry, sink query.Sink) (query.Stats, error) {
-			observed, err := e.readIPC(ctx, bytes.NewReader(entry.data), e.Limits, sink)
-			stats := entry.stats
-			stats.Rows, stats.WireBytes, stats.Bytes, stats.Batches = observed.Rows, observed.WireBytes, observed.Bytes, observed.Batches
-			return stats, err
-		})
+		stats, err := execute(ctx, sink, nil)
+		if errors.Is(err, errWarmUnavailable) || errors.Is(err, errNeedsCredentials) || errors.Is(err, errCredentialsExpired) {
+			return stats, nil, false
+		}
+		return stats, err, true
 	}
-	if errors.Is(err, errWarmUnavailable) || errors.Is(err, errCredentialsExpired) {
+	key := resultCacheKey(id.tenant, id.team, id.saved, auth.database, id.schema, auth.revision, r, e.Limits)
+	stats, err := pool.cache.do(ctx, key, id.tenant, r.BypassCache, sink, execute, func(entry *cacheEntry, sink query.Sink) (query.Stats, error) {
+		observed, err := e.readIPC(ctx, bytes.NewReader(entry.data), e.Limits, sink)
+		stats := entry.stats
+		stats.Rows, stats.WireBytes, stats.Bytes, stats.Batches = observed.Rows, observed.WireBytes, observed.Bytes, observed.Batches
+		return stats, err
+	})
+	if errors.Is(err, errWarmUnavailable) || errors.Is(err, errNeedsCredentials) || errors.Is(err, errCredentialsExpired) {
 		return stats, nil, false
 	}
 	return stats, err, true
 }
 
+// readPrincipal names who a read authorizes as: its tenant and app team, the
+// saved connection behind its alias, and its subject and service principal.
+// Static operator sources have one principal.
+func readPrincipal(execution delegation.Execution, dynamic bool, alias string) (id readIdentity, saved, principal string) {
+	id.tenant, id.team = readTenant(execution, dynamic)
+	if !dynamic {
+		id.saved = alias
+		return id, alias, "static"
+	}
+	selected := execution.Claims.Sources[0]
+	id.database, id.schema, id.saved = selected.Database, selected.Schema, selected.ConnectionID
+	subject, _ := json.Marshal([]any{execution.Claims.ServicePrincipal, execution.Claims.Subject})
+	return id, selected.ConnectionID, string(subject)
+}
+
+// readAuthKeyFor keys one principal's authorization of one source: tenant,
+// team, alias, saved connection, subject and service principal, database and
+// schema. Each principal authorizes once per window; workers are still shared
+// by revision.
+func readAuthKeyFor(id readIdentity, alias, saved, principal string) string {
+	raw, _ := json.Marshal([]string{id.tenant, id.team, alias, saved, principal, id.database, id.schema})
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// authorizeReadSource resolves a connection's source and credentials. It
+// returns nil without an error when the source does not qualify for a read
+// worker. The authorization keeps no secret values; dsn is for this read only.
+func (e *Executor) authorizeReadSource(ctx context.Context, execution delegation.Execution, dynamic bool, resolverRequest query.Request, connection string, id readIdentity, every time.Duration) (*readAuthorization, string, error) {
+	source := e
+	var validUntil time.Time
+	if dynamic {
+		resolved, until, err := e.resolveConnections(ctx, execution, resolverRequest)
+		if err != nil {
+			return nil, "", err
+		}
+		source, validUntil = resolved, time.Unix(until, 0)
+	}
+	sources, err := source.Config.Select([]string{connection})
+	if err != nil {
+		return nil, "", query.NewError("INVALID_ARGUMENT", "Unknown or duplicate source")
+	}
+	s := sources[0]
+	if !readWorkerSourceShape(s) {
+		return nil, "", nil
+	}
+	dsn, present, err := source.resolveSecret(ctx, s.DSNEnv)
+	if err != nil {
+		return nil, "", err // the secret store failed: not a denial
+	}
+	if !present {
+		return nil, "", query.NewError("NOT_FOUND", "Source credential not found")
+	}
+	db, ok := readWorkerDatabase(dsn, id.database)
+	if !ok {
+		return nil, "", nil
+	}
+	// The revision binds the source definition and its credentials, so a
+	// rotated password or changed source gets new workers.
+	definition, _ := json.Marshal(s)
+	sum := sha256.Sum256(append(append(definition, 0), dsn...))
+	revision := hex.EncodeToString(sum[:])
+	quota := *source
+	quota.Secrets = nil
+	return &readAuthorization{source: &quota, def: s, revision: revision, database: db,
+		workerKey: warmKey(id.tenant, id.team, id.saved, db, id.schema, revision), at: time.Now(), validUntil: validUntil}, dsn, nil
+}
+
 // readIdentity names whose read this is: tenant, app team, the saved
-// connection behind the request's alias, database and schema.
+// connection behind the request's alias, database and schema. Workers are
+// keyed by the saved connection: apps reuse one alias for every connection.
 type readIdentity struct{ tenant, team, saved, database, schema string }
 
 // countingSink counts the rows and batches its caller's sink received.

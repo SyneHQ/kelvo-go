@@ -45,9 +45,12 @@ type WarmPoolConfig struct {
 	CacheTTL           time.Duration `yaml:"cache_ttl"`             // default 10s
 	CacheMaxEntryBytes int64         `yaml:"cache_max_entry_bytes"` // default 4 MiB; larger results are not cached
 	CacheMaxTotalBytes int64         `yaml:"cache_max_total_bytes"` // default 64 MiB
-	QueueDepth         int           `yaml:"queue_depth"`           // default 64, reads waiting for a full worker
-	QueueTimeout       time.Duration `yaml:"queue_timeout"`         // default 10s
-	WorkerMemoryMB     int           `yaml:"worker_memory_mb"`      // default 64
+	// ReauthorizeEvery bounds how long a worker serves secretless reads on
+	// one authorization of its source; 0 takes the default of 60s.
+	ReauthorizeEvery time.Duration `yaml:"reauthorize_every"`
+	QueueDepth       int           `yaml:"queue_depth"`      // default 64, reads waiting for a full worker
+	QueueTimeout     time.Duration `yaml:"queue_timeout"`    // default 10s
+	WorkerMemoryMB   int           `yaml:"worker_memory_mb"` // default 64
 }
 
 // errCredentialsExpired is a read whose credentials expired while it waited
@@ -102,6 +105,9 @@ func (c WarmPoolConfig) Validate() error {
 	}
 	if c.CacheTTL < 0 || c.CacheTTL > 10*time.Minute || c.CacheMaxEntryBytes < 0 || c.CacheMaxEntryBytes > 64<<20 || c.CacheMaxTotalBytes < 0 || c.CacheMaxTotalBytes > 1<<30 {
 		return errors.New("warm_pool: cache_ttl must be at most 10m, cache_max_entry_bytes at most 64 MiB and cache_max_total_bytes at most 1 GiB")
+	}
+	if c.ReauthorizeEvery < 0 || c.ReauthorizeEvery > 10*time.Minute {
+		return errors.New("warm_pool: reauthorize_every must be at most 10m")
 	}
 	if c.QueueDepth < 1 || c.QueueDepth > 1024 {
 		return errors.New("warm_pool: queue_depth must be between 1 and 1024")
@@ -177,6 +183,13 @@ func (c WarmPoolConfig) resultCache() *resultCache {
 	return newResultCache(ttl, min(entry, total), total)
 }
 
+func (c WarmPoolConfig) reauthorizeEvery() time.Duration {
+	if c.ReauthorizeEvery == 0 {
+		return 60 * time.Second
+	}
+	return c.ReauthorizeEvery
+}
+
 // WarmPoolMetrics records observability counters for the warm pool.
 type WarmPoolMetrics struct {
 	Hits           atomic.Int64
@@ -188,6 +201,9 @@ type WarmPoolMetrics struct {
 	EvictionsErr   atomic.Int64
 	EvictionsDrain atomic.Int64
 	EvictionsLRU   atomic.Int64 // idle workers evicted to launch one for another connection
+	EvictionsAuth  atomic.Int64 // killed after a definitive authorization denial
+	Rotations      atomic.Int64 // workers drained after their source's credentials rotated
+	Authorizations atomic.Int64 // source authorizations (credential resolves) for read workers
 	Fallbacks      atomic.Int64
 	SlowConsumers  atomic.Int64 // streams failed for falling 8 MiB behind
 	LaunchFailures atomic.Int64 // launches that failed to start or handshake
@@ -223,6 +239,9 @@ type warmWorkerEntry struct {
 	nextStream   atomic.Uint32
 	killOnce     sync.Once
 	dead         chan struct{} // closed once the worker is killed and cleaned up
+	credentialed atomic.Bool   // a request carrying credentials was written
+	evicted      bool          // guarded by the manager's mu
+	draining     bool          // guarded by the manager's mu: no new streams
 
 	// The demux reader owns stdout and routes frames to streams by ID.
 	smu     sync.Mutex
@@ -236,6 +255,10 @@ type WarmPoolManager struct {
 	launcher WorkerLauncher
 	caps     *admission.Caps
 	cache    *resultCache // nil when disabled
+
+	authMu      sync.Mutex
+	auths       map[string]*readAuthorization // per principal, saved connection, alias, database, schema
+	authFlights map[string]*authFlight
 	// Adapter is the pinned adapter binary for reads routed from the query
 	// path; operations pass their own.
 	Adapter OperationProcessConfig
@@ -245,6 +268,8 @@ type WarmPoolManager struct {
 	waiters []*slotWaiter               // FIFO of reads waiting for a slot
 	closed  bool
 	stopRpr chan struct{}
+	killing int           // background kills of evicted workers still running
+	killed  chan struct{} // closed and replaced as each background kill ends
 	// backoff holds, per key, the window after a failed launch during which
 	// reads go straight to the one-shot path instead of relaunching.
 	backoff map[string]launchBackoff
@@ -270,6 +295,7 @@ func NewWarmPoolManager(cfg WarmPoolConfig, launcher WorkerLauncher) (*WarmPoolM
 		cache:    cfg.resultCache(),
 		workers:  make(map[string]*warmWorkerEntry),
 		backoff:  make(map[string]launchBackoff),
+		killed:   make(chan struct{}),
 		stopRpr:  make(chan struct{}),
 	}
 	if cfg.Enabled {
@@ -349,6 +375,7 @@ func (m *WarmPoolManager) reapExpired() {
 	for _, w := range toEvict {
 		m.killWorker(w)
 	}
+	m.pruneAuthorizations()
 }
 
 // killWorker is idempotent: a worker may be killed by its demux reader, a
@@ -384,7 +411,16 @@ func (m *WarmPoolManager) evictLocked(w *warmWorkerEntry, counter *atomic.Int64)
 		counter.Add(1)
 		m.wakeLocked("")
 	}
-	go m.killWorker(w)
+	w.evicted = true
+	m.killing++
+	go func() {
+		m.killWorker(w)
+		m.mu.Lock()
+		m.killing--
+		close(m.killed)
+		m.killed = make(chan struct{})
+		m.mu.Unlock()
+	}()
 }
 
 // slotWaiter is a read waiting for a stream slot. ready holds at most one
@@ -450,14 +486,6 @@ func (m *WarmPoolManager) removeWaiterLocked(w *slotWaiter) {
 	}
 }
 
-func (m *WarmPoolManager) evictStaleRevisionsLocked(tenantID, appTeam, connectionID, currentRevision string) {
-	for _, w := range m.workers {
-		if w.inFlight == 0 && w.tenantID == tenantID && w.appTeam == appTeam && w.connectionID == connectionID && w.revision != currentRevision {
-			m.evictLocked(w, &m.metrics.EvictionsRev)
-		}
-	}
-}
-
 // busyError refuses an interactive read that waited for capacity. The retry
 // hint is the time it actually waited, in whole seconds: capacity did not free
 // within that, so retrying sooner is unlikely to help. A full worker is not a
@@ -509,7 +537,7 @@ func (m *WarmPoolManager) InteractiveCaps() *admission.Caps { return m.caps }
 // RESOURCE_EXHAUSTED with a retry hint. errWarmUnavailable or a launch error means no worker could
 // start and nothing was sent: only then does the read fall back.
 func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest) (*warmWorkerEntry, func(error), error) {
-	key := fmt.Sprintf("%s\x00%s\x00%s\x00%s", input.Source.TenantID, input.AppTeam, input.Source.ConnectionID, input.Source.Revision)
+	key := warmKey(input.Source.TenantID, input.AppTeam, input.Source.ConnectionID, input.Source.Database, input.Source.Schema, input.Source.Revision)
 	acquireStart := time.Now()
 	queueBy := queueDeadline(ctx, m.cfg.QueueTimeout)
 	busy := func() error { return busyError("Read worker is busy", waitedSince(ctx, acquireStart)) }
@@ -537,14 +565,13 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			m.mu.Unlock()
 			return nil, nil, errWarmUnavailable
 		}
-		m.evictStaleRevisionsLocked(input.Source.TenantID, input.AppTeam, input.Source.ConnectionID, input.Source.Revision)
 
 		// The least loaded worker for this key with a free slot. A newcomer
 		// does not take one ahead of reads already queued for this key.
 		var best *warmWorkerEntry
 		keyCount := 0
 		for _, w := range m.workers {
-			if w.key != key {
+			if w.key != key || w.draining {
 				continue
 			}
 			keyCount++
@@ -595,6 +622,12 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 		mayLaunch := !backingOff && (waiter != nil || !m.keyWaitingLocked(key))
 
 		if mayLaunch && (keyCount == 0 || !scaleOutRefused) && keyCount < m.cfg.MaxPerKey && len(m.workers) < m.cfg.MaxWorkers {
+			// A new worker starts only from credentials of the source's current
+			// authorization: a secretless or stale read re-authorizes first.
+			if processSecretless(input) || m.staleRevision(ctx, input.Source.Revision) {
+				m.mu.Unlock()
+				return nil, nil, errNeedsCredentials
+			}
 			entry := &warmWorkerEntry{
 				id:           fmt.Sprintf("worker-%d", time.Now().UnixNano()),
 				key:          key,
@@ -789,7 +822,16 @@ func (m *WarmPoolManager) launch(e *Executor, cfg OperationProcessConfig, entry 
 		// A worker that cannot speak v2 is a launch failure: fall back to one-shot.
 		return err
 	}
-	entry.streams = make(map[uint32]*streamQueue)
+	m.mu.Lock()
+	evicted := entry.evicted
+	if !evicted {
+		entry.streams = make(map[uint32]*streamQueue)
+	}
+	m.mu.Unlock()
+	if evicted {
+		// Evicted while it launched (revoked, rotated or drained): never serve.
+		return errWarmUnavailable
+	}
 	go m.demux(entry)
 	// Count only workers that actually started; refused launches are fallbacks.
 	m.metrics.Spawns.Add(1)
@@ -1031,6 +1073,10 @@ func (m *WarmPoolManager) releaseWorker(w *warmWorkerEntry, err error) {
 		m.evictLocked(w, &m.metrics.EvictionsErr)
 		return
 	}
+	if w.draining && w.inFlight == 0 {
+		m.evictLocked(w, &m.metrics.Rotations) // its last stream finished
+		return
+	}
 	// One slot freed: a waiter for this key takes it, or, once the worker is
 	// idle, any waiter may evict it.
 	if !m.wakeLocked(w.key) && w.inFlight == 0 {
@@ -1046,6 +1092,9 @@ func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg Operatio
 // execute is Execute that also copies the result's Arrow IPC bytes to tee.
 func (m *WarmPoolManager) execute(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest, sink query.Sink, tee io.Writer) (operations.Receipt, error) {
 	w, release, err := m.Acquire(ctx, e, cfg, input)
+	if errors.Is(err, errNeedsCredentials) {
+		return operations.Receipt{}, err
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return rejectedOperation(input, "CANCELLED"), ctx.Err()
@@ -1062,11 +1111,11 @@ func (m *WarmPoolManager) execute(ctx context.Context, e *Executor, cfg Operatio
 
 	receipt, execErr, keep, sent := m.executeOnWorker(ctx, e, w, input, sink, tee)
 	switch {
-	case !sent && errors.Is(execErr, errCredentialsExpired):
-		// The read outwaited its credentials: nothing was sent and the worker
-		// is fine. The caller authorizes again.
+	case !sent && (errors.Is(execErr, errCredentialsExpired) || errors.Is(execErr, errNeedsCredentials)):
+		// Nothing was sent and the worker is fine: the read outwaited its
+		// credentials, or needs them. The caller authorizes again.
 		release(nil)
-		return operations.Receipt{}, errCredentialsExpired
+		return operations.Receipt{}, execErr
 	case !sent:
 		// The worker died between Acquire and our write: nothing was sent.
 		release(errWarmUnavailable)
@@ -1146,6 +1195,11 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *w
 			go func() { _ = w.sw.Write(frame.Cancel, streamID.Load(), nil) }()
 		})
 	}
+	secretless := processSecretless(input)
+	if secretless && !w.credentialed.Load() {
+		// Its first, credentialed request is not written yet.
+		return operations.Receipt{}, errNeedsCredentials, false, false
+	}
 	stream, queue, ok := w.open(m.cfg.streamBuffer(), cancel, &m.metrics.SlowConsumers)
 	streamID.Store(stream)
 	if !ok {
@@ -1153,6 +1207,9 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *w
 	}
 	if err := w.sw.Write(frame.Request, stream, raw); err != nil {
 		return uncertainOperation(input), operationFailure("QUERY_FAILED"), false, true
+	}
+	if !secretless {
+		w.credentialed.Store(true)
 	}
 	stopWatch := context.AfterFunc(ctx, func() {
 		cancel()
@@ -1282,8 +1339,26 @@ func (m *WarmPoolManager) Drain(ctx context.Context) error {
 	m.mu.Unlock()
 
 	for _, w := range workers {
-		<-w.ready
 		m.killWorker(w)
+	}
+	// Workers evicted before drain may still be dying in the background.
+	return m.waitKills(ctx)
+}
+
+// waitKills waits for background kills of evicted workers, or ctx.
+func (m *WarmPoolManager) waitKills(ctx context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for m.killing > 0 {
+		changed := m.killed
+		m.mu.Unlock()
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			m.mu.Lock()
+			return ctx.Err()
+		}
+		m.mu.Lock()
 	}
 	return nil
 }
