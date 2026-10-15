@@ -435,3 +435,108 @@ func TestContainedDashboardViewersShareOneSourceQueryPerPanel(t *testing.T) {
 	}
 	g.drain()
 }
+
+// gateSecrets is a source secret store the gate can revoke or rotate.
+type gateSecrets struct {
+	mu      sync.Mutex
+	value   string
+	revoked bool
+}
+
+func (s *gateSecrets) Resolve(context.Context, string) (string, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.revoked {
+		return "", true, fmt.Errorf("revoked")
+	}
+	return s.value, true, nil
+}
+
+func (s *gateSecrets) set(value string, revoked bool) {
+	s.mu.Lock()
+	s.value, s.revoked = value, revoked
+	s.mu.Unlock()
+}
+
+// This gate shows the phase 3 trade-off on a real adapter and PostgreSQL:
+// one authorization serves many secretless reads, and a revoked source, or a
+// source changed to credentials that no longer work, is refused within
+// reauthorize_every (5s here, 60s by default). A rotated, working source moves
+// to a new worker and a new backend within the same bound.
+func TestContainedRevokedOrChangedSourceRefusedWithinReauthorization(t *testing.T) {
+	g := newExplorerGate(t, admission.Limits{MaxConcurrent: 2, MemoryBytes: 512 << 20, ScratchBytes: 64 << 20}, false)
+	const window = 5 * time.Second
+	g.mgr.cfg.ReauthorizeEvery = window
+	dsn := os.Getenv("KELVO_TEST_WARM_POSTGRES_DSN")
+	secrets := &gateSecrets{value: dsn}
+	g.executor.Secrets = secrets
+	pid := func() (int64, error) {
+		var got int64
+		sink := &workerTestSink{write: func(b arrow.RecordBatch) error {
+			got = b.Column(0).(*array.Int64).Value(0)
+			return nil
+		}}
+		_, err := g.executor.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "explorer", SQL: "SELECT pg_backend_pid()::bigint AS pid"}, sink)
+		return got, err
+	}
+	// untilRefused reads every 200ms after a change and reports how long the
+	// old authorization kept serving and how many reads it served.
+	untilRefused := func(label string) (time.Duration, int) {
+		changed, served := time.Now(), 0
+		for time.Since(changed) < window+5*time.Second {
+			if _, err := pid(); err != nil {
+				return time.Since(changed), served
+			}
+			served++
+			time.Sleep(200 * time.Millisecond)
+		}
+		t.Fatalf("%s source still served %v after the change", label, time.Since(changed))
+		return 0, 0
+	}
+
+	first, err := pid()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 9; i++ {
+		if again, err := pid(); err != nil || again < 1 {
+			t.Fatal(again, err)
+		}
+	}
+	authorizationsForTen := g.mgr.Metrics().Authorizations.Load()
+
+	secrets.set("", true)
+	revokedAfter, servedAfterRevoke := untilRefused("revoked")
+	revokedEvictions := g.mgr.Metrics().EvictionsAuth.Load()
+
+	// Restore with rotated settings: a new revision, worker and backend.
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := parsed.Query()
+	values.Set("connect_timeout", "7")
+	parsed.RawQuery = values.Encode()
+	rotated := parsed.String()
+	secrets.set(rotated, false)
+	second, err := pid()
+	if err != nil {
+		t.Fatal("rotated source refused:", err)
+	}
+
+	// Change to credentials that no longer work.
+	parsed.User = url.UserPassword(parsed.User.Username(), "not-the-password")
+	secrets.set(parsed.String(), false)
+	changedAfter, servedAfterChange := untilRefused("changed")
+
+	metrics := g.mgr.Metrics()
+	report, _ := json.Marshal(map[string]any{"reauthorize_every_ms": window.Milliseconds(), "authorizations_for_first_10_reads": authorizationsForTen,
+		"revoked_refused_after_ms": revokedAfter.Milliseconds(), "reads_served_after_revoke": servedAfterRevoke,
+		"changed_refused_after_ms": changedAfter.Milliseconds(), "reads_served_after_change": servedAfterChange,
+		"evictions_auth": metrics.EvictionsAuth.Load(), "spawns": metrics.Spawns.Load(), "backend_before": first, "backend_after_rotation": second})
+	t.Logf("GATE_METRICS %s", report)
+	if metrics.Fallbacks.Load() != 0 || metrics.Spawns.Load() < 2 || authorizationsForTen != 1 || revokedAfter > window+time.Second || changedAfter > window+time.Second || revokedEvictions != 1 || first == second {
+		t.Fatal("source change not enforced within reauthorize_every", string(report))
+	}
+	g.drain()
+}
