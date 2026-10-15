@@ -110,6 +110,7 @@ func testProcessRequest(opID, tenant, team, conn, rev string) adapter.ProcessReq
 		},
 		Source: adapter.ConnectionSpec{
 			Engine:       "postgres",
+			DSN:          "postgres://reader:secret@db.internal/testdb?sslmode=verify-full",
 			TenantID:     tenant,
 			ConnectionID: conn,
 			Revision:     rev,

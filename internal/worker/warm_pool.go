@@ -17,6 +17,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/adapter/frame"
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
+	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/operations"
 )
@@ -36,9 +37,12 @@ type WarmPoolConfig struct {
 	CacheTTL           time.Duration `yaml:"cache_ttl"`             // default 10s
 	CacheMaxEntryBytes int64         `yaml:"cache_max_entry_bytes"` // default 4 MiB; larger results are not cached
 	CacheMaxTotalBytes int64         `yaml:"cache_max_total_bytes"` // default 64 MiB
-	QueueDepth         int           `yaml:"queue_depth"`           // default 64, reads waiting for a full worker
-	QueueTimeout       time.Duration `yaml:"queue_timeout"`         // default 10s
-	WorkerMemoryMB     int           `yaml:"worker_memory_mb"`      // default 64
+	// ReauthorizeEvery bounds how long a worker serves secretless reads on
+	// one authorization of its source; 0 takes the default of 60s.
+	ReauthorizeEvery time.Duration `yaml:"reauthorize_every"`
+	QueueDepth       int           `yaml:"queue_depth"`      // default 64, reads waiting for a full worker
+	QueueTimeout     time.Duration `yaml:"queue_timeout"`    // default 10s
+	WorkerMemoryMB   int           `yaml:"worker_memory_mb"` // default 64
 }
 
 // errWarmUnavailable means no warm worker could be obtained and nothing was
@@ -83,6 +87,9 @@ func (c WarmPoolConfig) Validate() error {
 	}
 	if c.CacheTTL < 0 || c.CacheTTL > 10*time.Minute || c.CacheMaxEntryBytes < 0 || c.CacheMaxEntryBytes > 64<<20 || c.CacheMaxTotalBytes < 0 || c.CacheMaxTotalBytes > 1<<30 {
 		return errors.New("warm_pool: cache_ttl must be at most 10m, cache_max_entry_bytes at most 64 MiB and cache_max_total_bytes at most 1 GiB")
+	}
+	if c.ReauthorizeEvery < 0 || c.ReauthorizeEvery > 10*time.Minute {
+		return errors.New("warm_pool: reauthorize_every must be at most 10m")
 	}
 	if c.QueueDepth < 1 || c.QueueDepth > 1024 {
 		return errors.New("warm_pool: queue_depth must be between 1 and 1024")
@@ -133,6 +140,13 @@ func (c WarmPoolConfig) resultCache() *resultCache {
 	return newResultCache(ttl, min(entry, total), total)
 }
 
+func (c WarmPoolConfig) reauthorizeEvery() time.Duration {
+	if c.ReauthorizeEvery == 0 {
+		return 60 * time.Second
+	}
+	return c.ReauthorizeEvery
+}
+
 // WarmPoolMetrics records observability counters for the warm pool.
 type WarmPoolMetrics struct {
 	Hits           atomic.Int64
@@ -143,6 +157,8 @@ type WarmPoolMetrics struct {
 	EvictionsRev   atomic.Int64
 	EvictionsErr   atomic.Int64
 	EvictionsDrain atomic.Int64
+	EvictionsAuth  atomic.Int64 // failed re-authorization or a changed source revision
+	Authorizations atomic.Int64 // source authorizations (credential resolves) for read workers
 	Fallbacks      atomic.Int64
 }
 
@@ -176,6 +192,7 @@ type warmWorkerEntry struct {
 	sw                    *frame.SyncWriter
 	nextStream            atomic.Uint32
 	killOnce              sync.Once
+	credentialed          atomic.Bool // a request carrying credentials was written
 
 	// The demux reader owns stdout and routes frames to streams by ID.
 	smu     sync.Mutex
@@ -189,6 +206,9 @@ type WarmPoolManager struct {
 	launcher WorkerLauncher
 	caps     *admission.Caps
 	cache    *resultCache // nil when disabled
+
+	authMu sync.Mutex
+	auths  map[string]*readAuthorization // per tenant, team, connection, database, schema
 	// Adapter is the pinned adapter binary for reads routed from the query
 	// path; operations pass their own.
 	Adapter OperationProcessConfig
@@ -340,6 +360,21 @@ func (m *WarmPoolManager) evictStaleRevisionsLocked(tenantID, appTeam, connectio
 // a fallback: fifty one-shot children is the collapse the pool exists to avoid.
 var errWorkerBusy = query.NewError("RESOURCE_EXHAUSTED", "Read worker is busy; retry after 1s")
 
+// errNeedsCredentials means a secretless read found no worker holding
+// credentials for its source. Nothing was sent; the caller re-authorizes the
+// source and sends the read with credentials.
+var errNeedsCredentials = errors.New("warm_pool: read needs credentials")
+
+func warmKey(tenant, team, connection, revision string) string {
+	return fmt.Sprintf("%s\x00%s\x00%s\x00%s", tenant, team, connection, revision)
+}
+
+// processSecretless reports a request that relies on a worker's credentials.
+func processSecretless(input adapter.ProcessRequest) bool {
+	s := input.Source
+	return s.DSN == "" && s.URL == "" && s.Username == "" && s.Password == "" && s.Token == ""
+}
+
 // errTenantBusy is a tenant or connection at its interactive cap for
 // queue_timeout.
 var errTenantBusy = query.NewError("RESOURCE_EXHAUSTED", "Read capacity for this tenant or connection is in use; retry after 1s")
@@ -349,7 +384,7 @@ var errTenantBusy = query.NewError("RESOURCE_EXHAUSTED", "Read capacity for this
 // queue_timeout for a slot, then gets errWorkerBusy. errWarmUnavailable means
 // no worker could be obtained and nothing was sent.
 func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest) (*warmWorkerEntry, func(error), error) {
-	key := fmt.Sprintf("%s\x00%s\x00%s\x00%s", input.Source.TenantID, input.AppTeam, input.Source.ConnectionID, input.Source.Revision)
+	key := warmKey(input.Source.TenantID, input.AppTeam, input.Source.ConnectionID, input.Source.Revision)
 	var deadline <-chan time.Time
 	var startWait time.Time
 	missed, waiting := false, false
@@ -409,6 +444,11 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 		}
 
 		if keyCount < m.cfg.MaxPerKey && len(m.workers) < m.cfg.MaxWorkers {
+			if processSecretless(input) {
+				// A new worker gets credentials: its first read is re-authorized.
+				m.mu.Unlock()
+				return nil, nil, errNeedsCredentials
+			}
 			entry := &warmWorkerEntry{
 				id:                    fmt.Sprintf("worker-%d", time.Now().UnixNano()),
 				key:                   key,
@@ -653,6 +693,9 @@ func (m *WarmPoolManager) execute(ctx context.Context, e *Executor, cfg Operatio
 	}
 	defer releaseCaps()
 	w, release, err := m.Acquire(ctx, e, cfg, input)
+	if errors.Is(err, errNeedsCredentials) {
+		return operations.Receipt{}, err
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return rejectedOperation(input, "CANCELLED"), ctx.Err()
@@ -669,6 +712,9 @@ func (m *WarmPoolManager) execute(ctx context.Context, e *Executor, cfg Operatio
 
 	receipt, execErr, keep, sent := m.executeOnWorker(ctx, e, w, input, sink, tee)
 	switch {
+	case !sent && errors.Is(execErr, errNeedsCredentials):
+		release(nil)
+		return operations.Receipt{}, execErr
 	case !sent:
 		// The worker died between Acquire and our write: nothing was sent.
 		release(errWarmUnavailable)
@@ -724,12 +770,20 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *w
 		return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT"), true, true
 	}
 
+	secretless := processSecretless(input)
+	if secretless && !w.credentialed.Load() {
+		// Its first, credentialed request is not written yet.
+		return operations.Receipt{}, errNeedsCredentials, false, false
+	}
 	stream, queue, ok := w.open(input.Limits.MaxBytes)
 	if !ok {
 		return operations.Receipt{}, errWarmUnavailable, false, false
 	}
 	if err := w.sw.Write(frame.Request, stream, raw); err != nil {
 		return uncertainOperation(input), operationFailure("QUERY_FAILED"), false, true
+	}
+	if !secretless {
+		w.credentialed.Store(true)
 	}
 
 	// On caller cancellation tell the worker, then give the stream cancelGrace
@@ -807,6 +861,67 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *w
 	}
 
 	return receipt, nil, true, true
+}
+
+// readAuthorization is the last authorization of one connection's source for
+// read workers. It holds no secret values: the worker holds the credentials.
+type readAuthorization struct {
+	source    *Executor      // the authorized executor without secrets: catalog and source quota
+	def       catalog.Source // the authorized source definition
+	revision  string
+	database  string
+	workerKey string
+	at        time.Time
+}
+
+// freshAuthorization returns key's authorization if it is younger than
+// reauthorize_every; past that the next read must authorize again.
+func (m *WarmPoolManager) freshAuthorization(key string) *readAuthorization {
+	m.authMu.Lock()
+	defer m.authMu.Unlock()
+	a := m.auths[key]
+	if a == nil || time.Since(a.at) >= m.cfg.reauthorizeEvery() {
+		return nil
+	}
+	return a
+}
+
+// storeAuthorization records a successful authorization. A changed revision
+// kills every worker of the old one, busy or idle.
+func (m *WarmPoolManager) storeAuthorization(key string, a *readAuthorization) {
+	m.authMu.Lock()
+	if m.auths == nil {
+		m.auths = map[string]*readAuthorization{}
+	}
+	old := m.auths[key]
+	m.auths[key] = a
+	m.authMu.Unlock()
+	m.metrics.Authorizations.Add(1)
+	if old != nil && old.workerKey != a.workerKey {
+		m.evictKey(old.workerKey)
+	}
+}
+
+// revokeAuthorization ends key's authorization after a failed re-validation
+// and kills the workers it covered.
+func (m *WarmPoolManager) revokeAuthorization(key string) {
+	m.authMu.Lock()
+	old := m.auths[key]
+	delete(m.auths, key)
+	m.authMu.Unlock()
+	if old != nil {
+		m.evictKey(old.workerKey)
+	}
+}
+
+func (m *WarmPoolManager) evictKey(workerKey string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, w := range m.workers {
+		if w.key == workerKey {
+			m.evictLocked(w, &m.metrics.EvictionsAuth)
+		}
+	}
 }
 
 // Drain gracefully stops all workers in the pool.
