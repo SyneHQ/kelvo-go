@@ -194,6 +194,10 @@ def profile_plain(args, out, report, pg, proxy, nats_port, certs, scenario, pass
     if (out / "node-report.json").exists():
         node = json.loads((out / "node-report.json").read_text())
         report["node_summary"] = {k: node.get(k) for k in ("ed25519_verify_micros", "warm_pool", "warm_pool_config", "resolver_calls")}
+    failed = {}
+    for code, klass, stage in re.findall(r"kelvo read failed: code=(\S+) class=(\S+) stage=(\S+)", (out / "node.test.log").read_text(errors="replace")) if (out / "node.test.log").exists() else []:
+        failed["%s/%s/%s" % (code, klass, stage)] = failed.get("%s/%s/%s" % (code, klass, stage), 0) + 1
+    report["node_failed_reads_logged"] = failed
     report["passed"] = all(phases[k].get("reads", 1) > 0 for k in ("low", "c50"))
     report["gate"] = {"profiled_reads": report["passed"]}
 
