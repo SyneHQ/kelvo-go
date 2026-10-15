@@ -178,6 +178,48 @@ per second):
 **Recommended node: 4 vCPU / 8 GB.** Memory is not what limits a node: 20 workers fit in 1 GiB and 100 in about 3 GiB; CPU is (see above). 4 GB is enough for the memory; 8 GB leaves room for fallback children, journals and growth. Take `max_workers` from the number of distinct connections active within `idle_ttl`, not from
 users: idle workers are not evicted for new keys (defect 4), so a pool smaller than the hot set collapses.
 
+### Workers per GB
+
+A worker's own memory is 21-27 MiB (anonymous pages); the adapter binary's 42 MiB of resident pages are shared by all workers and
+charged once ([profile-plain-read.md](profile-plain-read.md)); gateway and node are 340 MiB. With a quarter of the cgroup kept free:
+
+| cgroup memory | Workers that fit in memory (24 MiB each) |
+| --- | --- |
+| 1 GB | 16 |
+| 2 GB | 48 |
+| 4 GB | 112 |
+| 8 GB | 240 |
+
+(workers = (0.75 x memory - 382 MiB) / 24 MiB.) Only 20 workers were run; the 0.9 GiB for 20 is extrapolated from 12 (cgroup peak 660 MiB) and
+measured at 1.06 GiB at 20 including the journals' page cache. **The admission pool, not memory, is the limit that bites first:** each worker
+reserves `limits.memory_mb + overhead_mb` (96 MiB logical with the 32 + 64 used here, four times what it uses), and the interactive share
+admits `min(query_reserve_slots, query_reserve_memory_mb / 96)` of them: 28 with the recommended config. Raise `query_reserve_slots` and
+`query_reserve_memory_mb` together to admit more (for example slots 64 and memory 6144 MiB on 8 GB; not tested), and `containment.max_groups` above the worker count
+plus one-shot fallbacks (peak 28 cgroups seen). `warm_pool.max_workers` may not exceed `resources.max_concurrent`.
+
+### Source connections per worker (`pool_size`)
+
+A warm read costs 4 source round trips (2 after #229), so one worker, with a pool of P connections to a source at round trip R,
+serves at most **P / (4 x R)** reads per second, and a burst of B reads on one connection takes about B x 4 x R / P:
+
+| RTT to the source | Warm read | Pool 4: ceiling / 42-read page open | Pool 8 | Pool 16 | Pool 4 with 2 round trips (#229) |
+| --- | --- | --- | --- | --- | --- |
+| 20 ms | 80 ms | 50/s, 0.8 s | 100/s, 0.4 s | 200/s, 0.2 s | 100/s, 0.4 s |
+| 40 ms | 160 ms | 25/s, 1.7 s | 50/s, 0.8 s | 100/s, 0.4 s | 50/s, 0.8 s |
+| 80 ms (measured) | 320 ms | 12.5/s, 3.4 s | 25/s, 1.7 s | 50/s, 0.8 s | 25/s, 1.7 s |
+| 100 ms | 400 ms | 10/s, 4.2 s | 20/s, 2.1 s | 40/s, 1.1 s | 20/s, 2.1 s |
+| 160 ms | 640 ms | 6.3/s, 6.7 s | 12.5/s, 3.4 s | 25/s, 1.7 s | 12.5/s, 3.4 s |
+
+The 80 ms row was measured: 12.1 reads/s from the adapter alone with 4 connections, 14.1 through the whole stack, page open 3.4 s. Pool 16
+cut the explorer page-open median from 5.8 to 3.4 s in the mixed run (the tail did not move) and took the source from 77 to 290 connections.
+
+Recommendation: size `pool_size` so a 42-read page open finishes in about 1.5 s: `pool = ceil(42 x turns x R / 1.5 s)`, which is **9 at 80 ms**, 12 at 100 ms and 18 at 160 ms (4
+turns): use 8-16; do not go past the customer database's connection allowance (`pool_size x
+workers` per source: 20 workers x 16 = 320). **Through the Tailscale exit node the RTT is
+the sum of both legs**: Kelvo to the exit node plus the exit node to the source. An 80 ms exit-to-source leg plus 20 ms to the exit node is the 100 ms row:
+12 connections for a 1.5 s page open. `pool_size` is not configurable yet (defect 3: the adapter constant is 4; the Phase 4 wiring adds
+`--pool-size`), so until then the ceiling is the pool-4 column and a page open on a 100 ms path takes about 4 s.
+
 ### Audit journal sizing
 
 Each journal is preallocated at 16 KiB + 2 KiB x `max_entries` (262,144 entries was a 512 MiB file) and **never
