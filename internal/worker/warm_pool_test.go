@@ -710,15 +710,21 @@ func TestWarmPool_BadHelloFallsBackAndKills(t *testing.T) {
 func TestWarmPool_HelloTimeoutFallsBack(t *testing.T) {
 	fs := &fakeSet{serve: func(p *fakeWorkerProcess) { _, _ = io.Copy(io.Discard, p.stdinR) }}
 	mgr, exec := newTestPool(t, fs.launcher())
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	old := helloTimeout
+	helloTimeout = 200 * time.Millisecond
+	defer func() { helloTimeout = old }()
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	// ctx expires during the handshake: the request is cancelled, not run, and the worker is killed.
+	// The caller stops waiting; the pool's launch times out its handshake and
+	// kills the silent worker.
 	if _, err := mgr.Execute(ctx, exec, OperationProcessConfig{}, opReq("op-silent"), &workerTestSink{}); err == nil {
 		t.Fatal("expected an error")
 	}
-	if !fs.procs[0].killed.Load() {
-		t.Fatal("silent worker was not killed")
-	}
+	waitFor(t, func() bool {
+		fs.mu.Lock()
+		defer fs.mu.Unlock()
+		return len(fs.procs) == 1 && fs.procs[0].killed.Load()
+	})
 }
 
 func TestWarmPool_StreamIDsIncreasePerRequest(t *testing.T) {
@@ -1255,7 +1261,7 @@ func TestWarmPool_LocalFailuresKeepSharedWorker(t *testing.T) {
 	}
 }
 
-// A consumer that stops reading is failed once more than streamQueueCap is
+// A consumer that stops reading is failed once more than stream_buffer_mb is
 // buffered for it, without blocking the demux: another stream on the same
 // worker completes meanwhile, and the worker survives.
 func TestWarmPool_SlowConsumerFailsOnlyItsStream(t *testing.T) {
@@ -1294,7 +1300,7 @@ func TestWarmPool_SlowConsumerFailsOnlyItsStream(t *testing.T) {
 		}})
 		slow <- err
 	}()
-	// Wait until the slow stream has fallen more than streamQueueCap behind.
+	// Wait until the slow stream has fallen more than stream_buffer_mb behind.
 	for i := 0; mgr.metrics.SlowConsumers.Load() == 0; i++ {
 		if i > 1000 {
 			t.Fatal("slow consumer never detected")
@@ -1314,15 +1320,71 @@ func TestWarmPool_SlowConsumerFailsOnlyItsStream(t *testing.T) {
 	}
 }
 
-// The node buffers at most max_in_flight × streamQueueCap per worker; that
+// The node buffers at most max_in_flight × stream_buffer_mb per worker; that
 // must fit the per-job overhead its reservation carries.
 func TestWarmPool_StreamBuffersFitOverhead(t *testing.T) {
 	cfg := DefaultWarmPoolConfig()
-	if cfg.FitsOverhead(16*streamQueueCap) != nil || cfg.FitsOverhead(16*streamQueueCap-1) == nil {
-		t.Fatal("16 streams × 8 MiB must need exactly 128 MiB of overhead")
+	if cfg.StreamBuffers() != 16*8<<20 || cfg.FitsOverhead(128<<20) != nil || cfg.FitsOverhead(128<<20-1) == nil {
+		t.Fatal("default 16 streams × 8 MiB must need exactly 128 MiB of overhead")
 	}
-	cfg.MaxInFlight = 4
-	if cfg.FitsOverhead(32<<20) != nil {
-		t.Fatal("a smaller max_in_flight must fit a smaller overhead")
+	cfg.StreamBufferMB = 2
+	if cfg.StreamBuffers() != 32<<20 || cfg.FitsOverhead(32<<20) != nil || cfg.FitsOverhead(32<<20-1) == nil {
+		t.Fatal("stream_buffer_mb not accounted")
+	}
+}
+
+// stream_buffer_mb is the slow-consumer cap: a smaller setting fails a
+// stream that falls behind by more than it.
+func TestWarmPool_StreamBufferSettingIsTheCap(t *testing.T) {
+	cfg := DefaultWarmPoolConfig()
+	cfg.StreamBufferMB = 1
+	q := &streamQueue{notify: make(chan struct{}, 1), done: make(chan struct{}), capBytes: cfg.streamBuffer()}
+	q.push(frame.Frame{Type: frame.Result, Payload: make([]byte, 600<<10)})
+	if q.slow {
+		t.Fatal("under the cap marked slow")
+	}
+	q.push(frame.Frame{Type: frame.Result, Payload: make([]byte, 600<<10)})
+	if !q.slow {
+		t.Fatal("over stream_buffer_mb not marked slow")
+	}
+}
+
+// The launch belongs to the pool: when the caller that started it cancels,
+// another caller sharing the launching worker still gets it, and the launch
+// itself never sees the first caller's cancellation.
+func TestWarmPool_LaunchSurvivesFirstCallerCancel(t *testing.T) {
+	unblock := make(chan struct{})
+	launchCtxErr := make(chan error, 1)
+	launcher := &mockLauncher{onLaunch: func(ctx context.Context) (WorkerProcess, func() error, error) {
+		<-unblock
+		launchCtxErr <- ctx.Err()
+		proc := newFakeWorkerProcess()
+		go serveFake(proc, nil)
+		return proc, proc.Kill, nil
+	}}
+	mgr, exec := newTestPool(t, launcher)
+	firstCtx, cancelFirst := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	go func() {
+		_, err := mgr.Execute(firstCtx, exec, OperationProcessConfig{}, opReq("op-first"), &workerTestSink{})
+		first <- err
+	}()
+	waitFor(t, func() bool { mgr.mu.Lock(); defer mgr.mu.Unlock(); return len(mgr.workers) == 1 })
+	second := make(chan error, 1)
+	go func() {
+		_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-second"), &workerTestSink{})
+		second <- err
+	}()
+	waitFor(t, func() bool { return mgr.metrics.Hits.Load() == 1 })
+	cancelFirst()
+	if err := <-first; !errors.Is(err, context.Canceled) {
+		t.Fatal("first caller did not stop waiting", err)
+	}
+	close(unblock)
+	if err := <-launchCtxErr; err != nil {
+		t.Fatal("the launch ran under the first caller's context", err)
+	}
+	if err := <-second; err != nil || mgr.metrics.Spawns.Load() != 1 {
+		t.Fatal("a sharer lost the worker when the first caller left", err)
 	}
 }

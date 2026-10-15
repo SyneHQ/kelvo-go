@@ -248,8 +248,14 @@ gain. Phase 3 is the security-sensitive one.
   stream still ends with a Receipt (even a Completed one) within the 2s
   grace. Workers are killed only for protocol violations, terminal Errors,
   receipt mismatches, I/O errors, or an abandoned stream that does not end.
-  Node buffering per worker, `max_in_flight` × 8 MiB, must fit the per-job
-  memory overhead (`resources.overhead_mb`); config validation checks it.
+  Each stream buffers at most `warm_pool.stream_buffer_mb` (default 8 MiB)
+  of unread results. The trade-off: a large result to a slow client fails
+  fast with `RESOURCE_EXHAUSTED` instead of holding node memory for it.
+  `max_in_flight` × `stream_buffer_mb` per worker must fit the per-job memory
+  overhead (`resources.overhead_mb`); config validation checks it.
+- A worker's launch (reservation, process start, Hello) runs under a
+  pool-owned context bounded by its own 30s launch timeout: a caller that
+  cancels only stops waiting, and others sharing the launch still get it.
 - Native reads route to a read worker from `Executor.execute`, before the
   per-read reservation, for PostgreSQL-family sources whose DSN the adapter
   accepts and when the node's limits fit the adapter's (1M rows, 64 MiB).

@@ -23,11 +23,15 @@ import (
 
 // WarmPoolConfig configures the warm worker pool for small read-only operations.
 type WarmPoolConfig struct {
-	Enabled        bool          `yaml:"enabled"`
-	IdleTTL        time.Duration `yaml:"idle_ttl"`         // default 30m
-	MaxWorkers     int           `yaml:"max_workers"`      // default 4
-	MaxPerKey      int           `yaml:"max_per_key"`      // default 1
-	MaxInFlight    int           `yaml:"max_in_flight"`    // default 16, reads in flight per worker
+	Enabled     bool          `yaml:"enabled"`
+	IdleTTL     time.Duration `yaml:"idle_ttl"`      // default 30m
+	MaxWorkers  int           `yaml:"max_workers"`   // default 4
+	MaxPerKey   int           `yaml:"max_per_key"`   // default 1
+	MaxInFlight int           `yaml:"max_in_flight"` // default 16, reads in flight per worker
+	// StreamBufferMB caps the unread result bytes the node buffers per stream
+	// (default 8). A slow client reading a large result then fails fast with
+	// RESOURCE_EXHAUSTED instead of holding node memory for it.
+	StreamBufferMB int           `yaml:"stream_buffer_mb"`
 	QueueDepth     int           `yaml:"queue_depth"`      // default 64, reads waiting for a full worker
 	QueueTimeout   time.Duration `yaml:"queue_timeout"`    // default 10s
 	WorkerMemoryMB int           `yaml:"worker_memory_mb"` // default 64
@@ -67,6 +71,9 @@ func (c WarmPoolConfig) Validate() error {
 	}
 	// The adapter serves at most 64 streams; past that it answers busy, a
 	// terminal Error that would kill the worker.
+	if c.StreamBufferMB < 0 || c.StreamBufferMB > 256 {
+		return errors.New("warm_pool: stream_buffer_mb must be between 0 and 256")
+	}
 	if c.MaxInFlight < 0 || c.MaxInFlight > 64 {
 		return errors.New("warm_pool: max_in_flight must be between 1 and 64")
 	}
@@ -91,12 +98,23 @@ func (c WarmPoolConfig) maxInFlight() int {
 	return c.MaxInFlight
 }
 
-// FitsOverhead reports whether the node memory a worker may buffer for its
-// streams, max_in_flight × streamQueueCap, fits the per-job overhead that the
-// worker's reservation carries for parent-side allocations.
+// streamBuffer is the per-stream buffer cap in bytes.
+func (c WarmPoolConfig) streamBuffer() int64 {
+	if c.StreamBufferMB == 0 {
+		return 8 << 20
+	}
+	return int64(c.StreamBufferMB) << 20
+}
+
+// StreamBuffers is the node memory one worker may buffer for its streams:
+// max_in_flight × stream_buffer_mb.
+func (c WarmPoolConfig) StreamBuffers() int64 { return int64(c.maxInFlight()) * c.streamBuffer() }
+
+// FitsOverhead reports whether a worker's stream buffers fit the per-job
+// overhead its reservation carries for parent-side allocations.
 func (c WarmPoolConfig) FitsOverhead(overheadBytes int64) error {
-	if int64(c.maxInFlight())*streamQueueCap > overheadBytes {
-		return fmt.Errorf("warm_pool: max_in_flight × 8 MiB of stream buffers exceeds the per-job memory overhead")
+	if c.StreamBuffers() > overheadBytes {
+		return errors.New("warm_pool: max_in_flight × stream_buffer_mb of stream buffers exceeds the per-job memory overhead")
 	}
 	return nil
 }
@@ -384,8 +402,18 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			}
 			m.workers[entry.id] = entry
 			m.mu.Unlock()
-			if err := m.launch(ctx, e, cfg, entry); err != nil {
-				return nil, nil, err
+			// The launch belongs to the pool, not to this caller: if this
+			// caller leaves, others sharing the launching worker still get it.
+			go func() { _ = m.launch(e, cfg, entry) }()
+			select {
+			case <-entry.ready:
+			case <-ctx.Done():
+				m.releaseWorker(entry, nil)
+				return nil, nil, ctx.Err()
+			}
+			if entry.launchErr != nil {
+				m.releaseWorker(entry, nil)
+				return nil, nil, entry.launchErr
 			}
 			return entry, func(err error) { m.releaseWorker(entry, err) }, nil
 		}
@@ -423,7 +451,9 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 
 // launch starts entry's process, handshakes and starts its demux reader. On
 // failure the entry is removed and every request sharing it falls back.
-func (m *WarmPoolManager) launch(ctx context.Context, e *Executor, cfg OperationProcessConfig, entry *warmWorkerEntry) (err error) {
+func (m *WarmPoolManager) launch(e *Executor, cfg OperationProcessConfig, entry *warmWorkerEntry) (err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), launchTimeout)
+	defer cancel()
 	defer func() {
 		if err != nil {
 			m.mu.Lock()
@@ -459,7 +489,7 @@ func (m *WarmPoolManager) launch(ctx context.Context, e *Executor, cfg Operation
 
 // demux is the only reader of a worker's stdout. It routes each frame to its
 // stream's queue and never blocks on a slow consumer. A frame for an unknown
-// stream, a read failure or a stream over its byte limit ends the worker and
+// stream or a read failure ends the worker and
 // fails every stream still in flight on it.
 func (m *WarmPoolManager) demux(w *warmWorkerEntry) {
 	var cause error
@@ -500,9 +530,9 @@ func (m *WarmPoolManager) demux(w *warmWorkerEntry) {
 // open registers a stream before its Request is written. It fails only when
 // the demux reader has stopped, before anything was sent. onSlow runs once,
 // off the demux goroutine, if the stream's consumer falls behind.
-func (w *warmWorkerEntry) open(onSlow func(), slowCount *atomic.Int64) (uint32, *streamQueue, bool) {
+func (w *warmWorkerEntry) open(capBytes int64, onSlow func(), slowCount *atomic.Int64) (uint32, *streamQueue, bool) {
 	stream := w.nextStream.Add(1)
-	q := &streamQueue{notify: make(chan struct{}, 1), done: make(chan struct{}), onSlow: onSlow, slowCount: slowCount}
+	q := &streamQueue{notify: make(chan struct{}, 1), done: make(chan struct{}), capBytes: capBytes, onSlow: onSlow, slowCount: slowCount}
 	w.smu.Lock()
 	defer w.smu.Unlock()
 	if w.streams == nil {
@@ -512,10 +542,9 @@ func (w *warmWorkerEntry) open(onSlow func(), slowCount *atomic.Int64) (uint32, 
 	return stream, q, true
 }
 
-// streamQueueCap bounds the unread Result bytes the node buffers for one
-// stream. A consumer that falls further behind fails with errSlowConsumer
-// instead of growing node memory or blocking the demux reader.
-const streamQueueCap = 8 << 20
+// A stream's queue holds at most stream_buffer_mb of unread Result bytes. A
+// consumer that falls further behind fails with errSlowConsumer instead of
+// growing node memory or blocking the demux reader.
 
 var errSlowConsumer = query.NewError("RESOURCE_EXHAUSTED", "Read result consumer is too slow (slow consumer)")
 
@@ -527,6 +556,7 @@ type streamQueue struct {
 	mu        sync.Mutex
 	frames    []frame.Frame
 	queued    int64        // unread Result payload bytes
+	capBytes  int64        // stream_buffer_mb
 	terminal  *frame.Frame // the Receipt or Error that ended the stream
 	err       error        // the worker stopped before a terminal frame
 	slow      bool
@@ -549,7 +579,7 @@ func (q *streamQueue) push(f frame.Frame) {
 			close(q.done)
 		}
 	case q.abandoned:
-	case q.queued+int64(len(f.Payload)) > streamQueueCap:
+	case q.queued+int64(len(f.Payload)) > q.capBytes:
 		q.slow, q.abandoned, q.frames, q.queued = true, true, nil, 0
 		if q.slowCount != nil {
 			q.slowCount.Add(1)
@@ -680,7 +710,12 @@ func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg Operatio
 	return receipt, execErr
 }
 
-const helloTimeout = 5 * time.Second
+// helloTimeout bounds the handshake; a var so tests can shorten it.
+var helloTimeout = 5 * time.Second
+
+// launchTimeout bounds one worker launch, reservation wait and Hello
+// included. It is a var so tests can shorten it.
+var launchTimeout = 30 * time.Second
 
 // cancelGrace is a var so tests can shorten it.
 var cancelGrace = 2 * time.Second
@@ -734,7 +769,7 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *w
 			go func() { _ = w.sw.Write(frame.Cancel, streamID.Load(), nil) }()
 		})
 	}
-	stream, queue, ok := w.open(cancel, &m.metrics.SlowConsumers)
+	stream, queue, ok := w.open(m.cfg.streamBuffer(), cancel, &m.metrics.SlowConsumers)
 	streamID.Store(stream)
 	if !ok {
 		return operations.Receipt{}, errWarmUnavailable, false, false
