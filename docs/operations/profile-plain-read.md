@@ -37,8 +37,13 @@ Warm credentials cost nothing: 2 resolves in a 64 s window at low load, 12 in th
 
 Throughput is bounded by the adapter's fixed pool: 4 connections / (4 turns x 80 ms) = **12.5 reads/s**; measured 14.1 (client)
 and 12.1 (adapter alone, in process). Fifty readers on one connection therefore wait about 50 / 12.5 = 4 s in a closed loop.
-**14% of reads (125 of 891) failed** with 503 `Worker unavailable` at this concurrency; the classes of the node's own failure
-log are in `node_failed_reads_logged` of run 3's report (see the table at the end if filled in).
+**14% of reads (125 of 891; 119 of 881 in run 3) failed** with 503 `Worker unavailable` at this concurrency. Run 3's node failure log
+(`node_failed_reads_logged`) classifies them: **110 `INVALID_ARGUMENT` at stage `validation` and 9 `RESOURCE_EXHAUSTED` (class `capacity`)**; no worker
+died (`evictions_error` 0, spawns 7). The probable cause of the 110, by reading the path (not isolated by an experiment): `executeOnReadWorker`
+stamps each request with `CredentialsValidUntil = now + 5 s` before it queues (`read_worker.go:114`); a read that then waits more than 5 s
+for a free slot (queue timeout 10 s, `warm_pool.go` `Acquire`) fails when `EncodeProcessRequest` re-validates it
+(`warm_pool.go:777`; `adapter/process.go:74` rejects `CredentialsValidUntil <= now`). That fits the failures being the slowest 13% (p95 of the successes is 5.6 s, the slowest 8.9 s).
+The 9 are the per-team in-flight cap (`max_per_tenant` 32) timing out.
 
 ### CPU at 50 concurrent, per read (run 2; run 1 shares in brackets)
 
