@@ -64,7 +64,7 @@ Native MySQL uses Go-driver DSN syntax. DuckDB's signed MySQL extension uses URI
 
 Every field keeps `native_type` and `source_type`. TIMESTAMPTZ preserves the instant, not its original input zone. BIT metadata lacks declared bit length. Zero MySQL dates fail. Unknown, nested, array, interval and standalone time types fail explicitly.
 
-Decimals require usable precision/scale metadata and exact conversion: Decimal128 up to 38 digits, Decimal256 up to PostgreSQL's supported 76 or MySQL's 65. Rounding and negative/ambiguous scales fail. Unconstrained PostgreSQL NUMERIC or expressions may have unusable typmod; provide an explicit contract such as `CAST(SUM(amount) AS NUMERIC(38, 2))`.
+Decimals require usable precision/scale metadata and exact conversion: Decimal128 up to 38 digits, Decimal256 up to PostgreSQL's supported 76 or MySQL's 65. Rounding and negative/ambiguous scales fail. Unconstrained PostgreSQL NUMERIC (no typmod, e.g. `sum(amount)` or `avg(amount)`) has no fixed scale and may be NaN or ±Infinity, so it is returned as a Utf8 column of PostgreSQL's exact decimal text with `logical_type=decimal` and `encoding=exact_numeric_text`. Values are plain digits (`-12.50`) or exactly `NaN`, `Infinity` or `-Infinity`; anything else fails. Cast, for example `CAST(SUM(amount) AS NUMERIC(38, 2))`, to receive an Arrow decimal instead.
 
 ## Custom DuckDB federation
 

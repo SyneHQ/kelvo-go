@@ -41,6 +41,11 @@ func postgresType(c *sql.ColumnType, t string) (arrow.DataType, error) {
 	case "TIMESTAMPTZ":
 		return &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: "UTC"}, nil
 	case "NUMERIC":
+		// Unconstrained NUMERIC (typmod -1, e.g. sum/avg results) has no fixed
+		// scale and may hold NaN or Infinity; no Arrow decimal fits every value.
+		if p, s, ok := c.DecimalSize(); ok && p == 65535 && s == 65531 {
+			return arrow.BinaryTypes.String, nil
+		}
 		return relationalDecimal(c, 76)
 	default:
 		return nil, errors.New("unsupported PostgreSQL type")
