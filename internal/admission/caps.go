@@ -17,11 +17,12 @@ var ErrQueueFull = errors.New("capacity wait queue is full")
 // connection IDs of different tenants never share a count. An empty
 // connection (a federated read over several) is bounded by the tenant cap only.
 //
-// Waiters are served FIFO per tenant: a later caller never overtakes an
-// earlier one of the same tenant, and callers of other tenants are not held
-// behind them. A release wakes only its tenant's first waiter. At most
-// MaxWaiting callers wait (zero: unbounded); beyond that Acquire returns
-// ErrQueueFull at once.
+// Waiters are served FIFO per tenant among those that fit: freed capacity is
+// granted to the tenant's earliest waiters whose connection (and tenant) have
+// room, so a waiter held by a full connection never holds back the tenant's
+// reads on other connections, and callers of other tenants are never held
+// behind it. At most MaxWaiting callers wait (zero: unbounded); beyond that
+// Acquire returns ErrQueueFull at once.
 type Caps struct {
 	MaxPerTenant     int
 	MaxPerConnection int
@@ -37,12 +38,12 @@ type Caps struct {
 
 type capsWaiter struct {
 	tenant, connection string
-	ready              chan struct{}
+	ready              chan struct{} // receives once, when granted
+	granted            bool          // guarded by mu
 }
 
-// Acquire waits until tenant and connection are both under their caps and no
-// earlier waiter of the tenant is still queued, or until ctx ends. The
-// returned release is idempotent.
+// Acquire waits until tenant and connection are both under their caps, or
+// until ctx ends. The returned release is idempotent.
 func (c *Caps) Acquire(ctx context.Context, tenant, connection string) (func(), error) {
 	if c == nil || (c.MaxPerTenant == 0 && c.MaxPerConnection == 0) {
 		return func() {}, nil
@@ -55,8 +56,9 @@ func (c *Caps) Acquire(ctx context.Context, tenant, connection string) (func(), 
 	if c.tenants == nil {
 		c.tenants, c.connections, c.queues = map[string]int{}, map[string]int{}, map[string]*list.List{}
 	}
-	queue := c.queues[tenant]
-	if (queue == nil || queue.Len() == 0) && c.underLocked(w) {
+	// Every release grants to the waiters that fit, so none of the tenant's
+	// queued waiters fits now: a caller that fits overtakes nobody.
+	if c.underLocked(w) {
 		c.takeLocked(w)
 		c.mu.Unlock()
 		return c.release(w), nil
@@ -65,6 +67,7 @@ func (c *Caps) Acquire(ctx context.Context, tenant, connection string) (func(), 
 		c.mu.Unlock()
 		return nil, ErrQueueFull
 	}
+	queue := c.queues[tenant]
 	if queue == nil {
 		queue = list.New()
 		c.queues[tenant] = queue
@@ -72,28 +75,19 @@ func (c *Caps) Acquire(ctx context.Context, tenant, connection string) (func(), 
 	element := queue.PushBack(w)
 	c.waiting++
 	c.mu.Unlock()
-	for {
-		select {
-		case <-w.ready:
-		case <-ctx.Done():
-			c.mu.Lock()
-			head := queue.Front() == element
-			c.dequeueLocked(queue, element)
-			if head {
-				c.wakeHeadLocked(tenant) // the next waiter may now proceed
-			}
+	select {
+	case <-w.ready:
+		return c.release(w), nil
+	case <-ctx.Done():
+		c.mu.Lock()
+		if w.granted {
 			c.mu.Unlock()
+			c.release(w)() // hand it to the next waiter that fits
 			return nil, ctx.Err()
 		}
-		c.mu.Lock()
-		if queue.Front() == element && c.underLocked(w) {
-			c.dequeueLocked(queue, element)
-			c.takeLocked(w)
-			c.wakeHeadLocked(tenant) // the new head may fit as well
-			c.mu.Unlock()
-			return c.release(w), nil
-		}
+		c.dequeueLocked(queue, element)
 		c.mu.Unlock()
+		return nil, ctx.Err()
 	}
 }
 
@@ -127,20 +121,26 @@ func (c *Caps) dequeueLocked(queue *list.List, element *list.Element) {
 	}
 }
 
-// wakeHeadLocked wakes the tenant's first waiter, and only it, when it fits.
-func (c *Caps) wakeHeadLocked(tenant string) {
+// grantLocked grants freed capacity to the tenant's waiters that fit, oldest
+// first, until the tenant is at its cap.
+func (c *Caps) grantLocked(tenant string) {
 	queue := c.queues[tenant]
-	if queue == nil || queue.Len() == 0 {
+	if queue == nil {
 		return
 	}
-	head := queue.Front().Value.(*capsWaiter)
-	if !c.underLocked(head) {
-		return // a later release wakes it
-	}
-	select {
-	case head.ready <- struct{}{}:
-		c.wakeups++
-	default:
+	for e := queue.Front(); e != nil; {
+		next := e.Next()
+		w := e.Value.(*capsWaiter)
+		if c.underLocked(w) {
+			c.dequeueLocked(queue, e)
+			c.takeLocked(w)
+			w.granted = true
+			w.ready <- struct{}{}
+			c.wakeups++
+		} else if c.MaxPerTenant != 0 && c.tenants[tenant] >= c.MaxPerTenant {
+			return
+		}
+		e = next
 	}
 }
 
@@ -158,7 +158,7 @@ func (c *Caps) release(w *capsWaiter) func() {
 					delete(c.connections, w.connection)
 				}
 			}
-			c.wakeHeadLocked(w.tenant)
+			c.grantLocked(w.tenant)
 		})
 	}
 }

@@ -291,8 +291,9 @@ gain. Phase 3 is the security-sensitive one.
 - Validation also requires the interactive memory to hold `max_workers` x
   (`worker_memory_mb` + `overhead_mb` + stream buffers) plus one result
   download.
-- Caps inside a class, FIFO per tenant; a release wakes only that tenant's
-  first waiter, and at most `queue_depth` reads wait (interactive) or
+- Caps inside a class, FIFO per tenant among waiters that fit: a release grants
+  to the tenant's earliest waiters whose connection has room (a waiter held by
+  a full connection never holds back the tenant's other connections), and at most `queue_depth` reads wait (interactive) or
   `max_concurrent` operations (background). A federated read has no single
   connection and is bounded by its tenant cap only. Interactive:
   `warm_pool.max_per_tenant` (default 64 reads in flight, at most
