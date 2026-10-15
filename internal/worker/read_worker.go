@@ -82,8 +82,8 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 	auth, dsn := pool.freshAuthorization(authKey), ""
 	// authorize resolves the source again; ok is false when it no longer
 	// qualifies for a read worker.
-	authorize := func() (ok bool, err error) {
-		a, secret, err := pool.authorizeOnce(ctx, authKey, func() (*readAuthorization, string, error) {
+	authorize := func(reuse bool) (ok bool, err error) {
+		a, secret, err := pool.authorizeOnce(ctx, authKey, reuse, func() (*readAuthorization, string, error) {
 			observed := pool.currentAuthorization(authKey)
 			a, secret, err := e.authorizeReadSource(ctx, execution, dynamic, resolverRequest, r.ConnectionID, id, pool.cfg.reauthorizeEvery())
 			switch {
@@ -111,7 +111,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		return true, nil
 	}
 	if auth == nil {
-		if ok, err := authorize(); err != nil {
+		if ok, err := authorize(true); err != nil {
 			return stats, err, true
 		} else if !ok {
 			if r.Inspect != nil {
@@ -165,7 +165,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 	// withCredentials authorizes again a read that found no worker holding
 	// credentials of its current authorization, and rebuilds it with them.
 	withCredentials := func() (adapter.ProcessRequest, error) {
-		if ok, err := authorize(); err != nil {
+		if ok, err := authorize(false); err != nil {
 			return input, err
 		} else if !ok {
 			return input, errWarmUnavailable

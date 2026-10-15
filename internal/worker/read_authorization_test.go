@@ -411,9 +411,10 @@ func TestReadAuthorizationConcurrentReauthorizationAndCancel(t *testing.T) {
 	if failed.Load() != 0 || d.fs.procs[0].killed.Load() || d.mgr.metrics.EvictionsAuth.Load() != 0 {
 		t.Fatal("a cancelled re-authorization disturbed other callers", failed.Load(), d.fs.procs[0].killed.Load())
 	}
-	// The leader's cancelled resolve plus at most one more for the waiters.
-	if n := d.resolves("p1", "saved-a"); n > 3 {
-		t.Fatal("concurrent reads each re-authorized", n)
+	// The first read, the leader's cancelled re-authorization, and exactly
+	// one more shared by all eight waiters.
+	if n := d.resolves("p1", "saved-a"); n != 3 {
+		t.Fatal("concurrent reads did not share one re-authorization", n)
 	}
 }
 
@@ -524,5 +525,26 @@ func TestReadAuthorizationRotationWaitsForIdleWorker(t *testing.T) {
 	mgr.storeAuthorization("p", &readAuthorization{workerKey: "rotated", at: time.Now()})
 	if cleaned.Load() != 1 {
 		t.Fatal("rotation returned before the idle old worker was cleaned up")
+	}
+}
+
+// A caller that finds a fresh authorization (another caller just stored it)
+// uses it instead of authorizing again; a caller that needs credentials for a
+// new worker always authorizes.
+func TestAuthorizeOnceReusesFreshAuthorization(t *testing.T) {
+	mgr, _ := newTestPool(t, &mockLauncher{})
+	stored := &readAuthorization{workerKey: "w", at: time.Now()}
+	mgr.storeAuthorization("p", stored)
+	var calls atomic.Int32
+	authorize := func() (*readAuthorization, string, error) {
+		calls.Add(1)
+		return &readAuthorization{workerKey: "w", at: time.Now()}, "dsn", nil
+	}
+	a, dsn, err := mgr.authorizeOnce(context.Background(), "p", true, authorize)
+	if err != nil || a != stored || dsn != "" || calls.Load() != 0 {
+		t.Fatal("a fresh authorization was not reused", a == stored, dsn, calls.Load())
+	}
+	if _, dsn, err := mgr.authorizeOnce(context.Background(), "p", false, authorize); err != nil || dsn != "dsn" || calls.Load() != 1 {
+		t.Fatal("a caller needing credentials did not authorize", dsn, calls.Load())
 	}
 }
