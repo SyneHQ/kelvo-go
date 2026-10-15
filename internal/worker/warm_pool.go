@@ -35,7 +35,10 @@ type WarmPoolConfig struct {
 	// RESOURCE_EXHAUSTED instead of holding node memory for it.
 	StreamBufferMB int `yaml:"stream_buffer_mb"`
 	// Caps inside the interactive class; 0 takes the default.
-	MaxPerTenant     int           `yaml:"max_per_tenant"`     // default 32 reads in flight per tenant
+	// MaxPerTenant must exceed the largest burst one user makes, an explorer
+	// page open being about 42 reads, and may not exceed the pool's interactive
+	// capacity (max_workers x max_in_flight).
+	MaxPerTenant     int           `yaml:"max_per_tenant"`     // default 64 reads in flight per tenant, capped at capacity
 	MaxPerConnection int           `yaml:"max_per_connection"` // default max_per_key × max_in_flight
 	QueueDepth       int           `yaml:"queue_depth"`        // default 64, reads waiting for a full worker
 	QueueTimeout     time.Duration `yaml:"queue_timeout"`      // default 10s
@@ -89,6 +92,9 @@ func (c WarmPoolConfig) Validate() error {
 	if c.MaxPerTenant < 0 || c.MaxPerTenant > 4096 || c.MaxPerConnection < 0 || c.MaxPerConnection > 4096 {
 		return errors.New("warm_pool: max_per_tenant and max_per_connection must be between 0 and 4096")
 	}
+	if c.MaxPerTenant > c.MaxWorkers*c.maxInFlight() {
+		return errors.New("warm_pool: max_per_tenant must not exceed max_workers x max_in_flight")
+	}
 	if c.QueueDepth < 1 || c.QueueDepth > 1024 {
 		return errors.New("warm_pool: queue_depth must be between 1 and 1024")
 	}
@@ -138,7 +144,7 @@ func (c WarmPoolConfig) FitsOverhead(overheadBytes int64) error {
 func (c WarmPoolConfig) caps() *admission.Caps {
 	tenant, connection := c.MaxPerTenant, c.MaxPerConnection
 	if tenant == 0 {
-		tenant = 32
+		tenant = min(64, c.MaxWorkers*c.maxInFlight())
 	}
 	if connection == 0 {
 		connection = c.MaxPerKey * c.maxInFlight()
