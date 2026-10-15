@@ -338,6 +338,8 @@ def main():
                           "rss_workers_mean_mib": round(mean("rss_workers_bytes") / 2**20, 1), "job_cgroups_peak": top("job_cgroups"), "job_cgroups_mean": round(mean("job_cgroups"), 1),
                           "failed_reads_logged": failed_reads, "samples_file": "node-samples.json"}
         report["loadgen"] = loadgen
+        if (out / "audit-usage.json").exists():
+            report["audit_journal"] = json.loads((out / "audit-usage.json").read_text())
         report["outside_node_cpu"] = outside_cpu
         profile = out / "node-cpu.pprof"
         if profile.exists():

@@ -143,6 +143,32 @@ func TestPooledReadLoadNode(t *testing.T) {
 	cgroupRoot, cgroupState := get("CGROUP_ROOT"), get("CGROUP_STATE")
 	unitCgroup := filepath.Dir(cgroupRoot) // the delegated service; jobs/ is a child
 
+	// Registered first, so it runs after the node and gateway closed their journals: how
+	// many audit slots did this load use? (A finite journal makes this a sizing input.)
+	var auditDirs [2]string
+	t.Cleanup(func() {
+		usage := map[string]any{}
+		for i, name := range []string{"node", "gateway"} {
+			used, fileBytes := 0, int64(0)
+			if info, err := os.Stat(filepath.Join(auditDirs[i], "journal.bin")); err == nil {
+				fileBytes = info.Size()
+			}
+			for cursor := 0; auditDirs[i] != ""; cursor += 256 {
+				page, err := audit.ReadPage(context.Background(), auditDirs[i], cursor, 256)
+				if err != nil {
+					usage[name+"_error"] = err.Error()
+					break
+				}
+				used += len(page.Events)
+				if len(page.Events) == 0 || page.Done {
+					break
+				}
+			}
+			usage[name+"_entries_used"], usage[name+"_journal_file_bytes"] = used, fileBytes
+		}
+		raw, _ := json.Marshal(usage)
+		_ = os.WriteFile(filepath.Join(out, "audit-usage.json"), raw, 0600)
+	})
 	pub, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -295,6 +321,7 @@ func TestPooledReadLoadNode(t *testing.T) {
 	adapterSum := sha256.Sum256(adapterBytes)
 	nodeAudit := serviceAuditConfig(t)
 	nodeAudit.MaxEntries, nodeAudit.MaxPending = sc.Audit.MaxEntries, sc.Audit.MaxPending
+	auditDirs[0] = nodeAudit.Directory
 	op := sc.Operations
 	warm := sc.WarmPool
 	config := NodeConfig{Policy: policy, WorkerID: "a1", NATS: natsConfig("WORKER"), SandboxPath: engine.SandboxPath, ScratchDirectory: filepath.Join(root, "scratch"),
@@ -334,6 +361,7 @@ func TestPooledReadLoadNode(t *testing.T) {
 	}
 	gatewayAudit := serviceAuditConfig(t)
 	gatewayAudit.MaxEntries, gatewayAudit.MaxPending = sc.Audit.MaxEntries, sc.Audit.MaxPending
+	auditDirs[1] = gatewayAudit.Directory
 	gatewayStore, err := OpenStore(ctx, natsConfig("GATEWAY"), policy, false)
 	if err != nil {
 		t.Fatal(err)
