@@ -451,10 +451,10 @@ func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg Operatio
 	return receipt, execErr
 }
 
-const (
-	helloTimeout = 5 * time.Second
-	cancelGrace  = 2 * time.Second
-)
+const helloTimeout = 5 * time.Second
+
+// cancelGrace is a var so tests can shorten it.
+var cancelGrace = 2 * time.Second
 
 // helloHandshake sends Hello and requires a matching Hello back. A stuck
 // worker is abandoned on ctx/timeout; the caller kills it, which unblocks the goroutine.
@@ -484,7 +484,7 @@ func helloHandshake(ctx context.Context, proc WorkerProcess) error {
 // executeOnWorker runs one request on its own stream. keep reports whether the
 // worker is still healthy: true only when the stream ended with a terminal frame
 // and nothing about the exchange was a protocol, limit, receipt or I/O failure.
-func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *warmWorkerEntry, input adapter.ProcessRequest, sink query.Sink) (operations.Receipt, error, bool) {
+func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *warmWorkerEntry, input adapter.ProcessRequest, sink query.Sink) (_ operations.Receipt, _ error, keep bool) {
 	proc := w.proc
 	raw, err := adapter.EncodeProcessRequest(input)
 	if err != nil {
@@ -500,6 +500,7 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *w
 	// On caller cancellation tell the worker, then give the stream cancelGrace
 	// to end; past that the worker is killed, which also unblocks the reader.
 	stop := make(chan struct{})
+	var graceFired atomic.Bool
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -510,11 +511,21 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *w
 		case <-ctx.Done():
 		}
 		t := time.AfterFunc(cancelGrace, func() { _ = proc.Kill() })
-		defer t.Stop()
+		defer func() {
+			if !t.Stop() {
+				graceFired.Store(true) // the kill ran or is running
+			}
+		}()
 		_ = w.sw.Write(frame.Cancel, stream, nil)
 		<-stop
 	}()
-	defer func() { close(stop); wg.Wait() }()
+	defer func() {
+		close(stop)
+		wg.Wait()
+		if graceFired.Load() {
+			keep = false
+		}
+	}()
 
 	hasher := sha256.New()
 	reader := &framedResultReader{
@@ -534,16 +545,16 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *w
 		_, _ = io.Copy(io.Discard, reader)
 	}
 	if ctx.Err() != nil {
-		keep := reader.finished && (reader.remoteErr || reader.receipt != nil)
-		return uncertainOperation(input), ctx.Err(), keep
+		// Only a Receipt keeps the worker; a Completed one was not cross-checked here.
+		return uncertainOperation(input), ctx.Err(), reader.receipt != nil && reader.receipt.Outcome != operations.Completed
 	}
 	if readErr != nil || reader.errFrame != nil || reader.receipt == nil {
-		// A terminal Error, or a non-Completed Receipt, ended the stream cleanly.
-		keep := reader.remoteErr || (reader.receipt != nil && reader.receipt.Outcome != operations.Completed)
-		if reader.receipt != nil && keep && readErr != nil {
+		// Only a non-Completed Receipt keeps the worker. A terminal Error means
+		// the adapter is exiting (fatal condition), so the worker is not reusable.
+		if reader.receipt != nil && reader.receipt.Outcome != operations.Completed && reader.errFrame == nil {
 			return *reader.receipt, nil, true
 		}
-		return uncertainOperation(input), operationFailure("QUERY_FAILED"), keep
+		return uncertainOperation(input), operationFailure("QUERY_FAILED"), false
 	}
 
 	receipt := *reader.receipt
