@@ -384,6 +384,13 @@ jobs:
             --adapter artifacts/warm-private/kelvo-adapter-go \
             --postgres-dsn-file artifacts/warm-private/postgres.dsn \
             --output artifacts/warm-private/run-capacity
+      - name: Keep explorer p95 steady while the background class is full
+        run: |
+          python3 scripts/warm_adapter_acceptance.py --go go \
+            --gate TestContainedExplorerUnaffectedByFullBackgroundClass \
+            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --postgres-dsn-file artifacts/warm-private/postgres.dsn \
+            --output artifacts/warm-private/run-classes
       - name: Verify 50 concurrent reads share one bounded PostgreSQL pool
         run: |
           work=$(mktemp -d)
@@ -408,6 +415,8 @@ jobs:
           cp artifacts/warm-private/run-explorer/report.json artifacts/warm-private/run-explorer/worker.test.log artifacts/warm-adapter/explorer/
           mkdir -p artifacts/warm-adapter/client
           cp artifacts/warm-private/run-client/report.json artifacts/warm-private/run-client/worker.test.log artifacts/warm-adapter/client/ 2>/dev/null || true
+          mkdir -p artifacts/warm-adapter/classes
+          cp artifacts/warm-private/run-classes/report.json artifacts/warm-private/run-classes/worker.test.log artifacts/warm-adapter/classes/ 2>/dev/null || true
           cp artifacts/warm-private/concurrent.log artifacts/warm-adapter/ 2>/dev/null || true
           rm -f artifacts/warm-private/postgres.dsn
           docker rm -f -v kelvo-warm-postgres >/dev/null 2>&1 || true
