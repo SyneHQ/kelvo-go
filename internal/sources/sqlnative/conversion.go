@@ -28,6 +28,9 @@ func newRowConversion(schema *arrow.Schema) *rowConversion {
 		field := schema.Field(i)
 		source, _ := field.Metadata.GetValue("source_type")
 		conversion.columns[i] = columnConversion{value: scalarConverter(field.Type), rejectZeroDate: source == "mysql" || source == "mariadb"}
+		if encoding, _ := field.Metadata.GetValue("encoding"); encoding == exactNumericText {
+			conversion.columns[i].value = exactDecimalTextValue
+		}
 	}
 	return conversion
 }

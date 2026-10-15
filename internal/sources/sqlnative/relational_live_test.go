@@ -142,8 +142,27 @@ func TestPostgresLiveNativeTLS(t *testing.T) {
 	if err != nil || stats.Rows != 1 || sink.records[0].Column(0).(*array.String).Value(0) != "on" {
 		t.Fatal("transaction not read-only")
 	}
-	_, _, err = execute(t, e, nativeQuery("SELECT 1.23::numeric AS ambiguous"))
-	requireCode(t, err, "UNSUPPORTED")
+	big := strings.Repeat("9", 90) + ".5"
+	stats, sink, err = execute(t, e, nativeQuery("SELECT x FROM unnest(ARRAY['-12.50','0.000001','"+big+"','NaN','Infinity','-Infinity',NULL]::numeric[]) WITH ORDINALITY AS t(x, o) ORDER BY o"))
+	if err != nil || stats.Rows != 7 {
+		t.Fatalf("unconstrained NUMERIC: %+v %v", stats, err)
+	}
+	if encoding, _ := sink.schema.Field(0).Metadata.GetValue("encoding"); encoding != "exact_numeric_text" {
+		t.Fatal("unconstrained NUMERIC encoding missing")
+	}
+	text := sink.records[0].Column(0).(*array.String)
+	for i, want := range []string{"-12.50", "0.000001", big, "NaN", "Infinity", "-Infinity"} {
+		if text.Value(i) != want {
+			t.Fatalf("unconstrained NUMERIC %d = %q", i, text.Value(i))
+		}
+	}
+	if !text.IsNull(6) {
+		t.Fatal("unconstrained NUMERIC NULL changed")
+	}
+	stats, sink, err = execute(t, e, nativeQuery("SELECT sum(n) AS total, avg(n) AS mean FROM "+table))
+	if err != nil || stats.Rows != 1 || sink.records[0].Column(0).(*array.String).Value(0) != "12345678901234567890.0123456789" || !strings.HasPrefix(sink.records[0].Column(1).(*array.String).Value(0), "12345678901234567890.0123456789") {
+		t.Fatalf("aggregate NUMERIC: %v", err)
+	}
 	var ssl bool
 	if err := reader.QueryRow("SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()").Scan(&ssl); err != nil || !ssl {
 		t.Fatal("fixture did not use TLS")

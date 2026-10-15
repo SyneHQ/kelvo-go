@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,11 +101,50 @@ func TestNumericTypmodIsRequired(t *testing.T) {
 		p, s      int64
 		ok, want  bool
 	}{
-		{"postgres", "NUMERIC", 65535, 65531, true, false}, {"postgres", "NUMERIC", 0, 0, false, false}, {"postgres", "NUMERIC", 10, 65534, true, false}, {"postgres", "NUMERIC", 77, 0, true, false}, {"mysql", "DECIMAL", 66, 2, true, false}, {"postgres", "NUMERIC", 30, 10, true, true}, {"mysql", "DECIMAL", 65, 30, true, true},
+		{"postgres", "NUMERIC", 65535, 65531, true, true}, {"mysql", "DECIMAL", 65535, 65531, true, false}, {"postgres", "NUMERIC", 0, 0, false, false}, {"postgres", "NUMERIC", 10, 65534, true, false}, {"postgres", "NUMERIC", 77, 0, true, false}, {"mysql", "DECIMAL", 66, 2, true, false}, {"postgres", "NUMERIC", 30, 10, true, true}, {"mysql", "DECIMAL", 65, 30, true, true},
 	} {
 		_, err := schemaFor(typesForTest(t, []metadataColumn{{test.typ, test.p, test.s, test.ok}}), Dialect{SourceType: test.kind})
 		if (err == nil) != test.want {
 			t.Fatalf("numeric metadata accepted=%v want %v", err == nil, test.want)
+		}
+	}
+}
+func TestUnconstrainedNumericIsExactDecimalText(t *testing.T) {
+	schema, err := schemaFor(typesForTest(t, []metadataColumn{{"NUMERIC", 65535, 65531, true}, {"NUMERIC", 12, 2, true}}), Dialect{SourceType: "postgres"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	field := schema.Field(0)
+	logical, _ := field.Metadata.GetValue("logical_type")
+	encoding, _ := field.Metadata.GetValue("encoding")
+	native, _ := field.Metadata.GetValue("native_type")
+	if field.Type.ID() != arrow.STRING || logical != "decimal" || encoding != exactNumericText || native != "NUMERIC" {
+		t.Fatalf("unconstrained NUMERIC field = %s %v", field.Type, field.Metadata)
+	}
+	if constrained := schema.Field(1); !arrow.TypeEqual(constrained.Type, &arrow.Decimal128Type{Precision: 12, Scale: 2}) || constrained.Metadata.FindKey("encoding") >= 0 {
+		t.Fatalf("constrained NUMERIC field = %s", constrained.Type)
+	}
+	huge := "-" + strings.Repeat("9", 131072) + "." + strings.Repeat("1", 16383)
+	conversion := newRowConversion(schema)
+	for _, value := range []any{nil, "0", "-12.50", "125.5000000000000000", "0.000000000000000000000000000000000000000000000000000000000000000000000000000000001", huge, "NaN", "Infinity", "-Infinity", []byte("42.10")} {
+		row, err := conversion.convert([]any{value, nil})
+		if err != nil {
+			t.Fatalf("%.20v rejected: %v", value, err)
+		}
+		want := any(nil)
+		switch v := value.(type) {
+		case string:
+			want = v
+		case []byte:
+			want = string(v)
+		}
+		if row[0] != want {
+			t.Fatalf("%.20v changed to %.20v", value, row[0])
+		}
+	}
+	for _, value := range []any{"", "+1", "1e5", ".5", "5.", " 1", "nan", "inf", "-NaN", "1,5", 1.5, int64(1)} {
+		if _, err := conversion.convert([]any{value, nil}); err == nil {
+			t.Fatalf("%v accepted as decimal text", value)
 		}
 	}
 }

@@ -249,7 +249,11 @@ func schemaFor(columns []*sql.ColumnType, dialect Dialect) (*arrow.Schema, error
 		if err != nil {
 			return nil, err
 		}
-		fields[i] = arrow.Field{Name: name, Type: typ, Nullable: true, Metadata: arrow.MetadataFrom(map[string]string{"native_type": c.DatabaseTypeName(), "source_type": dialect.SourceType})}
+		metadata := map[string]string{"native_type": c.DatabaseTypeName(), "source_type": dialect.SourceType}
+		if typ.ID() == arrow.STRING && strings.EqualFold(c.DatabaseTypeName(), "NUMERIC") {
+			metadata["logical_type"], metadata["encoding"] = "decimal", exactNumericText
+		}
+		fields[i] = arrow.Field{Name: name, Type: typ, Nullable: true, Metadata: arrow.MetadataFrom(metadata)}
 	}
 	return arrow.NewSchema(fields, nil), nil
 }
@@ -450,6 +454,28 @@ func scalarText(value any) (string, error) {
 }
 
 var decimalSyntax = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?$`)
+
+// exactNumericText marks a string column carrying source decimal text verbatim:
+// plain digits, or exactly NaN, Infinity or -Infinity. Anything else is rejected.
+const exactNumericText = "exact_numeric_text"
+
+var exactDecimalTextSyntax = regexp.MustCompile(`^(?:-?[0-9]+(?:\.[0-9]+)?|NaN|-?Infinity)$`)
+
+func exactDecimalTextValue(value any) (any, error) {
+	var text string
+	switch v := value.(type) {
+	case string:
+		text = v
+	case []byte:
+		text = string(v)
+	default:
+		return nil, errors.New("source decimal is not text")
+	}
+	if !exactDecimalTextSyntax.MatchString(text) {
+		return nil, errors.New("invalid source decimal text")
+	}
+	return text, nil
+}
 
 func exactDecimal(value string, scale int32) bool {
 	if len(value) > 256 || !decimalSyntax.MatchString(value) || scale < -128 || scale > 76 {
