@@ -85,9 +85,12 @@ type Executor struct {
 	// ResourceOverheadBytes reserves memory beyond DuckDB's managed memory limit.
 	ResourceOverheadBytes int64
 	Metrics               *telemetry.Registry
-	SourceHealth          *telemetry.SourceHealth
-	SourceAdmission       SourceAdmitter
-	Secrets               SecretResolver
+	// LogFailedReads writes one log line per failed read. Only the node sets it:
+	// the CLI's stderr is a result channel that scripts parse.
+	LogFailedReads  bool
+	SourceHealth    *telemetry.SourceHealth
+	SourceAdmission SourceAdmitter
+	Secrets         SecretResolver
 	// ConnectionResolvers are parent-only clients selected by authenticated
 	// delegation issuer. No resolver identity or proof enters child stdin.
 	connectionResolvers map[string]*ConnectionResolver
@@ -217,6 +220,9 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	var admissionWait time.Duration
 	phases := newExecutionPhases(start, e.Metrics != nil || e.Tracing != nil)
 	defer recordExecutionPhases(e.Metrics, ctx, start, &admissionWait, &resultErr, &phases, e.Tracing)
+	if logFailures := e.LogFailedReads; logFailures { // e is reassigned by the resolver below
+		defer func() { logFailedRead(ctx, start, resultErr, &phases) }()
+	}
 	if err := e.Limits.Validate(); err != nil {
 		return stats, err
 	}
