@@ -92,6 +92,18 @@ func (r *Registry) ObservePhases(kind Kind, phases PhaseTimings, total time.Dura
 	}
 }
 
+// ObserveResolve records one credential and connection resolve. The phase
+// timeline cannot carry it: resolve runs inside the node_admission phase, whose
+// partition of the worker lifecycle must stay disjoint.
+func (r *Registry) ObserveResolve(kind Kind, d time.Duration) {
+	if r == nil || kind >= kindCount || d < 0 || d > 24*time.Hour {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	observe(&r.state.Resolve[kind], d)
+}
+
 func writePhaseMetrics(out *metricBuffer, s Snapshot) {
 	const name = "kelvo_worker_phase_seconds"
 	out.printf("# HELP %s Disjoint local worker phases; execution_delivery includes overlapping computation and IPC delivery.\n# TYPE %s histogram\n", name, name)
@@ -106,6 +118,7 @@ func writePhaseMetrics(out *metricBuffer, s Snapshot) {
 			out.printf("%s_count{kind=%q,phase=%q} %d\n", name, kindName, phaseName, h.Count)
 		}
 	}
+	writeHistogram(out, "kelvo_worker_resolve_seconds", "Source credential and connection resolve; part of node_admission in kelvo_worker_phase_seconds. No observation for requests that do not resolve.", s.Resolve)
 	writeHistogram(out, "kelvo_worker_first_batch_seconds", "Executor entry to first decoded Arrow record before sink delivery; no observation for results without records.", s.FirstBatch)
 	writeHistogram(out, "kelvo_worker_sink_seconds", "Cumulative synchronous schema and record sink callbacks; a subset of execution_delivery, not pure network transfer.", s.SinkDuration)
 }
