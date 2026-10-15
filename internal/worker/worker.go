@@ -246,6 +246,11 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 			return stats, query.NewError("CONFIGURATION_ERROR", "Contained workers require sandbox, managed scratch, and separate native and parent reservations")
 		}
 	}
+	if custody == nil {
+		if warmStats, warmErr, handled := e.executeOnReadWorker(ctx, execution, dynamic, resolverRequest, r, sink); handled {
+			return warmStats, warmErr
+		}
+	}
 	if custody != nil && e.ResourcePool != nil {
 		return stats, admission.ErrInvalid
 	}

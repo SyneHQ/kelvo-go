@@ -64,5 +64,23 @@
     },
     "canonical": "{\"connection_id\":\"source_1\",\"mode\":\"native\",\"parameters\":[{\"type\":\"uint64\",\"value\":18446744073709551615}],\"sources\":[],\"sql\":\"SELECT ? AS amount\"}",
     "sha256": "014e2ad305d99eb39146646466a47ab1e32b240f8590cb348cfb1e58d7935b8e"
+  },
+  {
+    "name": "native-inspect",
+    "request": {
+      "mode": "native",
+      "sql": "",
+      "connection_id": "source_1",
+      "inspect": {
+        "object": "columns",
+        "target": {
+          "schema": "public",
+          "name": "events"
+        },
+        "limit": 100
+      }
+    },
+    "canonical": "{\"connection_id\":\"source_1\",\"inspect\":{\"object\":\"columns\",\"target\":{\"schema\":\"public\",\"name\":\"events\"},\"limit\":100},\"mode\":\"native\",\"parameters\":[],\"sources\":[],\"sql\":\"\"}",
+    "sha256": "5196afbbebbf8fa0c04dadcf2f059488270d4c9ed978cbd922c6625b52d67e6c"
   }
 ]
