@@ -211,3 +211,62 @@ func TestCapsReleaseWakesOnlyTheHead(t *testing.T) {
 		t.Fatal("release woke more than the head", caps.wakeups)
 	}
 }
+
+// A waiter held by its full connection does not hold back the same tenant's
+// reads on other connections while the tenant has room: on arrival, and when
+// tenant capacity frees.
+func TestCapsConnectionWaiterDoesNotBlockTenant(t *testing.T) {
+	c := &Caps{MaxPerTenant: 4, MaxPerConnection: 1}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	releaseA, err := c.Acquire(ctx, "t", "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitingA := make(chan error, 1)
+	go func() {
+		release, err := c.Acquire(ctx, "t", "A") // waits for connection A
+		if err == nil {
+			defer release()
+		}
+		waitingA <- err
+	}()
+	for c.Waiting() != 1 {
+		time.Sleep(time.Millisecond)
+	}
+	quick, stop := context.WithTimeout(context.Background(), time.Second)
+	defer stop()
+	releaseB, err := c.Acquire(quick, "t", "B")
+	if err != nil {
+		t.Fatal("a read on connection B waited behind A's waiter:", err)
+	}
+
+	// Fill the tenant (A, B, C, D), queue a B read behind A's waiter, then free
+	// C: the B read fits and is granted; A's waiter still does not.
+	releaseC, _ := c.Acquire(ctx, "t", "C")
+	if _, err := c.Acquire(ctx, "t", "D"); err != nil {
+		t.Fatal(err)
+	}
+	releaseB()
+	releaseB2, err := c.Acquire(ctx, "t", "B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitingB := make(chan error, 1)
+	go func() {
+		_, err := c.Acquire(quick, "t", "E") // tenant full: waits behind A's waiter
+		waitingB <- err
+	}()
+	for c.Waiting() != 2 {
+		time.Sleep(time.Millisecond)
+	}
+	releaseC()
+	if err := <-waitingB; err != nil {
+		t.Fatal("freed tenant capacity was not granted past A's waiter:", err)
+	}
+	releaseB2()
+	releaseA()
+	if err := <-waitingA; err != nil {
+		t.Fatal(err)
+	}
+}
