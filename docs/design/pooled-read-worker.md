@@ -1,7 +1,7 @@
 # Pooled read workers
 
 Status: draft for review. Nothing here is built unless a section says so.
-Phase 1 (#215), phase 2 (#217) and phase 2b and phase 2c (see "as built" sections) are implemented.
+Phase 1 (#215), phase 2 (#217) and phase 2b, 2c and 3 (see "as built" sections) are implemented.
 
 ## Why
 
@@ -291,6 +291,31 @@ gain. Phase 3 is the security-sensitive one.
   read, and replaces the kept result. It is not part of the signed digest: it
   can only cause another source query, never widen access.
 - Metadata inspections are not cached. `cache_disabled: true` turns it off.
+
+## Phase 3 as built
+
+Signed off by the owner: `reauthorize_every` = 60s, and per-connection
+isolation for all tenants.
+
+- The node keeps one authorization per (tenant, app team, connection,
+  database, schema): the source definition, its revision and when it was
+  checked. It holds no secret values.
+- The first read for a connection resolves credentials (the private resolver
+  for delegated sources, the secret store for static ones) and sends them to
+  the worker, which keeps them. Later reads within `reauthorize_every` carry
+  no secrets; the adapter serves them with the credentials it holds and kills
+  itself on a secretless request that does not match them.
+- Caller authority (principal, policy, delegation) is still checked for every
+  read before anything is forwarded.
+- Past `reauthorize_every`, the next read authorizes the source again. Every
+  new worker (node-side pool growth) also starts from a fresh authorization:
+  a secretless read never starts a worker. A failed re-authorization, or a
+  changed revision, kills the workers of the old authorization, busy or idle.
+- Idle workers still end at `idle_ttl` (30 min). An idle worker keeps its
+  credentials and its source connections until then, but serves nothing
+  without a fresh authorization once `reauthorize_every` has passed.
+- The adapter's own connection pool (up to 4) grows lazily with the
+  credentials the worker holds; it is not re-authorized per connection.
 
 ## Targets
 
