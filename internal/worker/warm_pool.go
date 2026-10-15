@@ -18,6 +18,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/adapter/frame"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/operations"
+	"github.com/apache/arrow-go/v18/arrow"
 )
 
 // WarmPoolConfig configures the warm worker pool for small read-only operations.
@@ -88,6 +89,16 @@ func (c WarmPoolConfig) maxInFlight() int {
 		return 16
 	}
 	return c.MaxInFlight
+}
+
+// FitsOverhead reports whether the node memory a worker may buffer for its
+// streams, max_in_flight × streamQueueCap, fits the per-job overhead that the
+// worker's reservation carries for parent-side allocations.
+func (c WarmPoolConfig) FitsOverhead(overheadBytes int64) error {
+	if int64(c.maxInFlight())*streamQueueCap > overheadBytes {
+		return fmt.Errorf("warm_pool: max_in_flight × 8 MiB of stream buffers exceeds the per-job memory overhead")
+	}
+	return nil
 }
 
 // WarmPoolMetrics records observability counters for the warm pool.
@@ -471,9 +482,7 @@ func (m *WarmPoolManager) demux(w *warmWorkerEntry) {
 			cause = fmt.Errorf("frame %v for unknown stream %d", f.Type, f.Stream)
 			break
 		}
-		if !q.push(f) {
-			cause = adapter.ErrLimit
-		}
+		q.push(f)
 	}
 	w.smu.Lock()
 	streams := w.streams
@@ -488,10 +497,11 @@ func (m *WarmPoolManager) demux(w *warmWorkerEntry) {
 }
 
 // open registers a stream before its Request is written. It fails only when
-// the demux reader has stopped, before anything was sent.
-func (w *warmWorkerEntry) open(maxBytes int64) (uint32, *streamQueue, bool) {
+// the demux reader has stopped, before anything was sent. onSlow runs once,
+// off the demux goroutine, if the stream's consumer falls behind.
+func (w *warmWorkerEntry) open(onSlow func()) (uint32, *streamQueue, bool) {
 	stream := w.nextStream.Add(1)
-	q := &streamQueue{notify: make(chan struct{}, 1), max: maxBytes}
+	q := &streamQueue{notify: make(chan struct{}, 1), done: make(chan struct{}), onSlow: onSlow}
 	w.smu.Lock()
 	defer w.smu.Unlock()
 	if w.streams == nil {
@@ -501,48 +511,82 @@ func (w *warmWorkerEntry) open(maxBytes int64) (uint32, *streamQueue, bool) {
 	return stream, q, true
 }
 
+// streamQueueCap bounds the unread Result bytes the node buffers for one
+// stream. A consumer that falls further behind fails with errSlowConsumer
+// instead of growing node memory or blocking the demux reader.
+const streamQueueCap = 8 << 20
+
+var errSlowConsumer = query.NewError("RESOURCE_EXHAUSTED", "Read result consumer is too slow (slow consumer)")
+
 // streamQueue buffers one stream's frames between the demux reader and the
-// request reading them. It holds at most the stream's byte limit.
-// ponytail: buffers up to max_bytes per stream rather than pushing back on the
-// worker; add per-stream flow control if in-flight × max_bytes outgrows memory.
+// request reading them. push never blocks. An abandoned stream drops its
+// Result frames but still records its terminal frame, so the worker is kept
+// only if the stream ends properly.
 type streamQueue struct {
-	mu     sync.Mutex
-	frames []frame.Frame
-	bytes  int64
-	max    int64
-	err    error // set once no more frames will arrive
-	notify chan struct{}
+	mu        sync.Mutex
+	frames    []frame.Frame
+	queued    int64        // unread Result payload bytes
+	terminal  *frame.Frame // the Receipt or Error that ended the stream
+	err       error        // the worker stopped before a terminal frame
+	slow      bool
+	abandoned bool
+	done      chan struct{} // closed on the terminal frame or worker stop
+	notify    chan struct{}
+	onSlow    func()
 }
 
-// push reports false when the stream exceeded its byte limit.
-func (q *streamQueue) push(f frame.Frame) bool {
+func (q *streamQueue) push(f frame.Frame) {
 	q.mu.Lock()
-	q.bytes += int64(len(f.Payload))
-	over := f.Type == frame.Result && q.bytes > q.max
-	if !over {
+	switch {
+	case f.Type == frame.Receipt || f.Type == frame.Error:
+		if q.terminal == nil && q.err == nil {
+			q.terminal = &f
+			if !q.abandoned {
+				q.frames = append(q.frames, f)
+			}
+			close(q.done)
+		}
+	case q.abandoned:
+	case q.queued+int64(len(f.Payload)) > streamQueueCap:
+		q.slow, q.abandoned, q.frames, q.queued = true, true, nil, 0
+		if q.onSlow != nil {
+			go q.onSlow()
+		}
+	default:
 		q.frames = append(q.frames, f)
+		q.queued += int64(len(f.Payload))
 	}
 	q.mu.Unlock()
+	q.wake()
+}
+
+func (q *streamQueue) wake() {
 	select {
 	case q.notify <- struct{}{}:
 	default:
 	}
-	return !over
 }
 
+// close records that the worker stopped; frames already queued stay readable.
 func (q *streamQueue) close(err error) {
 	if err == nil {
 		err = io.ErrUnexpectedEOF
 	}
 	q.mu.Lock()
-	if q.err == nil {
+	if q.terminal == nil && q.err == nil {
 		q.err = err
+		close(q.done)
 	}
 	q.mu.Unlock()
-	select {
-	case q.notify <- struct{}{}:
-	default:
-	}
+	q.wake()
+}
+
+// abandon drops whatever is queued and every later Result frame.
+func (q *streamQueue) abandon() {
+	q.mu.Lock()
+	q.abandoned, q.frames, q.queued = true, nil, 0
+	q.mu.Unlock()
+	q.wake()
 }
 
 func (q *streamQueue) next() (frame.Frame, error) {
@@ -552,16 +596,32 @@ func (q *streamQueue) next() (frame.Frame, error) {
 			f := q.frames[0]
 			q.frames[0] = frame.Frame{}
 			q.frames = q.frames[1:]
+			if f.Type == frame.Result {
+				q.queued -= int64(len(f.Payload))
+			}
 			q.mu.Unlock()
 			return f, nil
 		}
-		err := q.err
+		slow, abandoned, err := q.slow, q.abandoned, q.err
 		q.mu.Unlock()
-		if err != nil {
+		switch {
+		case slow:
+			return frame.Frame{}, errSlowConsumer
+		case err != nil:
 			return frame.Frame{}, err
+		case abandoned:
+			return frame.Frame{}, io.ErrUnexpectedEOF
 		}
 		<-q.notify
 	}
+}
+
+// settled reports how a stream ended: its terminal frame, or nil if the
+// worker stopped first.
+func (q *streamQueue) settled() *frame.Frame {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.terminal
 }
 
 func (m *WarmPoolManager) releaseWorker(w *warmWorkerEntry, err error) {
@@ -646,95 +706,134 @@ func helloHandshake(ctx context.Context, proc WorkerProcess) error {
 }
 
 // executeOnWorker runs one request on its own stream. keep reports whether the
-// worker is still healthy: true only when the stream ended with a terminal frame
-// and nothing about the exchange was a protocol, limit, receipt or I/O failure.
-// sent is false only when nothing was written because the worker had died.
+// worker is still healthy; sent is false only when nothing was written
+// because the worker had died.
+//
+// A local failure (the caller cancelled, the sink failed, a node-side row or
+// byte limit, a slow consumer) only abandons this stream: the worker is told
+// to cancel it, its frames are dropped, and the worker is kept if the stream
+// still ends with a Receipt within cancelGrace. The worker is killed for a
+// protocol violation, a terminal Error, a receipt mismatch, an I/O error, or an
+// abandoned stream that does not end in time.
 func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *warmWorkerEntry, input adapter.ProcessRequest, sink query.Sink) (_ operations.Receipt, _ error, keep, sent bool) {
-	proc := w.proc
 	raw, err := adapter.EncodeProcessRequest(input)
 	if err != nil {
 		return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT"), true, true
 	}
-
-	stream, queue, ok := w.open(input.Limits.MaxBytes)
+	var streamID atomic.Uint32
+	var cancelOnce sync.Once
+	cancel := func() {
+		cancelOnce.Do(func() {
+			// A worker that stopped reading cannot block this request: the
+			// grace timer below kills it, which ends the write.
+			go func() { _ = w.sw.Write(frame.Cancel, streamID.Load(), nil) }()
+		})
+	}
+	stream, queue, ok := w.open(cancel)
+	streamID.Store(stream)
 	if !ok {
 		return operations.Receipt{}, errWarmUnavailable, false, false
 	}
 	if err := w.sw.Write(frame.Request, stream, raw); err != nil {
 		return uncertainOperation(input), operationFailure("QUERY_FAILED"), false, true
 	}
-
-	// On caller cancellation tell the worker, then give the stream cancelGrace
-	// to end; past that the worker is killed, which also unblocks the reader.
-	stop := make(chan struct{})
-	var graceFired atomic.Bool
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		select {
-		case <-stop:
-			return
-		case <-ctx.Done():
-		}
-		t := time.AfterFunc(cancelGrace, func() { _ = proc.Kill() })
-		defer func() {
-			if !t.Stop() {
-				graceFired.Store(true) // the kill ran or is running
-			}
-		}()
-		_ = w.sw.Write(frame.Cancel, stream, nil)
-		<-stop
-	}()
-	defer func() {
-		close(stop)
-		wg.Wait()
-		if graceFired.Load() {
-			keep = false
-		}
-	}()
+	stopWatch := context.AfterFunc(ctx, func() {
+		cancel()
+		queue.abandon() // unblocks the reader
+	})
+	defer stopWatch()
 
 	hasher := sha256.New()
-	reader := &framedResultReader{
-		next:     queue.next,
-		hasher:   hasher,
-		maxBytes: input.Limits.MaxBytes,
-	}
-
+	reader := &framedResultReader{next: queue.next, hasher: hasher, maxBytes: input.Limits.MaxBytes}
+	watched := &watchedSink{Sink: sink}
 	limits := e.Limits
 	limits.MaxRows = input.Limits.MaxRows
 	limits.MaxBytes = input.Limits.MaxBytes
+	observed, readErr := e.readIPC(ctx, reader, limits, watched)
 
-	observed, readErr := e.readIPC(ctx, reader, limits, sink)
-	if ctx.Err() != nil && !reader.finished {
-		// readIPC may bail on ctx before the terminal frame; drain it.
-		_, _ = io.Copy(io.Discard, reader)
-	}
-	if ctx.Err() != nil {
-		// Only a Receipt keeps the worker; a Completed one was not cross-checked here.
-		return uncertainOperation(input), ctx.Err(), reader.receipt != nil && reader.receipt.Outcome != operations.Completed, true
-	}
-	if readErr != nil || reader.errFrame != nil || reader.receipt == nil {
-		// Only a non-Completed Receipt keeps the worker. A terminal Error means
-		// the adapter is exiting (fatal condition), so the worker is not reusable.
-		if reader.receipt != nil && reader.receipt.Outcome != operations.Completed && reader.errFrame == nil {
-			return *reader.receipt, nil, true, true
+	if reader.finished && reader.terminal {
+		// The stream ended on its own terminal frame.
+		if reader.remoteErr {
+			return uncertainOperation(input), operationFailure("QUERY_FAILED"), false, true
+		}
+		if reader.receipt == nil {
+			return uncertainOperation(input), operationFailure("QUERY_FAILED"), false, true // unparsable receipt
+		}
+		receipt := *reader.receipt
+		if receipt.Outcome != operations.Completed {
+			return receipt, nil, true, true
+		}
+		if readErr == nil {
+			ref, wireDigest := receipt.Result, hex.EncodeToString(hasher.Sum(nil))
+			if ref == nil || ref.ID != input.OperationID || ref.Format != "arrow_ipc" || ref.Rows != observed.Rows || ref.Bytes != observed.WireBytes || ref.SHA256 != wireDigest {
+				return uncertainOperation(input), operationFailure("QUERY_FAILED"), false, true
+			}
+			return receipt, nil, true, true
+		}
+		// The whole stream arrived but this caller could not take it.
+		if local := localReadFailure(ctx, watched, reader, readErr); local != nil {
+			return uncertainOperation(input), local, true, true
 		}
 		return uncertainOperation(input), operationFailure("QUERY_FAILED"), false, true
 	}
 
-	receipt := *reader.receipt
-	wireDigest := hex.EncodeToString(hasher.Sum(nil))
-
-	// Validate receipt against observed results
-	if receipt.Outcome == operations.Completed {
-		ref := receipt.Result
-		if ref == nil || ref.ID != input.OperationID || ref.Format != "arrow_ipc" || ref.Rows != observed.Rows || ref.Bytes != observed.WireBytes || ref.SHA256 != wireDigest {
-			return uncertainOperation(input), operationFailure("QUERY_FAILED"), false, true
-		}
+	local := localReadFailure(ctx, watched, reader, readErr)
+	if local == nil {
+		// The worker stopped, broke the protocol or sent invalid Arrow data.
+		return uncertainOperation(input), operationFailure("QUERY_FAILED"), false, true
 	}
+	// Abandon only this stream and wait for its terminal frame.
+	cancel()
+	queue.abandon()
+	timer := time.NewTimer(cancelGrace)
+	defer timer.Stop()
+	select {
+	case <-queue.done:
+	case <-timer.C:
+		_ = w.proc.Kill() // the demux reader then fails every stream on it
+		return uncertainOperation(input), local, false, true
+	}
+	terminal := queue.settled()
+	// After a cancel any Receipt, even a Completed one, is a valid end.
+	return uncertainOperation(input), local, terminal != nil && terminal.Type == frame.Receipt, true
+}
 
-	return receipt, nil, true, true
+// localReadFailure returns the caller-side cause of a failed read, or nil when
+// the failure came from the worker.
+func localReadFailure(ctx context.Context, sink *watchedSink, reader *framedResultReader, readErr error) error {
+	switch {
+	case ctx.Err() != nil:
+		return ctx.Err()
+	case errors.Is(reader.errFrame, errSlowConsumer) || errors.Is(readErr, errSlowConsumer):
+		return errSlowConsumer
+	case sink.failed:
+		return readErr
+	case errors.Is(reader.errFrame, adapter.ErrLimit):
+		return query.NewError("RESOURCE_EXHAUSTED", "Worker result exceeds byte limit")
+	}
+	var public *query.Error
+	if errors.As(readErr, &public) && public.Code == "RESOURCE_EXHAUSTED" {
+		return readErr // a node-side row or byte limit
+	}
+	return nil
+}
+
+// watchedSink records whether the caller's sink refused a write.
+type watchedSink struct {
+	query.Sink
+	failed bool
+}
+
+func (s *watchedSink) Schema(schema *arrow.Schema) error {
+	err := s.Sink.Schema(schema)
+	s.failed = s.failed || err != nil
+	return err
+}
+
+func (s *watchedSink) Write(batch arrow.RecordBatch) error {
+	err := s.Sink.Write(batch)
+	s.failed = s.failed || err != nil
+	return err
 }
 
 // Drain gracefully stops all workers in the pool.
@@ -767,6 +866,8 @@ func (m *WarmPoolManager) Drain(ctx context.Context) error {
 // records its terminal frame.
 type framedResultReader struct {
 	next       func() (frame.Frame, error)
+	terminal   bool // the stream's own Receipt or Error was read
+	remoteErr  bool // that terminal frame was an Error
 	curr       []byte
 	hasher     hash.Hash
 	receipt    *operations.Receipt
@@ -808,6 +909,7 @@ func (fr *framedResultReader) Read(p []byte) (int, error) {
 		return n, nil
 
 	case frame.Receipt:
+		fr.terminal = true
 		var receipt operations.Receipt
 		if err := json.Unmarshal(f.Payload, &receipt); err != nil {
 			fr.errFrame = err
@@ -818,6 +920,7 @@ func (fr *framedResultReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 
 	case frame.Error:
+		fr.terminal, fr.remoteErr = true, true
 		fr.errFrame = errors.New(string(f.Payload))
 		fr.finished = true
 		return 0, io.EOF

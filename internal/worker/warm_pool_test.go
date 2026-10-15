@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
@@ -1143,5 +1144,180 @@ func TestWarmPool_UnknownStreamFailsAllInFlight(t *testing.T) {
 	wg.Wait()
 	if failed.Load() != 3 || !fs.procs[0].killed.Load() || mgr.metrics.EvictionsErr.Load() != 1 {
 		t.Fatalf("failed=%d killed=%v evictions=%d", failed.Load(), fs.procs[0].killed.Load(), mgr.metrics.EvictionsErr.Load())
+	}
+}
+
+// replyRows answers like replyOK with rows rows, in frames of chunk bytes.
+func replyRows(w io.Writer, mu *sync.Mutex, stream uint32, payload []byte, rows, chunk int) {
+	replyBatches(w, mu, stream, payload, []int{rows}, chunk)
+}
+
+// replyBatches answers with one Arrow batch per entry of batches.
+func replyBatches(w io.Writer, mu *sync.Mutex, stream uint32, payload []byte, batches []int, chunk int) {
+	var req adapter.ProcessRequest
+	_ = json.Unmarshal(payload, &req)
+	schema := arrow.NewSchema([]arrow.Field{{Name: "v", Type: arrow.PrimitiveTypes.Int64}}, nil)
+	var wire bytes.Buffer
+	iw := ipc.NewWriter(&wire, ipc.WithSchema(schema))
+	rows := 0
+	for _, n := range batches {
+		b := array.NewInt64Builder(memory.DefaultAllocator)
+		for i := 0; i < n; i++ {
+			b.Append(int64(i))
+		}
+		col := b.NewArray()
+		b.Release()
+		rec := array.NewRecordBatch(schema, []arrow.Array{col}, int64(n))
+		col.Release()
+		_ = iw.Write(rec)
+		rec.Release()
+		rows += n
+	}
+	_ = iw.Close()
+	sum := sha256.Sum256(wire.Bytes())
+	raw, _ := json.Marshal(operations.Receipt{Version: operations.Version, OperationID: req.OperationID, RequestSHA256: req.RequestSHA256,
+		Outcome: operations.Completed, Effect: operations.EffectNone,
+		Result: &operations.ResultRef{ID: req.OperationID, SHA256: hex.EncodeToString(sum[:]), Bytes: int64(wire.Len()), Rows: int64(rows), Format: "arrow_ipc"}})
+	data := wire.Bytes()
+	for len(data) > 0 {
+		n := min(chunk, len(data))
+		mu.Lock()
+		_ = frame.WriteResult(w, stream, data[:n])
+		mu.Unlock()
+		data = data[n:]
+	}
+	mu.Lock()
+	_ = frame.WriteReceipt(w, stream, raw)
+	mu.Unlock()
+}
+
+// A failed sink and a node-side row limit abandon only their own streams:
+// the other fourteen of sixteen reads in flight finish on the same process.
+func TestWarmPool_LocalFailuresKeepSharedWorker(t *testing.T) {
+	fs := &fakeSet{}
+	fs.serve = func(p *fakeWorkerProcess) {
+		var mu sync.Mutex
+		var held []frame.Frame
+		serveFake(p, func(f frame.Frame) {
+			switch f.Type {
+			case frame.Request:
+				held = append(held, f)
+				switch {
+				case len(held) == 16:
+					for _, r := range held {
+						go replyRows(p.stdoutW, &mu, r.Stream, r.Payload, 3, 64)
+					}
+				case len(held) > 16:
+					go replyRows(p.stdoutW, &mu, f.Stream, f.Payload, 3, 64)
+				}
+			case frame.Cancel:
+				// Already answering; the Completed receipt is the valid end.
+			}
+		})
+	}
+	mgr, exec := newTestPool(t, fs.launcher())
+	var wg sync.WaitGroup
+	var ok, sinkFailed, limited atomic.Int32
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := opReq(fmt.Sprintf("op-%d", i))
+			sink := &workerTestSink{}
+			switch i {
+			case 0:
+				sink.write = func(arrow.RecordBatch) error { return errors.New("client gone") }
+			case 1:
+				req.Limits.MaxRows = 2
+			}
+			_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, req, sink)
+			switch {
+			case err == nil:
+				ok.Add(1)
+			case i == 0:
+				sinkFailed.Add(1)
+			case i == 1:
+				limited.Add(1)
+			default:
+				t.Error(i, err)
+			}
+		}()
+	}
+	wg.Wait()
+	if ok.Load() != 14 || sinkFailed.Load() != 1 || limited.Load() != 1 {
+		t.Fatalf("ok=%d sink=%d limit=%d", ok.Load(), sinkFailed.Load(), limited.Load())
+	}
+	if len(fs.procs) != 1 || fs.procs[0].killed.Load() || mgr.metrics.EvictionsErr.Load() != 0 {
+		t.Fatalf("a local failure killed the shared worker: procs=%d killed=%v evictions=%d", len(fs.procs), fs.procs[0].killed.Load(), mgr.metrics.EvictionsErr.Load())
+	}
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-after"), &workerTestSink{}); err != nil || len(fs.procs) != 1 {
+		t.Fatal("worker not reusable after local failures", err)
+	}
+}
+
+// A consumer that stops reading is failed once more than streamQueueCap is
+// buffered for it, without blocking the demux: another stream on the same
+// worker completes meanwhile, and the worker survives.
+func TestWarmPool_SlowConsumerFailsOnlyItsStream(t *testing.T) {
+	fs := &fakeSet{}
+	fs.serve = func(p *fakeWorkerProcess) {
+		var mu sync.Mutex
+		serveFake(p, func(f frame.Frame) {
+			switch f.Type {
+			case frame.Request:
+				var r adapter.ProcessRequest
+				_ = json.Unmarshal(f.Payload, &r)
+				batches := []int{1}
+				if r.OperationID == "op-slow" {
+					// A tiny first batch the sink blocks on, then ~9.6 MB.
+					batches = []int{1, 400_000, 400_000, 400_000}
+				}
+				go replyBatches(p.stdoutW, &mu, f.Stream, f.Payload, batches, 1<<20)
+			case frame.Cancel:
+			}
+		})
+	}
+	mgr, exec := newTestPool(t, fs.launcher())
+	release := make(chan struct{})
+	slow := make(chan error, 1)
+	go func() {
+		req := opReq("op-slow")
+		req.Limits.MaxBytes = 64 << 20
+		req.Limits.MaxRows = 1_000_000
+		blocked := false
+		_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, req, &workerTestSink{write: func(arrow.RecordBatch) error {
+			if !blocked {
+				blocked = true
+				<-release
+			}
+			return nil
+		}})
+		slow <- err
+	}()
+	// The slow stream's schema arrives first; give the worker time to send the rest.
+	time.Sleep(300 * time.Millisecond)
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-fast"), &workerTestSink{}); err != nil {
+		t.Fatal("a slow consumer blocked another stream", err)
+	}
+	close(release)
+	err := <-slow
+	if !errors.Is(err, errSlowConsumer) && !(err != nil && strings.Contains(err.Error(), "slow consumer")) {
+		t.Fatal("slow consumer not refused as such:", err)
+	}
+	if fs.procs[0].killed.Load() || len(fs.procs) != 1 {
+		t.Fatal("slow consumer killed the shared worker")
+	}
+}
+
+// The node buffers at most max_in_flight × streamQueueCap per worker; that
+// must fit the per-job overhead its reservation carries.
+func TestWarmPool_StreamBuffersFitOverhead(t *testing.T) {
+	cfg := DefaultWarmPoolConfig()
+	if cfg.FitsOverhead(16*streamQueueCap) != nil || cfg.FitsOverhead(16*streamQueueCap-1) == nil {
+		t.Fatal("16 streams × 8 MiB must need exactly 128 MiB of overhead")
+	}
+	cfg.MaxInFlight = 4
+	if cfg.FitsOverhead(32<<20) != nil {
+		t.Fatal("a smaller max_in_flight must fit a smaller overhead")
 	}
 }

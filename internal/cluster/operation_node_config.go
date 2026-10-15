@@ -54,6 +54,9 @@ func validateNodeOperations(c NodeConfig) error {
 		if err := o.WarmPool.Validate(); err != nil {
 			return errOperationConfig
 		}
+		if o.WarmPool.Enabled && o.WarmPool.FitsOverhead(c.Resources.OverheadMB<<20) != nil {
+			return errOperationConfig
+		}
 	}
 	if err := validatePrivateNodeOperations(c); err != nil {
 		return err
