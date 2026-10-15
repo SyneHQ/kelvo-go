@@ -31,6 +31,10 @@ type Limits struct {
 	ReservedSlots        int
 	ReservedMemoryBytes  int64
 	ReservedScratchBytes int64
+	// SeparateClasses makes the reserved capacity the interactive class's own
+	// share as well as its protection: interactive work then cannot use the
+	// background share, just as background work cannot use the reserved one.
+	SeparateClasses bool
 	// Classes supplies optional per-class ceilings. Interactive and refresh
 	// inherit global capacity when absent. Export is disabled unless explicitly
 	// configured. New copies this bounded map; later mutation has no effect.
@@ -56,7 +60,7 @@ type Snapshot struct {
 	Active           int
 	Waiting          int
 	Draining         bool
-	// Classes always contains the three fixed classes, including disabled export.
+	// Classes always contains the four fixed classes, including disabled export.
 	// This map and Limits.Classes are independent copies owned by the caller.
 	Classes map[Class]ClassSnapshot
 }
@@ -88,6 +92,9 @@ func New(limits Limits) (*Pool, error) {
 	if limits.MaxConcurrent < 1 || limits.MemoryBytes <= 0 || limits.ScratchBytes < 0 || limits.ReservedSlots < 0 || limits.ReservedSlots >= limits.MaxConcurrent || limits.ReservedMemoryBytes < 0 || limits.ReservedMemoryBytes > limits.MemoryBytes || limits.ReservedScratchBytes < 0 || limits.ReservedScratchBytes > limits.ScratchBytes {
 		return nil, ErrInvalid
 	}
+	if limits.SeparateClasses && (limits.ReservedSlots < 1 || limits.ReservedMemoryBytes <= 0) {
+		return nil, ErrInvalid
+	}
 	if len(limits.Classes) > classCount {
 		return nil, ErrInvalid
 	}
@@ -96,6 +103,7 @@ func New(limits Limits) (*Pool, error) {
 	global := ClassLimits{MaxConcurrent: limits.MaxConcurrent, MemoryBytes: limits.MemoryBytes, ScratchBytes: limits.ScratchBytes}
 	p.classes[interactiveIndex] = ClassSnapshot{Enabled: true, Limits: global}
 	p.classes[refreshIndex] = ClassSnapshot{Enabled: true, Limits: global}
+	p.classes[operationIndex] = ClassSnapshot{Enabled: true, Limits: global}
 	for class, ceiling := range limits.Classes {
 		index, err := classIndex(class)
 		if err != nil || !ceiling.validWithin(limits) {
@@ -148,6 +156,9 @@ func (p *Pool) validate(r Request) (int, error) {
 	if r.MemoryBytes > ceiling.Limits.MemoryBytes || r.ScratchBytes > ceiling.Limits.ScratchBytes {
 		return 0, ErrOversize
 	}
+	if class == interactiveIndex && p.limits.SeparateClasses && (r.MemoryBytes > p.limits.ReservedMemoryBytes || r.ScratchBytes > p.limits.ReservedScratchBytes) {
+		return 0, ErrOversize
+	}
 	if class != interactiveIndex && (r.MemoryBytes > p.limits.MemoryBytes-p.limits.ReservedMemoryBytes || r.ScratchBytes > p.limits.ScratchBytes-p.limits.ReservedScratchBytes) {
 		return 0, ErrOversize
 	}
@@ -164,7 +175,11 @@ func (p *Pool) fits(r Request, class int) bool {
 		return false
 	}
 	if class == interactiveIndex {
-		return true
+		if !p.limits.SeparateClasses {
+			return true
+		}
+		interactive := p.classes[interactiveIndex]
+		return interactive.Active < p.limits.ReservedSlots && r.MemoryBytes <= p.limits.ReservedMemoryBytes-interactive.Used.MemoryBytes && r.ScratchBytes <= p.limits.ReservedScratchBytes-interactive.Used.ScratchBytes
 	}
 	return p.backgroundActive < p.limits.MaxConcurrent-p.limits.ReservedSlots && r.MemoryBytes <= p.limits.MemoryBytes-p.limits.ReservedMemoryBytes-p.backgroundUsed.MemoryBytes && r.ScratchBytes <= p.limits.ScratchBytes-p.limits.ReservedScratchBytes-p.backgroundUsed.ScratchBytes
 }
@@ -361,6 +376,7 @@ func (p *Pool) Snapshot() Snapshot {
 		ClassInteractive: p.classes[interactiveIndex],
 		ClassExport:      p.classes[exportIndex],
 		ClassRefresh:     p.classes[refreshIndex],
+		ClassOperation:   p.classes[operationIndex],
 	}
 	return Snapshot{BackgroundActive: p.backgroundActive, BackgroundUsed: p.backgroundUsed, Limits: limits, Used: p.used, Active: p.active, Waiting: p.waiting, Draining: p.draining, Classes: classes}
 }

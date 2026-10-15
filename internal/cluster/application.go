@@ -301,6 +301,7 @@ func (p *preparedApplicationOperation) Execute(ctx context.Context) (receipt ope
 		resultErr = errors.Join(resultErr, op.finish(outcome, category))
 	}()
 	ctx = containment.WithCompletion(ctx, &p.completion)
+	ctx = worker.WithOperationScope(ctx, operationCapTenant(p.record.Scope), p.record.Scope.ConnectionID)
 	ctx = worker.WithOperationFilePublisher(ctx, func(admitted context.Context, input adapter.ProcessRequest, candidate filesnapshot.Descriptor, source io.Reader) (bool, error) {
 		if input.SourceFile == nil || input.Source.Engine != "sqlite" {
 			return false, operationstore.ErrConflict
