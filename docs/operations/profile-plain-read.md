@@ -164,6 +164,9 @@ one is 80 ms of wall time and the reason a 4-connection worker serves at most 12
 
 ## Reproduce
 
+Before and after a fix, `scripts/pooled_read_profile_compare.py before=<artifact dir> after=<artifact dir>` prints CPU per read (net of idle), allocations per read,
+warm p50/p95/p99, failures at 50 concurrent, verifications per read and worker memory side by side. `source turns per read` at 50 concurrent divides by all reads including failures; the executed-read value is in the text above.
+
 Workflow `Pooled read profile` (`.github/workflows/pooled-read-profile.yml`), or `scripts/pooled_read_load.py --profile 4c8g --profile-plain
 --adapter-profile-test <go test -c ./adapters/go/internal/runtime> --set warm_pool.cache_disabled=true ...`. Artifacts: `window-{idle,low,c50}.json`
 (stage durations, worker memory), `window-*.cpu.pprof`, `window-*.allocs.pprof` with `window-*.base.allocs.pprof` (use `go tool pprof -sample_index=alloc_space -base`),
