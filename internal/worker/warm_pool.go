@@ -112,6 +112,7 @@ type WarmPoolMetrics struct {
 	EvictionsErr   atomic.Int64
 	EvictionsDrain atomic.Int64
 	Fallbacks      atomic.Int64
+	SlowConsumers  atomic.Int64 // streams failed for falling 8 MiB behind
 }
 
 // WorkerProcess represents an interactive worker process with framed IO.
@@ -499,9 +500,9 @@ func (m *WarmPoolManager) demux(w *warmWorkerEntry) {
 // open registers a stream before its Request is written. It fails only when
 // the demux reader has stopped, before anything was sent. onSlow runs once,
 // off the demux goroutine, if the stream's consumer falls behind.
-func (w *warmWorkerEntry) open(onSlow func()) (uint32, *streamQueue, bool) {
+func (w *warmWorkerEntry) open(onSlow func(), slowCount *atomic.Int64) (uint32, *streamQueue, bool) {
 	stream := w.nextStream.Add(1)
-	q := &streamQueue{notify: make(chan struct{}, 1), done: make(chan struct{}), onSlow: onSlow}
+	q := &streamQueue{notify: make(chan struct{}, 1), done: make(chan struct{}), onSlow: onSlow, slowCount: slowCount}
 	w.smu.Lock()
 	defer w.smu.Unlock()
 	if w.streams == nil {
@@ -533,6 +534,7 @@ type streamQueue struct {
 	done      chan struct{} // closed on the terminal frame or worker stop
 	notify    chan struct{}
 	onSlow    func()
+	slowCount *atomic.Int64
 }
 
 func (q *streamQueue) push(f frame.Frame) {
@@ -549,6 +551,9 @@ func (q *streamQueue) push(f frame.Frame) {
 	case q.abandoned:
 	case q.queued+int64(len(f.Payload)) > streamQueueCap:
 		q.slow, q.abandoned, q.frames, q.queued = true, true, nil, 0
+		if q.slowCount != nil {
+			q.slowCount.Add(1)
+		}
 		if q.onSlow != nil {
 			go q.onSlow()
 		}
@@ -729,7 +734,7 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *w
 			go func() { _ = w.sw.Write(frame.Cancel, streamID.Load(), nil) }()
 		})
 	}
-	stream, queue, ok := w.open(cancel)
+	stream, queue, ok := w.open(cancel, &m.metrics.SlowConsumers)
 	streamID.Store(stream)
 	if !ok {
 		return operations.Receipt{}, errWarmUnavailable, false, false

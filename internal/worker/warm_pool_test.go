@@ -1294,8 +1294,13 @@ func TestWarmPool_SlowConsumerFailsOnlyItsStream(t *testing.T) {
 		}})
 		slow <- err
 	}()
-	// The slow stream's schema arrives first; give the worker time to send the rest.
-	time.Sleep(300 * time.Millisecond)
+	// Wait until the slow stream has fallen more than streamQueueCap behind.
+	for i := 0; mgr.metrics.SlowConsumers.Load() == 0; i++ {
+		if i > 1000 {
+			t.Fatal("slow consumer never detected")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-fast"), &workerTestSink{}); err != nil {
 		t.Fatal("a slow consumer blocked another stream", err)
 	}
