@@ -60,6 +60,10 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 	if snapshot := e.ResourcePool.Snapshot(); snapshot.Limits.MaxConcurrent-snapshot.Active < 2 {
 		return nil, nil, errWarmUnavailable
 	}
+	// The node buffers the worker's streams inside its reservation's overhead.
+	if m := e.WarmPool; m != nil && m.cfg.FitsOverhead(e.ResourceOverheadBytes) != nil {
+		return nil, nil, errWarmUnavailable
+	}
 	memoryBytes := int64(limits.MemoryMB) << 20
 	reservation, err := e.ResourcePool.Acquire(ctx, admission.Request{
 		MemoryBytes:  memoryBytes + e.ResourceOverheadBytes,
