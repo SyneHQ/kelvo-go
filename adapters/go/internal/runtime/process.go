@@ -12,6 +12,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/operations"
+	"github.com/SYNEHQ/kelvo-go/query"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 )
@@ -73,6 +74,7 @@ func (r Runner) execute(parent context.Context, input adapter.ProcessRequest, ou
 	}
 	ctx, cancel := context.WithDeadline(parent, deadline)
 	defer cancel()
+	defer func() { receipt.ErrorCode = sourceFailureCode(ctx, receipt.ErrorCode, resultErr) }()
 	if err := ctx.Err(); err != nil {
 		receipt.Outcome = operations.CancelledBeforeStart
 		receipt.ErrorCode = "CANCELLED"
@@ -157,6 +159,30 @@ func (r Runner) execute(parent context.Context, input adapter.ProcessRequest, ou
 	receipt.Outcome = operations.Failed
 	receipt.ErrorCode = "SOURCE_FAILED"
 	return executeInvocation(ctx, input, invocation, session, output, receipt)
+}
+
+// sourceFailureCode narrows the generic SOURCE_FAILED category to a bounded
+// public code the source already proved, so an unsupported result type or an
+// expired deadline is not reported as a source outage. Only the code crosses;
+// driver text stays in err.
+func sourceFailureCode(ctx context.Context, code string, err error) string {
+	if code != "SOURCE_FAILED" || err == nil {
+		return code
+	}
+	var public *query.Error
+	if errors.As(err, &public) {
+		switch public.Code {
+		case "UNSUPPORTED", "DEADLINE_EXCEEDED", "RESOURCE_EXHAUSTED":
+			return public.Code
+		}
+	}
+	if errors.Is(err, adapter.ErrUnsupported) {
+		return "UNSUPPORTED"
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return "DEADLINE_EXCEEDED"
+	}
+	return code
 }
 
 func executeInvocation(ctx context.Context, input adapter.ProcessRequest, invocation adapter.Invocation, session adapter.Session, output io.Writer, receipt operations.Receipt) (operations.Receipt, error) {
