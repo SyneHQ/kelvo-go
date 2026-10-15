@@ -554,10 +554,11 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 				waitCapacity = true
 			}
 			continue
-		} else if mayLaunch && keyCount == 0 {
-			// Every slot belongs to other connections. Evict the least recently
-			// used idle one and launch for this connection once it has ended (its
-			// reservation is then free). If every worker is busy, wait below.
+		} else if mayLaunch && (keyCount == 0 || !scaleOutRefused) && keyCount < m.cfg.MaxPerKey {
+			// The pool is full and this key may still add a worker. Evict the
+			// least recently used idle worker of another connection and launch
+			// once it has ended (its reservation is then free). If every worker
+			// is busy, wait below.
 			// A read already out of time evicts nothing on its way out.
 			if !time.Now().Before(queueBy) {
 				m.mu.Unlock()

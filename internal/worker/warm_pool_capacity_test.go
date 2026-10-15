@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -384,46 +385,62 @@ func holdServe(holds map[string]chan struct{}) func(p *fakeWorkerProcess) {
 	}
 }
 
-// A freed slot wakes the earliest waiter that can use it. X waits for its own
-// key's full worker (at max_per_key); Y, queued after it for a key with no
-// worker, is the one that can take the worker gone idle, and must get it.
+// A freed slot wakes the earliest waiter that can use it, and that waiter uses
+// it: the pool is full (conn-1 and conn-3 each have a busy worker), X waits
+// for conn-1, then Y for conn-4, and conn-3's worker goes idle. With
+// max_per_key 1, X cannot add a worker, so Y is woken and takes the idle
+// worker's place. With max_per_key 2, X can: it is woken, evicts the idle
+// worker and launches. Either way the idle worker is not left while waiters
+// time out.
 func TestWarmPool_FreedSlotWakesAWaiterThatCanUseIt(t *testing.T) {
-	holds := map[string]chan struct{}{"op-k1": make(chan struct{}), "op-k3": make(chan struct{})}
-	fs := &fakeSet{serve: holdServe(holds)}
-	mgr, exec := newTestPool(t, fs.launcher())
-	mgr.cfg.MaxWorkers, mgr.cfg.MaxPerKey, mgr.cfg.MaxInFlight, mgr.cfg.QueueTimeout = 2, 1, 1, 5*time.Second
-	results := map[string]chan error{}
-	run := func(id, conn string) {
-		results[id] = make(chan error, 1)
-		go func() {
-			_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, connReq(id, conn), &workerTestSink{})
-			results[id] <- err
-		}()
-	}
-	run("op-k1", "conn-1")
-	run("op-k3", "conn-3")
-	waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 2 })
-	run("op-x", "conn-1")
-	waitFor(t, func() bool { mgr.mu.Lock(); defer mgr.mu.Unlock(); return len(mgr.waiters) == 1 })
-	run("op-y", "conn-4")
-	waitFor(t, func() bool { mgr.mu.Lock(); defer mgr.mu.Unlock(); return len(mgr.waiters) == 2 })
-	close(holds["op-k3"]) // conn-3's worker goes idle
-	if err := <-results["op-k3"]; err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case err := <-results["op-y"]:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("the waiter that could use the idle worker was not woken")
-	}
-	close(holds["op-k1"])
-	for _, id := range []string{"op-k1", "op-x"} {
-		if err := <-results[id]; err != nil {
-			t.Fatal(id, err)
-		}
+	for _, tc := range []struct {
+		maxPerKey int
+		served    string
+	}{{1, "op-y"}, {2, "op-x"}} {
+		t.Run(fmt.Sprintf("max_per_key %d", tc.maxPerKey), func(t *testing.T) {
+			holds := map[string]chan struct{}{"op-k1": make(chan struct{}), "op-k3": make(chan struct{})}
+			fs := &fakeSet{serve: holdServe(holds)}
+			mgr, exec := newTestPool(t, fs.launcher())
+			mgr.cfg.MaxWorkers, mgr.cfg.MaxPerKey, mgr.cfg.MaxInFlight, mgr.cfg.QueueTimeout = 2, tc.maxPerKey, 1, 5*time.Second
+			results := map[string]chan error{}
+			run := func(id, conn string) {
+				results[id] = make(chan error, 1)
+				go func() {
+					_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, connReq(id, conn), &workerTestSink{})
+					results[id] <- err
+				}()
+			}
+			run("op-k1", "conn-1")
+			run("op-k3", "conn-3")
+			waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 2 })
+			run("op-x", "conn-1")
+			waitFor(t, func() bool { mgr.mu.Lock(); defer mgr.mu.Unlock(); return len(mgr.waiters) == 1 })
+			run("op-y", "conn-4")
+			waitFor(t, func() bool { mgr.mu.Lock(); defer mgr.mu.Unlock(); return len(mgr.waiters) == 2 })
+			close(holds["op-k3"]) // conn-3's worker goes idle
+			if err := <-results["op-k3"]; err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case err := <-results[tc.served]:
+				// Served only by evicting the idle worker (the pool is full); a
+				// later waiter may evict again once this read's worker idles.
+				if err != nil || mgr.metrics.EvictionsLRU.Load() < 1 {
+					t.Fatal(err, mgr.metrics.EvictionsLRU.Load())
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("the idle worker's place went unused while", tc.served, "waited")
+			}
+			close(holds["op-k1"])
+			for id, done := range results {
+				if id == tc.served || id == "op-k3" {
+					continue
+				}
+				if err := <-done; err != nil {
+					t.Fatal(id, err)
+				}
+			}
+		})
 	}
 }
 
