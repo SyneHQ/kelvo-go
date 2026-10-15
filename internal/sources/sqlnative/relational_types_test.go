@@ -126,7 +126,7 @@ func TestUnconstrainedNumericIsExactDecimalText(t *testing.T) {
 	}
 	huge := "-" + strings.Repeat("9", 131072) + "." + strings.Repeat("1", 16383)
 	conversion := newRowConversion(schema)
-	for _, value := range []any{nil, "0", "-12.50", "125.5000000000000000", "0.000000000000000000000000000000000000000000000000000000000000000000000000000000001", huge, "NaN", "Infinity", "-Infinity", []byte("42.10")} {
+	for _, value := range []any{nil, "0", "0.000", "-0.5", "-0.0010", "4.0", "4.00", "-12.50", "125.5000000000000000", "0.000000000000000000000000000000000000000000000000000000000000000000000000000000001", huge, "NaN", "Infinity", "-Infinity", []byte("42.10")} {
 		row, err := conversion.convert([]any{value, nil})
 		if err != nil {
 			t.Fatalf("%.20v rejected: %v", value, err)
@@ -142,7 +142,7 @@ func TestUnconstrainedNumericIsExactDecimalText(t *testing.T) {
 			t.Fatalf("%.20v changed to %.20v", value, row[0])
 		}
 	}
-	for _, value := range []any{"", "+1", "1e5", ".5", "5.", " 1", "nan", "inf", "-NaN", "1,5", 1.5, int64(1)} {
+	for _, value := range []any{"", "+1", "1e5", ".5", "5.", " 1", "nan", "inf", "-NaN", "1,5", "-0", "-0.000", "007", "00.5", "-01.5", 1.5, int64(1)} {
 		if _, err := conversion.convert([]any{value, nil}); err == nil {
 			t.Fatalf("%v accepted as decimal text", value)
 		}
