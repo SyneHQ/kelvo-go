@@ -21,6 +21,16 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Operations that reach the writer together share one fsync. A lone operation
+// is written and synced at once; only while operations keep arriving does the
+// writer wait up to groupCommitWindow for the next one before syncing, so no
+// operation waits longer than that for company, and none is acknowledged before
+// the sync that covers its writes has returned.
+const (
+	groupCommitWindow = 2 * time.Millisecond
+	maxGroupSize      = 64
+)
+
 type diskIO struct {
 	write    func(*os.File, []byte, int64) error
 	sync     func(*os.File) error
@@ -69,6 +79,8 @@ type Journal struct {
 	fault                                   atomic.Bool
 	active, retained, freeCount, nextExpiry atomic.Int64
 	closeErr                                error // read only after done closes
+	lastGroup                               int   // writer goroutine only: size of the previous group
+	syncs                                   atomic.Int64
 }
 
 func randomID() (string, error) {
@@ -343,12 +355,12 @@ func (j *Journal) run() {
 	for {
 		select {
 		case op := <-j.jobs:
-			j.process(op)
+			j.commitGroup(op)
 		case <-j.stop:
 			for {
 				select {
 				case op := <-j.jobs:
-					j.process(op)
+					j.commitGroup(op)
 				default:
 					goto drained
 				}
@@ -360,11 +372,76 @@ func (j *Journal) run() {
 	}
 }
 
-func (j *Journal) process(op *operation) {
+// collect gathers the operations to commit together: the first, everything
+// already queued, and, when the previous group was not alone, whatever arrives
+// within groupCommitWindow.
+func (j *Journal) collect(first *operation) []*operation {
+	group := append(make([]*operation, 0, 8), first)
+	drain := func() {
+		for len(group) < maxGroupSize {
+			select {
+			case op := <-j.jobs:
+				group = append(group, op)
+			default:
+				return
+			}
+		}
+	}
+	drain()
+	if len(group) > 1 || j.lastGroup > 1 {
+		timer := time.NewTimer(groupCommitWindow)
+		defer timer.Stop()
+	wait:
+		for len(group) < maxGroupSize {
+			select {
+			case op := <-j.jobs:
+				group = append(group, op)
+				drain()
+			case <-timer.C:
+				break wait
+			case <-j.stop:
+				break wait
+			}
+		}
+	}
+	j.lastGroup = len(group)
+	return group
+}
+
+// commitGroup applies each operation's writes, syncs once, and only then lets
+// any of them complete. If the sync fails, every operation that wrote fails
+// with ErrUncertain and no receipt escapes.
+func (j *Journal) commitGroup(first *operation) {
+	group := j.collect(first)
+	results := make([]operationResult, len(group))
+	wrote := make([]bool, len(group))
+	dirty := false
+	for i, op := range group {
+		results[i], wrote[i] = j.apply(op)
+		dirty = dirty || wrote[i]
+	}
+	if dirty {
+		j.syncs.Add(1)
+		if j.io.sync(j.file) != nil {
+			j.fault.Store(true)
+			for i := range group {
+				if wrote[i] {
+					results[i] = operationResult{err: ErrUncertain}
+				}
+			}
+		}
+	}
+	for i, op := range group {
+		j.complete(op, results[i])
+	}
+}
+
+// apply performs one operation's writes without syncing and reports whether it
+// wrote anything the group's sync must cover.
+func (j *Journal) apply(op *operation) (result operationResult, wrote bool) {
 	op.mu.Lock()
 	fenced := op.fenced || op.cancellationObserved() || !time.Now().Before(op.deadline)
 	op.mu.Unlock()
-	var result operationResult
 	if op.kind != finishOperation && (j.closing.Load() || j.fault.Load()) {
 		<-j.pending
 		result.err = ErrUncertain
@@ -379,13 +456,20 @@ func (j *Journal) process(op *operation) {
 		}
 	} else if op.kind == finishOperation {
 		result.err = j.finish(op.receipt, op.outcome, op.category)
+		wrote = result.err == nil
 	} else {
 		result.receipt, result.err = j.begin(op.binding, op.eventKind)
+		wrote = result.err == nil
 		if result.err == nil && op.kind == recordOperation {
 			result.err = j.finish(result.receipt, op.outcome, op.category)
 			result.receipt = nil
 		}
 	}
+	return result, wrote
+}
+
+// complete publishes an operation's result, unless it was fenced meanwhile.
+func (j *Journal) complete(op *operation, result operationResult) {
 	op.mu.Lock()
 	if op.fenced || op.cancellationObserved() || !time.Now().Before(op.deadline) {
 		j.fault.Store(true)
@@ -438,7 +522,8 @@ func (j *Journal) begin(binding Binding, kind Kind) (*Receipt, error) {
 	j.publishState()
 	// The old entry, if any, is already expired. Clear its terminal frame
 	// before publishing a new generation; mismatched/torn generations fail closed.
-	if j.io.write(j.file, make([]byte, slotSize), slotOffset(slot)) != nil || j.io.write(j.file, frame, slotOffset(slot)) != nil || j.io.sync(j.file) != nil {
+	// The group's sync, not this write, makes the start durable.
+	if j.io.write(j.file, make([]byte, slotSize), slotOffset(slot)) != nil || j.io.write(j.file, frame, slotOffset(slot)) != nil {
 		j.fault.Store(true)
 		return nil, ErrUncertain
 	}
@@ -479,7 +564,8 @@ func (j *Journal) finish(receipt *Receipt, outcome Outcome, category Category) e
 	if err != nil {
 		return err
 	}
-	if j.io.write(j.file, frame, slotOffset(receipt.slot)+frameSize) != nil || j.io.sync(j.file) != nil {
+	// The group's sync, not this write, makes the finish durable.
+	if j.io.write(j.file, frame, slotOffset(receipt.slot)+frameSize) != nil {
 		j.fault.Store(true)
 		return ErrUncertain
 	}
@@ -492,11 +578,21 @@ func (j *Journal) finish(receipt *Receipt, outcome Outcome, category Category) e
 }
 
 func (j *Journal) shutdown() {
+	finished := false
 	for slot, meta := range j.slots {
 		if !meta.active {
 			continue
 		}
 		if err := j.finish(&Receipt{journal: j, id: meta.id, slot: slot}, Unknown, Interrupted); err != nil {
+			j.closeErr = ErrUncertain
+		} else {
+			finished = true
+		}
+	}
+	if finished {
+		j.syncs.Add(1)
+		if j.io.sync(j.file) != nil {
+			j.fault.Store(true)
 			j.closeErr = ErrUncertain
 		}
 	}
