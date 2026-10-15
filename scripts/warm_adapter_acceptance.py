@@ -36,13 +36,13 @@ def inside(args):
     env.update(GOMAXPROCS="1", KELVO_TEST_CGROUP_ROOT=str(jobs), KELVO_TEST_CGROUP_STATE=str(state),
                KELVO_TEST_SANDBOX=str(out / "kelvo-landlock"), KELVO_TEST_WARM_ADAPTER_BINARY=str(out / "kelvo-adapter-go"),
                KELVO_TEST_WARM_POSTGRES_DSN=(out / "postgres.dsn").read_text().strip())
-    result = subprocess.run([str(out / "worker.test"), "-test.v", "-test.run=^" + GATE + "$", "-test.timeout=120s"],
+    result = subprocess.run([str(out / "worker.test"), "-test.v", "-test.run=^" + args.gate + "$", "-test.timeout=120s"],
                             env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=150)
     (out / "worker.test.log").write_bytes(result.stdout)
-    statuses = re.findall(r"^--- (PASS|FAIL|SKIP): " + GATE + r"\b", result.stdout.decode(errors="replace"), re.M)
+    statuses = re.findall(r"^--- (PASS|FAIL|SKIP): " + re.escape(args.gate) + r"\b", result.stdout.decode(errors="replace"), re.M)
     passed = result.returncode == 0 and statuses == ["PASS"]
     remaining = sum(p.is_dir() for p in jobs.iterdir())
-    (out / "inside.json").write_text(json.dumps({"gate": GATE, "status": statuses, "exit": result.returncode,
+    (out / "inside.json").write_text(json.dumps({"gate": args.gate, "status": statuses, "exit": result.returncode,
                                                  "remaining_job_groups": remaining, "passed": passed and remaining == 0}))
     return 0 if passed and remaining == 0 else 1
 
@@ -53,6 +53,7 @@ def main():
     parser.add_argument("--adapter", type=Path, help="prebuilt kelvo-adapter-go from this source")
     parser.add_argument("--postgres-dsn-file", type=Path, help="file holding one PostgreSQL URL for a disposable fixture")
     parser.add_argument("--output", type=Path, required=True, help="new private directory for binaries, logs and the report")
+    parser.add_argument("--gate", default=GATE, help="Test name in ./internal/worker to run inside the service")
     parser.add_argument("--inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--unit", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -76,10 +77,10 @@ def main():
     command = ["sudo", "-n", "systemd-run", "--unit=" + unit, "--uid=" + str(os.geteuid()), "--property=Delegate=yes",
                *["--property=" + key + "=" + value for key, value in LIMITS.items()], "--property=NoNewPrivileges=yes",
                "--property=CapabilityBoundingSet=", "--property=AmbientCapabilities=", "--collect", "--wait", "--pipe",
-               sys.executable, "-B", str(Path(__file__).resolve()), "--inside", "--unit", unit, "--output", str(out)]
+               sys.executable, "-B", str(Path(__file__).resolve()), "--inside", "--gate", args.gate, "--unit", unit, "--output", str(out)]
     with (out / "service.log").open("wb") as log:
         code = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, timeout=360).returncode
-    report = {"schema": 1, "gate": GATE, "unit": unit, "resource_limits": LIMITS, "service_exit_code": code, "passed": False,
+    report = {"schema": 1, "gate": args.gate, "unit": unit, "resource_limits": LIMITS, "service_exit_code": code, "passed": False,
               "scope": "one node, one real adapter, one real PostgreSQL connection; no capacity or tunnel claim"}
     if (out / "inside.json").exists():
         report.update(json.loads((out / "inside.json").read_text()))
