@@ -205,11 +205,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 				receipt, err = pool.execute(bounded(quotaCtx), e, pool.Adapter, input, sink, nil)
 			}
 			if warmTried || errors.Is(err, errWarmUnavailable) {
-				oneShot := e.OperationAdapter
-				if oneShot.Binary == "" {
-					oneShot = pool.Adapter
-				}
-				receipt, err = e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), oneShot, input, sink)
+				receipt, err = e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), e.oneShotAdapter(pool), input, sink)
 			}
 		}
 		return receiptStats(receipt, err), receiptError(receipt, err), true
@@ -430,6 +426,16 @@ func receiptError(receipt operations.Receipt, err error) error {
 		code = "QUERY_FAILED"
 	}
 	return query.NewError(code, "Source read failed")
+}
+
+// oneShotAdapter is the adapter a one-shot child runs: always the full
+// operation adapter. The pool's adapter may be the slim relational build, which
+// has no one-shot mode; it is the answer only on a node with no operation adapter.
+func (e *Executor) oneShotAdapter(pool *WarmPoolManager) OperationProcessConfig {
+	if e.OperationAdapter.Binary != "" {
+		return e.OperationAdapter
+	}
+	return pool.Adapter
 }
 
 // inspectOneShot runs a metadata inspection on a one-shot adapter, without the

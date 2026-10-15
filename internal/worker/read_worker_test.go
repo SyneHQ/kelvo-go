@@ -480,3 +480,19 @@ func TestReadWorkerBurstOnOneConnectionNeverFails(t *testing.T) {
 		t.Fatal("a key at max_in_flight did not scale out to max_per_key workers:", mgr.metrics.Spawns.Load())
 	}
 }
+
+// Read workers may run on a slim adapter that has no one-shot mode. The adapter
+// a one-shot child runs is the full operation adapter, never the pool's.
+func TestOneShotAdapterIsTheFullOperationAdapter(t *testing.T) {
+	slim := OperationProcessConfig{Binary: "/fake/kelvo-adapter-relational"}
+	full := OperationProcessConfig{Binary: "/fake/kelvo-adapter-go"}
+	e, mgr := readWorkerExecutor(t, &fakeSet{})
+	mgr.Adapter, e.OperationAdapter = slim, full
+	if got := e.oneShotAdapter(mgr); got != full {
+		t.Fatalf("one-shot child would run %q", got.Binary)
+	}
+	e.OperationAdapter = OperationProcessConfig{}
+	if got := e.oneShotAdapter(mgr); got != slim {
+		t.Fatalf("without an operation adapter the pool's is the only one: %q", got.Binary)
+	}
+}
