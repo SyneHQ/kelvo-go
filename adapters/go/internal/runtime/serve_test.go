@@ -119,6 +119,7 @@ func validTestProcessRequest(opID, tenantID, appTeam, connID, rev string, kind o
 			Revision:     rev,
 			Database:     "testdb",
 			Schema:       "public",
+			DSN:          "postgres://reader:secret@db.internal/testdb?sslmode=verify-full",
 		},
 		AppTeam:               appTeam,
 		CredentialsValidUntil: now.Unix() + 3,
@@ -567,4 +568,52 @@ func TestServeLoop_BusyBeyondMaxStreams(t *testing.T) {
 	}
 	_ = frame.WriteClose(h.in)
 	h.wantDone(false)
+}
+
+// Reads after the first carry no secrets: the worker serves them with the
+// credentials it was given, and refuses a secretless request it cannot match.
+func TestServeLoop_SecretlessRequestsUseBoundCredentials(t *testing.T) {
+	session := &fakeQuerySession{}
+	var opened []adapter.ConnectionSpec
+	var mu sync.Mutex
+	runner := Runner{SessionCache: &SessionCache{TTL: time.Minute, Max: 4}, Open: func(_ context.Context, spec adapter.ConnectionSpec, _ operations.Request) (adapter.Session, error) {
+		mu.Lock()
+		opened = append(opened, spec)
+		mu.Unlock()
+		return session, nil
+	}}
+	secretless := func(op string) adapter.ProcessRequest {
+		r := sqlRequest(op, "SELECT 1")
+		r.Source.DSN = ""
+		return r
+	}
+
+	h := startServe(t, runner, true)
+	h.request(1, secretless("op-0"))
+	if f := h.next(); f.Type != frame.Error || f.Stream != 1 {
+		t.Fatalf("secretless request before credentials: %v", f.Type)
+	}
+	h.wantDone(true)
+
+	h = startServe(t, runner, true)
+	h.request(1, sqlRequest("op-1", "SELECT 1"))
+	h.terminals(1)
+	h.request(2, secretless("op-2"))
+	term, _ := h.terminals(1)
+	if r := receiptOf(t, term[2]); r.Outcome != operations.Completed {
+		t.Fatalf("secretless read failed: %+v", r)
+	}
+	other := secretless("op-3")
+	other.Source.Database, other.Request.Connection.Database = "otherdb", "otherdb"
+	other.RequestSHA256, _ = operations.Digest(other.Request)
+	h.request(3, other)
+	if f := h.next(); f.Type != frame.Error || f.Stream != 3 {
+		t.Fatalf("secretless request for another database: %v", f.Type)
+	}
+	h.wantDone(true)
+	mu.Lock()
+	defer mu.Unlock()
+	if len(opened) != 1 || opened[0].DSN == "" {
+		t.Fatalf("session opened %d times, with DSN %q", len(opened), opened[0].DSN)
+	}
 }
