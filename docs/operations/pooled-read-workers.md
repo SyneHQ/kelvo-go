@@ -285,7 +285,7 @@ What it changes (reasoning from the measurements; the tunnel itself was not meas
 Evidence is in the artifacts of the runs above; owners are the pull requests that introduced them.
 
 1. **Every read-worker read fails the client's receipt check** (`PROTOCOL_ERROR`): the job's `Stats.Batches` is never set on the read-worker path (#219).
-   Unpatched, 386 of 391 requests failed. Measured with patch 0001.
+   Unpatched, 386 of 388 requests failed. Measured with patch 0001.
 2. **`bypass_cache` does not reach the cache** (#220, #219): the gateway sets `BypassCache`, the cache reads `Refresh`. In every run `bypass_cache_reaches_source: false`, `refresh_reaches_source: true`.
 3. **`read_workers` is inert** (#222): not read by the warm pool; the adapter's pool size is a constant 4.
 4. **Idle workers are not evicted for a new key** (read-path stack): a full pool sends new keys one-shot and fails their inspections.
