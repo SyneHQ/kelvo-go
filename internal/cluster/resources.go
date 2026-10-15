@@ -44,6 +44,30 @@ func (c ResourceConfig) NewPool() (*admission.Pool, error) {
 	return admission.New(limits)
 }
 
+// Errors for class splits that would starve interactive work. Static strings:
+// they name settings, never values.
+var (
+	errInteractiveSlots    = errors.New("resources: the interactive share must hold warm_pool.max_workers plus one slot for fallbacks and result downloads")
+	errInteractiveDownload = errors.New("resources: the interactive reserve must fit one operation result download (3 x max_result_bytes + 2 MiB)")
+)
+
+// InteractiveSlots is the slot count interactive work may use.
+func (c ResourceConfig) InteractiveSlots() int {
+	if c.SeparateClasses {
+		return c.QueryReserveSlots
+	}
+	return c.MaxConcurrent
+}
+
+// FitsInteractive reports whether one interactive reservation of memory bytes
+// and no scratch fits the interactive share.
+func (c ResourceConfig) FitsInteractive(memoryBytes int64) bool {
+	if c.SeparateClasses {
+		return memoryBytes <= c.QueryReserveMemoryMB<<20
+	}
+	return memoryBytes <= (c.MemoryMB-c.BaselineMB)<<20
+}
+
 // ResourceClassConfig narrows background work within the shared node capacity.
 // It neither adds capacity nor bypasses protected interactive reservations.
 type ResourceClassConfig struct {
@@ -80,14 +104,15 @@ func (c ResourceConfig) Fits(l query.Limits, refresh bool) bool {
 	}
 	memoryCapacity := (c.MemoryMB - c.BaselineMB) << 20
 	scratchCapacity := c.ScratchMB << 20
-	if refresh || c.SeparateClasses {
+	switch {
+	case refresh:
+		// Background work never uses the query reserve.
 		memoryCapacity -= c.QueryReserveMemoryMB << 20
 		scratchCapacity -= c.QueryReserveScratchMB << 20
-	}
-	// A query may run in either share when classes are separate.
-	if c.SeparateClasses && !refresh {
-		memoryCapacity = min(memoryCapacity, c.QueryReserveMemoryMB<<20)
-		scratchCapacity = min(scratchCapacity, c.QueryReserveScratchMB<<20)
+	case c.SeparateClasses:
+		// A query is interactive: with separate classes it gets the reserve only.
+		memoryCapacity = c.QueryReserveMemoryMB << 20
+		scratchCapacity = c.QueryReserveScratchMB << 20
 	}
 	return (int64(l.MemoryMB)+c.OverheadMB)<<20 <= memoryCapacity && scratch <= scratchCapacity
 }

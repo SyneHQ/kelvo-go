@@ -26,6 +26,9 @@ type OperationNodeConfig struct {
 	// means no cap.
 	MaxPerTenant     int `yaml:"max_per_tenant,omitempty"`
 	MaxPerConnection int `yaml:"max_per_connection,omitempty"`
+	// QueueWait bounds how long an operation waits for its caps before it is
+	// rejected as retryable; 0 means 10s.
+	QueueWait time.Duration `yaml:"queue_wait,omitempty"`
 }
 
 func validateNodeOperations(c NodeConfig) error {
@@ -35,7 +38,7 @@ func validateNodeOperations(c NodeConfig) error {
 	o := c.Operations
 	if c.Policy.Operations == nil || o == nil || c.Audit == nil || c.Resources == nil || c.Containment == nil || c.ScratchDirectory == "" || c.SandboxPath == "" ||
 		!validEndpoint(o.InputURL) || o.TLS.CAFile == "" || o.TLS.CertFile == "" || o.TLS.KeyFile == "" || o.TLS.Trust != nil || o.TLS.IdentityFile != "" || o.TLS.ReloadInterval != 0 ||
-		o.MaxPerTenant < 0 || o.MaxPerTenant > 64 || o.MaxPerConnection < 0 || o.MaxPerConnection > 64 ||
+		o.QueueWait < 0 || o.QueueWait > time.Minute || o.MaxPerTenant < 0 || o.MaxPerTenant > 64 || o.MaxPerConnection < 0 || o.MaxPerConnection > 64 ||
 		o.MaxConcurrent < 1 || o.MaxConcurrent > c.Policy.Workers[c.WorkerID] || o.MaxConcurrent > c.Resources.MaxConcurrent || o.MaxDownloads < 1 || o.MaxDownloads > 64 ||
 		o.PollInterval < 10*time.Millisecond || o.PollInterval > time.Second || o.MaxResultBytes < 1024 || o.MaxResultBytes > operationinput.MaxInputBytes || o.MaxResultBytes > c.Policy.Limits.MaxBytes ||
 		o.Results.MaxEntries < 1 || o.Results.MaxEntries > 4096 || o.Results.MaxStoredBytes < 2*o.MaxResultBytes || o.Results.MaxStoredBytes > 1<<40 ||
@@ -62,6 +65,14 @@ func validateNodeOperations(c NodeConfig) error {
 		if o.WarmPool.Enabled && o.WarmPool.FitsOverhead(c.Resources.OverheadMB<<20) != nil {
 			return errOperationConfig
 		}
+		// Read workers hold their slots while idle; fallbacks and result
+		// downloads still need one.
+		if o.WarmPool.Enabled && c.Resources.InteractiveSlots() < o.WarmPool.MaxWorkers+1 {
+			return errInteractiveSlots
+		}
+	}
+	if !c.Resources.FitsInteractive(operationDownloadMemory(o)) {
+		return errInteractiveDownload
 	}
 	if err := validatePrivateNodeOperations(c); err != nil {
 		return err
