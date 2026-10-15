@@ -99,47 +99,136 @@ func TestResultCacheHitReportsOwnTiming(t *testing.T) {
 	}
 }
 
-// Refresh coalesces only with a read that started at or after it arrived;
-// otherwise it leads a new one.
-func TestResultCacheRefreshCoalescing(t *testing.T) {
+// A refresh bypasses the kept result and joins only a running read that
+// started after that result was stored; concurrent refreshes then share one
+// execution: at most one refresh execution per key at a time.
+func TestResultCacheRefreshBursts(t *testing.T) {
+	c := newResultCache(time.Minute, 16, 1<<20)
+	_, _ = c.do(context.Background(), "k", "t", false, nil, (&fakeRead{data: "kept"}).execute, noReplay)
+	// A plain read is running when the refresh arrives; it started after the
+	// kept result was stored, so the refresh joins it.
+	fresh := &fakeRead{data: "fresh", block: make(chan struct{})}
+	results := make(chan error, 4)
+	go func() {
+		_, err := c.do(context.Background(), "k", "t", true, nil, fresh.execute, noReplay)
+		results <- err
+	}()
+	waitFor(t, func() bool { return fresh.runs.Load() == 1 })
+	burst := &fakeRead{data: "never"}
+	for i := 0; i < 3; i++ {
+		go func() {
+			_, err := c.do(context.Background(), "k", "t", true, nil, burst.execute, noReplay)
+			results <- err
+		}()
+	}
+	waitFor(t, func() bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		f := c.flights["k"]
+		return f != nil && len(f.participants) == 4
+	})
+	close(fresh.block)
+	for i := 0; i < 4; i++ {
+		if err := <-results; err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.mu.Lock()
+	kept := string(c.entries["k"].Value.(*cacheEntry).data)
+	c.mu.Unlock()
+	if burst.runs.Load() != 0 || fresh.runs.Load() != 1 || kept != "fresh" {
+		t.Fatal("refresh burst ran more than one execution", burst.runs.Load(), kept)
+	}
+}
+
+// A refresh never joins a read that started before the kept result it
+// bypasses was stored: it leads a newer execution.
+func TestResultCacheRefreshSkipsOlderRead(t *testing.T) {
 	c := newResultCache(time.Minute, 16, 1<<20)
 	old := &fakeRead{data: "old", block: make(chan struct{})}
 	go func() { _, _ = c.do(context.Background(), "k", "t", false, nil, old.execute, noReplay) }()
 	waitFor(t, func() bool { return old.runs.Load() == 1 })
-	fresh := &fakeRead{data: "fresh", block: make(chan struct{})}
-	refreshed := make(chan struct{})
-	go func() {
-		_, _ = c.do(context.Background(), "k", "t", true, nil, fresh.execute, noReplay)
-		close(refreshed)
-	}()
-	waitFor(t, func() bool { return fresh.runs.Load() == 1 })
-	// A plain read joins the running fresh read.
-	plain := &fakeRead{data: "never"}
-	joined := make(chan struct{})
-	go func() {
-		_, _ = c.do(context.Background(), "k", "t", false, nil, plain.execute, noReplay)
-		close(joined)
-	}()
-	waitFor(t, func() bool {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		return c.flights["k"] != nil && c.flights["k"].interest == 2
-	})
-	close(fresh.block)
-	<-refreshed
-	<-joined
-	close(old.block)
-	waitFor(t, func() bool {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		return len(c.flights) == 0
-	})
-	// The older read finished last but must not replace the newer result.
+	// A result is kept after the old read started (another refresh stored it).
 	c.mu.Lock()
-	kept := string(c.entries["k"].Value.(*cacheEntry).data)
+	c.storeLocked(&cacheEntry{key: "k", tenant: "t", data: []byte("kept"), started: time.Now(), expires: time.Now().Add(time.Minute)})
 	c.mu.Unlock()
-	if kept != "fresh" || old.runs.Load() != 1 || fresh.runs.Load() != 1 || plain.runs.Load() != 0 {
-		t.Fatalf("kept %q (old runs %d, fresh runs %d, plain runs %d)", kept, old.runs.Load(), fresh.runs.Load(), plain.runs.Load())
+	newer := &fakeRead{data: "newer"}
+	if _, err := c.do(context.Background(), "k", "t", true, nil, newer.execute, noReplay); err != nil || newer.runs.Load() != 1 {
+		t.Fatal("refresh joined a read older than the result it bypasses", err, newer.runs.Load())
+	}
+	close(old.block)
+}
+
+// The generation rule, forced in order: the older execution stores after the
+// newer one, and the newer result survives.
+func TestResultCacheNewerGenerationSurvives(t *testing.T) {
+	c := newResultCache(time.Minute, 16, 1<<20)
+	old := &fakeRead{data: "old", block: make(chan struct{})}
+	oldDone := make(chan struct{})
+	go func() { _, _ = c.do(context.Background(), "k", "t", false, nil, old.execute, noReplay); close(oldDone) }()
+	waitFor(t, func() bool { return old.runs.Load() == 1 })
+	// Force the order: the older flight has started; mark it dead so a plain
+	// read leads a newer one that completes and stores first.
+	c.mu.Lock()
+	c.flights["k"].dead = true
+	delete(c.flights, "k")
+	c.mu.Unlock()
+	if _, err := c.do(context.Background(), "k", "t", false, nil, (&fakeRead{data: "newer"}).execute, noReplay); err != nil {
+		t.Fatal(err)
+	}
+	close(old.block)
+	<-oldDone
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if kept := string(c.entries["k"].Value.(*cacheEntry).data); kept != "newer" {
+		t.Fatal("an older execution replaced a newer result:", kept)
+	}
+}
+
+// When the last participant leaves, the flight is dead at once: a new
+// identical read leads a fresh execution instead of joining the cancelled one.
+func TestResultCacheDeadFlightIsNotJoined(t *testing.T) {
+	c := newResultCache(time.Minute, 16, 1<<20)
+	first := &fakeRead{data: "first", block: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	left := make(chan struct{})
+	go func() { _, _ = c.do(ctx, "k", "t", false, nil, first.execute, noReplay); close(left) }()
+	waitFor(t, func() bool { return first.runs.Load() == 1 })
+	cancel()
+	<-left
+	c.mu.Lock()
+	_, running := c.flights["k"]
+	c.mu.Unlock()
+	if running {
+		t.Fatal("a flight nobody waits for is still joinable")
+	}
+	second := &fakeRead{data: "second"}
+	if _, err := c.do(context.Background(), "k", "t", false, nil, second.execute, noReplay); err != nil || second.runs.Load() != 1 {
+		t.Fatal("a new read joined a dead flight", err)
+	}
+}
+
+// The execution runs until the latest participant deadline: when the
+// participant with the earliest deadline leads and leaves, a waiter with a
+// later deadline still gets the result, never someone else's deadline.
+func TestResultCacheDeadlineIsLatestParticipants(t *testing.T) {
+	c := newResultCache(time.Minute, 16, 1<<20)
+	read := &fakeRead{data: "result", delay: 250 * time.Millisecond}
+	shortCtx, cancelShort := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancelShort()
+	leader := make(chan error, 1)
+	go func() { _, err := c.do(shortCtx, "k", "t", false, nil, read.execute, noReplay); leader <- err }()
+	waitFor(t, func() bool { return read.runs.Load() == 1 })
+	longCtx, cancelLong := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelLong()
+	var got []string
+	var mu sync.Mutex
+	stats, err := c.do(longCtx, "k", "t", false, nil, read.execute, replayData(&got, &mu))
+	if err != nil || len(got) != 1 || !stats.Cached || read.runs.Load() != 1 {
+		t.Fatal("waiter got another participant's deadline", err, got)
+	}
+	if err := <-leader; !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("leader past its own deadline was not refused by it", err)
 	}
 }
 
@@ -166,7 +255,7 @@ func TestResultCacheLeaderCancelKeepsWaitersServed(t *testing.T) {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		f := c.flights["k"]
-		return f != nil && f.interest == 2
+		return f != nil && len(f.participants) == 2
 	})
 	cancelLeader()
 	if err := <-leader; !errors.Is(err, context.Canceled) {
@@ -198,7 +287,7 @@ func TestResultCacheFailureAndPanicReachWaiters(t *testing.T) {
 				c.mu.Lock()
 				defer c.mu.Unlock()
 				f := c.flights["k"]
-				return f != nil && f.interest == 3
+				return f != nil && len(f.participants) == 3
 			})
 			close(read.block)
 			for i := 0; i < 3; i++ {
