@@ -16,3 +16,6 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 
 // NewServeLauncher exists for portability; the serve launcher requires Linux.
 func NewServeLauncher(poolSize int) WorkerLauncher { return &defaultWorkerLauncher{} }
+
+// OperationBinaryUsable is false off Linux: warm workers need the Linux launcher.
+func OperationBinaryUsable(context.Context, OperationProcessConfig) bool { return false }

@@ -4,6 +4,10 @@
 package worker
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -50,5 +54,40 @@ func TestSandboxLauncherServePoolSizeArgument(t *testing.T) {
 		} else if !strings.Contains(string(out), tc.want) {
 			t.Errorf("%v: got %q, want %q", tc.args, out, tc.want)
 		}
+	}
+}
+
+// The node chooses the slim adapter only when its pinned file is present and
+// matches: a missing, changed or loosely permissioned file selects the full one.
+func TestOperationBinaryUsable(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "adapter")
+	body := []byte("#!/bin/sh\nexit 0\n")
+	if err := os.WriteFile(path, body, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(body)
+	pin := OperationProcessConfig{Binary: path, SHA256: hex.EncodeToString(sum[:])}
+	ctx := context.Background()
+	if !OperationBinaryUsable(ctx, pin) {
+		t.Fatal("a matching pinned binary was refused")
+	}
+	for name, cfg := range map[string]OperationProcessConfig{
+		"wrong digest": {Binary: path, SHA256: strings.Repeat("0", 64)},
+		"missing":      {Binary: filepath.Join(dir, "absent"), SHA256: pin.SHA256},
+		"relative":     {Binary: "adapter", SHA256: pin.SHA256},
+	} {
+		if OperationBinaryUsable(ctx, cfg) {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if err := os.Chmod(path, 0o757); err != nil {
+		t.Fatal(err)
+	}
+	if OperationBinaryUsable(ctx, pin) {
+		t.Error("a world-writable binary was accepted")
 	}
 }

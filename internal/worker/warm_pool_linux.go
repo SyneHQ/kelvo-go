@@ -270,3 +270,16 @@ func launchServe(ctx context.Context, e *Executor, cfg OperationProcessConfig, l
 
 	return proc, cleanup, nil
 }
+
+// OperationBinaryUsable reports whether cfg names a binary the launcher would
+// accept now: present, owner-only writable, executable and matching its pinned
+// digest. The node uses it to choose between adapter binaries at startup; the
+// launch itself still verifies the descriptor it executes.
+func OperationBinaryUsable(ctx context.Context, cfg OperationProcessConfig) bool {
+	file, _, err := openOperationBinary(ctx, cfg)
+	if err != nil {
+		return false
+	}
+	_ = file.Close()
+	return true
+}

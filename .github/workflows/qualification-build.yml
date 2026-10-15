@@ -36,7 +36,7 @@ jobs:
           docker cp "$id:/out" out
           docker rm "$id"
           cd out
-          rm -f kelvo-adapter-go.sha256
+          rm -f kelvo-adapter-go.sha256 kelvo-adapter-relational.sha256
           sha256sum * | tee SHA256SUMS
           echo "$full" > SOURCE
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

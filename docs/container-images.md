@@ -35,6 +35,8 @@ operations:
     sha256: <digest-from-this-image>
 ```
 
+The worker image also carries `kelvo-adapter-relational`, a slim build for read workers (relational engines only, no DuckDB). Its digest is in `/usr/share/kelvo/kelvo-adapter-relational.sha256`; pin it with `read_workers.relational_adapter` (see `docs/cluster.md`).
+
 The adapter is a child executable started by Kelvo, not a separate HTTP service.
 Pin the deployed image by registry digest and update the adapter checksum with it.
 

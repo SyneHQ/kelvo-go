@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"sync/atomic"
 	"time"
 
@@ -73,7 +74,11 @@ func (n *Node) initOperations(ctx context.Context) (resultErr error) {
 			return err
 		}
 		// Native reads and inspections from the query path use the same adapter.
-		native.WarmPool.Adapter = c.Adapter
+		adapter, slim := readAdapter(n.cfg.ReadWorkers, c.Adapter, func(a worker.OperationProcessConfig) bool { return worker.OperationBinaryUsable(ctx, a) })
+		native.WarmPool.Adapter = adapter
+		if n.cfg.ReadWorkers != nil && n.cfg.ReadWorkers.RelationalAdapter != nil && !slim {
+			log.Print("kelvo: configured relational read adapter is not usable; read workers use the full adapter")
+		}
 	}
 	bindings := make(map[string]worker.PrivateOperationBinding, len(c.PrivateSources))
 	for principal, config := range c.PrivateSources {

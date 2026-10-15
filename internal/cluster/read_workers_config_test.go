@@ -131,3 +131,54 @@ func TestMaxPerKeyDefaultsAndMapsOntoTheWarmPool(t *testing.T) {
 		}
 	}
 }
+
+func TestReadAdapterSelection(t *testing.T) {
+	full := worker.OperationProcessConfig{Binary: "/opt/kelvo/kelvo-adapter-go", SHA256: strings.Repeat("a", 64), PrivateOpenDiagnostics: true}
+	slim := worker.OperationProcessConfig{Binary: "/opt/kelvo/kelvo-adapter-relational", SHA256: strings.Repeat("b", 64)}
+	always, never := func(worker.OperationProcessConfig) bool { return true }, func(worker.OperationProcessConfig) bool { return false }
+	for name, tc := range map[string]struct {
+		rw     *ReadWorkersConfig
+		usable func(worker.OperationProcessConfig) bool
+		want   string
+	}{
+		"no read_workers":             {nil, always, full.Binary},
+		"default without slim pinned": {&ReadWorkersConfig{Adapter: adapterRelational}, always, full.Binary},
+		"full requested":              {&ReadWorkersConfig{Adapter: adapterFull, RelationalAdapter: &slim}, always, full.Binary},
+		"slim usable":                 {&ReadWorkersConfig{Adapter: adapterRelational, RelationalAdapter: &slim}, always, slim.Binary},
+		"slim missing or mismatched":  {&ReadWorkersConfig{Adapter: adapterRelational, RelationalAdapter: &slim}, never, full.Binary},
+	} {
+		got, isSlim := readAdapter(tc.rw, full, tc.usable)
+		if got.Binary != tc.want || isSlim != (tc.want == slim.Binary) {
+			t.Errorf("%s: %q slim=%v", name, got.Binary, isSlim)
+		}
+		if isSlim && (got.SHA256 != slim.SHA256 || !got.PrivateOpenDiagnostics) {
+			t.Errorf("%s: slim pin or diagnostics lost: %+v", name, got)
+		}
+	}
+}
+
+func TestReadWorkersAdapterSetting(t *testing.T) {
+	base := worker.WarmPoolConfig{Enabled: true, QueueDepth: 64, WorkerMemoryMB: 64}
+	pinned := &worker.OperationProcessConfig{Binary: "/opt/kelvo/kelvo-adapter-relational", SHA256: strings.Repeat("b", 64)}
+	for name, tc := range map[string]struct {
+		rw ReadWorkersConfig
+		ok bool
+	}{
+		"default is relational":         {ReadWorkersConfig{MaxWorkers: 1}, true},
+		"full":                          {ReadWorkersConfig{MaxWorkers: 1, Adapter: adapterFull}, true},
+		"relational with a pinned file": {ReadWorkersConfig{MaxWorkers: 1, Adapter: adapterRelational, RelationalAdapter: pinned}, true},
+		"unknown adapter":               {ReadWorkersConfig{MaxWorkers: 1, Adapter: "duckdb"}, false},
+		"bad pin":                       {ReadWorkersConfig{MaxWorkers: 1, RelationalAdapter: &worker.OperationProcessConfig{Binary: "/opt/x", SHA256: "short"}}, false},
+	} {
+		rw := tc.rw.withDefaults()
+		if rw.Adapter == "" {
+			t.Fatalf("%s: adapter has no default", name)
+		}
+		if err := validateNodeReadWorkers(readWorkersNode(&rw, base)); (err == nil) != tc.ok {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if (ReadWorkersConfig{MaxWorkers: 1}).withDefaults().Adapter != adapterRelational {
+		t.Fatal("default adapter is not relational")
+	}
+}

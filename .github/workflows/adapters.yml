@@ -46,6 +46,17 @@ jobs:
           go test -mod=readonly -p 2 -race -tags duckdb_arrow -count=1 -timeout=10m ./...
           go vet -mod=readonly -p 2 -tags duckdb_arrow ./...
           go build -mod=readonly -p 2 -tags duckdb_arrow -trimpath -o /tmp/kelvo-adapter-go ./cmd/kelvo-adapter-go
+      - name: Test and compile the slim relational read adapter
+        working-directory: adapters/go
+        run: |
+          go vet -mod=readonly -p 2 -tags slim ./cmd/... ./internal/runtime ./internal/frame
+          go test -mod=readonly -p 2 -tags slim -count=1 -timeout=10m ./cmd/... ./internal/runtime ./internal/frame ./connectors/relational
+          CGO_ENABLED=0 go build -mod=readonly -p 2 -tags slim -trimpath -ldflags "-s -w" -o /tmp/kelvo-adapter-relational ./cmd/kelvo-adapter-go
+          ls -l /tmp/kelvo-adapter-go /tmp/kelvo-adapter-relational
+          # The slim build must not carry the engines read workers never serve.
+          if go version -m /tmp/kelvo-adapter-relational | grep -Eiq 'duckdb|mongo|aws-sdk|go-ora|clickhouse|gocql'; then
+            go version -m /tmp/kelvo-adapter-relational; echo "slim adapter links an excluded engine"; exit 1
+          fi
   jdbc-adapter:
     runs-on: ubuntu-latest
     timeout-minutes: 15
