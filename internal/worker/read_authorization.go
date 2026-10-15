@@ -107,6 +107,12 @@ func (m *WarmPoolManager) currentAuthorization(key string) *readAuthorization {
 // old revision's workers drain (no new streams, in-flight ones finish) unless
 // another principal's authorization still uses them.
 func (m *WarmPoolManager) storeAuthorization(key string, a *readAuthorization) {
+	m.storeAuthorizationWithin(context.Background(), key, a)
+}
+
+// storeAuthorizationWithin is storeAuthorization waiting at most ctx for
+// drained idle workers to end.
+func (m *WarmPoolManager) storeAuthorizationWithin(ctx context.Context, key string, a *readAuthorization) {
 	m.authMu.Lock()
 	if m.auths == nil {
 		m.auths = map[string]*readAuthorization{}
@@ -117,7 +123,7 @@ func (m *WarmPoolManager) storeAuthorization(key string, a *readAuthorization) {
 	m.authMu.Unlock()
 	m.metrics.Authorizations.Add(1)
 	if retire {
-		m.drainKey(old.workerKey)
+		m.drainKey(ctx, old.workerKey)
 	}
 }
 
@@ -136,7 +142,9 @@ func (m *WarmPoolManager) retireAuthorization(key string, observed *readAuthoriz
 	retire := !m.referencedLocked(observed.workerKey)
 	m.authMu.Unlock()
 	if retire {
-		m.drainKey(observed.workerKey)
+		drainCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		m.drainKey(drainCtx, observed.workerKey)
+		cancel()
 	}
 }
 
@@ -170,28 +178,38 @@ func (m *WarmPoolManager) referencedLocked(workerKey string) bool {
 	return false
 }
 
-// pruneAuthorizations drops authorizations no read may rely on any more.
+// pruneAuthorizations drops expired authorizations whose workers are gone.
+// One whose workers still live is kept: a later definitive denial must still
+// find, and kill, the workers it authorized.
 func (m *WarmPoolManager) pruneAuthorizations() {
+	live := map[string]bool{}
+	m.mu.Lock()
+	for _, w := range m.workers {
+		live[w.key] = true
+	}
+	m.mu.Unlock()
 	now, every := time.Now(), m.cfg.reauthorizeEvery()
 	m.authMu.Lock()
 	defer m.authMu.Unlock()
 	for key, a := range m.auths {
-		if !a.fresh(now, every) {
+		if !a.fresh(now, every) && !live[a.workerKey] {
 			delete(m.auths, key)
 		}
 	}
 }
 
 // drainKey stops new streams on workerKey's workers; each ends after its last
-// in-flight stream.
-func (m *WarmPoolManager) drainKey(workerKey string) {
+// in-flight stream. Idle ones end now, and drainKey waits up to ctx for them
+// so their reservations are free for the replacement.
+func (m *WarmPoolManager) drainKey(ctx context.Context, workerKey string) {
+	var idle []*warmWorkerEntry
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	for _, w := range m.workers {
 		if w.key == workerKey && !w.draining {
 			w.draining = true
 			if w.inFlight == 0 {
 				m.evictLocked(w, &m.metrics.Rotations)
+				idle = append(idle, w)
 			} else {
 				// A draining worker takes no new streams: its place is a read
 				// waiting for this key's replacement.
@@ -199,6 +217,21 @@ func (m *WarmPoolManager) drainKey(workerKey string) {
 			}
 		}
 	}
+	m.mu.Unlock()
+	_ = m.waitDead(ctx, idle)
+}
+
+// waitDead waits up to ctx for evicted workers to end. Every worker closes
+// dead when it ends, a failed launch included.
+func (m *WarmPoolManager) waitDead(ctx context.Context, evicted []*warmWorkerEntry) error {
+	for _, w := range evicted {
+		select {
+		case <-w.dead:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 // killKey kills workerKey's workers, launching ones included, and waits up to
@@ -213,22 +246,7 @@ func (m *WarmPoolManager) killKey(ctx context.Context, workerKey string) error {
 		}
 	}
 	m.mu.Unlock()
-	for _, w := range evicted {
-		select {
-		case <-w.ready:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-		if w.launchErr != nil {
-			continue
-		}
-		select {
-		case <-w.dead:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	return nil
+	return m.waitDead(ctx, evicted)
 }
 
 // authFlight is one in-progress authorization that concurrent reads of the
