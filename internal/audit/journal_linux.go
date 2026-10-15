@@ -26,10 +26,7 @@ import (
 // writer wait up to groupCommitWindow for the next one before syncing, so no
 // operation waits longer than that for company, and none is acknowledged before
 // the sync that covers its writes has returned.
-const (
-	groupCommitWindow = 2 * time.Millisecond
-	maxGroupSize      = 64
-)
+const maxGroupSize = 64
 
 type diskIO struct {
 	write    func(*os.File, []byte, int64) error
@@ -79,7 +76,6 @@ type Journal struct {
 	fault                                   atomic.Bool
 	active, retained, freeCount, nextExpiry atomic.Int64
 	closeErr                                error // read only after done closes
-	lastGroup                               int   // writer goroutine only: size of the previous group
 	syncs                                   atomic.Int64
 }
 
@@ -372,9 +368,11 @@ func (j *Journal) run() {
 	}
 }
 
-// collect gathers the operations to commit together: the first, everything
-// already queued, and, when the previous group was not alone, whatever arrives
-// within groupCommitWindow.
+// collect gathers the operations to commit together: the first and everything
+// already queued. Only if that is more than one does it also wait, up to
+// groupCommitWindow, for the next. A lone operation is never delayed, whatever
+// the group before it was: operations queued behind a running fsync form the
+// next group on their own.
 func (j *Journal) collect(first *operation) []*operation {
 	group := append(make([]*operation, 0, 8), first)
 	drain := func() {
@@ -388,7 +386,7 @@ func (j *Journal) collect(first *operation) []*operation {
 		}
 	}
 	drain()
-	if len(group) > 1 || j.lastGroup > 1 {
+	if len(group) > 1 {
 		timer := time.NewTimer(groupCommitWindow)
 		defer timer.Stop()
 	wait:
@@ -404,7 +402,6 @@ func (j *Journal) collect(first *operation) []*operation {
 			}
 		}
 	}
-	j.lastGroup = len(group)
 	return group
 }
 

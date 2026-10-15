@@ -25,7 +25,7 @@ Omit `audit` to disable it. All limits are explicit. Configuration loading and `
 | `max_entries` | 1–1,048,576 retained or active receipts |
 | `max_pending` | 1–4,096 queued starts and active receipts combined; no larger than `max_entries` |
 | `retention` | Greater than zero through 30 days, from terminal time |
-| `write_timeout` | Greater than zero through 30 seconds, including queue and I/O acknowledgement |
+| `write_timeout` | 52 ms through 30 seconds, including queue and I/O acknowledgement. The floor is the 2 ms group-commit window plus 50 ms for an fsync |
 
 Open preallocates **16 KiB + 2 KiB × `max_entries`**, including every terminal frame. Linux `fallocate` must succeed. The example reserves approximately 128 MiB; the maximum approximately 2 GiB. The memory index also scales with capacity.
 

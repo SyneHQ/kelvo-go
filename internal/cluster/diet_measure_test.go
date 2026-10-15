@@ -17,8 +17,12 @@ import (
 
 // Measures what one single-call transient read costs the job store: broker
 // messages sent by the gateway and by the node, allocations and CPU. It replays
-// the exact store calls of a read (see replayRead) against a real JetStream and
-// is skipped without one. Run it twice, before and after a change:
+// the store calls of a read (see replayRead) against a real JetStream and is
+// skipped without one. It is a store-call replay, not an end-to-end measurement:
+// it leaves out the node's lease renewals, the resolver's lease reads, the
+// gateway's result-wait polls and re-reads, audit, and the result stream. It
+// guards the store's cost against regression; the end-to-end figures need the
+// profile harness. Run it twice, before and after a change:
 //
 //	KELVO_MEASURE_READS=400 go test ./internal/cluster -run TestMeasureTransientReadStoreCost -v
 func TestMeasureTransientReadStoreCost(t *testing.T) {
@@ -74,6 +78,13 @@ func TestMeasureTransientReadStoreCost(t *testing.T) {
 	runtime.ReadMemStats(&m1)
 	g1, n1 := gateway.nc.Stats(), node.nc.Stats()
 	done := float64(reads / concurrent * concurrent)
+	gatewayMsgs, nodeMsgs := float64(g1.OutMsgs-g0.OutMsgs)/done, float64(n1.OutMsgs-n0.OutMsgs)/done
+	if gatewayMsgs > 8 || nodeMsgs > 9 {
+		t.Errorf("store cost regressed: %.1f gateway and %.1f node broker messages per read (was 6 and 7)", gatewayMsgs, nodeMsgs)
+	}
+	if kb := float64(m1.TotalAlloc-m0.TotalAlloc) / done / 1024; kb > 150 {
+		t.Errorf("store allocations regressed: %.0f KB per read (was 45)", kb)
+	}
 	t.Logf("per read: gateway broker msgs %.1f, node broker msgs %.1f, total %.1f; allocs %.0f KB (%.0f objects); CPU %.2f ms (test process, includes the NATS client)",
 		float64(g1.OutMsgs-g0.OutMsgs)/done, float64(n1.OutMsgs-n0.OutMsgs)/done,
 		float64(g1.OutMsgs-g0.OutMsgs+n1.OutMsgs-n0.OutMsgs)/done,

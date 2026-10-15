@@ -540,7 +540,9 @@ func (n *Node) mutate(ctx context.Context, id string, fn func(*Job) error) error
 // node's own latest write of the job, if it has one. When nobody has written
 // since, the update succeeds without reading the job first. A newer revision (a
 // cancellation, the gateway's claim) fails that update with a conflict and the
-// attempt repeats from a fresh read, exactly as before. Only the result
+// attempt repeats from a fresh read, exactly as before. The stale-hint cost
+// is bounded: at most one wasted update per call (the hint is used once, then
+// cleared), after which every attempt reads first. Only the result
 // publication asks for it: everything else keeps reading first.
 func (n *Node) mutateFrom(ctx context.Context, id string, fn func(*Job) error, fromLastWrite bool) error {
 	var hint *Snapshot

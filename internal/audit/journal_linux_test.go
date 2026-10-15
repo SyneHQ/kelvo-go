@@ -88,7 +88,7 @@ func TestAuditReceiptDurabilityReadAuthorizationAndScope(t *testing.T) {
 
 func TestAuditInvalidConfigurationAndBindings(t *testing.T) {
 	for _, change := range []func(*Config){
-		func(c *Config) { c.Directory = "relative" }, func(c *Config) { c.MaxEntries = 0 }, func(c *Config) { c.MaxEntries = maximumEntries + 1 }, func(c *Config) { c.MaxPending = 0 }, func(c *Config) { c.MaxPending = c.MaxEntries + 1 }, func(c *Config) { c.Retention = 0 }, func(c *Config) { c.Retention = 31 * 24 * time.Hour }, func(c *Config) { c.WriteTimeout = 0 }, func(c *Config) { c.WriteTimeout = 31 * time.Second },
+		func(c *Config) { c.Directory = "relative" }, func(c *Config) { c.MaxEntries = 0 }, func(c *Config) { c.MaxEntries = maximumEntries + 1 }, func(c *Config) { c.MaxPending = 0 }, func(c *Config) { c.MaxPending = c.MaxEntries + 1 }, func(c *Config) { c.Retention = 0 }, func(c *Config) { c.Retention = 31 * 24 * time.Hour }, func(c *Config) { c.WriteTimeout = 0 }, func(c *Config) { c.WriteTimeout = minimumWriteTimeout - time.Millisecond }, func(c *Config) { c.WriteTimeout = 31 * time.Second },
 	} {
 		cfg := testConfig(t.TempDir())
 		change(&cfg)

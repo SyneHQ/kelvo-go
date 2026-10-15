@@ -167,6 +167,42 @@ func TestAuditGroupCommitSyncFailureFailsTheWholeGroupWithoutReceipts(t *testing
 	}
 }
 
+// A burst that forms a group must not make the operation after it wait: a lone
+// operation is written and synced at once, whatever came before.
+func TestAuditLoneOperationAfterAGroupIsNotDelayed(t *testing.T) {
+	tracked := newTrackedIO(2 * time.Millisecond)
+	j := openTracked(t, groupConfig(t, 256, 32), tracked)
+	var wg sync.WaitGroup
+	for range 16 { // a burst: several operations reach the writer together
+		wg.Go(func() {
+			for range 4 {
+				r, err := j.Begin(context.Background(), testBinding(), QueryExecution)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				_ = r.Finish(context.Background(), Succeeded, None)
+			}
+		})
+	}
+	wg.Wait()
+	for range 5 {
+		started, syncBefore, groupsBefore := time.Now(), tracked.syncNS.Load(), tracked.syncs.Load()
+		r, err := j.Begin(context.Background(), testBinding(), QueryExecution)
+		if err != nil {
+			t.Fatal(err)
+		}
+		overhead := time.Since(started) - time.Duration(tracked.syncNS.Load()-syncBefore)
+		if overhead > groupCommitWindow || tracked.syncs.Load()-groupsBefore != 1 {
+			t.Fatalf("a lone begin after a group added %s beyond its sync (%d syncs)", overhead, tracked.syncs.Load()-groupsBefore)
+		}
+		if err := r.Finish(context.Background(), Succeeded, None); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond) // lone again
+	}
+}
+
 // Grouping costs a lone operation nothing: it is written and synced at once.
 func TestAuditLoneOperationIsNotDelayedByGrouping(t *testing.T) {
 	tracked := newTrackedIO(0)
@@ -223,7 +259,7 @@ func TestAuditFsyncsPerOperationByLoad(t *testing.T) {
 	if testing.Short() {
 		t.Skip("measurement")
 	}
-	run := func(name string, workers int, gap time.Duration, total int) {
+	run := func(name string, workers int, gap time.Duration, total int, atMost float64) {
 		tracked := newTrackedIO(0)
 		j := openTracked(t, groupConfig(t, 4096, workers+4), tracked)
 		var wg sync.WaitGroup
@@ -254,10 +290,13 @@ func TestAuditFsyncsPerOperationByLoad(t *testing.T) {
 		t.Logf("%-34s %5d operations in %6.0f ms (%6.0f ops/s): %5d fsyncs = %.2f per operation, %.2f per read of 6 operations",
 			name, ops.Load(), float64(elapsed.Milliseconds()), float64(ops.Load())/elapsed.Seconds(), tracked.syncs.Load(),
 			float64(tracked.syncs.Load())/float64(ops.Load()), 6*float64(tracked.syncs.Load())/float64(ops.Load()))
+		if perOp := float64(tracked.syncs.Load()) / float64(ops.Load()); perOp > atMost {
+			t.Errorf("%s: %.2f fsyncs per operation, want at most %.2f", name, perOp, atMost)
+		}
 	}
-	run("1 caller, back to back", 1, 0, 200)
-	run("8 callers, back to back", 8, 0, 800)
-	run("50 callers, back to back", 50, 0, 2000)
-	run("50 callers, one operation pair per 20 ms", 50, 20*time.Millisecond, 500)
-	run("4 callers, one operation pair per 80 ms", 4, 80*time.Millisecond, 40) // about 100 operations a second
+	run("1 caller, back to back", 1, 0, 200, 1.0)
+	run("8 callers, back to back", 8, 0, 800, 0.5)
+	run("50 callers, back to back", 50, 0, 2000, 0.15)
+	run("50 callers, one operation pair per 20 ms", 50, 20*time.Millisecond, 500, 0.3)
+	run("4 callers, one operation pair per 80 ms", 4, 80*time.Millisecond, 40, 1.0) // about 100 operations a second: little to share
 }
