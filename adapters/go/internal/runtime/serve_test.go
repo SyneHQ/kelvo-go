@@ -617,3 +617,19 @@ func TestServeLoop_SecretlessRequestsUseBoundCredentials(t *testing.T) {
 		t.Fatalf("session opened %d times, with DSN %q", len(opened), opened[0].DSN)
 	}
 }
+
+// A worker is bound to one database and schema of a connection: a request for
+// another one is a cross-connection request, not a secretless reuse.
+func TestServeLoop_BoundKeyIncludesDatabaseAndSchema(t *testing.T) {
+	h := startServe(t, sessionRunner(&fakeQuerySession{}, nil), true)
+	h.request(1, sqlRequest("op-1", "SELECT 1"))
+	h.terminals(1)
+	other := sqlRequest("op-2", "SELECT 1")
+	other.Source.Schema, other.Request.Connection.Schema = "sales", "sales"
+	other.RequestSHA256, _ = operations.Digest(other.Request)
+	h.request(2, other)
+	if f := h.next(); f.Type != frame.Error || f.Stream != 2 || !strings.Contains(string(f.Payload), "cross-tenant") {
+		t.Fatalf("request for another schema accepted: %v %q", f.Type, f.Payload)
+	}
+	h.wantDone(true)
+}

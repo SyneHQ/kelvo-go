@@ -15,10 +15,11 @@ import (
 	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
-// SessionCacheKey formats the unique cache key for a connection.
-// Binds tenant ID, app team, connection ID, and source revision.
-func SessionCacheKey(tenantID, appTeam, connectionID, revision string) string {
-	return fmt.Sprintf("%s\x00%s\x00%s\x00%s", tenantID, appTeam, connectionID, revision)
+// SessionCacheKey formats the unique cache key for a connection. It binds
+// tenant ID, app team, connection ID, database, schema and source revision:
+// one worker never serves another database or schema of the same connection.
+func SessionCacheKey(tenantID, appTeam, connectionID, database, schema, revision string) string {
+	return fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%s", tenantID, appTeam, connectionID, database, schema, revision)
 }
 
 // IsServeEligible verifies whether a request is allowed to run on a warm worker.
@@ -178,7 +179,7 @@ func (r Runner) Serve(parent context.Context, input io.Reader, output io.Writer)
 				return fatal(stream, "operation not eligible for warm serve mode", errors.New("serve: operation not eligible for warm worker"))
 			}
 
-			key := SessionCacheKey(request.Source.TenantID, request.AppTeam, request.Source.ConnectionID, request.Source.Revision)
+			key := SessionCacheKey(request.Source.TenantID, request.AppTeam, request.Source.ConnectionID, request.Source.Database, request.Source.Schema, request.Source.Revision)
 			if boundKey == "" {
 				boundKey = key
 			} else if boundKey != key {
