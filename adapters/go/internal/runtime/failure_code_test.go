@@ -97,7 +97,9 @@ func TestExecute_SourceEffectKeepsSourceFailed(t *testing.T) {
 		{1, operations.EffectPartial, "SOURCE_FAILED"},
 	} {
 		session := &processSession{errorResult: unsupported, result: adapter.ChangeResult{Outcome: "failed", Completed: tc.completed}}
-		runner := Runner{Open: func(context.Context, adapter.ConnectionSpec, operations.Request) (adapter.Session, error) { return session, nil }}
+		runner := Runner{Open: func(context.Context, adapter.ConnectionSpec, operations.Request) (adapter.Session, error) {
+			return session, nil
+		}}
 		receipt, err := runner.execute(context.Background(), runtimeRequest(t, operations.StatementExecute), io.Discard)
 		if err == nil || receipt.Effect != tc.wantEffect || receipt.ErrorCode != tc.wantCode {
 			t.Fatalf("completed=%d: receipt = %s/%s, want %s/%s", tc.completed, receipt.Effect, receipt.ErrorCode, tc.wantEffect, tc.wantCode)
