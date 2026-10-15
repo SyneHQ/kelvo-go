@@ -277,7 +277,7 @@ type dynamicReads struct {
 	grantTTL atomic.Int64 // how long each read's delegation lasts
 	hold     atomic.Pointer[chan struct{}]
 	deny     sync.Map // grant -> true: 403, this principal not permitted
-	gone     sync.Map // grant -> true: 404, the saved connection is gone
+	gone     sync.Map // grant -> true: 404, the resolver did not find the connection
 }
 
 func newDynamicReads(t *testing.T) *dynamicReads {
@@ -611,10 +611,10 @@ func TestReadAuthorizationPrincipalDenialExpiresOnlyItself(t *testing.T) {
 	}
 }
 
-// A saved connection that is gone is gone for everyone: its workers are
-// killed although another principal's authorization is still fresh, and that
-// authorization ends too.
-func TestReadAuthorizationSourceGoneKillsForEveryone(t *testing.T) {
+// A connection resolver's not-found is bound to one principal's delegation
+// (its job, worker and claim), so it ends only that principal's authorization:
+// another principal still fresh on the worker keeps it.
+func TestReadAuthorizationResolverNotFoundExpiresOnlyThePrincipal(t *testing.T) {
 	d := newDynamicReads(t)
 	d.mgr.cfg.ReauthorizeEvery = 150 * time.Millisecond
 	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err != nil {
@@ -626,14 +626,41 @@ func TestReadAuthorizationSourceGoneKillsForEveryone(t *testing.T) {
 	}
 	d.gone.Store("grant-p1-saved-a", true)
 	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err == nil {
-		t.Fatal("read served for a connection that is gone")
+		t.Fatal("read served for a connection the resolver did not find")
 	}
-	waitFor(t, func() bool { return d.fs.procs[0].killed.Load() })
-	d.mgr.authMu.Lock()
-	left := len(d.mgr.auths)
-	d.mgr.authMu.Unlock()
-	if left != 0 || d.mgr.metrics.EvictionsAuth.Load() != 1 {
-		t.Fatal("a gone connection kept workers or authorizations:", left, d.mgr.metrics.EvictionsAuth.Load())
+	if d.fs.procs[0].killed.Load() || d.mgr.metrics.EvictionsAuth.Load() != 0 {
+		t.Fatal("a resolver not-found killed a worker another principal uses")
+	}
+	if err := d.read(context.Background(), "p2", "saved-a", "SELECT 1"); err != nil {
+		t.Fatal("the other principal was refused:", err)
+	}
+}
+
+// A source credential gone from the node's own secret store is gone for every
+// principal: its workers are killed although another principal's
+// authorization is fresh, and every authorization of them ends.
+func TestReadAuthorizationSourceGoneKillsForEveryone(t *testing.T) {
+	launcher := &mockLauncher{}
+	mgr, exec := newTestPool(t, launcher)
+	req := opReq("op-gone")
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, req, &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	key := warmKey(req.Source.TenantID, req.AppTeam, req.Source.ConnectionID, req.Source.Database, req.Source.Schema, req.Source.Revision)
+	p1 := &readAuthorization{workerKey: key, at: time.Now()}
+	mgr.storeAuthorization("p1", p1)
+	mgr.storeAuthorization("p2", &readAuthorization{workerKey: key, at: time.Now()})
+	if err := mgr.revokeAuthorization(context.Background(), "p1", p1, errSourceCredentialGone); err != nil {
+		t.Fatal(err)
+	}
+	mgr.mu.Lock()
+	workers := len(mgr.workers)
+	mgr.mu.Unlock()
+	mgr.authMu.Lock()
+	left := len(mgr.auths)
+	mgr.authMu.Unlock()
+	if workers != 0 || left != 0 || mgr.metrics.EvictionsAuth.Load() != 1 {
+		t.Fatal("a gone source kept workers or authorizations:", workers, left, mgr.metrics.EvictionsAuth.Load())
 	}
 }
 

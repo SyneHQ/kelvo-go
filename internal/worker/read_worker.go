@@ -294,7 +294,7 @@ func (e *Executor) authorizeReadSource(ctx context.Context, execution delegation
 		return nil, "", err // the secret store failed: not a denial
 	}
 	if !present {
-		return nil, "", query.NewError("NOT_FOUND", "Source credential not found")
+		return nil, "", errSourceCredentialGone
 	}
 	db, ok := readWorkerDatabase(dsn, id.database)
 	if !ok {
