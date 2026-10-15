@@ -1,0 +1,38 @@
+diff --git a/internal/worker/read_worker.go b/internal/worker/read_worker.go
+index 87d5b19..1db8aae 100644
+--- a/internal/worker/read_worker.go
++++ b/internal/worker/read_worker.go
+@@ -9,6 +9,7 @@ import (
+ 	"encoding/hex"
+ 	"encoding/json"
+ 	"errors"
++	"github.com/apache/arrow-go/v18/arrow"
+ 	"io"
+ 	"net/url"
+ 	"strings"
+@@ -44,6 +45,11 @@ const readWorkerMaxRows, readWorkerMaxBytes = 1_000_000, 64 << 20
+ // when a new worker is needed, a read authorizes the source again; a failure
+ // or a changed revision kills the workers of the old authorization.
+ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation.Execution, dynamic bool, resolverRequest, r query.Request, sink query.Sink) (stats query.Stats, resultErr error, handled bool) {
++	// MEASUREMENT-ONLY WORKAROUND, not a fix: the job's batch count was never set on
++	// this path, so the client's receipt check fails every read (PROTOCOL_ERROR).
++	counter := &batchCountingSink{Sink: sink}
++	sink = counter
++	defer func() { stats.Batches = counter.batches }()
+ 	pool := e.WarmPool
+ 	eligible := pool != nil && pool.Config().Enabled && pool.Adapter.Binary != "" && r.Mode == "native" && r.Mongo == nil && !r.ScanDiagnostics &&
+ 		!access.Restricted(ctx) && e.Limits.MaxRows <= readWorkerMaxRows && e.Limits.MaxBytes <= readWorkerMaxBytes
+@@ -302,3 +308,13 @@ func readWorkerDatabase(dsn, want string) (string, bool) {
+ 	}
+ 	return database, true
+ }
++
++type batchCountingSink struct {
++	query.Sink
++	batches int64
++}
++
++func (c *batchCountingSink) Write(b arrow.RecordBatch) error {
++	c.batches++
++	return c.Sink.Write(b)
++}
