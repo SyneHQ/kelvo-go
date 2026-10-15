@@ -268,7 +268,8 @@ func TestDurableOperationsNeverUseReadWorkers(t *testing.T) {
 	}
 }
 
-// holdingServe holds reads of "SELECT 'hold'" until release is closed.
+// holdingServe holds reads whose SQL starts with "SELECT 'hold'" until release
+// is closed.
 func holdingServe(release chan struct{}) func(p *fakeWorkerProcess) {
 	return func(p *fakeWorkerProcess) {
 		var mu sync.Mutex
@@ -278,7 +279,7 @@ func holdingServe(release chan struct{}) func(p *fakeWorkerProcess) {
 			}
 			var r adapter.ProcessRequest
 			_ = json.Unmarshal(f.Payload, &r)
-			if r.Request.Spec.Query != nil && r.Request.Spec.Query.SQL == "SELECT 'hold'" {
+			if r.Request.Spec.Query != nil && strings.HasPrefix(r.Request.Spec.Query.SQL, "SELECT 'hold'") {
 				go func() { <-release; mu.Lock(); replyOK(p.stdoutW, f.Stream, f.Payload); mu.Unlock() }()
 				return
 			}
@@ -340,6 +341,49 @@ func TestCapacityWaitsShareOneDeadline(t *testing.T) {
 	waited := time.Since(start)
 	if err == nil || waited > timeout+timeout/2 {
 		t.Fatalf("waits stacked: refused after %v (queue_timeout %v): %v", waited, timeout, err)
+	}
+}
+
+// The retry hint covers the whole wait, tenant caps included, and a refusal
+// for a full wait queue returns at once without claiming it waited.
+func TestRetryHintCoversWholeWait(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	fs := &fakeSet{serve: holdingServe(release)}
+	e, mgr := readWorkerExecutor(t, fs)
+	mgr.cfg.MaxInFlight, mgr.cfg.MaxPerKey = 1, 1
+	mgr.caps = &admission.Caps{MaxPerTenant: 2, MaxWaiting: 64}
+	const timeout = 1700 * time.Millisecond
+	mgr.cfg.QueueTimeout = timeout
+	read := func(sql string) error {
+		_, err := e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "app", SQL: sql}, &workerTestSink{})
+		return err
+	}
+	go func() { _ = read("SELECT 'hold'") }() // the worker's only slot, cap 1 of 2
+	waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 1 })
+	go func() { _ = read("SELECT 'hold' AS second") }() // cap 2 of 2, waits for the worker
+	waitFor(t, func() bool { mgr.mu.Lock(); defer mgr.mu.Unlock(); return len(mgr.waiters) == 1 })
+	// This read waits on the caps until the second times out, then on the
+	// full worker for what is left of its own deadline: about 1.7s in all.
+	err := read("SELECT 3")
+	var public *query.Error
+	if !errors.As(err, &public) || !strings.Contains(public.Message, "retry after 2s") {
+		t.Fatal("retry hint left out the caps wait:", err)
+	}
+
+	// A fresh cap of one, taken here; one read waits; the next is refused.
+	mgr.caps = &admission.Caps{MaxPerTenant: 1, MaxWaiting: 1}
+	held, err := mgr.caps.Acquire(context.Background(), "static", "app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held()
+	go func() { _ = read("SELECT 4") }()
+	waitFor(t, func() bool { return mgr.caps.Waiting() == 1 })
+	start := time.Now()
+	err = read("SELECT 5")
+	if !errors.As(err, &public) || !strings.Contains(public.Message, "the wait queue is full") || time.Since(start) > 100*time.Millisecond {
+		t.Fatal("full wait queue did not refuse at once, or claimed a wait:", err, time.Since(start))
 	}
 }
 

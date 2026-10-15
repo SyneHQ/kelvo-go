@@ -187,8 +187,20 @@ func TestValidateNodeOperationsProtectsInteractiveShare(t *testing.T) {
 		t.Fatal("interactive share without a spare slot accepted", err)
 	}
 	memory := base()
+	memory.Operations.WarmPool = nil
 	memory.Resources.QueryReserveMemoryMB = 12 // < 3 x 4 MiB + 2 MiB
 	if err := validateNodeOperations(memory); !errors.Is(err, errInteractiveDownload) {
 		t.Fatal("interactive reserve smaller than a result download accepted", err)
+	}
+	// Four workers x (64 MiB + 160 MiB overhead + 16 x 8 MiB buffers) + a
+	// 14 MiB download is 1422 MiB.
+	workers := base()
+	workers.Resources.QueryReserveMemoryMB = 1421
+	if err := validateNodeOperations(workers); !errors.Is(err, errInteractiveMemory) {
+		t.Fatal("interactive reserve smaller than its read workers accepted", err)
+	}
+	workers.Resources.QueryReserveMemoryMB = 1422
+	if err := validateNodeOperations(workers); errors.Is(err, errInteractiveMemory) {
+		t.Fatal("an exactly sufficient interactive reserve was refused", err)
 	}
 }
