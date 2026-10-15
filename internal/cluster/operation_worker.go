@@ -53,7 +53,7 @@ func NewOperationWorker(policy Policy, store Store, ledger *operationstore.Store
 		return nil, errOperationConfig
 	}
 	policy, err := clonePolicy(policy)
-	if err != nil || ValidatePolicy(policy) != nil || policy.Operations == nil || operationStorePolicy(policy) != ledger.Policy() || !reflect.DeepEqual(store.Policy(), policy) || cfg.Runtime.Concurrency > policy.Workers[cfg.Runtime.WorkerID] {
+	if err != nil || ValidatePolicy(policy) != nil || policy.Operations == nil || operationStorePolicy(policy) != ledger.Policy() || !reflect.DeepEqual(store.Policy(), policy) || policy.Workers[cfg.Runtime.WorkerID] < 1 {
 		return nil, errOperationConfig
 	}
 	if _, ok := store.(workerLeaseReader); !ok {

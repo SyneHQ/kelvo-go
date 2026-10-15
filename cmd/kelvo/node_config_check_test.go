@@ -173,3 +173,38 @@ func TestNodeCheckConfigRejectsOtherCommands(t *testing.T) {
 		}
 	}
 }
+
+// Read capacity is a node setting. It is validated by the check, and it is not
+// bounded by policy.workers, which is part of the cluster metadata record.
+func TestNodeCheckConfigReadWorkersAreNodeSettings(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Operation artifact validation requires Linux")
+	}
+	path, config, _ := nodeCheckFixture(t, "127.0.0.1:1")
+	// policy.workers stays {a1: 1}; capacity is raised only through node settings.
+	raised := strings.Replace(config, "resources: {max_concurrent: 1,", "resources: {max_concurrent: 4,", 1)
+	raised = strings.Replace(raised, "max_concurrent: 1\n  max_downloads", "max_concurrent: 4\n  max_downloads", 1)
+	for name, tc := range map[string]struct {
+		body  string
+		valid bool
+	}{
+		"operations above policy.workers": {raised, true},
+		"read workers with defaults":      {raised + "read_workers: {max_workers: 4}\n", true},
+		"read workers all settings":       {raised + "read_workers: {max_workers: 2, max_in_flight: 32, pool_size: 8, idle_ttl: 10m, queue_wait: 500ms}\n", true},
+		"read workers without capacity":   {raised + "read_workers: {max_in_flight: 16}\n", false},
+		"read workers above admission":    {raised + "read_workers: {max_workers: 5}\n", false},
+		"read workers bad pool":           {raised + "read_workers: {max_workers: 1, pool_size: 65}\n", false},
+		"read workers unknown key":        {raised + "read_workers: {max_workers: 1, secret_canary: x}\n", false},
+	} {
+		if err := os.WriteFile(path, []byte(tc.body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		err, output := nodeCheckRunCaptured(t, []string{"node", "--check-config", "--config", path})
+		if tc.valid != (err == nil) {
+			t.Fatalf("%s: valid=%v err=%v output=%q", name, tc.valid, err, output)
+		}
+		if !tc.valid && strings.Contains(output+fmt.Sprint(err), "canary") {
+			t.Fatalf("%s: configuration value leaked: %q", name, output)
+		}
+	}
+}
