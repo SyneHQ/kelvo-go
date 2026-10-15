@@ -260,9 +260,17 @@ type authFlight struct {
 
 // authorizeOnce runs authorize for key once among concurrent callers: each
 // principal authorizes once per window. If the leading caller's own context
-// ends, waiters run their own instead of taking its cancellation.
-func (m *WarmPoolManager) authorizeOnce(ctx context.Context, key string, authorize func() (*readAuthorization, string, error)) (*readAuthorization, string, error) {
+// ends, the waiters elect a new leader rather than taking its cancellation.
+// With reuse, a caller that finds a fresh authorization (another caller just
+// stored it) uses it instead of authorizing again; a caller that needs
+// credentials for a new worker passes reuse false.
+func (m *WarmPoolManager) authorizeOnce(ctx context.Context, key string, reuse bool, authorize func() (*readAuthorization, string, error)) (*readAuthorization, string, error) {
 	for {
+		if reuse {
+			if a := m.freshAuthorization(key); a != nil {
+				return a, "", nil
+			}
+		}
 		m.authMu.Lock()
 		if m.authFlights == nil {
 			m.authFlights = map[string]*authFlight{}
