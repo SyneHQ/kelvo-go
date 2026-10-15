@@ -66,6 +66,26 @@ func TestReserveWorkerClassifiesCapacity(t *testing.T) {
 			t.Fatal(err, time.Since(start))
 		}
 	})
+	t.Run("the launch's own deadline ending a wait is capacity", func(t *testing.T) {
+		short, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+		pool, _ := newPool(t) // short of a slot
+		if _, err := reserveWorker(withCapacityWait(short, time.Now().Add(5*time.Second)), pool, worker); !errors.Is(err, errWarmUnavailable) {
+			t.Fatal("slot wait:", err)
+		}
+		memory, err := admission.New(admission.Limits{MaxConcurrent: 10, MemoryBytes: 100, ScratchBytes: 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := memory.Acquire(context.Background(), admission.Request{MemoryBytes: 95}); err != nil {
+			t.Fatal(err)
+		}
+		short2, cancel2 := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel2()
+		if _, err := reserveWorker(withCapacityWait(short2, time.Now().Add(5*time.Second)), memory, worker); !errors.Is(err, errWarmUnavailable) {
+			t.Fatal("memory wait:", err)
+		}
+	})
 	t.Run("a wait takes capacity released in time", func(t *testing.T) {
 		pool, held := newPool(t)
 		go func() { time.Sleep(50 * time.Millisecond); held.Release() }()

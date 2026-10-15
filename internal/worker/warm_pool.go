@@ -88,6 +88,10 @@ func (c WarmPoolConfig) Validate() error {
 	if c.QueueTimeout < 10*time.Millisecond || c.QueueTimeout > time.Minute {
 		return errors.New("warm_pool: queue_timeout must be between 10ms and 1m")
 	}
+	// A capacity wait longer than a launch would end as a failed launch.
+	if c.QueueTimeout >= launchTimeout {
+		return errors.New("warm_pool: queue_timeout must be shorter than the 30s worker launch timeout")
+	}
 	if c.WorkerMemoryMB < 16 || c.WorkerMemoryMB > 1024 {
 		return errors.New("warm_pool: worker_memory_mb must be between 16 and 1024")
 	}
@@ -154,23 +158,22 @@ type WorkerLauncher interface {
 }
 
 type warmWorkerEntry struct {
-	id                    string
-	key                   string
-	tenantID              string
-	appTeam               string
-	connectionID          string
-	revision              string
-	credentialsValidUntil int64
-	lastActive            time.Time
-	proc                  WorkerProcess
-	cleanup               func() error
-	inFlight              int           // guarded by the manager's mu
-	ready                 chan struct{} // closed once the launch finished
-	launchErr             error         // set before ready is closed
-	sw                    *frame.SyncWriter
-	nextStream            atomic.Uint32
-	killOnce              sync.Once
-	dead                  chan struct{} // closed once the worker is killed and cleaned up
+	id           string
+	key          string
+	tenantID     string
+	appTeam      string
+	connectionID string
+	revision     string
+	lastActive   time.Time
+	proc         WorkerProcess
+	cleanup      func() error
+	inFlight     int           // guarded by the manager's mu
+	ready        chan struct{} // closed once the launch finished
+	launchErr    error         // set before ready is closed
+	sw           *frame.SyncWriter
+	nextStream   atomic.Uint32
+	killOnce     sync.Once
+	dead         chan struct{} // closed once the worker is killed and cleaned up
 
 	// The demux reader owns stdout and routes frames to streams by ID.
 	smu     sync.Mutex
@@ -339,11 +342,16 @@ type slotWaiter struct {
 }
 
 // wakeLocked wakes the first waiter not yet woken that can use a freed slot:
-// one waiting for key's workers, or any waiter when key is "" (a worker
-// ended or became idle, so any key may launch or evict). One slot, one wake.
+// one waiting for key's workers, or, when key is "" (a worker ended or became
+// idle), the first whose key may still add a worker. A waiter at its key's
+// max_per_key cannot use that slot and is passed over, not woken in vain.
+// One slot, one wake.
 func (m *WarmPoolManager) wakeLocked(key string) bool {
 	for _, w := range m.waiters {
 		if key != "" && w.key != key {
+			continue
+		}
+		if key == "" && m.keyWorkersLocked(w.key) >= m.cfg.MaxPerKey {
 			continue
 		}
 		select {
@@ -353,6 +361,17 @@ func (m *WarmPoolManager) wakeLocked(key string) bool {
 		}
 	}
 	return false
+}
+
+// ponytail: a scan of workers per waiter; index workers by key if the pool grows large.
+func (m *WarmPoolManager) keyWorkersLocked(key string) int {
+	n := 0
+	for _, w := range m.workers {
+		if w.key == key {
+			n++
+		}
+	}
+	return n
 }
 
 func (m *WarmPoolManager) keyWaitingLocked(key string) bool {
@@ -444,9 +463,6 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 		if best != nil {
 			best.inFlight++
 			best.lastActive = time.Now()
-			// This request was resolved and authorized on its own; the worker
-			// now serves under its credential window, not the first request's.
-			best.credentialsValidUntil = input.CredentialsValidUntil
 			m.metrics.Hits.Add(1)
 			m.mu.Unlock()
 			// A worker still launching is shared: wait for its handshake.
@@ -485,17 +501,16 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 
 		if mayLaunch && (keyCount == 0 || !scaleOutRefused) && keyCount < m.cfg.MaxPerKey && len(m.workers) < m.cfg.MaxWorkers {
 			entry := &warmWorkerEntry{
-				id:                    fmt.Sprintf("worker-%d", time.Now().UnixNano()),
-				key:                   key,
-				tenantID:              input.Source.TenantID,
-				appTeam:               input.AppTeam,
-				connectionID:          input.Source.ConnectionID,
-				revision:              input.Source.Revision,
-				credentialsValidUntil: input.CredentialsValidUntil,
-				lastActive:            time.Now(),
-				inFlight:              1,
-				ready:                 make(chan struct{}),
-				dead:                  make(chan struct{}),
+				id:           fmt.Sprintf("worker-%d", time.Now().UnixNano()),
+				key:          key,
+				tenantID:     input.Source.TenantID,
+				appTeam:      input.AppTeam,
+				connectionID: input.Source.ConnectionID,
+				revision:     input.Source.Revision,
+				lastActive:   time.Now(),
+				inFlight:     1,
+				ready:        make(chan struct{}),
+				dead:         make(chan struct{}),
 			}
 			m.workers[entry.id] = entry
 			m.mu.Unlock()
@@ -543,6 +558,11 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			// Every slot belongs to other connections. Evict the least recently
 			// used idle one and launch for this connection once it has ended (its
 			// reservation is then free). If every worker is busy, wait below.
+			// A read already out of time evicts nothing on its way out.
+			if !time.Now().Before(queueBy) {
+				m.mu.Unlock()
+				return nil, nil, errWorkerBusy
+			}
 			m.mu.Unlock()
 			if m.evictIdleOther(ctx, key, queueBy) {
 				continue
@@ -1141,8 +1161,11 @@ func (m *WarmPoolManager) Drain(ctx context.Context) error {
 	}
 	m.closed = true
 	close(m.stopRpr)
-	for range m.waiters {
-		m.wakeLocked("")
+	for _, w := range m.waiters {
+		select {
+		case w.ready <- struct{}{}:
+		default:
+		}
 	}
 
 	workers := make([]*warmWorkerEntry, 0, len(m.workers))
