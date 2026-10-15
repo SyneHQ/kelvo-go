@@ -299,8 +299,20 @@ func TestContainedWarmAdapterReusesPostgresConnection(t *testing.T) {
 //   - a launch that fails (here, a worker too large for the node) still falls
 //     back to the one-shot path, since nothing was sent.
 func TestContainedWarmPoolCapacityContract(t *testing.T) {
+	// The node has room for one worker: through the spare-slot rule when the
+	// classes share capacity, through the interactive share when separate.
+	t.Run("shared classes", func(t *testing.T) {
+		warmPoolCapacityContract(t, admission.Limits{MaxConcurrent: 2, MemoryBytes: 512 << 20, ScratchBytes: 64 << 20})
+	})
+	t.Run("separate classes", func(t *testing.T) {
+		warmPoolCapacityContract(t, admission.Limits{MaxConcurrent: 3, MemoryBytes: 512 << 20, ScratchBytes: 64 << 20,
+			ReservedSlots: 1, ReservedMemoryBytes: 256 << 20, ReservedScratchBytes: 32 << 20, SeparateClasses: true})
+	})
+}
+
+func warmPoolCapacityContract(t *testing.T, limits admission.Limits) {
 	executor, _, _ := containedExecutor(t)
-	pool, err := admission.New(admission.Limits{MaxConcurrent: 2, MemoryBytes: 512 << 20, ScratchBytes: 64 << 20})
+	pool, err := admission.New(limits)
 	if err != nil {
 		t.Fatal(err)
 	}
