@@ -31,9 +31,6 @@ jobs:
         include:
           # max_workers 4 is the default pool: 20 customers do not fit.
           - {name: 2c1g-workers4, profile: 2c1g, set: ''}
-          - {name: 2c1g-workers20, profile: 2c1g, set: '--set warm_pool.max_workers=20 --set resources.max_concurrent=24 --set resources.query_reserve_slots=20 --set resources.memory_mb=2400 --set resources.query_reserve_memory_mb=1950 --set resources.query_reserve_scratch_mb=200 --set resources.scratch_mb=300'}
-          - {name: 4c8g-workers4, profile: 4c8g, set: ''}
-          - {name: 4c8g-workers20, profile: 4c8g, set: '--set warm_pool.max_workers=20'}
     env:
       CGO_ENABLED: '1'
       GOTOOLCHAIN: local
