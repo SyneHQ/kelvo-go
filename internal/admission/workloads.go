@@ -9,8 +9,8 @@ const (
 	ClassInteractive Class = "interactive"
 	ClassExport      Class = "export"
 	ClassRefresh     Class = "refresh"
-	// ClassOperation is background work: durable operations and analysis
-	// (federated) queries. Read workers stay interactive.
+	// ClassOperation is background work: durable operations, which include
+	// analysis jobs. Query API reads and read workers stay interactive.
 	ClassOperation Class = "operation"
 )
 

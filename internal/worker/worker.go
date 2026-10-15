@@ -264,14 +264,10 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		}
 		phases.enter(telemetry.PhaseNodeAdmission)
 		waitStart := time.Now()
-		// Federated queries are analysis work and take the background class;
-		// native reads that did not reach a read worker stay interactive.
-		class := admission.ClassInteractive
-		if r.Mode == "federated" {
-			class = admission.ClassOperation
-		}
+		// Query API reads, federated or native, are interactive. Analysis jobs
+		// are durable operations and take the background class there.
 		reservation, err := e.ResourcePool.Acquire(ctx, admission.Request{
-			Class:        class,
+			Class:        admission.ClassInteractive,
 			MemoryBytes:  memoryBytes + e.ResourceOverheadBytes,
 			ScratchBytes: int64(e.Limits.MaxTempMB) << 20,
 		})
