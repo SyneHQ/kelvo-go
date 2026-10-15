@@ -184,8 +184,7 @@ type WarmPoolManager struct {
 
 	mu      sync.Mutex
 	workers map[string]*warmWorkerEntry // id -> entry
-	waiting int                         // requests waiting for a slot on a full worker
-	changed chan struct{}               // closed and replaced whenever a slot frees
+	waiters []*slotWaiter               // FIFO of reads waiting for a slot
 	closed  bool
 	stopRpr chan struct{}
 	// backoff holds, per key, the window after a failed launch during which
@@ -211,7 +210,6 @@ func NewWarmPoolManager(cfg WarmPoolConfig, launcher WorkerLauncher) (*WarmPoolM
 		launcher: launcher,
 		workers:  make(map[string]*warmWorkerEntry),
 		backoff:  make(map[string]launchBackoff),
-		changed:  make(chan struct{}),
 		stopRpr:  make(chan struct{}),
 	}
 	if cfg.Enabled {
@@ -282,6 +280,7 @@ func (m *WarmPoolManager) reapExpired() {
 				delete(m.workers, id)
 				toEvict = append(toEvict, w)
 				m.metrics.EvictionsTTL.Add(1)
+				m.wakeLocked("")
 			}
 		}
 	}
@@ -293,8 +292,16 @@ func (m *WarmPoolManager) reapExpired() {
 }
 
 // killWorker is idempotent: a worker may be killed by its demux reader, a
-// failed request and drain at once.
+// failed request and drain at once. It waits for the worker's launch to end,
+// so a worker evicted while it launched is killed once it has a process.
 func (m *WarmPoolManager) killWorker(w *warmWorkerEntry) {
+	<-w.ready
+	w.stop()
+}
+
+// stop kills w's process, if it has one, and closes dead. Every worker ends
+// here, a failed launch included, so a wait on dead always ends.
+func (w *warmWorkerEntry) stop() {
 	w.killOnce.Do(func() {
 		defer close(w.dead)
 		if w.proc != nil {
@@ -315,14 +322,56 @@ func (m *WarmPoolManager) evictLocked(w *warmWorkerEntry, counter *atomic.Int64)
 	if m.workers[w.id] == w {
 		delete(m.workers, w.id)
 		counter.Add(1)
+		m.wakeLocked("")
 	}
-	m.broadcastLocked()
 	go m.killWorker(w)
 }
 
-func (m *WarmPoolManager) broadcastLocked() {
-	close(m.changed)
-	m.changed = make(chan struct{})
+// slotWaiter is a read waiting for a stream slot. ready holds at most one
+// wake-up; a waiter that leaves with one unused hands it on.
+type slotWaiter struct {
+	key   string
+	ready chan struct{}
+}
+
+// wakeLocked wakes the first waiter not yet woken that can use a freed slot:
+// one waiting for key's workers, or any waiter when key is "" (a worker
+// ended or became idle, so any key may launch or evict). One slot, one wake.
+func (m *WarmPoolManager) wakeLocked(key string) bool {
+	for _, w := range m.waiters {
+		if key != "" && w.key != key {
+			continue
+		}
+		select {
+		case w.ready <- struct{}{}:
+			return true
+		default: // already woken, not yet run
+		}
+	}
+	return false
+}
+
+func (m *WarmPoolManager) keyWaitingLocked(key string) bool {
+	for _, w := range m.waiters {
+		if w.key == key {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *WarmPoolManager) removeWaiterLocked(w *slotWaiter) {
+	for i, x := range m.waiters {
+		if x == w {
+			m.waiters = append(m.waiters[:i], m.waiters[i+1:]...)
+			break
+		}
+	}
+	select {
+	case <-w.ready:
+		m.wakeLocked("") // hand on a wake-up it did not use
+	default:
+	}
 }
 
 func (m *WarmPoolManager) evictStaleRevisionsLocked(tenantID, appTeam, connectionID, currentRevision string) {
@@ -333,23 +382,29 @@ func (m *WarmPoolManager) evictStaleRevisionsLocked(tenantID, appTeam, connectio
 	}
 }
 
-// errWorkerBusy is a full worker that stayed full for queue_timeout. It is not
-// a fallback: fifty one-shot children is the collapse the pool exists to avoid.
+// errWorkerBusy is a read that found no capacity within queue_timeout. It is
+// not a fallback: fifty one-shot children is the collapse the pool exists to
+// avoid.
 var errWorkerBusy = query.NewError("RESOURCE_EXHAUSTED", "Read worker is busy; retry after 1s")
 
 // Acquire takes a stream slot on a warm worker for input's key, launching one
-// when the key has none. A key whose workers are all full waits up to
-// queue_timeout for a slot, then gets errWorkerBusy. errWarmUnavailable means
-// no worker could be obtained and nothing was sent.
+// when the key has none. Every wait for capacity (a slot, an evicted worker,
+// a node reservation) is bounded by one queue_timeout and ends in
+// errWorkerBusy. errWarmUnavailable or a launch error means no worker could
+// start and nothing was sent: only then does the read fall back.
 func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest) (*warmWorkerEntry, func(error), error) {
 	key := fmt.Sprintf("%s\x00%s\x00%s\x00%s", input.Source.TenantID, input.AppTeam, input.Source.ConnectionID, input.Source.Revision)
-	var deadline <-chan time.Time
+	queueBy := time.Now().Add(m.cfg.QueueTimeout)
+	var waiter *slotWaiter
 	var startWait time.Time
-	missed, waiting := false, false
+	missed := false
+	// waitCapacity lets a launch wait for a node reservation. It is set once
+	// no idle worker is left to evict.
+	waitCapacity := false
 	defer func() {
-		if waiting {
+		if waiter != nil {
 			m.mu.Lock()
-			m.waiting--
+			m.removeWaiterLocked(waiter)
 			m.mu.Unlock()
 			m.metrics.QueueWaitMS.Add(time.Since(startWait).Milliseconds())
 		}
@@ -363,7 +418,8 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 		}
 		m.evictStaleRevisionsLocked(input.Source.TenantID, input.AppTeam, input.Source.ConnectionID, input.Source.Revision)
 
-		// The least loaded worker for this key with a free slot.
+		// The least loaded worker for this key with a free slot. A newcomer
+		// does not take one ahead of reads already queued for this key.
 		var best *warmWorkerEntry
 		keyCount := 0
 		for _, w := range m.workers {
@@ -374,6 +430,9 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			if w.inFlight < m.cfg.maxInFlight() && (best == nil || w.inFlight < best.inFlight) {
 				best = w
 			}
+		}
+		if best != nil && waiter == nil && m.keyWaitingLocked(key) {
+			best = nil
 		}
 		if best != nil {
 			best.inFlight++
@@ -390,11 +449,19 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 				m.releaseWorker(best, nil)
 				return nil, nil, ctx.Err()
 			}
-			if best.launchErr != nil {
-				m.releaseWorker(best, nil)
+			if best.launchErr == nil {
+				return best, func(err error) { m.releaseWorker(best, err) }, nil
+			}
+			m.releaseWorker(best, nil)
+			// A joiner shares the launcher's outcome: a failed launch falls back,
+			// a capacity refusal keeps this read waiting within its own deadline.
+			if !errors.Is(best.launchErr, errWarmUnavailable) {
 				return nil, nil, errWarmUnavailable
 			}
-			return best, func(err error) { m.releaseWorker(best, err) }, nil
+			if !time.Now().Before(queueBy) {
+				return nil, nil, errWorkerBusy
+			}
+			continue
 		}
 		if !missed {
 			missed = true
@@ -407,8 +474,9 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			m.mu.Unlock()
 			return nil, nil, errWarmUnavailable
 		}
+		mayLaunch := !backingOff && (waiter != nil || !m.keyWaitingLocked(key))
 
-		if !backingOff && keyCount < m.cfg.MaxPerKey && len(m.workers) < m.cfg.MaxWorkers {
+		if mayLaunch && keyCount < m.cfg.MaxPerKey && len(m.workers) < m.cfg.MaxWorkers {
 			entry := &warmWorkerEntry{
 				id:                    fmt.Sprintf("worker-%d", time.Now().UnixNano()),
 				key:                   key,
@@ -424,9 +492,13 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			}
 			m.workers[entry.id] = entry
 			m.mu.Unlock()
+			var reserveBy time.Time
+			if waitCapacity {
+				reserveBy = queueBy
+			}
 			// The launch belongs to the pool, not to this caller: if this
 			// caller leaves, others sharing the launching worker still get it.
-			go func() { _ = m.launch(e, cfg, entry) }()
+			go func() { _ = m.launch(e, cfg, entry, reserveBy) }()
 			select {
 			case <-entry.ready:
 			case <-ctx.Done():
@@ -439,23 +511,27 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			m.releaseWorker(entry, nil)
 			// Only a launch that failed falls back to one-shot. A launch the node
 			// refused for want of a reservation is capacity: free an idle worker
-			// of another connection, or wait below like a read for a full worker.
+			// of another connection, else let the next launch wait for a
+			// reservation until the deadline.
 			if !errors.Is(entry.launchErr, errWarmUnavailable) {
 				return nil, nil, entry.launchErr
 			}
-			if m.evictIdleOther(ctx, key) {
-				continue
+			if waitCapacity || !time.Now().Before(queueBy) {
+				return nil, nil, errWorkerBusy
 			}
-			if ctx.Err() != nil {
-				return nil, nil, ctx.Err()
+			if !m.evictIdleOther(ctx, key, queueBy) {
+				if ctx.Err() != nil {
+					return nil, nil, ctx.Err()
+				}
+				waitCapacity = true
 			}
-			m.mu.Lock()
-		} else if keyCount == 0 {
+			continue
+		} else if mayLaunch && keyCount == 0 {
 			// Every slot belongs to other connections. Evict the least recently
 			// used idle one and launch for this connection once it has ended (its
 			// reservation is then free). If every worker is busy, wait below.
 			m.mu.Unlock()
-			if m.evictIdleOther(ctx, key) {
+			if m.evictIdleOther(ctx, key, queueBy) {
 				continue
 			}
 			if ctx.Err() != nil {
@@ -464,35 +540,35 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			m.mu.Lock()
 		}
 
-		// This key's workers, or all workers, are full: wait a bounded time.
-		if !waiting {
-			if m.waiting >= m.cfg.QueueDepth {
+		// No slot: wait in FIFO order, up to the deadline, for one to free.
+		if waiter == nil {
+			if len(m.waiters) >= m.cfg.QueueDepth {
 				m.mu.Unlock()
 				return nil, nil, query.NewError("RESOURCE_EXHAUSTED", "Warm worker pool queue depth exceeded; retry after 1s")
 			}
-			m.waiting++
-			waiting = true
+			waiter = &slotWaiter{key: key, ready: make(chan struct{}, 1)}
+			m.waiters = append(m.waiters, waiter)
 			startWait = time.Now()
-			timer := time.NewTimer(m.cfg.QueueTimeout)
-			defer timer.Stop()
-			deadline = timer.C
 		}
-		changed := m.changed
 		m.mu.Unlock()
+		timer := time.NewTimer(time.Until(queueBy))
 		select {
-		case <-changed:
-		case <-deadline:
+		case <-waiter.ready:
+			timer.Stop()
+		case <-timer.C:
 			return nil, nil, errWorkerBusy
 		case <-ctx.Done():
+			timer.Stop()
 			return nil, nil, ctx.Err()
 		}
 	}
 }
 
 // evictIdleOther evicts the least recently used idle worker of another key
-// and waits for it to end, so its reservation is free for a new worker. It
-// reports false when every other worker is busy (or ctx ended).
-func (m *WarmPoolManager) evictIdleOther(ctx context.Context, key string) bool {
+// and waits, until queueBy, for it to end so its reservation is free for a
+// new worker. It reports false when every other worker is busy, the worker
+// did not end in time, or ctx ended.
+func (m *WarmPoolManager) evictIdleOther(ctx context.Context, key string, queueBy time.Time) bool {
 	m.mu.Lock()
 	var victim *warmWorkerEntry
 	for _, w := range m.workers {
@@ -506,21 +582,48 @@ func (m *WarmPoolManager) evictIdleOther(ctx context.Context, key string) bool {
 	}
 	m.evictLocked(victim, &m.metrics.EvictionsLRU)
 	m.mu.Unlock()
+	timer := time.NewTimer(time.Until(queueBy))
+	defer timer.Stop()
 	select {
 	case <-victim.dead:
 		return true
+	case <-timer.C:
+		return false
 	case <-ctx.Done():
 		return false
 	}
 }
 
-// launch starts entry's process, handshakes and starts its demux reader. On
-// failure the entry is removed and every request sharing it falls back.
-func (m *WarmPoolManager) launch(e *Executor, cfg OperationProcessConfig, entry *warmWorkerEntry) (err error) {
+type capacityWaitKey struct{}
+
+// withCapacityWait lets a launch wait for a node reservation until deadline.
+// Without it a launch short of capacity is refused at once with
+// errWarmUnavailable, so the pool can first evict an idle worker. A launcher
+// that runs out of time waiting also returns errWarmUnavailable: a lack of
+// capacity is never a launch failure.
+func withCapacityWait(ctx context.Context, deadline time.Time) context.Context {
+	return context.WithValue(ctx, capacityWaitKey{}, deadline)
+}
+
+func capacityWait(ctx context.Context) (time.Time, bool) {
+	deadline, ok := ctx.Value(capacityWaitKey{}).(time.Time)
+	return deadline, ok
+}
+
+// launch starts entry's process, handshakes and starts its demux reader. A
+// non-zero reserveBy lets it wait that long for a node reservation. On
+// failure the entry is removed and every request sharing it learns why.
+func (m *WarmPoolManager) launch(e *Executor, cfg OperationProcessConfig, entry *warmWorkerEntry, reserveBy time.Time) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), launchTimeout)
 	defer cancel()
+	if !reserveBy.IsZero() {
+		ctx = withCapacityWait(ctx, reserveBy)
+	}
 	stage := "launch"
 	defer func() {
+		if err != nil {
+			entry.stop()
+		}
 		m.mu.Lock()
 		switch {
 		case err == nil:
@@ -533,8 +636,12 @@ func (m *WarmPoolManager) launch(e *Executor, cfg OperationProcessConfig, entry 
 			entry.launchErr = err
 			if m.workers[entry.id] == entry {
 				delete(m.workers, entry.id)
+				// A capacity refusal freed nothing a waiter could use: waking one
+				// would only relaunch into the same refusal.
+				if !errors.Is(err, errWarmUnavailable) {
+					m.wakeLocked("")
+				}
 			}
-			m.broadcastLocked()
 		}
 		m.mu.Unlock()
 		close(entry.ready)
@@ -551,7 +658,6 @@ func (m *WarmPoolManager) launch(e *Executor, cfg OperationProcessConfig, entry 
 	stage = "hello"
 	if err := helloHandshake(ctx, proc); err != nil {
 		// A worker that cannot speak v2 is a launch failure: fall back to one-shot.
-		m.killWorker(entry)
 		return err
 	}
 	entry.streams = make(map[uint32]*streamQueue)
@@ -796,7 +902,11 @@ func (m *WarmPoolManager) releaseWorker(w *warmWorkerEntry, err error) {
 		m.evictLocked(w, &m.metrics.EvictionsErr)
 		return
 	}
-	m.broadcastLocked()
+	// One slot freed: a waiter for this key takes it, or, once the worker is
+	// idle, any waiter may evict it.
+	if !m.wakeLocked(w.key) && w.inFlight == 0 {
+		m.wakeLocked("")
+	}
 }
 
 // Execute runs an operation on a warm worker, streaming results to sink.
@@ -1007,7 +1117,9 @@ func (m *WarmPoolManager) Drain(ctx context.Context) error {
 	}
 	m.closed = true
 	close(m.stopRpr)
-	m.broadcastLocked()
+	for range m.waiters {
+		m.wakeLocked("")
+	}
 
 	workers := make([]*warmWorkerEntry, 0, len(m.workers))
 	for id, w := range m.workers {

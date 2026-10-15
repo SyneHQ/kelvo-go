@@ -1554,18 +1554,60 @@ func TestWarmPool_AllBusyWaitsThenRefuses(t *testing.T) {
 	}
 }
 
+// nodeSlots models the node's worker reservations for mock launchers, as
+// reserveWorker does: short of capacity a launch is refused at once, or, when
+// the pool lets it wait, waits for a release until the pool's deadline.
+type nodeSlots struct {
+	mu      sync.Mutex
+	free    int
+	changed chan struct{}
+}
+
+func newNodeSlots(free int) *nodeSlots { return &nodeSlots{free: free, changed: make(chan struct{})} }
+
+func (n *nodeSlots) reserve(ctx context.Context) error {
+	deadline, wait := capacityWait(ctx)
+	for {
+		n.mu.Lock()
+		if n.free > 0 {
+			n.free--
+			n.mu.Unlock()
+			return nil
+		}
+		changed := n.changed
+		n.mu.Unlock()
+		if !wait {
+			return errWarmUnavailable
+		}
+		select {
+		case <-changed:
+		case <-time.After(time.Until(deadline)):
+			return errWarmUnavailable
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (n *nodeSlots) release() {
+	n.mu.Lock()
+	n.free++
+	close(n.changed)
+	n.changed = make(chan struct{})
+	n.mu.Unlock()
+}
+
 // A launch refused for want of a reservation evicts an idle worker of
 // another connection and retries, instead of falling back.
 func TestWarmPool_LaunchRefusalEvictsIdleWorker(t *testing.T) {
-	var live atomic.Int32
-	launcher := &mockLauncher{onLaunch: func(context.Context) (WorkerProcess, func() error, error) {
-		if live.Load() >= 1 { // the node has room for one worker
-			return nil, nil, errWarmUnavailable
+	node := newNodeSlots(1) // the node has room for one worker
+	launcher := &mockLauncher{onLaunch: func(ctx context.Context) (WorkerProcess, func() error, error) {
+		if err := node.reserve(ctx); err != nil {
+			return nil, nil, err
 		}
-		live.Add(1)
 		proc := newFakeWorkerProcess()
 		go serveFake(proc, nil)
-		return proc, func() error { live.Add(-1); return proc.Kill() }, nil
+		return proc, func() error { node.release(); return proc.Kill() }, nil
 	}}
 	mgr, exec := newTestPool(t, launcher)
 	first := opReq("op-first")
@@ -1588,12 +1630,11 @@ func TestWarmPool_LaunchRefusalEvictsIdleWorker(t *testing.T) {
 // is idle again, the next read evicts it and launches.
 func TestWarmPool_CapacityRefusalWaitsNeverFallsBack(t *testing.T) {
 	release := make(chan struct{})
-	var live atomic.Int32
-	launcher := &mockLauncher{onLaunch: func(context.Context) (WorkerProcess, func() error, error) {
-		if live.Load() >= 1 { // the node has room for one worker
-			return nil, nil, errWarmUnavailable
+	node := newNodeSlots(1) // the node has room for one worker
+	launcher := &mockLauncher{onLaunch: func(ctx context.Context) (WorkerProcess, func() error, error) {
+		if err := node.reserve(ctx); err != nil {
+			return nil, nil, err
 		}
-		live.Add(1)
 		proc := newFakeWorkerProcess()
 		go serveFake(proc, func(f frame.Frame) {
 			if f.Type != frame.Request {
@@ -1607,7 +1648,7 @@ func TestWarmPool_CapacityRefusalWaitsNeverFallsBack(t *testing.T) {
 			}
 			replyOK(proc.stdoutW, f.Stream, f.Payload)
 		})
-		return proc, func() error { live.Add(-1); return proc.Kill() }, nil
+		return proc, func() error { node.release(); return proc.Kill() }, nil
 	}}
 	mgr, exec := newTestPool(t, launcher)
 	mgr.cfg.QueueTimeout = 150 * time.Millisecond
