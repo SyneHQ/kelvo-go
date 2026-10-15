@@ -219,6 +219,7 @@ type WarmPoolManager struct {
 	changed chan struct{}               // closed and replaced whenever a slot frees
 	closed  bool
 	stopRpr chan struct{}
+	killing int // background kills of evicted workers still running
 }
 
 // NewWarmPoolManager creates a new pool manager.
@@ -340,7 +341,14 @@ func (m *WarmPoolManager) evictLocked(w *warmWorkerEntry, counter *atomic.Int64)
 		counter.Add(1)
 	}
 	m.broadcastLocked()
-	go m.killWorker(w)
+	m.killing++
+	go func() {
+		m.killWorker(w)
+		m.mu.Lock()
+		m.killing--
+		m.broadcastLocked()
+		m.mu.Unlock()
+	}()
 }
 
 func (m *WarmPoolManager) broadcastLocked() {
@@ -914,13 +922,21 @@ func (m *WarmPoolManager) revokeAuthorization(key string) {
 	}
 }
 
+// evictKey kills workerKey's workers and waits for them to end, so their
+// reservations are free before a replacement worker launches.
 func (m *WarmPoolManager) evictKey(workerKey string) {
+	var evicted []*warmWorkerEntry
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	for _, w := range m.workers {
 		if w.key == workerKey {
 			m.evictLocked(w, &m.metrics.EvictionsAuth)
+			evicted = append(evicted, w)
 		}
+	}
+	m.mu.Unlock()
+	for _, w := range evicted {
+		<-w.ready
+		m.killWorker(w) // waits for a kill already running
 	}
 }
 
@@ -947,6 +963,15 @@ func (m *WarmPoolManager) Drain(ctx context.Context) error {
 		<-w.ready
 		m.killWorker(w)
 	}
+	// Workers evicted before drain may still be dying in the background.
+	m.mu.Lock()
+	for m.killing > 0 {
+		changed := m.changed
+		m.mu.Unlock()
+		<-changed
+		m.mu.Lock()
+	}
+	m.mu.Unlock()
 	return nil
 }
 

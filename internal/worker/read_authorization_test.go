@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -181,5 +182,47 @@ func TestReadWorkerNeverSpawnsWithoutCredentials(t *testing.T) {
 	defer fs.mu.Unlock()
 	if len(fs.procs) != 2 || len(seen) != 2 || seen[1].Source.DSN == "" || mgr.metrics.Authorizations.Load() != 2 {
 		t.Fatal("new worker started without credentials", len(fs.procs), len(seen), mgr.metrics.Authorizations.Load())
+	}
+}
+
+// A revoked or changed authorization frees its workers' resources before it
+// returns, so a replacement can launch; drain waits for kills already running.
+func TestReadWorkerEvictionWaitsForCleanup(t *testing.T) {
+	var cleaned atomic.Int32
+	launcher := &mockLauncher{onLaunch: func(context.Context) (WorkerProcess, func() error, error) {
+		proc := newFakeWorkerProcess()
+		go serveFake(proc, nil)
+		return proc, func() error {
+			time.Sleep(100 * time.Millisecond) // slow cleanup, like releasing a cgroup
+			cleaned.Add(1)
+			return proc.Kill()
+		}, nil
+	}}
+	mgr, exec := newTestPool(t, launcher)
+	req := opReq("op-a")
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, req, &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	key := warmKey(req.Source.TenantID, req.AppTeam, req.Source.ConnectionID, req.Source.Revision)
+	mgr.storeAuthorization("conn", &readAuthorization{workerKey: key, at: time.Now()})
+	mgr.revokeAuthorization("conn")
+	if cleaned.Load() != 1 {
+		t.Fatal("revocation returned before its worker was cleaned up")
+	}
+
+	// A worker evicted by a failure is killed in the background; drain waits.
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-b"), &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	mgr.mu.Lock()
+	for _, w := range mgr.workers {
+		mgr.evictLocked(w, &mgr.metrics.EvictionsErr)
+	}
+	mgr.mu.Unlock()
+	if err := mgr.Drain(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if cleaned.Load() != 2 {
+		t.Fatal("drain returned before an evicted worker was cleaned up", cleaned.Load())
 	}
 }
