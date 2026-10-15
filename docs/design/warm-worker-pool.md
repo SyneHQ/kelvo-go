@@ -226,6 +226,7 @@ operations:
     max_workers: 4          # Maximum total warm workers per node (default: 4)
     max_per_key: 1          # Maximum warm workers per (tenant, team, conn, rev) (default: 1)
     max_in_flight: 16       # Reads in flight on one worker (default: 16, at most 64)
+    stream_buffer_mb: 8     # Unread result bytes buffered per stream; a slower client fails fast (default: 8)
     queue_depth: 64         # Reads waiting for a full worker before fail-fast (default: 64)
     queue_timeout: 10s      # Wait for a slot on a full worker, then RESOURCE_EXHAUSTED (default: 10s)
     worker_memory_mb: 64    # Per-worker cgroup memory limit (default: 64 MB)
