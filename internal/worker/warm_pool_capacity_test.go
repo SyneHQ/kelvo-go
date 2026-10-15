@@ -2,9 +2,12 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -355,5 +358,173 @@ func TestWarmPool_RefusedScaleOutWaitsForOwnWorker(t *testing.T) {
 	}
 	if err := <-held; err != nil {
 		t.Fatal(err)
+	}
+}
+
+// holdServe holds a request whose operation ID has a release channel until it
+// is closed, and answers every other request at once.
+func holdServe(holds map[string]chan struct{}) func(p *fakeWorkerProcess) {
+	return func(p *fakeWorkerProcess) {
+		var write sync.Mutex
+		serveFake(p, func(f frame.Frame) {
+			if f.Type != frame.Request {
+				return
+			}
+			var r adapter.ProcessRequest
+			_ = json.Unmarshal(f.Payload, &r)
+			go func() {
+				if hold := holds[r.OperationID]; hold != nil {
+					<-hold
+				}
+				write.Lock()
+				defer write.Unlock()
+				replyOK(p.stdoutW, f.Stream, f.Payload)
+			}()
+		})
+	}
+}
+
+// A freed slot wakes the earliest waiter that can use it. X waits for its own
+// key's full worker (at max_per_key); Y, queued after it for a key with no
+// worker, is the one that can take the worker gone idle, and must get it.
+func TestWarmPool_FreedSlotWakesAWaiterThatCanUseIt(t *testing.T) {
+	holds := map[string]chan struct{}{"op-k1": make(chan struct{}), "op-k3": make(chan struct{})}
+	fs := &fakeSet{serve: holdServe(holds)}
+	mgr, exec := newTestPool(t, fs.launcher())
+	mgr.cfg.MaxWorkers, mgr.cfg.MaxPerKey, mgr.cfg.MaxInFlight, mgr.cfg.QueueTimeout = 2, 1, 1, 5*time.Second
+	results := map[string]chan error{}
+	run := func(id, conn string) {
+		results[id] = make(chan error, 1)
+		go func() {
+			_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, connReq(id, conn), &workerTestSink{})
+			results[id] <- err
+		}()
+	}
+	run("op-k1", "conn-1")
+	run("op-k3", "conn-3")
+	waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 2 })
+	run("op-x", "conn-1")
+	waitFor(t, func() bool { mgr.mu.Lock(); defer mgr.mu.Unlock(); return len(mgr.waiters) == 1 })
+	run("op-y", "conn-4")
+	waitFor(t, func() bool { mgr.mu.Lock(); defer mgr.mu.Unlock(); return len(mgr.waiters) == 2 })
+	close(holds["op-k3"]) // conn-3's worker goes idle
+	if err := <-results["op-k3"]; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-results["op-y"]:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the waiter that could use the idle worker was not woken")
+	}
+	close(holds["op-k1"])
+	for _, id := range []string{"op-k1", "op-x"} {
+		if err := <-results[id]; err != nil {
+			t.Fatal(id, err)
+		}
+	}
+}
+
+// A read already past its queue deadline evicts no warm worker on its way to
+// RESOURCE_EXHAUSTED.
+func TestWarmPool_OutOfTimeReadEvictsNothing(t *testing.T) {
+	fs := &fakeSet{serve: func(p *fakeWorkerProcess) { serveFake(p, nil) }}
+	mgr, exec := newTestPool(t, fs.launcher())
+	mgr.cfg.MaxWorkers = 1
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, connReq("op-idle", "conn-1"), &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	mgr.cfg.QueueTimeout = 0 // the next read's deadline has passed when it arrives
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, connReq("op-late", "conn-2"), &workerTestSink{}); !isBusy(err) || mgr.metrics.EvictionsLRU.Load() != 0 {
+		t.Fatal("a read out of time evicted a warm worker:", err, mgr.metrics.EvictionsLRU.Load())
+	}
+}
+
+// The credential window is stamped when a request is written, from the read's
+// bound: a read stamped long ago (it queued) is sent with a current window.
+func TestWarmPool_CredentialWindowStampedAtDispatch(t *testing.T) {
+	var sent atomic.Int64
+	fs := &fakeSet{}
+	fs.serve = func(p *fakeWorkerProcess) {
+		serveFake(p, func(f frame.Frame) {
+			if f.Type != frame.Request {
+				return
+			}
+			var r adapter.ProcessRequest
+			_ = json.Unmarshal(f.Payload, &r)
+			sent.Store(r.CredentialsValidUntil)
+			replyOK(p.stdoutW, f.Stream, f.Payload)
+		})
+	}
+	mgr, exec := newTestPool(t, fs.launcher())
+	stale := opReq("op-queued")
+	stale.CredentialsValidUntil = time.Now().Unix() - 1 // stamped before a long wait
+	ctx := withCredentialBound(context.Background(), time.Now().Unix()+60)
+	before := time.Now().Unix()
+	if _, err := mgr.Execute(ctx, exec, OperationProcessConfig{}, stale, &workerTestSink{}); err != nil {
+		t.Fatal("a read stamped before its wait was not re-stamped at dispatch:", err)
+	}
+	if got := sent.Load(); got <= before || got > time.Now().Add(credentialWindowMax).Unix() {
+		t.Fatal("dispatched window", got, "not within (now, now+window]")
+	}
+}
+
+// A failed launch is logged once per backoff window: launches already in
+// flight for the key that fail inside it are counted but not logged again,
+// and do not lengthen the window.
+func TestWarmPool_LaunchFailureLoggedOncePerWindow(t *testing.T) {
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	defer log.SetOutput(os.Stderr)
+	var started sync.WaitGroup
+	started.Add(2)
+	launcher := &mockLauncher{onLaunch: func(context.Context) (WorkerProcess, func() error, error) {
+		started.Done()
+		started.Wait() // both launches are in flight before either fails
+		return nil, nil, errors.New("sandbox refused the worker")
+	}}
+	mgr, exec := newTestPool(t, launcher)
+	mgr.cfg.MaxInFlight, mgr.cfg.MaxPerKey = 1, 2
+	var wg sync.WaitGroup
+	for _, id := range []string{"op-1", "op-2"} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq(id), &workerTestSink{})
+		}()
+	}
+	wg.Wait()
+	mgr.mu.Lock()
+	var window time.Duration
+	for _, b := range mgr.backoff {
+		window = b.window
+	}
+	mgr.mu.Unlock()
+	if lines := strings.Count(logged.String(), "launch failed"); lines != 1 || mgr.metrics.LaunchFailures.Load() != 2 || window != launchBackoffBase {
+		t.Fatal("log lines", lines, "failures", mgr.metrics.LaunchFailures.Load(), "window", window)
+	}
+}
+
+// A capacity refusal frees nothing a waiter could use, so it wakes nobody;
+// a failed launch frees its place and wakes one waiter.
+func TestWarmPool_CapacityRefusalWakesNobody(t *testing.T) {
+	for _, tc := range []struct {
+		err  error
+		wake bool
+	}{{errWarmUnavailable, false}, {errors.New("sandbox refused the worker"), true}} {
+		launcher := &mockLauncher{onLaunch: func(context.Context) (WorkerProcess, func() error, error) { return nil, nil, tc.err }}
+		mgr, exec := newTestPool(t, launcher)
+		waiter := &slotWaiter{key: "other", ready: make(chan struct{}, 1)}
+		entry := &warmWorkerEntry{id: "launching", key: "k", inFlight: 1, ready: make(chan struct{}), dead: make(chan struct{})}
+		mgr.mu.Lock()
+		mgr.waiters = append(mgr.waiters, waiter)
+		mgr.workers[entry.id] = entry
+		mgr.mu.Unlock()
+		_ = mgr.launch(exec, OperationProcessConfig{}, entry, time.Time{})
+		if woken := len(waiter.ready) == 1; woken != tc.wake {
+			t.Fatalf("launch error %v: waiter woken = %v, want %v", tc.err, woken, tc.wake)
+		}
 	}
 }

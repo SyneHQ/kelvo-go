@@ -74,8 +74,10 @@ func reserveWorker(ctx context.Context, pool *admission.Pool, request admission.
 		case <-timer.C:
 			return nil, errWarmUnavailable
 		case <-ctx.Done():
+			// The launch's own deadline (launchTimeout) ended a capacity wait:
+			// still capacity, not a failed launch.
 			timer.Stop()
-			return nil, ctx.Err()
+			return nil, errWarmUnavailable
 		}
 	}
 	if !wait {
@@ -88,7 +90,8 @@ func reserveWorker(ctx context.Context, pool *admission.Pool, request admission.
 	reserveCtx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	reservation, err := pool.Acquire(reserveCtx, request)
-	if err != nil && ctx.Err() == nil && reserveCtx.Err() != nil {
+	// Either deadline, the pool's or the launch's, ending this wait is capacity.
+	if err != nil && reserveCtx.Err() != nil {
 		return nil, errWarmUnavailable
 	}
 	return reservation, err

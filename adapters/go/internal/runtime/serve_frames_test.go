@@ -22,6 +22,7 @@ import (
 type batchSession struct {
 	batches, rows int
 	proceed       chan struct{}
+	step          chan struct{} // when set, each batch after the first waits for it
 }
 
 func (s *batchSession) Close() error { return nil }
@@ -32,6 +33,15 @@ func (s *batchSession) Query(ctx context.Context, q adapter.Query, sink adapter.
 		return adapter.QueryStats{}, err
 	}
 	for b := 0; b < s.batches; b++ {
+		if b > 0 && s.step != nil {
+			select {
+			case <-s.step:
+			case <-ctx.Done():
+				return adapter.QueryStats{}, ctx.Err()
+			case <-time.After(15 * time.Second): // a failed test stopped stepping
+				return adapter.QueryStats{}, context.DeadlineExceeded
+			}
+		}
 		if b == 1 && s.proceed != nil {
 			select {
 			case <-s.proceed:
@@ -145,4 +155,32 @@ func TestServe_ByteLimitStillEnforced(t *testing.T) {
 	h.request(1, req)
 	_, _, term := h.collect()
 	wantFailedReceipt(t, term)
+}
+
+// Small batches each reach the node when produced: every batch is flushed,
+// not held until 64 KiB have built up.
+func TestServe_SmallBatchesFlushEach(t *testing.T) {
+	step := make(chan struct{})
+	h := startServe(t, batchRunner(&batchSession{batches: 5, rows: 100, step: step}), true)
+	req := sqlRequest("op-batches", "SELECT 1")
+	req.Limits.BatchRows = 100
+	h.request(1, req)
+	var body bytes.Buffer
+	for b := 0; b < 5; b++ {
+		f := h.next() // batch b, before the source makes the next
+		if f.Type != frame.Result {
+			t.Fatalf("batch %d: expected a Result frame, got %v %q", b, f.Type, f.Payload)
+		}
+		body.Write(f.Payload)
+		if b < 4 {
+			select {
+			case step <- struct{}{}:
+			case <-time.After(10 * time.Second):
+				t.Fatalf("batch %d: the source stopped before its next batch", b)
+			}
+		}
+	}
+	rest, _, term := h.collect()
+	body.Write(rest)
+	checkResult(t, body.Bytes(), receiptOf(t, term), 500)
 }

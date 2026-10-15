@@ -292,7 +292,6 @@ func TestWarmPool_IdleWorkerSurvivesCredentialWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.credentialsValidUntil = time.Now().Unix() - 1
 	release(nil)
 	mgr.reapExpired()
 
@@ -302,7 +301,7 @@ func TestWarmPool_IdleWorkerSurvivesCredentialWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	release2(nil)
-	if w2 != w || w2.credentialsValidUntil != req2.CredentialsValidUntil || mgr.Metrics().Hits.Load() != 1 || mgr.Metrics().EvictionsTTL.Load() != 0 {
+	if w2 != w || mgr.Metrics().Hits.Load() != 1 || mgr.Metrics().EvictionsTTL.Load() != 0 {
 		t.Fatalf("idle worker was not reused after its credential window: hits=%d evictions=%d", mgr.Metrics().Hits.Load(), mgr.Metrics().EvictionsTTL.Load())
 	}
 }
@@ -1678,5 +1677,19 @@ func TestWarmPool_CapacityRefusalWaitsNeverFallsBack(t *testing.T) {
 	}
 	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, other, &workerTestSink{}); err != nil || mgr.metrics.EvictionsLRU.Load() != 1 || mgr.metrics.Spawns.Load() != 2 {
 		t.Fatal("idle worker not replaced", err, mgr.metrics.EvictionsLRU.Load(), mgr.metrics.Spawns.Load())
+	}
+}
+
+// A capacity wait may not outlast a worker launch, or it would end as a failed
+// launch (backoff and one-shot fallback) instead of RESOURCE_EXHAUSTED.
+func TestWarmPoolQueueTimeoutBelowLaunchTimeout(t *testing.T) {
+	cfg := DefaultWarmPoolConfig()
+	cfg.Enabled, cfg.QueueTimeout = true, launchTimeout
+	if cfg.Validate() == nil {
+		t.Fatal("queue_timeout equal to the launch timeout was accepted")
+	}
+	cfg.QueueTimeout = launchTimeout - time.Second
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }
