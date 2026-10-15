@@ -143,7 +143,7 @@ func (c WarmPoolConfig) caps() *admission.Caps {
 	if connection == 0 {
 		connection = c.MaxPerKey * c.maxInFlight()
 	}
-	return &admission.Caps{MaxPerTenant: tenant, MaxPerConnection: connection}
+	return &admission.Caps{MaxPerTenant: tenant, MaxPerConnection: connection, MaxWaiting: c.QueueDepth}
 }
 
 // WarmPoolMetrics records observability counters for the warm pool.
@@ -430,23 +430,41 @@ func (m *WarmPoolManager) evictStaleRevisionsLocked(tenantID, appTeam, connectio
 // within that, so retrying sooner is unlikely to help. A full worker is not a
 // fallback: fifty one-shot children is the collapse the pool exists to avoid.
 func busyError(what string, waited time.Duration) error {
-	seconds := max(1, int64((waited+time.Second-1)/time.Second))
-	return query.NewError("RESOURCE_EXHAUSTED", fmt.Sprintf("%s; retry after %ds", what, seconds))
+	return query.NewError("RESOURCE_EXHAUSTED", fmt.Sprintf("%s; retry after %ds", what, ceilSeconds(waited)))
 }
 
-type queueDeadlineKey struct{}
+// queueFullError refuses a read without waiting: the wait queue is full. Its
+// hint is queue_timeout, the wait it would have faced; it claims no wait.
+func queueFullError(what string, queueTimeout time.Duration) error {
+	return query.NewError("RESOURCE_EXHAUSTED", fmt.Sprintf("%s; the wait queue is full, retry after %ds", what, ceilSeconds(queueTimeout)))
+}
 
-// withQueueDeadline bounds every capacity wait of one read by one deadline,
-// so the tenant caps and a full worker never stack two queue timeouts.
-func withQueueDeadline(ctx context.Context, deadline time.Time) context.Context {
-	return context.WithValue(ctx, queueDeadlineKey{}, deadline)
+func ceilSeconds(d time.Duration) int64 { return max(1, int64((d+time.Second-1)/time.Second)) }
+
+type queueWaitKey struct{}
+
+type queueWait struct{ start, deadline time.Time }
+
+// withQueueWait bounds every capacity wait of one read by one deadline, so
+// the tenant caps and a full worker never stack two queue timeouts, and dates
+// the read's waiting from its first wait.
+func withQueueWait(ctx context.Context, start, deadline time.Time) context.Context {
+	return context.WithValue(ctx, queueWaitKey{}, queueWait{start, deadline})
 }
 
 func queueDeadline(ctx context.Context, timeout time.Duration) time.Time {
-	if deadline, ok := ctx.Value(queueDeadlineKey{}).(time.Time); ok {
-		return deadline
+	if wait, ok := ctx.Value(queueWaitKey{}).(queueWait); ok {
+		return wait.deadline
 	}
 	return time.Now().Add(timeout)
+}
+
+// waitedSince is how long a read has waited for capacity in total.
+func waitedSince(ctx context.Context, start time.Time) time.Duration {
+	if wait, ok := ctx.Value(queueWaitKey{}).(queueWait); ok {
+		return time.Since(wait.start)
+	}
+	return time.Since(start)
 }
 
 // InteractiveCaps bounds interactive reads per tenant and per connection.
@@ -461,7 +479,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 	key := fmt.Sprintf("%s\x00%s\x00%s\x00%s", input.Source.TenantID, input.AppTeam, input.Source.ConnectionID, input.Source.Revision)
 	acquireStart := time.Now()
 	queueBy := queueDeadline(ctx, m.cfg.QueueTimeout)
-	busy := func() error { return busyError("Read worker is busy", time.Since(acquireStart)) }
+	busy := func() error { return busyError("Read worker is busy", waitedSince(ctx, acquireStart)) }
 	var waiter *slotWaiter
 	var startWait time.Time
 	missed := false
@@ -622,7 +640,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 		if waiter == nil {
 			if len(m.waiters) >= m.cfg.QueueDepth {
 				m.mu.Unlock()
-				return nil, nil, busyError("Warm worker pool queue depth exceeded", m.cfg.QueueTimeout)
+				return nil, nil, queueFullError("Read worker is busy", m.cfg.QueueTimeout)
 			}
 			waiter = &slotWaiter{key: key, ready: make(chan struct{}, 1)}
 			m.waiters = append(m.waiters, waiter)

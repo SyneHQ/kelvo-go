@@ -116,7 +116,7 @@ func TestCapsServeEachTenantFIFO(t *testing.T) {
 		// Let caller i queue before caller i+1.
 		for {
 			caps.mu.Lock()
-			n := len(caps.waiters)
+			n := caps.waiting
 			caps.mu.Unlock()
 			if n == i {
 				break
@@ -132,5 +132,82 @@ func TestCapsServeEachTenantFIFO(t *testing.T) {
 	held()
 	if first, second := <-order, <-order; first != 1 || second != 2 {
 		t.Fatal("tenant a's waiters were not served in order", first, second)
+	}
+}
+
+// Federated reads (no single connection) are bounded by the tenant cap only:
+// they do not share one per-connection bucket.
+func TestCapsFederatedReadsSkipConnectionCap(t *testing.T) {
+	caps := &Caps{MaxPerTenant: 3, MaxPerConnection: 1}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	for i := 0; i < 3; i++ {
+		if _, err := caps.Acquire(ctx, "a", ""); err != nil {
+			t.Fatal("federated read held to a per-connection cap", i, err)
+		}
+	}
+	if _, err := caps.Acquire(ctx, "a", ""); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal("tenant cap not applied to federated reads", err)
+	}
+}
+
+// The wait queue is bounded: past MaxWaiting a caller is refused at once.
+func TestCapsWaitQueueIsBounded(t *testing.T) {
+	caps := &Caps{MaxPerTenant: 1, MaxWaiting: 1}
+	held, _ := caps.Acquire(context.Background(), "a", "c")
+	defer held()
+	go func() { _, _ = caps.Acquire(context.Background(), "a", "c") }()
+	for {
+		caps.mu.Lock()
+		n := caps.waiting
+		caps.mu.Unlock()
+		if n == 1 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	start := time.Now()
+	if _, err := caps.Acquire(context.Background(), "a", "c"); !errors.Is(err, ErrQueueFull) || time.Since(start) > 50*time.Millisecond {
+		t.Fatal("full queue did not refuse at once", err)
+	}
+}
+
+// A release wakes exactly one waiter, its tenant's head, not every waiter.
+func TestCapsReleaseWakesOnlyTheHead(t *testing.T) {
+	caps := &Caps{MaxPerTenant: 1}
+	held, _ := caps.Acquire(context.Background(), "a", "c")
+	const waiters = 100
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for i := 0; i < waiters; i++ {
+		go func() { _, _ = caps.Acquire(ctx, "a", "c") }()
+	}
+	for {
+		caps.mu.Lock()
+		n := caps.waiting
+		caps.mu.Unlock()
+		if n == waiters {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	caps.mu.Lock()
+	caps.wakeups = 0
+	caps.mu.Unlock()
+	held()
+	for {
+		caps.mu.Lock()
+		n := caps.waiting
+		caps.mu.Unlock()
+		if n == waiters-1 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond)
+	caps.mu.Lock()
+	defer caps.mu.Unlock()
+	if caps.wakeups != 1 {
+		t.Fatal("release woke more than the head", caps.wakeups)
 	}
 }

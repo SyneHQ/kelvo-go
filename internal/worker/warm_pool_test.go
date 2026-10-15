@@ -398,7 +398,7 @@ func TestWarmPool_QueueBoundAndFailFast(t *testing.T) {
 	if err4 == nil {
 		t.Fatal("expected fail-fast RESOURCE_EXHAUSTED error when queue is full, got nil")
 	}
-	if !strings.Contains(err4.Error(), "RESOURCE_EXHAUSTED") && !strings.Contains(err4.Error(), "queue depth exceeded") {
+	if !strings.Contains(err4.Error(), "the wait queue is full") {
 		t.Fatalf("unexpected error message: %v", err4)
 	}
 

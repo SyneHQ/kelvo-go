@@ -288,12 +288,20 @@ gain. Phase 3 is the security-sensitive one.
   slot for fallbacks and result downloads, and its memory one result download
   (3 x `max_result_bytes` + 2 MiB). With separate classes an interactive
   query must fit the reserve itself.
-- Caps inside a class, FIFO per tenant and per connection. Interactive:
+- Validation also requires the interactive memory to hold `max_workers` x
+  (`worker_memory_mb` + `overhead_mb` + stream buffers) plus one result
+  download.
+- Caps inside a class, FIFO per tenant; a release wakes only that tenant's
+  first waiter, and at most `queue_depth` reads wait (interactive) or
+  `max_concurrent` operations (background). A federated read has no single
+  connection and is bounded by its tenant cap only. Interactive:
   `warm_pool.max_per_tenant` (default 32 reads in flight) and
   `max_per_connection` (default max_per_key x max_in_flight) apply to every
   interactive read, held until it ends, one-shot fallback included. The cap
-  wait and a full-worker wait share one `queue_timeout`; a refusal is
-  `RESOURCE_EXHAUSTED` with a retry hint equal to the time waited.
+  wait and a full-worker wait share one `queue_timeout`; a refusal after
+  waiting is `RESOURCE_EXHAUSTED` with a retry hint equal to the whole wait,
+  caps included; a refusal because the wait queue is full returns at once and
+  hints `queue_timeout` without claiming a wait.
   Background: `operations.max_per_tenant` and `max_per_connection` (0 = none)
   are taken before an operation starts, waiting at most
   `operations.queue_wait` (default 10s); a refusal is rejected before start
