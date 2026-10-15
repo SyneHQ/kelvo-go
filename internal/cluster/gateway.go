@@ -341,6 +341,11 @@ func (g *Gateway) reconcile(tenant string) {
 	}
 }
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if isStreamQuery(r) {
+		// Every response from this endpoint, errors included, says that a node
+		// that has it answered. A client falls back only without this header.
+		w.Header().Set(streamHeader, "1")
+	}
 	g.mu.Lock()
 	if g.closed {
 		g.mu.Unlock()
@@ -385,7 +390,18 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		// A single-call read waits a bounded time for a request slot; the
 		// three-call path keeps its immediate refusal.
-		if !isStreamQuery(r) || !g.waitForPermit(r.Context()) {
+		if !isStreamQuery(r) {
+			g.retryableBusy(w, "Request capacity unavailable")
+			return
+		}
+		// Only an authenticated request may queue for a slot.
+		if _, authContext, ok := g.authenticate(r); !ok || (authContext != nil && authContext.Err() != nil) {
+			w.Header().Set("WWW-Authenticate", "Bearer")
+			g.audit.authenticationDenied()
+			g.err(w, 401, "UNAUTHENTICATED", "Authentication required")
+			return
+		}
+		if !g.waitForPermit(r.Context()) {
 			g.retryableBusy(w, "Request capacity unavailable")
 			return
 		}
@@ -521,7 +537,7 @@ func (g *Gateway) authenticate(r *http.Request) (string, context.Context, bool) 
 	return t, nil, ok
 }
 func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant) {
-	if s, ok := g.submitJob(w, r, t, 0); ok {
+	if s, ok := g.submitJob(w, r, t, 0, nil); ok {
 		g.json(w, 201, map[string]string{"id": s.Job.ID, "state": s.Job.State})
 	}
 }
@@ -529,7 +545,7 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant
 // submitJob authorizes, audits and stores one query. On failure it has already
 // written the response. A positive wait retries a full tenant for that long
 // before refusing with a retryable error.
-func (g *Gateway) submitJob(w http.ResponseWriter, r *http.Request, t gatewayTenant, wait time.Duration) (Snapshot, bool) {
+func (g *Gateway) submitJob(w http.ResponseWriter, r *http.Request, t gatewayTenant, wait time.Duration, accepted func(string)) (Snapshot, bool) {
 	op, auditErr := g.audit.beginRequest(r.Context(), t.store.Policy().TenantID, audit.QuerySubmit)
 	if auditErr != nil {
 		g.err(w, 503, "UNAVAILABLE", "Audit storage unavailable")
@@ -590,6 +606,9 @@ func (g *Gateway) submitJob(w http.ResponseWriter, r *http.Request, t gatewayTen
 	if e != nil {
 		g.auditError(w, op, 503, "UNAVAILABLE", "Service unavailable")
 		return Snapshot{}, false
+	}
+	if accepted != nil {
+		accepted(s.Job.ID)
 	}
 	// Submission is durable before enqueue. Reconciliation republishes queued jobs,
 	// so a transient broker failure must not discard this accepted handle.
@@ -691,7 +710,7 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 		if s.Job.State == Assigned {
 			waitOutcome = telemetry.OutcomeSuccess
 			wait.End(waitOutcome)
-			if !admission.activate() {
+			if !activateWithin(r.Context(), admission, slotWait) {
 				w.Header().Set("Retry-After", "1")
 				g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Result request capacity unavailable")
 				return
@@ -793,7 +812,14 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 	}
 	var done Job
 	committed := func() bool {
-		job, err := g.commitResult(ctx, t, s)
+		var verify func(Job) bool
+		if slotWait > 0 {
+			// The receipt promises these stats, so they must describe the bytes
+			// this gateway actually relayed (the worker's encoded length, EOS
+			// included). A mismatch fails the read; no receipt is sent.
+			verify = func(j Job) bool { return j.Stats.WireBytes == written }
+		}
+		job, err := g.commitResult(ctx, t, s, verify)
 		done = job
 		return err == nil
 	}
@@ -810,13 +836,16 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 
 // Pin the durable slot until the gateway has checked the worker's completion.
 // Only then is it terminal and reusable by a subsequent submission.
-func (g *Gateway) commitResult(ctx context.Context, t gatewayTenant, claimed Snapshot) (Job, error) {
+func (g *Gateway) commitResult(ctx context.Context, t gatewayTenant, claimed Snapshot, verify func(Job) bool) (Job, error) {
 	for range 8 {
 		final, err := principalSnapshot(ctx, t, claimed.Job.ID)
 		if err != nil {
 			return Job{}, err
 		}
 		if final.Job.State != ResultReady || final.Job.Owner != claimed.Job.Owner || final.Job.Claim != claimed.Job.Claim || final.Job.WorkerID != claimed.Job.WorkerID {
+			return Job{}, ErrConflict
+		}
+		if verify != nil && !verify(final.Job) {
 			return Job{}, ErrConflict
 		}
 		next := final.Job
@@ -926,6 +955,7 @@ var _ http.Handler = (*Gateway)(nil)
 const (
 	streamQueryPath = "/v1/queries/stream"
 	receiptTrailer  = "Kelvo-Query-Receipt"
+	streamHeader    = "Kelvo-Stream"
 	// defaultStreamWait bounds how long a single-call read waits at each
 	// admission point (request slot, tenant query slot, result slot) before it
 	// is refused with a retry hint.
@@ -997,12 +1027,19 @@ func activateWithin(ctx context.Context, a *requestAdmission, wait time.Duration
 // refusals are 429 with Retry-After after a bounded wait.
 func (g *Gateway) streamQuery(w http.ResponseWriter, r *http.Request, t gatewayTenant, admission *requestAdmission) {
 	wait := g.streamWaitFor()
-	s, ok := g.submitJob(w, r, t, wait)
+	// A read nobody will consume must not hold its tenant slot until expiry.
+	// Registered before submitJob returns: the job exists from Submit on, even
+	// if the audit write that follows fails.
+	var accepted string
+	defer func() {
+		if accepted != "" {
+			g.cancelUnfinished(t, accepted)
+		}
+	}()
+	s, ok := g.submitJob(w, r, t, wait, func(id string) { accepted = id })
 	if !ok {
 		return
 	}
-	// A read nobody will consume must not hold its tenant slot until expiry.
-	defer g.cancelUnfinished(t, s.Job.ID)
 	w.Header().Set("Kelvo-Query-Id", s.Job.ID)
 	g.relayResults(w, r, t, s.Job.ID, admission, wait)
 }
