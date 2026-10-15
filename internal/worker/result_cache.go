@@ -48,6 +48,7 @@ type cacheEntry struct {
 	data        []byte
 	stats       query.Stats
 	started     time.Time // when the execution that produced it started
+	stored      time.Time // when it was kept
 	expires     time.Time
 }
 
@@ -56,10 +57,17 @@ func (e *cacheEntry) size() int64 { return int64(len(e.data)+len(e.key)) + cache
 // cacheFlight is one shared execution. It runs detached from any one caller
 // and is cancelled only when every caller interested in it has gone.
 type cacheFlight struct {
-	started  time.Time
-	done     chan struct{}
-	interest int // callers waiting for it, guarded by the cache's mu
-	cancel   context.CancelFunc
+	started time.Time
+	done    chan struct{}
+	cancel  context.CancelFunc
+
+	// Guarded by the cache's mu. Each participant (leader and waiters) is
+	// listed with its deadline (zero: none). The execution's deadline is the
+	// latest of them; it is cancelled when the last one leaves.
+	participants map[int]time.Time
+	nextID       int
+	timer        *time.Timer
+	dead         bool
 
 	// Set before done is closed.
 	entry    *cacheEntry // the kept result
@@ -104,11 +112,9 @@ type executeFunc func(ctx context.Context, sink query.Sink, tee *cappedBuffer) (
 type replayFunc func(entry *cacheEntry, sink query.Sink) (query.Stats, error)
 
 // do serves key from a kept result, joins a running identical read, or leads
-// a new one. A refresh skips kept results and joins only a read that started
-// at or after the refresh arrived. Waiters of a read that failed get its
+// a new one. A refresh skips kept results; see joinableLocked. Waiters of a read that failed get its
 // error; a read too large to keep makes each waiter run its own.
 func (c *resultCache) do(ctx context.Context, key, tenant string, refresh bool, sink query.Sink, execute executeFunc, replay replayFunc) (query.Stats, error) {
-	arrival := time.Now()
 	c.mu.Lock()
 	if !refresh {
 		if entry := c.freshLocked(key); entry != nil {
@@ -117,16 +123,16 @@ func (c *resultCache) do(ctx context.Context, key, tenant string, refresh bool, 
 			return c.replay(entry, sink, replay)
 		}
 	}
-	if f := c.flights[key]; f != nil && (!refresh || !f.started.Before(arrival)) {
-		f.interest++
+	if f := c.flights[key]; f != nil && c.joinableLocked(f, key, refresh) {
+		id := c.joinLocked(f, ctx)
 		c.mu.Unlock()
 		select {
 		case <-f.done:
 		case <-ctx.Done():
-			c.leave(f)
+			c.leave(f, key, id)
 			return query.Stats{}, ctx.Err()
 		}
-		c.leave(f)
+		c.leave(f, key, id)
 		switch {
 		case f.entry != nil:
 			c.mu.Lock()
@@ -139,25 +145,70 @@ func (c *resultCache) do(ctx context.Context, key, tenant string, refresh bool, 
 			return f.stats, f.err
 		}
 	}
-	f := &cacheFlight{started: time.Now(), done: make(chan struct{}), interest: 1}
+	f := &cacheFlight{started: time.Now(), done: make(chan struct{}), participants: map[int]time.Time{}}
 	c.flights[key] = f
+	id := c.joinLocked(f, ctx)
 	c.mu.Unlock()
-	return c.lead(ctx, key, tenant, f, sink, execute)
+	return c.lead(ctx, key, tenant, f, id, sink, execute)
+}
+
+// joinableLocked reports whether a read may join f. A plain read joins any
+// running read. A refresh joins one that started after the kept result it
+// bypasses was stored, or any when nothing is kept: one refresh execution per
+// key at a time, and never older than the result it refreshes.
+func (c *resultCache) joinableLocked(f *cacheFlight, key string, refresh bool) bool {
+	if f.dead {
+		return false
+	}
+	if !refresh {
+		return true
+	}
+	element := c.entries[key]
+	return element == nil || f.started.After(element.Value.(*cacheEntry).stored)
+}
+
+// joinLocked lists a participant and moves the execution's deadline to the
+// latest participant deadline.
+func (c *resultCache) joinLocked(f *cacheFlight, ctx context.Context) int {
+	f.nextID++
+	deadline, _ := ctx.Deadline()
+	f.participants[f.nextID] = deadline
+	c.retimeLocked(f)
+	return f.nextID
+}
+
+// retimeLocked sets the execution's timer to the latest participant deadline;
+// a participant without one keeps the execution untimed.
+func (c *resultCache) retimeLocked(f *cacheFlight) {
+	var latest time.Time
+	for _, deadline := range f.participants {
+		if deadline.IsZero() {
+			latest = time.Time{}
+			break
+		}
+		if deadline.After(latest) {
+			latest = deadline
+		}
+	}
+	if f.timer != nil {
+		f.timer.Stop()
+		f.timer = nil
+	}
+	if !latest.IsZero() && f.cancel != nil {
+		f.timer = time.AfterFunc(time.Until(latest), f.cancel)
+	}
 }
 
 // lead runs f detached from the leader's cancellation: if the leader leaves
 // while others wait, the read continues for them. The leader streams to its
 // own sink only while it is still waiting.
-func (c *resultCache) lead(ctx context.Context, key, tenant string, f *cacheFlight, sink query.Sink, execute executeFunc) (query.Stats, error) {
+func (c *resultCache) lead(ctx context.Context, key, tenant string, f *cacheFlight, id int, sink query.Sink, execute executeFunc) (query.Stats, error) {
+	// Detached from the leader; ended by retimeLocked's timer or the last
+	// participant leaving.
 	execCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	if deadline, ok := ctx.Deadline(); ok {
-		var cancelDeadline context.CancelFunc
-		execCtx, cancelDeadline = context.WithDeadline(execCtx, deadline)
-		stop := cancel
-		cancel = func() { cancelDeadline(); stop() }
-	}
 	c.mu.Lock()
 	f.cancel = cancel
+	c.retimeLocked(f)
 	c.mu.Unlock()
 	leader := &leaderSink{sink: sink, gone: make(chan struct{})}
 	buffer := &cappedBuffer{cache: c, tenant: tenant}
@@ -176,26 +227,47 @@ func (c *resultCache) lead(ctx context.Context, key, tenant string, f *cacheFlig
 	}()
 	select {
 	case <-f.done:
-		c.leave(f)
+		c.leave(f, key, id)
 		if sinkErr := leader.err(); sinkErr != nil {
 			return f.stats, sinkErr
 		}
 		return f.stats, f.err
 	case <-ctx.Done():
 		leader.detach()
-		c.leave(f)
+		c.leave(f, key, id)
 		return query.Stats{}, ctx.Err()
 	case <-leader.gone:
 		// The leader's client went away; the read goes on only for waiters.
-		c.leave(f)
+		c.leave(f, key, id)
 		return query.Stats{}, leader.err()
 	}
 }
 
-func (c *resultCache) leave(f *cacheFlight) {
+// leave removes a participant. The last one to leave a running flight marks
+// it dead and removes it, so later identical reads lead a fresh one rather
+// than join a cancelled one; otherwise the deadline moves to the latest of
+// those still waiting.
+func (c *resultCache) leave(f *cacheFlight, key string, id int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if f.interest--; f.interest == 0 && f.cancel != nil {
+	delete(f.participants, id)
+	if len(f.participants) > 0 {
+		c.retimeLocked(f)
+		return
+	}
+	if f.timer != nil {
+		f.timer.Stop()
+	}
+	select {
+	case <-f.done:
+		return // finished; finish already removed it
+	default:
+	}
+	f.dead = true
+	if c.flights[key] == f {
+		delete(c.flights, key)
+	}
+	if f.cancel != nil {
 		f.cancel()
 	}
 }
@@ -214,6 +286,9 @@ func (c *resultCache) finish(key, tenant string, f *cacheFlight, buffer *cappedB
 			f.entry = &cacheEntry{key: key, tenant: tenant, data: buffer.data, stats: stats, started: f.started, expires: time.Now().Add(c.ttl)}
 			c.storeLocked(f.entry)
 		}
+	}
+	if f.timer != nil {
+		f.timer.Stop()
 	}
 	if c.flights[key] == f {
 		delete(c.flights, key)
@@ -263,6 +338,7 @@ func (c *resultCache) storeLocked(entry *cacheEntry) bool {
 	if !c.makeRoomLocked(entry.tenant, size) {
 		return false
 	}
+	entry.stored = time.Now()
 	c.entries[entry.key] = c.lru.PushFront(entry)
 	c.total += size
 	c.byTenant[entry.tenant] += size
