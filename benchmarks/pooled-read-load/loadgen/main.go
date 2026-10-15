@@ -252,7 +252,7 @@ func (d *driver) refresh(c int, user string, explicit bool) {
 	d.rec.mu.Unlock()
 }
 
-func (d *driver) analysisStep(c int, step int) {
+func (d *driver) analysisStep(c int, step int) bool {
 	r := operations.Request{Version: operations.Version, Kind: operations.QueryRead, Connection: operations.ConnectionRef{ID: fmt.Sprintf("cust-%02d", c), Database: fmt.Sprintf("cust%02d", c), Schema: "public"},
 		Spec: operations.Spec{Query: &operations.QuerySpec{SQL: fmt.Sprintf("SELECT g AS id, md5(g::text) AS h, %d AS step FROM (SELECT pg_sleep(12)) s, generate_series(1, 60000) g", step)}}}
 	digest, err := operations.Digest(r)
@@ -272,7 +272,10 @@ func (d *driver) analysisStep(c int, step int) {
 			cancel()
 			if err == nil && (response.Receipt == nil || response.Receipt.Outcome != "completed") {
 				err = errors.New("operation did not complete")
-				s.code = "OPERATION_" + strings.ToUpper(fmt.Sprint(response.Receipt))
+				s.code = "OPERATION_NOT_COMPLETED"
+				if response.Receipt != nil {
+					s.code = "OPERATION_" + strings.ToUpper(string(response.Receipt.Outcome)) + "_" + response.Receipt.ErrorCode
+				}
 			}
 		}
 	}
@@ -281,6 +284,7 @@ func (d *driver) analysisStep(c int, step int) {
 		s.code, s.retry = errorCode(err)
 	}
 	d.rec.leave(s)
+	return s.code == ""
 }
 
 type stat struct {
@@ -519,7 +523,9 @@ func main() {
 			r := d.rng()
 			c := r.Intn(node.Customers)
 			for step := 0; time.Now().Before(d.end); step++ {
-				d.analysisStep(c, step)
+				if !d.analysisStep(c, step) {
+					sleepUntil(d.end, 5*time.Second) // a failing job backs off, as an application would
+				}
 			}
 		})
 	}
