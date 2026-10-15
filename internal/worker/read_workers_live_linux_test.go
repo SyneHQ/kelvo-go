@@ -38,7 +38,7 @@ func TestContainedReadWorkersSizeWorkersAndBackends(t *testing.T) {
 	mgr.Adapter = g.adapter
 	g.mgr, g.executor.WarmPool = mgr, mgr
 	t.Cleanup(func() { _ = mgr.Drain(context.Background()) })
-	connections := []string{"explorer", "explorer-b"}
+	connections := []string{"explorer", "explorer_b"}
 	g.executor.Config = catalog.Config{Sources: []catalog.Source{
 		{ID: connections[0], Type: "postgres", DSNEnv: "KELVO_TEST_WARM_POSTGRES_DSN"},
 		{ID: connections[1], Type: "postgres", DSNEnv: "KELVO_TEST_WARM_POSTGRES_DSN"},
