@@ -121,7 +121,7 @@ def container_cpu(name):
     return 0.0
 
 
-def profile_plain(args, out, report, pg, proxy, nats_port, certs, scenario, password, proxy_port):
+def profile_plain(args, out, report, pg, proxy, nats_port, certs, scenario, password, proxy_port, service):
     """One plain read, end to end, at low load and at 50 concurrent: windows on the node, the source and the adapter."""
     admin_dsn = "postgres://postgres:%s@127.0.0.1:%d/postgres?sslmode=disable" % (password, args.postgres_port)
     loadgen = str(Path(args.loadgen).resolve())
@@ -144,6 +144,13 @@ def profile_plain(args, out, report, pg, proxy, nats_port, certs, scenario, pass
     run = subprocess.run([loadgen, *common, "-vus", "0", "-cold", "5", "-warmup", "0", "-duration", "0s", "-out", str(out / "plain-cold.json"), "-label", "cold"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     (out / "plain-cold.log").write_bytes(run.stdout)
     phases["cold"] = {"proxy_before": cold_before, "proxy_after": proxy_stats()}
+    # An idle window: what the node costs with no read at all (tickers, broker keepalives, journals).
+    (out / "window-idle.start").touch()
+    wait_for(lambda: (out / "window-idle.started").exists(), "idle window start", timeout=30)
+    time.sleep(30)
+    (out / "window-idle.stop").touch()
+    wait_for(lambda: (out / "window-idle.done").exists(), "idle window end", timeout=60)
+    phases["idle"] = {"window": json.loads((out / "window-idle.json").read_text())}
     for name, vus in (("low", 1), ("c50", 50)):
         sh(pg + ["-d", "postgres", "-c", "SELECT pg_stat_statements_reset()"])
         before = proxy_stats()
@@ -180,6 +187,13 @@ def profile_plain(args, out, report, pg, proxy, nats_port, certs, scenario, pass
             adapter_runs[name] = json.loads((out / ("adapter-%s.json" % name)).read_text()) if (out / ("adapter-%s.json" % name)).exists() else {"error": run.stdout.decode(errors="replace")[-400:]}
         report["profile_plain_adapter"] = adapter_runs
     (out / "stop").touch()
+    try:
+        service.wait(timeout=120)
+    except subprocess.TimeoutExpired:
+        pass
+    if (out / "node-report.json").exists():
+        node = json.loads((out / "node-report.json").read_text())
+        report["node_summary"] = {k: node.get(k) for k in ("ed25519_verify_micros", "warm_pool", "warm_pool_config", "resolver_calls")}
     report["passed"] = all(phases[k].get("reads", 1) > 0 for k in ("low", "c50"))
     report["gate"] = {"profiled_reads": report["passed"]}
 
@@ -344,7 +358,7 @@ def main():
         print("node ready", flush=True)
 
         if args.profile_plain:
-            profile_plain(args, out, report, pg, proxy, nats_port, certs, scenario, password, proxy_port)
+            profile_plain(args, out, report, pg, proxy, nats_port, certs, scenario, password, proxy_port, service)
         else:
             # 6. Load, with runner-wide samplers beside it.
             samples = {"runner_cpu_busy_pct": [], "source_backends": []}
