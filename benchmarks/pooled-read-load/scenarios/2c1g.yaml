@@ -31,7 +31,7 @@ warm_pool:
   worker_memory_mb: 64
   cache_ttl: 10s
   reauthorize_every: 60s
-operations: {max_concurrent: 2, max_downloads: 2, max_result_bytes: 33554432}
+operations: {max_concurrent: 2, max_downloads: 2, max_result_bytes: 16777216}
 gateway: {max_http_requests: 256}
 audit: {max_entries: 4096, max_pending: 512}
 resolver: {delay: 300ms, max_concurrent: 16}
