@@ -460,10 +460,10 @@ func TestPooledReadLoadNode(t *testing.T) {
 			t.Log("probe submit:", err)
 			return
 		}
-		_, resultErr := leases.Results(ctx, handle.ID, auth, discardSink{})
+		received, resultErr := leases.Results(ctx, handle.ID, auth, discardSink{})
 		status, err := leases.Status(ctx, handle.ID, auth)
 		e, _ := json.Marshal(status.Error)
-		t.Logf("PROBE results=%v state=%s error=%s status_err=%v", resultErr, status.State, e, err)
+		t.Logf("PROBE results=%v state=%s error=%s status_err=%v client_saw=rows:%d batches:%d wire:%d job_stats=rows:%d batches:%d wire:%d", resultErr, status.State, e, err, received.Rows, received.Batches, received.WireBytes, status.Stats.Rows, status.Stats.Batches, status.Stats.WireBytes)
 		return
 	}()
 
