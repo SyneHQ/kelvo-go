@@ -164,7 +164,10 @@ type Stats struct {
 	PrepareNS       int64                          `json:"prepare_ns"`
 	DurationNS      int64                          `json:"duration_ns"`
 	EngineStreaming bool                           `json:"engine_streaming"`
-	Accelerations   []AccelerationVersion          `json:"accelerations,omitempty"`
+	// Cached reports a read served from a kept result or a shared execution;
+	// DurationNS is then the replay's own time.
+	Cached        bool                  `json:"cached,omitempty"`
+	Accelerations []AccelerationVersion `json:"accelerations,omitempty"`
 }
 
 // AccelerationVersion identifies the materialized dataset generation used.

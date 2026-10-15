@@ -420,7 +420,7 @@ func TestContainedDashboardViewersShareOneSourceQueryPerPanel(t *testing.T) {
 
 	report, _ := json.Marshal(map[string]any{"viewers": viewers, "panels": panels, "refresh_1": first, "refresh_2": second,
 		"source_calls_after_refresh_1": afterFirst, "source_calls_after_refresh_2": afterSecond, "source_calls_after_explicit_refresh": afterRefresh,
-		"cache_hits": g.mgr.cache.hits, "cache_ttl_ms": g.mgr.cache.ttl.Milliseconds(), "spawns": g.mgr.Metrics().Spawns.Load()})
+		"cache_hits": g.mgr.cache.Hits(), "cache_ttl_ms": g.mgr.cache.ttl.Milliseconds(), "spawns": g.mgr.Metrics().Spawns.Load()})
 	t.Logf("GATE_METRICS %s", report)
 	for i := 0; i < panels; i++ {
 		wantRefresh := int64(2)
