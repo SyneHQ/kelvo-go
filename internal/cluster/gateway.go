@@ -61,10 +61,12 @@ type Gateway struct {
 	reconcileOK            map[string]bool
 	workerHealth           gatewayWorkerHealth
 	workerHealthFreshness  time.Duration
-	reconcileErr           error
-	draining               bool
-	closed                 bool
-	once                   sync.Once
+	// streamWait overrides defaultStreamWait for tests.
+	streamWait   time.Duration
+	reconcileErr error
+	draining     bool
+	closed       bool
+	once         sync.Once
 }
 
 func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
@@ -381,8 +383,12 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	select {
 	case g.permits <- struct{}{}:
 	default:
-		g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Request capacity unavailable")
-		return
+		// A single-call read waits a bounded time for a request slot; the
+		// three-call path keeps its immediate refusal.
+		if !isStreamQuery(r) || !g.waitForPermit(r.Context()) {
+			g.retryableBusy(w, "Request capacity unavailable")
+			return
+		}
 	}
 	admission := requestAdmission{active: g.permits, waiting: g.resultWaiters, held: admissionActive}
 	defer admission.release()
@@ -472,6 +478,17 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.submit(w, r, g.tenants[tenant])
 		return
 	}
+	if len(p) == 3 && p[2] == "stream" && r.Method == "POST" {
+		g.mu.RLock()
+		draining := g.draining
+		g.mu.RUnlock()
+		if draining {
+			g.err(w, http.StatusServiceUnavailable, "UNAVAILABLE", "Service draining")
+			return
+		}
+		g.streamQuery(w, r, g.tenants[tenant], &admission)
+		return
+	}
 	if len(p) == 3 && r.Method == "GET" {
 		g.status(w, r, g.tenants[tenant], p[2])
 		return
@@ -504,10 +521,19 @@ func (g *Gateway) authenticate(r *http.Request) (string, context.Context, bool) 
 	return t, nil, ok
 }
 func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant) {
+	if s, ok := g.submitJob(w, r, t, 0); ok {
+		g.json(w, 201, map[string]string{"id": s.Job.ID, "state": s.Job.State})
+	}
+}
+
+// submitJob authorizes, audits and stores one query. On failure it has already
+// written the response. A positive wait retries a full tenant for that long
+// before refusing with a retryable error.
+func (g *Gateway) submitJob(w http.ResponseWriter, r *http.Request, t gatewayTenant, wait time.Duration) (Snapshot, bool) {
 	op, auditErr := g.audit.beginRequest(r.Context(), t.store.Policy().TenantID, audit.QuerySubmit)
 	if auditErr != nil {
 		g.err(w, 503, "UNAVAILABLE", "Audit storage unavailable")
-		return
+		return Snapshot{}, false
 	}
 	defer op.abort(r.Context())
 
@@ -518,15 +544,15 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant
 	d.DisallowUnknownFields()
 	if d.Decode(&req) != nil || d.Decode(new(any)) != io.EOF {
 		g.auditError(w, op, 400, "INVALID_ARGUMENT", "Invalid query request")
-		return
+		return Snapshot{}, false
 	}
 	if e := query.ValidateRequest(req); e != nil {
 		g.auditError(w, op, 400, "INVALID_ARGUMENT", "Invalid query request")
-		return
+		return Snapshot{}, false
 	}
 	if _, err := submissionAuthority(r.Context(), t.store.Policy(), req); err != nil {
 		g.auditError(w, op, 403, "PERMISSION_DENIED", "Query access denied")
-		return
+		return Snapshot{}, false
 	}
 	// Mint context only after authorization; client headers and ambient context
 	// cannot choose a trace, including when tracing is disabled.
@@ -535,22 +561,44 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant
 	defer finishClusterTrace(span, r.Context(), &outcome)
 	ctx := tracing.WithCarrier(r.Context(), span.Carrier())
 	s, e := t.store.Submit(ctx, req)
+	if wait > 0 && errors.Is(e, ErrCapacity) {
+		deadline := time.NewTimer(wait)
+		defer deadline.Stop()
+		poll := time.NewTicker(25 * time.Millisecond)
+		defer poll.Stop()
+	waiting:
+		for errors.Is(e, ErrCapacity) {
+			select {
+			case <-ctx.Done():
+				return Snapshot{}, false
+			case <-deadline.C:
+				break waiting
+			case <-poll.C:
+				s, e = t.store.Submit(ctx, req)
+			}
+		}
+	}
 	if errors.Is(e, ErrCapacity) {
-		g.auditError(w, op, 429, "RESOURCE_EXHAUSTED", "Query capacity unavailable")
-		return
+		w.Header().Set("Retry-After", "1")
+		message := "Query capacity unavailable"
+		if wait > 0 {
+			message += "; retry after 1s"
+		}
+		g.auditError(w, op, 429, "RESOURCE_EXHAUSTED", message)
+		return Snapshot{}, false
 	}
 	if e != nil {
 		g.auditError(w, op, 503, "UNAVAILABLE", "Service unavailable")
-		return
+		return Snapshot{}, false
 	}
 	// Submission is durable before enqueue. Reconciliation republishes queued jobs,
 	// so a transient broker failure must not discard this accepted handle.
 	_ = t.store.Enqueue(r.Context(), s.Job.ID)
 	if !g.auditSuccess(w, r, op) {
-		return
+		return Snapshot{}, false
 	}
-	g.json(w, 201, map[string]string{"id": s.Job.ID, "state": s.Job.State})
 	outcome = telemetry.OutcomeSuccess
+	return s, true
 }
 func (g *Gateway) status(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string) {
 	s, e := principalSnapshot(r.Context(), t, id)
@@ -604,6 +652,13 @@ func (g *Gateway) cancelJob(w http.ResponseWriter, r *http.Request, t gatewayTen
 	g.auditError(w, op, 409, "CONFLICT", "Query state changed")
 }
 func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string, admission *requestAdmission) {
+	g.relayResults(w, r, t, id, admission, 0)
+}
+
+// relayResults serves one result. A positive wait is the single-call read: it
+// waits that long for a result slot instead of refusing at once, and ends the
+// body with the Kelvo-Query-Receipt trailer.
+func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string, admission *requestAdmission, slotWait time.Duration) {
 	op, auditErr := g.audit.beginRequest(r.Context(), t.store.Policy().TenantID, audit.QueryResults)
 	if auditErr != nil {
 		g.err(w, 503, "UNAVAILABLE", "Audit storage unavailable")
@@ -720,6 +775,9 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 	// This advertises the protocol, not success: only the final EOS below is
 	// released after durable Succeeded CAS. Partial/aborted bodies prove nothing.
 	w.Header().Set("Kelvo-Result-Completion", "durable-eos-v1")
+	if slotWait > 0 {
+		w.Header().Set("Trailer", receiptTrailer)
+	}
 	w.WriteHeader(200)
 	stopWrites := httpstream.WatchWriteDeadline(ctx, w, time.Now().Add(t.store.Policy().Limits.Timeout))
 	defer stopWrites()
@@ -733,32 +791,42 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 		g.fail(t, s, "Arrow stream failed")
 		panic(http.ErrAbortHandler)
 	}
-	if !tail.validEOS() || requestAuthorityErr(ctx) != nil || op.complete(nil) != nil || requestAuthorityErr(ctx) != nil || g.commitResult(ctx, t, s) != nil || requestAuthorityErr(ctx) != nil || tail.FlushEOS() != nil {
+	var done Job
+	committed := func() bool {
+		job, err := g.commitResult(ctx, t, s)
+		done = job
+		return err == nil
+	}
+	if !tail.validEOS() || requestAuthorityErr(ctx) != nil || op.complete(nil) != nil || requestAuthorityErr(ctx) != nil || !committed() || requestAuthorityErr(ctx) != nil || tail.FlushEOS() != nil {
 		g.fail(t, s, "Arrow stream incomplete")
 		panic(http.ErrAbortHandler)
+	}
+	if slotWait > 0 {
+		receipt, _ := json.Marshal(map[string]any{"id": done.ID, "state": done.State, "stats": done.Stats})
+		w.Header().Set(receiptTrailer, string(receipt))
 	}
 	relayOutcome = telemetry.OutcomeSuccess
 }
 
 // Pin the durable slot until the gateway has checked the worker's completion.
 // Only then is it terminal and reusable by a subsequent submission.
-func (g *Gateway) commitResult(ctx context.Context, t gatewayTenant, claimed Snapshot) error {
+func (g *Gateway) commitResult(ctx context.Context, t gatewayTenant, claimed Snapshot) (Job, error) {
 	for range 8 {
 		final, err := principalSnapshot(ctx, t, claimed.Job.ID)
 		if err != nil {
-			return err
+			return Job{}, err
 		}
 		if final.Job.State != ResultReady || final.Job.Owner != claimed.Job.Owner || final.Job.Claim != claimed.Job.Claim || final.Job.WorkerID != claimed.Job.WorkerID {
-			return ErrConflict
+			return Job{}, ErrConflict
 		}
 		next := final.Job
 		next.State = Succeeded
 		_, err = t.store.CompareAndSwap(ctx, final, next)
 		if !errors.Is(err, ErrConflict) {
-			return err
+			return next, err
 		}
 	}
-	return ErrConflict
+	return Job{}, ErrConflict
 }
 
 // arrowEOSTail withholds the final eight Arrow IPC bytes until success state.
@@ -854,3 +922,105 @@ func (g *Gateway) err(w http.ResponseWriter, status int, code, msg string) {
 }
 
 var _ http.Handler = (*Gateway)(nil)
+
+const (
+	streamQueryPath = "/v1/queries/stream"
+	receiptTrailer  = "Kelvo-Query-Receipt"
+	// defaultStreamWait bounds how long a single-call read waits at each
+	// admission point (request slot, tenant query slot, result slot) before it
+	// is refused with a retry hint.
+	defaultStreamWait = 5 * time.Second
+)
+
+func isStreamQuery(r *http.Request) bool {
+	return r.Method == http.MethodPost && r.URL.Path == streamQueryPath
+}
+
+func (g *Gateway) streamWaitFor() time.Duration {
+	if g.streamWait != 0 {
+		return g.streamWait
+	}
+	return defaultStreamWait
+}
+
+func (g *Gateway) waitForPermit(ctx context.Context) bool {
+	timer := time.NewTimer(g.streamWaitFor())
+	defer timer.Stop()
+	select {
+	case g.permits <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return false
+	}
+}
+
+// retryableBusy is the capacity refusal: 429 with Retry-After.
+func (g *Gateway) retryableBusy(w http.ResponseWriter, message string) {
+	w.Header().Set("Retry-After", "1")
+	g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", message)
+}
+
+// activateWithin retries a result slot for up to wait. The slot is never held
+// while waiting: activate itself does not block.
+func activateWithin(ctx context.Context, a *requestAdmission, wait time.Duration) bool {
+	if a.activate() {
+		return true
+	}
+	if wait <= 0 {
+		return false
+	}
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	poll := time.NewTicker(25 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-deadline.C:
+			return false
+		case <-poll.C:
+			if a.activate() {
+				return true
+			}
+		}
+	}
+}
+
+// streamQuery is submit, wait and fetch in one request: the same audit,
+// authorization, tenant slots and limits as the three calls, composed on the
+// gateway. The body is the Arrow IPC stream, whose final EOS is released only
+// after the durable Succeeded commit, followed by the Kelvo-Query-Receipt
+// trailer. Every refusal before the first byte is a JSON error; capacity
+// refusals are 429 with Retry-After after a bounded wait.
+func (g *Gateway) streamQuery(w http.ResponseWriter, r *http.Request, t gatewayTenant, admission *requestAdmission) {
+	wait := g.streamWaitFor()
+	s, ok := g.submitJob(w, r, t, wait)
+	if !ok {
+		return
+	}
+	// A read nobody will consume must not hold its tenant slot until expiry.
+	defer g.cancelUnfinished(t, s.Job.ID)
+	w.Header().Set("Kelvo-Query-Id", s.Job.ID)
+	g.relayResults(w, r, t, s.Job.ID, admission, wait)
+}
+
+// cancelUnfinished cancels a job the stream did not carry to a terminal state.
+func (g *Gateway) cancelUnfinished(t gatewayTenant, id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	for range 4 {
+		current, err := t.store.Get(ctx, id)
+		if err != nil || current.Job.Terminal() {
+			return
+		}
+		next := current.Job
+		next.State = Cancelled
+		next.Error = &query.Error{Code: "CANCELLED", Message: "Query cancelled"}
+		if _, err = t.store.CompareAndSwap(ctx, current, next); !errors.Is(err, ErrConflict) {
+			return
+		}
+	}
+}

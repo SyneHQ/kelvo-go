@@ -35,6 +35,10 @@ type Request struct {
 	// Refresh skips the dashboard result cache and replaces its entry. It is
 	// not signed: it can only cause another source query, never widen access.
 	Refresh bool `json:"refresh,omitempty" yaml:"refresh,omitempty"`
+	// BypassCache asks for a fresh execution on an explicit refresh. It carries
+	// no authority and is not part of the delegation digest; a node without a
+	// result cache ignores it.
+	BypassCache bool `json:"bypass_cache,omitempty" yaml:"-"`
 }
 
 // MongoRequest carries native aggregation syntax. SQL and Mongo are mutually
