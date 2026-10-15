@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+
+	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
 var sourceName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
@@ -14,6 +16,13 @@ var sourceName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,62}$`)
 func ValidateRequest(r Request) error {
 	if len(r.Delegation) > 32768 || (r.Delegation != "" && (r.Mongo != nil || r.ScanDiagnostics)) {
 		return NewError("INVALID_ARGUMENT", "Invalid delegated query")
+	}
+	if r.Inspect != nil {
+		inspect := operations.Request{Version: operations.Version, Kind: operations.MetadataInspect, Connection: operations.ConnectionRef{ID: r.ConnectionID}, Spec: operations.Spec{Metadata: r.Inspect}}
+		if r.Mode != "native" || r.SQL != "" || r.Mongo != nil || len(r.Parameters) != 0 || len(r.Sources) != 0 || r.ScanDiagnostics || !sourceName.MatchString(r.ConnectionID) || inspect.Validate() != nil {
+			return NewError("INVALID_ARGUMENT", "Metadata inspection requires one native connection, without SQL or parameters")
+		}
+		return nil
 	}
 	if (strings.TrimSpace(r.SQL) == "" && r.Mongo == nil) || len(r.SQL) > 64<<10 || len(r.Parameters) > 1024 || len(r.Sources) > 64 {
 		return NewError("INVALID_ARGUMENT", "Query exceeds its request limits")
