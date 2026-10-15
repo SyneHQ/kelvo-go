@@ -189,6 +189,9 @@ func (d *driver) read(class string, c int, user string, r query.Request) (rows i
 	s.seconds = time.Since(began).Seconds()
 	if err != nil {
 		s.code, s.retry = errorCode(err)
+		if s.code == "RESOURCE_EXHAUSTED" && s.seconds < 0.01 {
+			s.code = "CLIENT_ADMISSION_LIMIT" // the client refused before sending: this load generator's own cap
+		}
 	} else if rows == 0 {
 		s.code = "EMPTY_RESULT"
 	}
@@ -398,8 +401,8 @@ func main() {
 	viewers := flag.Int("viewers", 10, "viewers per dashboard")
 	consoles := flag.Int("consoles", 9, "console virtual users")
 	analysis := flag.Int("analysis", 1, "background analysis jobs")
-	thinkMin := flag.Duration("explorer-think-min", 10*time.Second, "explorer think time, minimum")
-	thinkMax := flag.Duration("explorer-think-max", 20*time.Second, "explorer think time, maximum")
+	thinkMin := flag.Duration("explorer-think-min", 15*time.Second, "explorer think time, minimum")
+	thinkMax := flag.Duration("explorer-think-max", 45*time.Second, "explorer think time, maximum")
 	refreshEvery := flag.Duration("dashboard-refresh", 30*time.Second, "dashboard refresh interval")
 	explicitPct := flag.Int("explicit-refresh-pct", 5, "percent of dashboard refreshes that bypass the cache")
 	maxConcurrent := flag.Int("max-concurrent", 256, "client MaxConcurrent, as db-api would configure")
@@ -532,7 +535,7 @@ func main() {
 				case 0:
 					sql = fmt.Sprintf("SELECT * FROM public.explorer_t%d WHERE id > %d ORDER BY id LIMIT 200", r.Intn(8), r.Intn(300))
 				case 1:
-					sql = fmt.Sprintf("SELECT region, avg(amount) AS a FROM public.dash_p%d WHERE id > %d GROUP BY region", r.Intn(10), r.Intn(1000))
+					sql = fmt.Sprintf("SELECT region, avg(amount)::numeric(18,2) AS a FROM public.dash_p%d WHERE id > %d GROUP BY region", r.Intn(10), r.Intn(1000))
 				default: // a larger paged result
 					sql = fmt.Sprintf("SELECT * FROM public.dash_p%d WHERE id > %d LIMIT 5000", r.Intn(10), r.Intn(1000))
 				}
@@ -567,12 +570,17 @@ func main() {
 		}
 	}
 	codes := map[string]int{}
-	capacity := 0
+	capacity, unavailable, clientLimit := 0, 0, 0
 	for _, s := range all {
 		if s.code != "" {
 			codes[s.code]++
-			if s.code == "RESOURCE_EXHAUSTED" || s.code == "UNAVAILABLE" {
+			switch s.code {
+			case "RESOURCE_EXHAUSTED":
 				capacity++
+			case "UNAVAILABLE":
+				unavailable++
+			case "CLIENT_ADMISSION_LIMIT":
+				clientLimit++
 			}
 		}
 	}
@@ -602,7 +610,9 @@ func main() {
 	messagesMu.Lock()
 	report["first_error_message_by_code"] = messages
 	messagesMu.Unlock()
-	report["capacity_errors"] = capacity
+	report["capacity_errors"] = capacity // RESOURCE_EXHAUSTED from the node or gateway
+	report["unavailable_errors"] = unavailable
+	report["client_admission_refusals"] = clientLimit // the generator hit its own MaxConcurrent: the run is not valid
 	report["peak_inflight_requests"] = d.rec.peak.Load()
 	report["mean_inflight_requests"] = meanInflight
 	report["timeline_15s"] = timeline

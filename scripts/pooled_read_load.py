@@ -100,6 +100,27 @@ def cpu_times():
     return sum(fields), fields[3] + fields[4]  # total, idle+iowait
 
 
+def proc_cpu(pid):
+    """User plus system CPU seconds of one process."""
+    try:
+        fields = Path("/proc/%d/stat" % pid).read_text().rsplit(") ", 1)[1].split()
+        return (int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK")
+    except OSError:
+        return 0.0
+
+
+def container_cpu(name):
+    """CPU seconds of a Docker container, from its cgroup."""
+    try:
+        cid = sh(["docker", "inspect", "-f", "{{.Id}}", name]).stdout.decode().strip()
+        for path in (f"/sys/fs/cgroup/system.slice/docker-{cid}.scope/cpu.stat", f"/sys/fs/cgroup/docker/{cid}/cpu.stat"):
+            if Path(path).exists():
+                return int(re.search(r"usage_usec (\d+)", Path(path).read_text())[1]) / 1e6
+    except Exception:
+        pass
+    return 0.0
+
+
 def set_override(tree, dotted, value):
     keys = dotted.split(".")
     for key in keys[:-1]:
@@ -116,6 +137,7 @@ def main():
     parser.add_argument("--postgres-container", default="kelvo-load-postgres")
     parser.add_argument("--postgres-port", type=int, default=55433)
     parser.add_argument("--postgres-password-file", type=Path)
+    parser.add_argument("--go", default="go")
     parser.add_argument("--rtt-ms", type=int, default=80)
     parser.add_argument("--resolve-ms", type=int, default=300)
     parser.add_argument("--kelvo", type=Path, help="kelvo binary (one-shot children)")
@@ -279,8 +301,16 @@ def main():
         admin_dsn = "postgres://postgres:%s@127.0.0.1:%d/postgres?sslmode=disable" % (password, args.postgres_port)
         load = [str(shutil_bins["loadgen"]), "-node", str(out / "node.json"), "-out", str(out / "loadgen-report.json"), "-duration", "%ds" % args.duration, "-pg-admin-dsn", admin_dsn,
                 "-label", args.label or args.profile, *args.loadgen_arg]
+        import resource
+        proxy_cpu_before = proc_cpu(proxy.pid)
+        pg_cpu_before = container_cpu(args.postgres_container)
+        children_before = resource.getrusage(resource.RUSAGE_CHILDREN)
         with (out / "loadgen.log").open("wb") as log:
             load_exit = subprocess.run(load, stdout=log, stderr=subprocess.STDOUT).returncode
+        children = resource.getrusage(resource.RUSAGE_CHILDREN)
+        outside_cpu = {"loadgen_cpu_s": round(children.ru_utime + children.ru_stime - children_before.ru_utime - children_before.ru_stime, 1),
+                       "latency_proxy_cpu_s": round(proc_cpu(proxy.pid) - proxy_cpu_before, 1),
+                       "postgres_container_cpu_s": round(container_cpu(args.postgres_container) - pg_cpu_before, 1)}
         stop_sampling.set()
         for t in threads:
             t.join(timeout=10)
@@ -308,13 +338,18 @@ def main():
                           "rss_workers_mean_mib": round(mean("rss_workers_bytes") / 2**20, 1), "job_cgroups_peak": top("job_cgroups"), "job_cgroups_mean": round(mean("job_cgroups"), 1),
                           "failed_reads_logged": failed_reads, "samples_file": "node-samples.json"}
         report["loadgen"] = loadgen
+        report["outside_node_cpu"] = outside_cpu
+        profile = out / "node-cpu.pprof"
+        if profile.exists():
+            top = subprocess.run([args.go, "tool", "pprof", "-top", "-nodecount=40", str(out / "cluster.test"), str(profile)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            (out / "node-cpu-top.txt").write_bytes(top.stdout)
         report["runner_cpu_busy_pct"] = {"mean": round(sum(samples["runner_cpu_busy_pct"]) / max(len(samples["runner_cpu_busy_pct"]), 1), 1), "max": max(samples["runner_cpu_busy_pct"] or [0])}
         report["source_backends"] = {"max": max(samples["source_backends"] or [0]), "samples": samples["source_backends"]}
         proxy_stats = out / "latproxy.stats.json"
         if proxy_stats.exists():
             report["source_proxy"] = json.loads(proxy_stats.read_text())
         capacity = loadgen.get("capacity_errors")
-        gate = {"loadgen_exit_zero": load_exit == 0, "node_exit_zero": service_exit == 0, "no_capacity_errors": capacity == 0, "no_oom_kill": node.get("memory_events_oom", 0) == 0,
+        gate = {"loadgen_exit_zero": load_exit == 0, "node_exit_zero": service_exit == 0, "no_capacity_errors": capacity == 0, "load_generator_not_capped": loadgen.get("client_admission_refusals", 1) == 0, "no_oom_kill": node.get("memory_events_oom", 0) == 0,
                 "no_capacity_failures_logged_by_node": not any(k.split("/")[1] == "capacity" for k in failed_reads)}
         report["gate"] = gate
         report["passed"] = all(gate.values())

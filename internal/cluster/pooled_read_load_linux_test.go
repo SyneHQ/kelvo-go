@@ -18,6 +18,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync"
@@ -475,6 +476,12 @@ func TestPooledReadLoadNode(t *testing.T) {
 		t.Fatal("publish node.json", err)
 	}
 
+	// A CPU profile of the whole load shows where the node's cores go.
+	if f, err := os.Create(filepath.Join(out, "node-cpu.pprof")); err == nil {
+		if pprof.StartCPUProfile(f) == nil {
+			defer func() { pprof.StopCPUProfile(); _ = f.Close() }()
+		}
+	}
 	// Sample the delegated cgroup until the load generator is done.
 	began := time.Now()
 	var samples []loadSample
