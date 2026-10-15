@@ -31,7 +31,7 @@ type Request struct {
 	// BypassCache asks for a fresh execution on an explicit refresh. It carries
 	// no authority and is not part of the delegation digest; a node without a
 	// result cache ignores it.
-	BypassCache bool `json:"bypass_cache,omitempty" yaml:"-"`
+	BypassCache bool `json:"bypass_cache,omitempty"`
 }
 
 // MongoRequest carries native aggregation syntax. SQL and Mongo are mutually

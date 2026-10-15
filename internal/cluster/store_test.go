@@ -501,3 +501,31 @@ func TestNATSStoreSubmitPrefersAgedSlots(t *testing.T) {
 		t.Fatalf("capacity beyond max_queries was accepted: %v", err)
 	}
 }
+
+func TestNATSStoreWatchJobSignalsUpdates(t *testing.T) {
+	store := openFixture(t)
+	ctx := context.Background()
+	seed, err := store.Submit(ctx, query.Request{Mode: "federated", SQL: "select 1"})
+	if err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+	changed, stop, err := store.WatchJob(ctx, seed.Job.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	select {
+	case <-changed:
+		t.Fatal("signal before any update")
+	case <-time.After(100 * time.Millisecond):
+	}
+	failJob(t, store, seed)
+	select {
+	case <-changed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("update did not signal the watcher")
+	}
+	if _, _, err := store.WatchJob(ctx, "not-a-job"); err == nil {
+		t.Fatal("watch accepted an invalid handle")
+	}
+}

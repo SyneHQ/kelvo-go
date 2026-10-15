@@ -4,6 +4,7 @@ package query_test
 import (
 	"encoding/json"
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -146,5 +147,17 @@ func TestRowBatchTargetConfigurationRoundTrip(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The cache work and the single-call read share this one field; keep its
+// declaration exactly like this so they merge.
+func TestBypassCacheIsDeclaredAsAgreed(t *testing.T) {
+	field, ok := reflect.TypeOf(query.Request{}).FieldByName("BypassCache")
+	if !ok || field.Type.Kind() != reflect.Bool || field.Tag != `json:"bypass_cache,omitempty"` {
+		t.Fatalf("BypassCache = %+v", field)
+	}
+	if raw, _ := json.Marshal(query.Request{}); strings.Contains(string(raw), "bypass_cache") {
+		t.Fatalf("false must be omitted: %s", raw)
 	}
 }
