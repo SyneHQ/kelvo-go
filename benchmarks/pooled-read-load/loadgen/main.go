@@ -408,6 +408,10 @@ func main() {
 	maxConcurrent := flag.Int("max-concurrent", 256, "client MaxConcurrent, as db-api would configure")
 	timeout := flag.Duration("request-timeout", 30*time.Second, "per-request deadline")
 	pgAdmin := flag.String("pg-admin-dsn", "", "direct admin DSN of the source, for pg_stat_statements")
+	mode := flag.String("mode", "mixed", "mixed (product traffic) or plain (one plain read, for profiling)")
+	plainVUs := flag.Int("vus", 1, "plain mode: concurrent closed-loop readers on one connection")
+	plainCold := flag.Int("cold", 0, "plain mode: first reads on this many other connections (worker spawn and resolve included)")
+	plainWarmup := flag.Int("warmup", 5, "plain mode: sequential reads before the timed loop")
 	flag.StringVar(&aliasMode, "alias", "connection", "query alias per request: connection or shared (source_1)")
 	label := flag.String("label", "", "free text copied to the report")
 	flag.Parse()
@@ -447,6 +451,11 @@ func main() {
 	ctx := context.Background()
 	report := map[string]any{"label": *label, "started": time.Now().UTC().Format(time.RFC3339), "duration_s": duration.Seconds(),
 		"virtual_users": map[string]int{"explorer": *explorers, "dashboard_viewers": *dashboards * *viewers, "console": *consoles, "analysis": *analysis}}
+
+	if *mode == "plain" {
+		runPlain(d, node, *plainVUs, *duration, *plainCold, *plainWarmup, *out, *label)
+		return
+	}
 
 	// Probe: does an explicit refresh really reach the source? One panel, run
 	// twice inside the cache window, then once with the bypass flag.
@@ -653,4 +662,60 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("requests=%d errors=%d capacity_errors=%d peak_inflight=%d\n", len(all), summarize(all).Errors, capacity, d.rec.peak.Load())
+}
+
+// plainSQL is one ordinary preview read: 50 rows, a primary-key order.
+const plainSQL = "SELECT * FROM public.explorer_t0 ORDER BY id LIMIT 50"
+
+// runPlain measures one plain read on a warm worker: closed-loop readers on
+// connection 0, after a cold read on each of cold other connections.
+func runPlain(d *driver, node nodeInfo, vus int, duration time.Duration, cold, warmup int, out, label string) {
+	d.rec = &recorder{began: time.Now(), last: time.Now()}
+	for c := 1; c <= cold && c < node.Customers; c++ {
+		d.read("plain_cold", c, "plain-cold", query.Request{SQL: plainSQL})
+	}
+	for i := 0; i < warmup; i++ {
+		d.read("plain_warmup", 0, "plain-warm", query.Request{SQL: plainSQL})
+	}
+	d.end = time.Now().Add(duration)
+	began := time.Now()
+	var wg sync.WaitGroup
+	for v := 0; v < vus && duration > 0; v++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for time.Now().Before(d.end) {
+				d.read("plain_warm", 0, fmt.Sprintf("plain-%02d", v), query.Request{SQL: plainSQL})
+			}
+		}()
+	}
+	wg.Wait()
+	elapsed := time.Since(began)
+	byClass := map[string][]sample{}
+	for _, s := range d.rec.samples {
+		byClass[s.class] = append(byClass[s.class], s)
+	}
+	classes := map[string]stat{}
+	for class, samples := range byClass {
+		classes[class] = summarize(samples)
+	}
+	report := map[string]any{"label": label, "mode": "plain", "vus": vus, "duration_s": duration.Seconds(), "elapsed_s": elapsed.Seconds(), "classes": classes,
+		"warm_reads_per_second": float64(len(byClass["plain_warm"])) / math.Max(elapsed.Seconds(), 1), "peak_inflight_requests": d.rec.peak.Load(),
+		"sql": plainSQL}
+	messagesMu.Lock()
+	report["first_error_message_by_code"] = messages
+	messagesMu.Unlock()
+	var firstFew []float64
+	for _, s := range d.rec.samples {
+		if s.class == "plain_cold" || (s.class == "plain_warm" && len(firstFew) < 0) {
+			firstFew = append(firstFew, s.seconds)
+		}
+	}
+	report["cold_read_seconds"] = firstFew
+	enc, _ := json.MarshalIndent(report, "", "  ")
+	if err := os.WriteFile(out, enc, 0644); err != nil {
+		log.Fatal(err)
+	}
+	w := classes["plain_warm"]
+	fmt.Printf("plain vus=%d warm reads=%d errors=%d p50=%.0fms p95=%.0fms\n", vus, w.N, w.Errors, w.P50, w.P95)
 }
