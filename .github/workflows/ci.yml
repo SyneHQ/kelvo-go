@@ -354,11 +354,34 @@ jobs:
             --adapter artifacts/warm-private/kelvo-adapter-go \
             --postgres-dsn-file artifacts/warm-private/postgres.dsn \
             --output artifacts/warm-private/run
+      - name: Verify one contained warm worker serves repeated requests
+        run: |
+          python3 scripts/warm_adapter_acceptance.py --go go \
+            --gate TestContainedWarmWorkerServesRepeatedRequests \
+            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --postgres-dsn-file artifacts/warm-private/postgres.dsn \
+            --output artifacts/warm-private/run-repeated
+      - name: Verify 50 concurrent reads share one bounded PostgreSQL pool
+        run: |
+          work=$(mktemp -d)
+          export GOWORK="$work/go.work"
+          (cd "$work" && go work init "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/adapters/go")
+          sdk_version=$(awk '$1 == "github.com/SYNEHQ/kelvo-go" { print $2 }' adapters/go/go.mod)
+          go work edit "-replace=github.com/SYNEHQ/kelvo-go@${sdk_version}=$GITHUB_WORKSPACE"
+          go work edit "-replace=github.com/sijms/go-ora/v2@v2.9.0=$GITHUB_WORKSPACE/third_party/go-ora-v2.9.0"
+          cd adapters/go
+          gate=TestServeLoop_ConcurrentPostgresReadsShareBoundedPool
+          KELVO_TEST_WARM_POSTGRES_DSN=$(cat "$GITHUB_WORKSPACE/artifacts/warm-private/postgres.dsn") \
+            go test -race -count=1 -v -run "^${gate}\$" ./internal/runtime | tee "$GITHUB_WORKSPACE/artifacts/warm-private/concurrent.log"
+          grep -q "^--- PASS: ${gate}" "$GITHUB_WORKSPACE/artifacts/warm-private/concurrent.log"
       - name: Retain the sanitized warm adapter report
         if: always()
         run: |
           mkdir -p artifacts/warm-adapter
           cp artifacts/warm-private/run/report.json artifacts/warm-private/run/worker.test.log artifacts/warm-adapter/ 2>/dev/null || true
+          mkdir -p artifacts/warm-adapter/repeated
+          cp artifacts/warm-private/run-repeated/report.json artifacts/warm-private/run-repeated/worker.test.log artifacts/warm-adapter/repeated/ 2>/dev/null || true
+          cp artifacts/warm-private/concurrent.log artifacts/warm-adapter/ 2>/dev/null || true
           rm -f artifacts/warm-private/postgres.dsn
           docker rm -f -v kelvo-warm-postgres >/dev/null 2>&1 || true
       - if: always()
