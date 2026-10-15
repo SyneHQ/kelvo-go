@@ -160,17 +160,18 @@ func TestContainedWarmWorkerServesRepeatedRequests(t *testing.T) {
 		t.Fatal("idle warm worker does not hold exactly one reservation", pool.Snapshot().Active)
 	}
 
-	// The idle worker holds one slot. A one-shot mutation still runs, and a
-	// second key cannot take the last slot: it falls back to one-shot too.
+	// The idle worker holds one slot. A one-shot mutation still runs. A second
+	// key finds no free slot for a worker of its own: it evicts the idle
+	// worker (least recently used) and launches one, instead of falling back.
 	write, err := executor.ExecuteOperation(context.Background(), cfg, operationProcessInput(t, operations.StatementExecute, "fixture"), &workerTestSink{})
 	if err != nil || write.Outcome != operations.Completed || write.Effect != operations.EffectCommitted {
 		t.Fatal("one-shot operation blocked by an idle warm worker", write, err)
 	}
 	other := operationProcessInput(t, operations.QueryRead, "fixture")
 	other.AppTeam = "another-team"
-	fallback, err := executor.ExecuteOperation(context.Background(), cfg, other, &workerTestSink{})
-	if err != nil || fallback.Outcome != operations.Completed || metrics.Fallbacks.Load() != 1 || metrics.Spawns.Load() != 1 {
-		t.Fatal("request without a free warm slot did not fall back", fallback, err, metrics.Fallbacks.Load(), metrics.Spawns.Load())
+	evicting, err := executor.ExecuteOperation(context.Background(), cfg, other, &workerTestSink{})
+	if err != nil || evicting.Outcome != operations.Completed || metrics.Fallbacks.Load() != 0 || metrics.Spawns.Load() != 2 || metrics.EvictionsLRU.Load() != 1 {
+		t.Fatal("a new key did not take over the idle worker's slot", evicting, err, metrics.Fallbacks.Load(), metrics.Spawns.Load(), metrics.EvictionsLRU.Load())
 	}
 
 	drained = true
