@@ -4,6 +4,8 @@ package worker
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -17,6 +19,10 @@ import (
 	"github.com/SYNEHQ/kelvo-go/adapter/frame"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/operations"
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/ipc"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
 type fakeWorkerProcess struct {
@@ -71,31 +77,7 @@ func (l *mockLauncher) Launch(ctx context.Context, e *Executor, cfg OperationPro
 		return l.onLaunch(ctx)
 	}
 	proc := newFakeWorkerProcess()
-	// Background serve simulator: reads request frame, writes completed receipt
-	go func() {
-		for {
-			typ, payload, err := frame.Read(proc.stdinR)
-			if err != nil {
-				return
-			}
-			if typ == frame.Close {
-				return
-			}
-			if typ == frame.Request {
-				var req adapter.ProcessRequest
-				_ = json.Unmarshal(payload, &req)
-				receipt := operations.Receipt{
-					Version:       operations.Version,
-					OperationID:   req.OperationID,
-					RequestSHA256: req.RequestSHA256,
-					Outcome:       operations.Completed,
-					Effect:        operations.EffectNone,
-				}
-				recBytes, _ := json.Marshal(receipt)
-				_ = frame.WriteReceipt(proc.stdoutW, recBytes)
-			}
-		}
-	}()
+	go serveFake(proc, nil)
 	cleanup := func() error {
 		return proc.Kill()
 	}
@@ -541,26 +523,7 @@ func TestWarmPool_BenchmarkTiming_ColdVsWarm(t *testing.T) {
 			// Simulate cold spawn: Landlock launcher + process spawn + TCP + TLS + connect
 			time.Sleep(50 * time.Millisecond)
 			proc := newFakeWorkerProcess()
-			go func() {
-				for {
-					typ, payload, err := frame.Read(proc.stdinR)
-					if err != nil || typ == frame.Close {
-						return
-					}
-					if typ == frame.Request {
-						var req adapter.ProcessRequest
-						_ = json.Unmarshal(payload, &req)
-						receipt := operations.Receipt{
-							Version:       operations.Version,
-							OperationID:   req.OperationID,
-							RequestSHA256: req.RequestSHA256,
-							Outcome:       operations.Completed,
-						}
-						recBytes, _ := json.Marshal(receipt)
-						_ = frame.WriteReceipt(proc.stdoutW, recBytes)
-					}
-				}
-			}()
+			go serveFake(proc, nil)
 			return proc, proc.Kill, nil
 		},
 	}
@@ -604,6 +567,299 @@ func TestWarmPool_BenchmarkTiming_ColdVsWarm(t *testing.T) {
 	}
 }
 
+
+// replyOK answers a request on its stream with one Arrow batch and a Receipt
+// whose result reference matches it, as the real adapter does.
+func replyOK(w io.Writer, stream uint32, payload []byte) {
+	var req adapter.ProcessRequest
+	_ = json.Unmarshal(payload, &req)
+	schema := arrow.NewSchema([]arrow.Field{{Name: "v", Type: arrow.PrimitiveTypes.Int64}}, nil)
+	b := array.NewInt64Builder(memory.DefaultAllocator)
+	b.Append(1)
+	col := b.NewArray()
+	b.Release()
+	rec := array.NewRecordBatch(schema, []arrow.Array{col}, 1)
+	col.Release()
+	var wire bytes.Buffer
+	iw := ipc.NewWriter(&wire, ipc.WithSchema(schema))
+	_ = iw.Write(rec)
+	_ = iw.Close()
+	rec.Release()
+	sum := sha256.Sum256(wire.Bytes())
+	raw, _ := json.Marshal(operations.Receipt{
+		Version: operations.Version, OperationID: req.OperationID, RequestSHA256: req.RequestSHA256,
+		Outcome: operations.Completed, Effect: operations.EffectNone,
+		Result: &operations.ResultRef{ID: req.OperationID, SHA256: hex.EncodeToString(sum[:]), Bytes: int64(wire.Len()), Rows: 1, Format: "arrow_ipc"},
+	})
+	_ = frame.WriteResult(w, stream, wire.Bytes())
+	_ = frame.WriteReceipt(w, stream, raw)
+}
+
+// serveFake speaks frame protocol v2 on proc: it answers Hello, then calls
+// onFrame for each Request/Cancel (nil = reply with a completed Receipt on the
+// request's stream). It returns when stdin closes or Close arrives.
+func serveFake(proc *fakeWorkerProcess, onFrame func(f frame.Frame)) {
+	if f, err := frame.Read(proc.stdinR); err != nil || f.Type != frame.Hello {
+		return
+	}
+	if frame.WriteHello(proc.stdoutW) != nil {
+		return
+	}
+	for {
+		f, err := frame.Read(proc.stdinR)
+		if err != nil || f.Type == frame.Close {
+			return
+		}
+		if onFrame != nil {
+			onFrame(f)
+		} else if f.Type == frame.Request {
+			replyOK(proc.stdoutW, f.Stream, f.Payload)
+		}
+	}
+}
+
+// fakeSet hands out fake processes, one per launch, serving with onFrame.
+type fakeSet struct {
+	mu     sync.Mutex
+	procs  []*fakeWorkerProcess
+	serve  func(proc *fakeWorkerProcess)
+	frames []frame.Frame
+}
+
+func (fs *fakeSet) launcher() *mockLauncher {
+	return &mockLauncher{onLaunch: func(context.Context) (WorkerProcess, func() error, error) {
+		proc := newFakeWorkerProcess()
+		fs.mu.Lock()
+		fs.procs = append(fs.procs, proc)
+		fs.mu.Unlock()
+		go fs.serve(proc)
+		return proc, proc.Kill, nil
+	}}
+}
+
+func (fs *fakeSet) record(f frame.Frame) {
+	fs.mu.Lock()
+	fs.frames = append(fs.frames, f)
+	fs.mu.Unlock()
+}
+
+func newTestPool(t *testing.T, l WorkerLauncher) (*WarmPoolManager, *Executor) {
+	t.Helper()
+	cfg := DefaultWarmPoolConfig()
+	cfg.Enabled = true
+	mgr, err := NewWarmPoolManager(cfg, l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mgr.Drain(context.Background()) })
+	return mgr, &Executor{Limits: query.Limits{MemoryMB: 64, Timeout: 5 * time.Second}}
+}
+
+func opReq(id string) adapter.ProcessRequest {
+	r := testProcessRequest(id, "tenant-a", "team-a", "conn-1", strings.Repeat("1", 64))
+	r.CredentialsValidUntil = time.Now().Unix() + 4 // Validate caps the window at 5s
+	return r
+}
+
+func TestWarmPool_HelloHandshakeSuccess(t *testing.T) {
+	fs := &fakeSet{}
+	fs.serve = func(p *fakeWorkerProcess) { serveFake(p, nil) }
+	mgr, exec := newTestPool(t, fs.launcher())
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-h"), &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	if mgr.metrics.Spawns.Load() != 1 || mgr.metrics.Fallbacks.Load() != 0 {
+		t.Fatalf("spawns=%d fallbacks=%d", mgr.metrics.Spawns.Load(), mgr.metrics.Fallbacks.Load())
+	}
+}
+
+func TestWarmPool_BadHelloFallsBackAndKills(t *testing.T) {
+	cases := map[string]func(p *fakeWorkerProcess){
+		"wrong version": func(p *fakeWorkerProcess) {
+			_, _ = frame.Read(p.stdinR)
+			_ = frame.Write(p.stdoutW, frame.Hello, 0, []byte{frame.Version + 1})
+			_, _ = io.Copy(io.Discard, p.stdinR)
+		},
+		"not a hello": func(p *fakeWorkerProcess) {
+			_, _ = frame.Read(p.stdinR)
+			_ = frame.WritePong(p.stdoutW)
+			_, _ = io.Copy(io.Discard, p.stdinR)
+		},
+		"silent exit": func(p *fakeWorkerProcess) { _, _ = frame.Read(p.stdinR); _ = p.stdoutW.Close() },
+	}
+	for name, serve := range cases {
+		t.Run(name, func(t *testing.T) {
+			fs := &fakeSet{serve: serve}
+			mgr, exec := newTestPool(t, fs.launcher())
+			_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-bad"), &workerTestSink{})
+			if !errors.Is(err, errWarmUnavailable) {
+				t.Fatalf("expected fallback, got %v", err)
+			}
+			mgr.mu.Lock()
+			n := len(mgr.workers)
+			mgr.mu.Unlock()
+			if n != 0 || !fs.procs[0].killed.Load() || mgr.metrics.Spawns.Load() != 0 {
+				t.Fatalf("workers=%d killed=%v spawns=%d", n, fs.procs[0].killed.Load(), mgr.metrics.Spawns.Load())
+			}
+		})
+	}
+}
+
+func TestWarmPool_HelloTimeoutFallsBack(t *testing.T) {
+	fs := &fakeSet{serve: func(p *fakeWorkerProcess) { _, _ = io.Copy(io.Discard, p.stdinR) }}
+	mgr, exec := newTestPool(t, fs.launcher())
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	// ctx expires during the handshake: the request is cancelled, not run, and the worker is killed.
+	if _, err := mgr.Execute(ctx, exec, OperationProcessConfig{}, opReq("op-silent"), &workerTestSink{}); err == nil {
+		t.Fatal("expected an error")
+	}
+	if !fs.procs[0].killed.Load() {
+		t.Fatal("silent worker was not killed")
+	}
+}
+
+func TestWarmPool_StreamIDsIncreasePerRequest(t *testing.T) {
+	fs := &fakeSet{}
+	fs.serve = func(p *fakeWorkerProcess) {
+		serveFake(p, func(f frame.Frame) {
+			if f.Type == frame.Request {
+				fs.record(f)
+				replyOK(p.stdoutW, f.Stream, f.Payload)
+			}
+		})
+	}
+	mgr, exec := newTestPool(t, fs.launcher())
+	for i := 0; i < 3; i++ {
+		if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-s"), &workerTestSink{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	if len(fs.procs) != 1 || len(fs.frames) != 3 {
+		t.Fatalf("procs=%d frames=%d", len(fs.procs), len(fs.frames))
+	}
+	for i, f := range fs.frames {
+		if f.Stream != uint32(i+1) {
+			t.Fatalf("request %d used stream %d", i, f.Stream)
+		}
+	}
+}
+
+func TestWarmPool_WrongStreamKillsWorker(t *testing.T) {
+	fs := &fakeSet{}
+	fs.serve = func(p *fakeWorkerProcess) {
+		serveFake(p, func(f frame.Frame) {
+			if f.Type == frame.Request {
+				replyOK(p.stdoutW, f.Stream+7, f.Payload)
+			}
+		})
+	}
+	mgr, exec := newTestPool(t, fs.launcher())
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-w"), &workerTestSink{}); err == nil {
+		t.Fatal("expected a protocol failure")
+	}
+	waitFor(t, func() bool { return fs.procs[0].killed.Load() })
+	if mgr.metrics.EvictionsErr.Load() != 1 {
+		t.Fatalf("evictions=%d", mgr.metrics.EvictionsErr.Load())
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	for i := 0; i < 200; i++ {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("condition not met")
+}
+
+// cancelServe holds the first request until Cancel arrives, then ends it with
+// a terminal Error (or never, when silent).
+func cancelServe(silent bool) func(p *fakeWorkerProcess) {
+	return func(p *fakeWorkerProcess) {
+		serveFake(p, func(f frame.Frame) {
+			switch f.Type {
+			case frame.Cancel:
+				if !silent {
+					_ = frame.WriteError(p.stdoutW, f.Stream, "cancelled")
+				}
+			case frame.Request:
+				var req adapter.ProcessRequest
+				_ = json.Unmarshal(f.Payload, &req)
+				if req.OperationID != "op-hold" {
+					replyOK(p.stdoutW, f.Stream, f.Payload)
+				}
+			}
+		})
+	}
+}
+
+func TestWarmPool_CancelWithTerminalKeepsWorker(t *testing.T) {
+	fs := &fakeSet{serve: cancelServe(false)}
+	mgr, exec := newTestPool(t, fs.launcher())
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := mgr.Execute(ctx, exec, OperationProcessConfig{}, opReq("op-hold"), &workerTestSink{}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("caller must get its ctx error, got %v", err)
+	}
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-next"), &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(fs.procs) != 1 || fs.procs[0].killed.Load() || mgr.metrics.Hits.Load() != 1 {
+		t.Fatalf("worker not reused: procs=%d hits=%d", len(fs.procs), mgr.metrics.Hits.Load())
+	}
+}
+
+func TestWarmPool_CancelWithoutTerminalKillsWorker(t *testing.T) {
+	fs := &fakeSet{serve: cancelServe(true)}
+	mgr, exec := newTestPool(t, fs.launcher())
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	if _, err := mgr.Execute(ctx, exec, OperationProcessConfig{}, opReq("op-hold"), &workerTestSink{}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("caller must get its ctx error, got %v", err)
+	}
+	if d := time.Since(start); d < cancelGrace || d > cancelGrace+time.Second {
+		t.Fatalf("worker killed after %v, want ~%v", d, cancelGrace)
+	}
+	waitFor(t, func() bool { return fs.procs[0].killed.Load() })
+	if mgr.metrics.EvictionsErr.Load() != 1 {
+		t.Fatalf("evictions=%d", mgr.metrics.EvictionsErr.Load())
+	}
+}
+
+func TestWarmPool_StreamErrorKeepsWorker(t *testing.T) {
+	fs := &fakeSet{}
+	fs.serve = func(p *fakeWorkerProcess) {
+		serveFake(p, func(f frame.Frame) {
+			if f.Type != frame.Request {
+				return
+			}
+			var req adapter.ProcessRequest
+			_ = json.Unmarshal(f.Payload, &req)
+			if req.OperationID == "op-err" {
+				_ = frame.WriteError(p.stdoutW, f.Stream, "boom")
+				return
+			}
+			replyOK(p.stdoutW, f.Stream, f.Payload)
+		})
+	}
+	mgr, exec := newTestPool(t, fs.launcher())
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-err"), &workerTestSink{}); err == nil {
+		t.Fatal("per-stream Error must fail the request")
+	}
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-ok"), &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(fs.procs) != 1 || fs.procs[0].killed.Load() || mgr.metrics.EvictionsErr.Load() != 0 {
+		t.Fatalf("worker was not kept: procs=%d evictions=%d", len(fs.procs), mgr.metrics.EvictionsErr.Load())
+	}
+}
+
 // Suppress unused imports
 var _ = bytes.NewBuffer
 
@@ -642,5 +898,36 @@ func TestWarmPool_LaunchFailureFallsBackToOneShot(t *testing.T) {
 	cancel()
 	if _, err := mgr.Execute(ctx, exec, OperationProcessConfig{}, req, nil); errors.Is(err, errWarmUnavailable) || err == nil {
 		t.Fatalf("a cancelled request must not fall back: %v", err)
+	}
+}
+
+func TestWarmPool_FailedReceiptReturnedAndWorkerKept(t *testing.T) {
+	fs := &fakeSet{}
+	fs.serve = func(p *fakeWorkerProcess) {
+		serveFake(p, func(f frame.Frame) {
+			if f.Type != frame.Request {
+				return
+			}
+			var req adapter.ProcessRequest
+			_ = json.Unmarshal(f.Payload, &req)
+			if req.OperationID == "op-failed" {
+				raw, _ := json.Marshal(operations.Receipt{Version: operations.Version, OperationID: req.OperationID,
+					RequestSHA256: req.RequestSHA256, Outcome: operations.Failed, Effect: operations.EffectNone, ErrorCode: "SOURCE_FAILED"})
+				_ = frame.WriteReceipt(p.stdoutW, f.Stream, raw)
+				return
+			}
+			replyOK(p.stdoutW, f.Stream, f.Payload)
+		})
+	}
+	mgr, exec := newTestPool(t, fs.launcher())
+	rec, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-failed"), &workerTestSink{})
+	if rec.Outcome != operations.Failed || rec.ErrorCode != "SOURCE_FAILED" {
+		t.Fatalf("receipt changed: %+v err=%v", rec, err)
+	}
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-ok"), &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(fs.procs) != 1 || fs.procs[0].killed.Load() || mgr.metrics.Hits.Load() != 1 {
+		t.Fatalf("worker not reused: procs=%d hits=%d", len(fs.procs), mgr.metrics.Hits.Load())
 	}
 }

@@ -1,15 +1,14 @@
 package runtime
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,10 +21,11 @@ import (
 )
 
 type fakeQuerySession struct {
-	kept   bool
+	kept   bool // guarded by mu
 	closed bool
 	mu     sync.Mutex
 	err    error
+	fn     func(ctx context.Context, sql string) error // optional per-query hook
 }
 
 func (s *fakeQuerySession) Close() error {
@@ -35,7 +35,7 @@ func (s *fakeQuerySession) Close() error {
 	return nil
 }
 
-func (s *fakeQuerySession) KeepOpen() { s.kept = true }
+func (s *fakeQuerySession) KeepOpen() { s.mu.Lock(); s.kept = true; s.mu.Unlock() }
 
 func (s *fakeQuerySession) isClosed() bool {
 	s.mu.Lock()
@@ -46,6 +46,11 @@ func (s *fakeQuerySession) isClosed() bool {
 func (s *fakeQuerySession) Query(ctx context.Context, q adapter.Query, sink adapter.Sink) (adapter.QueryStats, error) {
 	if s.err != nil {
 		return adapter.QueryStats{}, s.err
+	}
+	if s.fn != nil {
+		if err := s.fn(ctx, q.Statement); err != nil {
+			return adapter.QueryStats{}, err
+		}
 	}
 
 	// Emit schema and 1 batch
@@ -121,318 +126,268 @@ func validTestProcessRequest(opID, tenantID, appTeam, connID, rev string, kind o
 	}
 }
 
-func TestServeLoop_SuccessAndReuse(t *testing.T) {
-	pipeInR, pipeInW := io.Pipe()
-	pipeOutR, pipeOutW := io.Pipe()
+var testKey = strings.Repeat("a", 64)
 
-	session := &fakeQuerySession{}
-	opens := 0
-	open := func(ctx context.Context, spec adapter.ConnectionSpec, req operations.Request) (adapter.Session, error) {
-		opens++
-		return session, nil
-	}
+func sqlRequest(op, sql string) adapter.ProcessRequest {
+	req := validTestProcessRequest(op, "tenant-1", "team-1", "conn-1", testKey, operations.QueryRead)
+	req.Request.Spec.Query.SQL = sql
+	req.RequestSHA256, _ = operations.Digest(req.Request)
+	return req
+}
 
-	runner := Runner{
-		Open:         open,
-		SessionCache: &SessionCache{TTL: 30 * time.Minute, Max: 4},
-	}
+// harness drives Serve over pipes and collects every frame it emits.
+type harness struct {
+	t      *testing.T
+	in     *io.PipeWriter
+	frames chan frame.Frame
+	done   chan error
+}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	serveDone := make(chan error, 1)
+func startServe(t *testing.T, runner Runner, hello bool) *harness {
+	t.Helper()
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	h := &harness{t: t, in: inW, frames: make(chan frame.Frame, 4096), done: make(chan error, 1)}
 	go func() {
-		serveDone <- runner.Serve(ctx, pipeInR, pipeOutW)
+		err := runner.Serve(context.Background(), inR, outW)
+		_ = outW.Close()
+		h.done <- err
 	}()
+	go func() {
+		for {
+			f, err := frame.Read(outR)
+			if err != nil {
+				close(h.frames)
+				return
+			}
+			h.frames <- f
+		}
+	}()
+	t.Cleanup(func() { _ = inW.Close() })
+	if hello {
+		if err := frame.WriteHello(inW); err != nil {
+			t.Fatal(err)
+		}
+		if f := h.next(); f.Type != frame.Hello {
+			t.Fatalf("expected Hello reply, got %v", f.Type)
+		}
+	}
+	return h
+}
 
-	// Request 1
-	req1 := validTestProcessRequest("op-1", "tenant-1", "team-1", "conn-1", strings.Repeat("a", 64), operations.QueryRead)
-	req1Bytes, err := adapter.EncodeProcessRequest(req1)
+func (h *harness) next() frame.Frame {
+	h.t.Helper()
+	select {
+	case f, ok := <-h.frames:
+		if !ok {
+			h.t.Fatal("output closed")
+		}
+		return f
+	case <-time.After(10 * time.Second):
+		h.t.Fatal("timed out waiting for frame")
+	}
+	return frame.Frame{}
+}
+
+func (h *harness) request(stream uint32, req adapter.ProcessRequest) {
+	h.t.Helper()
+	raw, err := adapter.EncodeProcessRequest(req)
 	if err != nil {
-		t.Fatalf("encode request 1: %v", err)
+		h.t.Fatal(err)
 	}
-
-	if err := frame.WriteRequest(pipeInW, req1Bytes); err != nil {
-		t.Fatalf("write req1: %v", err)
+	if err := frame.WriteRequest(h.in, stream, raw); err != nil {
+		h.t.Fatal(err)
 	}
+}
 
-	// Read Result frame(s) and Receipt frame
-	for {
-		typ, payload, err := frame.Read(pipeOutR)
-		if err != nil {
-			t.Fatalf("read frame 1: %v", err)
-		}
-		if typ == frame.Receipt {
-			var receipt operations.Receipt
-			if err := json.Unmarshal(payload, &receipt); err != nil {
-				t.Fatalf("unmarshal receipt: %v", err)
+// terminals reads until n streams have ended; it returns the terminal frame
+// per stream and the number of Result frames seen per stream.
+func (h *harness) terminals(n int) (map[uint32]frame.Frame, map[uint32]int) {
+	h.t.Helper()
+	term, results := map[uint32]frame.Frame{}, map[uint32]int{}
+	for len(term) < n {
+		f := h.next()
+		switch f.Type {
+		case frame.Result:
+			results[f.Stream]++
+		case frame.Receipt, frame.Error:
+			if _, dup := term[f.Stream]; dup {
+				h.t.Fatalf("stream %d got two terminal frames", f.Stream)
 			}
-			if receipt.Outcome != operations.Completed {
-				t.Fatalf("expected completed receipt, got %+v", receipt)
-			}
-			if receipt.Result == nil || receipt.Result.Rows != 3 {
-				t.Fatalf("expected 3 rows, got %+v", receipt.Result)
-			}
-			break
-		}
-		if typ != frame.Result {
-			t.Fatalf("unexpected frame type: %v", typ)
+			term[f.Stream] = f
+		default:
+			h.t.Fatalf("unexpected frame %v", f.Type)
 		}
 	}
+	return term, results
+}
 
-	if opens != 1 {
-		t.Fatalf("expected 1 open, got %d", opens)
-	}
-	if session.isClosed() {
-		t.Fatal("session should remain open in cache")
-	}
-
-	// Request 2 with same key -> should reuse session, opens should still be 1!
-	req2 := validTestProcessRequest("op-2", "tenant-1", "team-1", "conn-1", strings.Repeat("a", 64), operations.QueryRead)
-	req2Bytes, err := adapter.EncodeProcessRequest(req2)
-	if err != nil {
-		t.Fatalf("encode request 2: %v", err)
-	}
-
-	if err := frame.WriteRequest(pipeInW, req2Bytes); err != nil {
-		t.Fatalf("write req2: %v", err)
-	}
-
-	for {
-		typ, payload, err := frame.Read(pipeOutR)
-		if err != nil {
-			t.Fatalf("read frame 2: %v", err)
+func (h *harness) wantDone(wantErr bool) {
+	h.t.Helper()
+	select {
+	case err := <-h.done:
+		if (err != nil) != wantErr {
+			h.t.Fatalf("serve returned %v, wantErr=%v", err, wantErr)
 		}
-		if typ == frame.Receipt {
-			var receipt operations.Receipt
-			if err := json.Unmarshal(payload, &receipt); err != nil {
-				t.Fatalf("unmarshal receipt 2: %v", err)
-			}
-			if receipt.Outcome != operations.Completed {
-				t.Fatalf("expected completed receipt, got %+v", receipt)
-			}
-			break
-		}
+	case <-time.After(5 * time.Second):
+		h.t.Fatal("serve did not exit")
 	}
+}
 
-	if opens != 1 {
-		t.Fatalf("expected session reuse (opens=1), but opens was %d", opens)
+func receiptOf(t *testing.T, f frame.Frame) operations.Receipt {
+	t.Helper()
+	if f.Type != frame.Receipt {
+		t.Fatalf("expected Receipt, got %v %q", f.Type, f.Payload)
 	}
-
-	// Send Close frame
-	if err := frame.WriteClose(pipeInW); err != nil {
+	var r operations.Receipt
+	if err := json.Unmarshal(f.Payload, &r); err != nil {
 		t.Fatal(err)
 	}
+	return r
+}
 
-	select {
-	case err := <-serveDone:
-		if err != nil {
-			t.Fatalf("expected clean exit on Close, got %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("serve did not exit on Close frame")
+func wantFailedReceipt(t *testing.T, f frame.Frame) {
+	t.Helper()
+	if r := receiptOf(t, f); r.Outcome == operations.Completed || r.ErrorCode == "" {
+		t.Fatalf("expected failure receipt with error code, got %+v", r)
 	}
+}
 
+func sessionRunner(session *fakeQuerySession, opens *atomic.Int32) Runner {
+	return Runner{
+		SessionCache: &SessionCache{TTL: 30 * time.Minute, Max: 4},
+		Open: func(context.Context, adapter.ConnectionSpec, operations.Request) (adapter.Session, error) {
+			if opens != nil {
+				opens.Add(1)
+				time.Sleep(30 * time.Millisecond)
+			}
+			return session, nil
+		},
+	}
+}
+
+func TestServeLoop_SuccessAndReuse(t *testing.T) {
+	session := &fakeQuerySession{}
+	var opens atomic.Int32
+	h := startServe(t, sessionRunner(session, &opens), true)
+	for i, op := range []string{"op-1", "op-2"} {
+		stream := uint32(i + 1)
+		h.request(stream, sqlRequest(op, "SELECT 1"))
+		term, results := h.terminals(1)
+		r := receiptOf(t, term[stream])
+		if r.Outcome != operations.Completed || r.Result == nil || r.Result.Rows != 3 || results[stream] == 0 {
+			t.Fatalf("bad completion: %+v results=%d", r, results[stream])
+		}
+	}
+	if opens.Load() != 1 || session.isClosed() {
+		t.Fatalf("expected one warm open, opens=%d closed=%v", opens.Load(), session.isClosed())
+	}
+	if err := frame.WriteClose(h.in); err != nil {
+		t.Fatal(err)
+	}
+	h.wantDone(false)
 	if !session.isClosed() {
 		t.Fatal("session should be closed on server shutdown")
 	}
 }
 
 func TestServeLoop_PingPong(t *testing.T) {
-	pipeInR, pipeInW := io.Pipe()
-	pipeOutR, pipeOutW := io.Pipe()
-
-	runner := Runner{}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	serveDone := make(chan error, 1)
-	go func() {
-		serveDone <- runner.Serve(ctx, pipeInR, pipeOutW)
-	}()
-
-	if err := frame.WritePing(pipeInW); err != nil {
+	h := startServe(t, Runner{}, true)
+	if err := frame.WritePing(h.in); err != nil {
 		t.Fatal(err)
 	}
+	if f := h.next(); f.Type != frame.Pong {
+		t.Fatalf("expected Pong, got %v", f.Type)
+	}
+	_ = frame.WriteClose(h.in)
+	h.wantDone(false)
+}
 
-	typ, _, err := frame.Read(pipeOutR)
-	if err != nil {
+func TestServeLoop_HelloRequiredFirst(t *testing.T) {
+	for name, send := range map[string]func(w io.Writer) error{
+		"ping":        func(w io.Writer) error { return frame.WritePing(w) },
+		"request":     func(w io.Writer) error { return frame.WriteRequest(w, 1, []byte("{}")) },
+		"bad version": func(w io.Writer) error { return frame.Write(w, frame.Hello, 0, []byte{frame.Version + 1}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := startServe(t, Runner{}, false)
+			go func() { _ = send(h.in) }()
+			h.wantDone(true)
+		})
+	}
+}
+
+func TestServeLoop_SecondHelloIsFatal(t *testing.T) {
+	h := startServe(t, Runner{}, true)
+	if err := frame.WriteHello(h.in); err != nil {
 		t.Fatal(err)
 	}
-	if typ != frame.Pong {
-		t.Fatalf("expected Pong, got %v", typ)
-	}
-
-	_ = frame.WriteClose(pipeInW)
-	<-serveDone
+	h.wantDone(true)
 }
 
 func TestServeLoop_CrossTenantRejection(t *testing.T) {
-	pipeInR, pipeInW := io.Pipe()
-	pipeOutR, pipeOutW := io.Pipe()
-
 	session := &fakeQuerySession{}
-	runner := Runner{
-		Open: func(ctx context.Context, spec adapter.ConnectionSpec, req operations.Request) (adapter.Session, error) {
-			return session, nil
-		},
+	h := startServe(t, sessionRunner(session, nil), true)
+	h.request(1, sqlRequest("op-1", "SELECT 1"))
+	h.terminals(1)
+
+	h.request(2, validTestProcessRequest("op-2", "tenant-2", "team-1", "conn-1", testKey, operations.QueryRead))
+	f := h.next()
+	if f.Type != frame.Error || f.Stream != 2 || !strings.Contains(string(f.Payload), "cross-tenant") {
+		t.Fatalf("expected cross-tenant Error on stream 2, got %v %q", f.Type, f.Payload)
 	}
-
-	serveDone := make(chan error, 1)
-	go func() {
-		serveDone <- runner.Serve(context.Background(), pipeInR, pipeOutW)
-	}()
-
-	// Req 1: Tenant 1
-	req1 := validTestProcessRequest("op-1", "tenant-1", "team-1", "conn-1", strings.Repeat("a", 64), operations.QueryRead)
-	req1Bytes, _ := adapter.EncodeProcessRequest(req1)
-	_ = frame.WriteRequest(pipeInW, req1Bytes)
-
-	// Consume until receipt
-	for {
-		typ, _, err := frame.Read(pipeOutR)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if typ == frame.Receipt {
-			break
-		}
-	}
-
-	// Req 2: Different tenant!
-	req2 := validTestProcessRequest("op-2", "tenant-2", "team-1", "conn-1", strings.Repeat("a", 64), operations.QueryRead)
-	req2Bytes, _ := adapter.EncodeProcessRequest(req2)
-	_ = frame.WriteRequest(pipeInW, req2Bytes)
-
-	// Should receive Error frame and server terminates
-	typ, payload, err := frame.Read(pipeOutR)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if typ != frame.Error {
-		t.Fatalf("expected Error frame on cross-tenant request, got %v", typ)
-	}
-	if !strings.Contains(string(payload), "cross-tenant") {
-		t.Fatalf("unexpected error payload: %s", string(payload))
-	}
-
-	err = <-serveDone
-	if err == nil {
-		t.Fatal("expected serve error on cross-tenant request, got nil")
-	}
-
+	h.wantDone(true)
 	if !session.isClosed() {
 		t.Fatal("session must be closed on security violation")
 	}
 }
 
 func TestServeLoop_IneligibleMutationRejected(t *testing.T) {
-	pipeInR, pipeInW := io.Pipe()
-	pipeOutR, pipeOutW := io.Pipe()
-
-	runner := Runner{}
-	serveDone := make(chan error, 1)
-	go func() {
-		serveDone <- runner.Serve(context.Background(), pipeInR, pipeOutW)
-	}()
-
-	req := validTestProcessRequest("op-mut", "tenant-1", "team-1", "conn-1", strings.Repeat("a", 64), operations.StatementExecute)
-	reqBytes, _ := adapter.EncodeProcessRequest(req)
-	_ = frame.WriteRequest(pipeInW, reqBytes)
-
-	typ, _, err := frame.Read(pipeOutR)
-	if err != nil {
+	h := startServe(t, Runner{}, true)
+	raw, _ := json.Marshal(validTestProcessRequest("op-mut", "tenant-1", "team-1", "conn-1", testKey, operations.StatementExecute))
+	if err := frame.WriteRequest(h.in, 1, raw); err != nil {
 		t.Fatal(err)
 	}
-	if typ != frame.Error {
-		t.Fatalf("expected Error frame for ineligible mutation, got %v", typ)
+	if f := h.next(); f.Type != frame.Error {
+		t.Fatalf("expected Error frame for ineligible mutation, got %v", f.Type)
 	}
-
-	err = <-serveDone
-	if err == nil {
-		t.Fatal("expected serve error for ineligible request")
-	}
-}
-
-func TestServeLoop_QueryErrorClosesSessionAndTerminates(t *testing.T) {
-	pipeInR, pipeInW := io.Pipe()
-	pipeOutR, pipeOutW := io.Pipe()
-
-	session := &fakeQuerySession{err: errors.New("query failed: table not found")}
-	runner := Runner{
-		Open: func(ctx context.Context, spec adapter.ConnectionSpec, req operations.Request) (adapter.Session, error) {
-			return session, nil
-		},
-	}
-
-	serveDone := make(chan error, 1)
-	go func() {
-		serveDone <- runner.Serve(context.Background(), pipeInR, pipeOutW)
-	}()
-
-	req := validTestProcessRequest("op-err", "tenant-1", "team-1", "conn-1", strings.Repeat("a", 64), operations.QueryRead)
-	reqBytes, _ := adapter.EncodeProcessRequest(req)
-	_ = frame.WriteRequest(pipeInW, reqBytes)
-
-	typ, payload, err := frame.Read(pipeOutR)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if typ != frame.Receipt {
-		t.Fatalf("expected Receipt frame with failure outcome, got %v", typ)
-	}
-	var receipt operations.Receipt
-	_ = json.Unmarshal(payload, &receipt)
-	if receipt.Outcome != operations.Failed {
-		t.Fatalf("expected Failed outcome, got %v", receipt.Outcome)
-	}
-
-	err = <-serveDone
-	if err == nil {
-		t.Fatal("expected serve error on query failure")
-	}
-
-	if !session.isClosed() {
-		t.Fatal("failed session MUST be closed and never reused")
-	}
+	h.wantDone(true)
 }
 
 func TestServeLoop_ExpiredCredentialsRejected(t *testing.T) {
-	pipeInR, pipeInW := io.Pipe()
-	pipeOutR, pipeOutW := io.Pipe()
-
-	runner := Runner{}
-	serveDone := make(chan error, 1)
-	go func() {
-		serveDone <- runner.Serve(context.Background(), pipeInR, pipeOutW)
-	}()
-
-	req := validTestProcessRequest("op-exp", "tenant-1", "team-1", "conn-1", strings.Repeat("a", 64), operations.QueryRead)
-	req.CredentialsValidUntil = time.Now().Unix() - 10 // expired!
-	// Re-compute digest
-	req.RequestSHA256, _ = operations.Digest(req.Request)
-	// We encode raw directly
+	h := startServe(t, Runner{}, true)
+	req := sqlRequest("op-exp", "SELECT 1")
+	req.CredentialsValidUntil = time.Now().Unix() - 10
 	raw, _ := json.Marshal(req)
-	_ = frame.WriteRequest(pipeInW, raw)
-
-	typ, _, err := frame.Read(pipeOutR)
-	if err != nil {
+	if err := frame.WriteRequest(h.in, 1, raw); err != nil {
 		t.Fatal(err)
 	}
-	if typ != frame.Error {
-		t.Fatalf("expected Error frame for expired credentials, got %v", typ)
+	if f := h.next(); f.Type != frame.Error {
+		t.Fatalf("expected Error frame for expired credentials, got %v", f.Type)
 	}
-
-	err = <-serveDone
-	if err == nil {
-		t.Fatal("expected serve error for expired credentials")
-	}
+	h.wantDone(true)
 }
 
-// Suppress unused imports
-var _ = sha256.New
-var _ = hex.EncodeToString
-var _ = bytes.NewReader
+func TestServeLoop_QueryErrorFailsOnlyThatStream(t *testing.T) {
+	session := &fakeQuerySession{err: errors.New("query failed: table not found")}
+	h := startServe(t, sessionRunner(session, nil), true)
+	h.request(1, sqlRequest("op-err", "SELECT 1"))
+	term, _ := h.terminals(1)
+	wantFailedReceipt(t, term[1])
+	if session.isClosed() {
+		t.Fatal("per-stream failure must not close the shared session")
+	}
+	session.mu.Lock()
+	session.err = nil
+	session.mu.Unlock()
+	h.request(2, sqlRequest("op-ok", "SELECT 1"))
+	term, _ = h.terminals(1)
+	if r := receiptOf(t, term[2]); r.Outcome != operations.Completed {
+		t.Fatalf("next request on same worker failed: %+v", r)
+	}
+	_ = frame.WriteClose(h.in)
+	h.wantDone(false)
+}
 
 // singleUseSession does not declare reuse support, like every session whose
 // first read consumes its connection.
@@ -443,65 +398,173 @@ func (s singleUseSession) Query(ctx context.Context, q adapter.Query, sink adapt
 	return s.inner.Query(ctx, q, sink)
 }
 
-func serveOneRequest(t *testing.T, in io.Writer, out io.Reader, opID string) {
-	t.Helper()
-	request := validTestProcessRequest(opID, "tenant-1", "team-1", "conn-1", strings.Repeat("a", 64), operations.QueryRead)
-	raw, err := adapter.EncodeProcessRequest(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := frame.WriteRequest(in, raw); err != nil {
-		t.Fatal(err)
-	}
-	for {
-		kind, payload, err := frame.Read(out)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if kind == frame.Receipt {
-			var receipt operations.Receipt
-			if json.Unmarshal(payload, &receipt) != nil || receipt.Outcome != operations.Completed {
-				t.Fatalf("request %s did not complete: %s", opID, payload)
-			}
-			return
-		}
-		if kind != frame.Result {
-			t.Fatalf("unexpected frame type: %v", kind)
-		}
-	}
-}
-
 // A session is kept warm only after it accepted KeepOpen. A single-use session
 // is closed after each request and opened again for the next one.
 func TestServeLoop_OnlyReusableSessionsStayWarm(t *testing.T) {
 	for _, reusable := range []bool{true, false} {
-		inR, inW := io.Pipe()
-		outR, outW := io.Pipe()
+		var mu sync.Mutex
 		var opened []*fakeQuerySession
 		runner := Runner{SessionCache: &SessionCache{TTL: 30 * time.Minute, Max: 4},
 			Open: func(context.Context, adapter.ConnectionSpec, operations.Request) (adapter.Session, error) {
 				session := &fakeQuerySession{}
+				mu.Lock()
 				opened = append(opened, session)
+				mu.Unlock()
 				if reusable {
 					return session, nil
 				}
 				return singleUseSession{session}, nil
 			}}
-		done := make(chan error, 1)
-		go func() { done <- runner.Serve(context.Background(), inR, outW) }()
-		serveOneRequest(t, inW, outR, "op-1")
-		serveOneRequest(t, inW, outR, "op-2")
+		h := startServe(t, runner, true)
+		for i := uint32(1); i <= 2; i++ {
+			h.request(i, sqlRequest(fmt.Sprintf("op-%d", i), "SELECT 1"))
+			term, _ := h.terminals(1)
+			receiptOf(t, term[i])
+		}
 		if reusable && (len(opened) != 1 || !opened[0].kept || opened[0].isClosed()) {
 			t.Fatalf("reusable session was not kept warm: opens=%d", len(opened))
 		}
 		if !reusable && (len(opened) != 2 || opened[0].kept || !opened[0].isClosed() || !opened[1].isClosed()) {
 			t.Fatalf("single-use session was reused or left open: opens=%d", len(opened))
 		}
-		if err := frame.WriteClose(inW); err != nil {
-			t.Fatal(err)
-		}
-		if err := <-done; err != nil {
-			t.Fatal(err)
+		_ = frame.WriteClose(h.in)
+		h.wantDone(false)
+	}
+}
+
+func TestServeLoop_ConcurrentStreams(t *testing.T) {
+	session := &fakeQuerySession{}
+	var opens atomic.Int32
+	h := startServe(t, sessionRunner(session, &opens), true)
+	const n = 50
+	for i := 1; i <= n; i++ {
+		h.request(uint32(i), sqlRequest(fmt.Sprintf("op-%d", i), "SELECT 1"))
+	}
+	term, results := h.terminals(n)
+	for i := 1; i <= n; i++ {
+		s := uint32(i)
+		r := receiptOf(t, term[s])
+		if r.OperationID != fmt.Sprintf("op-%d", i) || r.Outcome != operations.Completed || results[s] == 0 {
+			t.Fatalf("stream %d: %+v results=%d", i, r, results[s])
 		}
 	}
+	if opens.Load() != 1 {
+		t.Fatalf("session opened %d times for concurrent requests, want 1", opens.Load())
+	}
+	_ = frame.WriteClose(h.in)
+	h.wantDone(false)
+}
+
+func TestServeLoop_ConcurrentOneFailingStream(t *testing.T) {
+	session := &fakeQuerySession{fn: func(_ context.Context, sql string) error {
+		if sql == "FAIL" {
+			return errors.New("boom")
+		}
+		return nil
+	}}
+	h := startServe(t, sessionRunner(session, nil), true)
+	const n, bad = 50, 17
+	for i := 1; i <= n; i++ {
+		sql := "SELECT 1"
+		if i == bad {
+			sql = "FAIL"
+		}
+		h.request(uint32(i), sqlRequest(fmt.Sprintf("op-%d", i), sql))
+	}
+	term, _ := h.terminals(n)
+	for i := 1; i <= n; i++ {
+		if i == bad {
+			wantFailedReceipt(t, term[uint32(i)])
+			continue
+		}
+		receiptOf(t, term[uint32(i)])
+	}
+	if session.isClosed() {
+		t.Fatal("session closed by one stream's failure")
+	}
+	_ = frame.WriteClose(h.in)
+	h.wantDone(false)
+}
+
+func TestServeLoop_CancelMidQuery(t *testing.T) {
+	started := make(chan struct{}, 1)
+	session := &fakeQuerySession{fn: func(ctx context.Context, sql string) error {
+		if sql == "BLOCK" {
+			started <- struct{}{}
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		return nil
+	}}
+	h := startServe(t, sessionRunner(session, nil), true)
+	h.request(1, sqlRequest("op-1", "BLOCK"))
+	h.request(2, sqlRequest("op-2", "SELECT 1"))
+	<-started
+	if err := frame.WriteCancel(h.in, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := frame.WriteCancel(h.in, 99); err != nil { // unknown stream is ignored
+		t.Fatal(err)
+	}
+	term, _ := h.terminals(2)
+	wantFailedReceipt(t, term[1])
+	receiptOf(t, term[2])
+	h.request(3, sqlRequest("op-3", "SELECT 1"))
+	term, _ = h.terminals(1)
+	receiptOf(t, term[3])
+	_ = frame.WriteClose(h.in)
+	h.wantDone(false)
+}
+
+func TestServeLoop_DuplicateInFlightStreamIsFatal(t *testing.T) {
+	started := make(chan struct{}, 1)
+	session := &fakeQuerySession{fn: func(ctx context.Context, sql string) error {
+		started <- struct{}{}
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	h := startServe(t, sessionRunner(session, nil), true)
+	h.request(7, sqlRequest("op-1", "BLOCK"))
+	<-started
+	h.request(7, sqlRequest("op-2", "BLOCK"))
+	h.wantDone(true)
+	// the in-flight stream still ends with its terminal frame
+	for f := range h.frames {
+		if f.Type == frame.Receipt || f.Type == frame.Error {
+			return
+		}
+	}
+	t.Fatal("in-flight stream got no terminal frame")
+}
+
+func TestServeLoop_BusyBeyondMaxStreams(t *testing.T) {
+	release := make(chan struct{})
+	var running atomic.Int32
+	session := &fakeQuerySession{fn: func(ctx context.Context, sql string) error {
+		running.Add(1)
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return nil
+	}}
+	h := startServe(t, sessionRunner(session, nil), true)
+	for i := 1; i <= maxServeStreams; i++ {
+		h.request(uint32(i), sqlRequest(fmt.Sprintf("op-%d", i), "SELECT 1"))
+	}
+	for running.Load() < maxServeStreams {
+		time.Sleep(5 * time.Millisecond)
+	}
+	h.request(maxServeStreams+1, sqlRequest("op-extra", "SELECT 1"))
+	f := h.next()
+	if f.Type != frame.Error || f.Stream != maxServeStreams+1 || string(f.Payload) != "busy" {
+		t.Fatalf("expected busy on stream %d, got %v %q", maxServeStreams+1, f.Type, f.Payload)
+	}
+	close(release)
+	term, _ := h.terminals(maxServeStreams)
+	for _, f := range term {
+		receiptOf(t, f)
+	}
+	_ = frame.WriteClose(h.in)
+	h.wantDone(false)
 }

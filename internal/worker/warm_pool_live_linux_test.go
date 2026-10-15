@@ -34,8 +34,12 @@ import (
 // the parent can prove that one sandboxed process served several operations.
 func operationFixtureServe() int {
 	served := int64(0)
+	if hello, err := frame.Read(os.Stdin); err != nil || frame.CheckHello(hello) != nil || frame.WriteHello(os.Stdout) != nil {
+		return 39
+	}
 	for {
-		kind, payload, err := frame.Read(os.Stdin)
+		in, err := frame.Read(os.Stdin)
+		kind, payload, stream := in.Type, in.Payload, in.Stream
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return 0
@@ -91,14 +95,14 @@ func operationFixtureServe() int {
 		if writeErr != nil || writer.Close() != nil {
 			return 48
 		}
-		if frame.WriteResult(os.Stdout, wire.Bytes()) != nil {
+		if frame.WriteResult(os.Stdout, stream, wire.Bytes()) != nil {
 			return 49
 		}
 		hash := sha256.Sum256(wire.Bytes())
 		receipt := operations.Receipt{Version: operations.Version, OperationID: input.OperationID, RequestSHA256: input.RequestSHA256, Outcome: operations.Completed, Effect: operations.EffectNone,
 			Result: &operations.ResultRef{ID: input.OperationID, SHA256: hex.EncodeToString(hash[:]), Bytes: int64(wire.Len()), Rows: int64(len(values)), Format: "arrow_ipc"}}
 		raw, err := json.Marshal(receipt)
-		if err != nil || receipt.Validate() != nil || frame.WriteReceipt(os.Stdout, raw) != nil {
+		if err != nil || receipt.Validate() != nil || frame.WriteReceipt(os.Stdout, stream, raw) != nil {
 			return 50
 		}
 	}

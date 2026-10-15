@@ -3,6 +3,7 @@ package relational
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"time"
 
@@ -56,13 +57,30 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 	if err != nil {
 		return adapter.QueryStats{}, err
 	}
-	defer conn.Close()
+	// A reusable session's pool is shared by concurrent reads: any failure
+	// (including a failed rollback) discards this physical connection so
+	// database/sql drops it instead of returning it to the pool.
+	// The tx is begun on a non-cancelling context (statements still carry the
+	// real one), so database/sql's awaitDone never races our Rollback for the
+	// Conn: it could close the Conn and make Raw panic, or lose the discard to
+	// our own Close. Our Rollback therefore always owns the tx; ErrTxDone
+	// would mean something else released it, so skip Raw then.
+	var rollbackErr error
+	defer func() {
+		taken := errors.Is(rollbackErr, sql.ErrTxDone)
+		if s.reusable && !taken && (resultErr != nil || rollbackErr != nil) {
+			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+		}
+		_ = conn.Close()
+	}()
 	// Consume the operation-owned pool after acquisition. The held connection
 	// remains usable, but queued/new borrowers cannot receive this session.
 	// database/sql owns rollback and physical driver release; do not use Raw
 	// after cancellation can close the connection.
-	// A warm worker keeps the pool: the connection returns to it idle and the
-	// next read on this session receives the same one.
+	// A warm worker keeps the pool: a healthy connection returns to it idle.
+	// MySQL/MariaDB session timeouts are re-SET by every read on its own
+	// connection, and postgres' statement_timeout is transaction-local, so a
+	// pooled connection never carries a stale value into the next read.
 	if !s.reusable {
 		if err := s.Pool.Close(); err != nil {
 			return adapter.QueryStats{}, err
@@ -91,11 +109,13 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 		}
 	}
 	defer finish()
-	tx, err := conn.BeginTx(cancellation.context, &sql.TxOptions{ReadOnly: s.Engine != "sqlserver"})
+	tx, err := conn.BeginTx(context.WithoutCancel(cancellation.context), &sql.TxOptions{ReadOnly: s.Engine != "sqlserver"})
 	if err != nil {
 		return adapter.QueryStats{}, err
 	}
-	defer tx.Rollback()
+	defer func() {
+		rollbackErr = tx.Rollback()
+	}()
 	defer finish()
 	if s.Engine == "postgresql" {
 		if err := setPostgresReadDeadline(cancellation.context, tx); err != nil {
