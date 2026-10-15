@@ -311,3 +311,49 @@ func TestWarmPool_CredentialsExpiredWhileWaiting(t *testing.T) {
 		t.Fatal(err, mgr.metrics.Spawns.Load())
 	}
 }
+
+// A key at max_in_flight whose scale-out launch the node refuses waits for a
+// slot on its own worker, which frees in milliseconds; it does not wait out
+// its queue_timeout on node capacity.
+func TestWarmPool_RefusedScaleOutWaitsForOwnWorker(t *testing.T) {
+	node := newNodeSlots(1)
+	release := make(chan struct{})
+	fs := &fakeSet{serve: func(p *fakeWorkerProcess) {
+		serveFake(p, func(f frame.Frame) {
+			if f.Type != frame.Request {
+				return
+			}
+			var r adapter.ProcessRequest
+			_ = json.Unmarshal(f.Payload, &r)
+			if r.OperationID == "op-hold" {
+				go func() { <-release; replyOK(p.stdoutW, f.Stream, f.Payload) }()
+				return
+			}
+			replyOK(p.stdoutW, f.Stream, f.Payload)
+		})
+	}}
+	start := fs.launcher()
+	launcher := &mockLauncher{onLaunch: func(ctx context.Context) (WorkerProcess, func() error, error) {
+		if err := node.reserve(ctx); err != nil {
+			return nil, nil, err
+		}
+		proc, _, err := start.onLaunch(ctx)
+		return proc, func() error { node.release(); return proc.Kill() }, err
+	}}
+	mgr, exec := newTestPool(t, launcher)
+	mgr.cfg.MaxInFlight, mgr.cfg.MaxPerKey, mgr.cfg.QueueTimeout = 1, 2, 3*time.Second
+	held := make(chan error, 1)
+	go func() {
+		_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-hold"), &workerTestSink{})
+		held <- err
+	}()
+	waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 1 })
+	go func() { time.Sleep(200 * time.Millisecond); close(release) }()
+	began := time.Now()
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-next"), &workerTestSink{}); err != nil || time.Since(began) > 2*time.Second {
+		t.Fatal("a refused scale-out did not wait for the key's own worker:", err, time.Since(began))
+	}
+	if err := <-held; err != nil {
+		t.Fatal(err)
+	}
+}

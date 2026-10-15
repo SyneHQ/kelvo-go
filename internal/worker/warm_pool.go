@@ -405,6 +405,9 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 	// waitCapacity lets a launch wait for a node reservation. It is set once
 	// no idle worker is left to evict.
 	waitCapacity := false
+	// scaleOutRefused stops this read retrying a launch for a key that already
+	// has workers once the node refused one: it waits for their slots instead.
+	scaleOutRefused := false
 	defer func() {
 		if waiter != nil {
 			m.mu.Lock()
@@ -480,7 +483,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 		}
 		mayLaunch := !backingOff && (waiter != nil || !m.keyWaitingLocked(key))
 
-		if mayLaunch && keyCount < m.cfg.MaxPerKey && len(m.workers) < m.cfg.MaxWorkers {
+		if mayLaunch && (keyCount == 0 || !scaleOutRefused) && keyCount < m.cfg.MaxPerKey && len(m.workers) < m.cfg.MaxWorkers {
 			entry := &warmWorkerEntry{
 				id:                    fmt.Sprintf("worker-%d", time.Now().UnixNano()),
 				key:                   key,
@@ -522,6 +525,12 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			}
 			if waitCapacity || !time.Now().Before(queueBy) {
 				return nil, nil, errWorkerBusy
+			}
+			if keyCount > 0 {
+				// Scaling out was refused, but this key has workers: their slots
+				// free in milliseconds, node capacity may not within the deadline.
+				scaleOutRefused = true
+				continue
 			}
 			if !m.evictIdleOther(ctx, key, queueBy) {
 				if ctx.Err() != nil {
