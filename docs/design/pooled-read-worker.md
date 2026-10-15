@@ -281,14 +281,24 @@ gain. Phase 3 is the security-sensitive one.
   (`query_reserve_slots`, `_memory_mb`, `_scratch_mb`) the interactive share
   and the rest the background share. Background never had the reserve; now
   interactive work cannot take the background share either.
-- Caps inside a class. Interactive: `warm_pool.max_per_tenant` (default 32
-  reads in flight) and `max_per_connection` (default max_per_key ×
-  max_in_flight); past a cap a read waits `queue_timeout`, then gets
-  `RESOURCE_EXHAUSTED`. Background: `operations.max_per_tenant` and
-  `max_per_connection` (0 = none); an operation waits for its caps before it
-  takes a slot, so a capped operation never holds one. A tenant is one app
-  team of one cluster tenant at one issuer; a connection is counted under its
-  tenant.
+- Durable operations never use read workers: their class is decided first and
+  is always background. Only interactive reads (inspections from the query
+  path) may run on a read worker through the operation path.
+- Validation: the interactive share must hold `warm_pool.max_workers` plus one
+  slot for fallbacks and result downloads, and its memory one result download
+  (3 x `max_result_bytes` + 2 MiB). With separate classes an interactive
+  query must fit the reserve itself.
+- Caps inside a class, FIFO per tenant and per connection. Interactive:
+  `warm_pool.max_per_tenant` (default 32 reads in flight) and
+  `max_per_connection` (default max_per_key x max_in_flight) apply to every
+  interactive read, held until it ends, one-shot fallback included. The cap
+  wait and a full-worker wait share one `queue_timeout`; a refusal is
+  `RESOURCE_EXHAUSTED` with a retry hint equal to the time waited.
+  Background: `operations.max_per_tenant` and `max_per_connection` (0 = none)
+  are taken before an operation starts, waiting at most
+  `operations.queue_wait` (default 10s); a refusal is rejected before start
+  with a retryable `RESOURCE_EXHAUSTED`. A tenant is one app team of one
+  cluster tenant at one issuer; a connection is counted under its tenant.
 
 ## Targets
 
