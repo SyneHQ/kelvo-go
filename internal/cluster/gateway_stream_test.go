@@ -374,3 +374,66 @@ func (s *countSink) Write(b arrow.RecordBatch) error {
 	*s.rows += b.NumRows()
 	return nil
 }
+
+// A full waiter pool is an admission point too: a stream whose job is still
+// queued waits for a waiter slot instead of refusing at once.
+func TestStreamQueryWaitsForWaiterSlotWhileQueued(t *testing.T) {
+	g, store, encoded, _, _, _ := streamFixture(t, 0, 2*time.Second, 0)
+	store.mu.Lock()
+	store.snapshot.Job.State = Queued
+	store.mu.Unlock()
+	adm := &requestAdmission{active: make(chan struct{}, 1), waiting: make(chan struct{}, 1), held: admissionActive}
+	adm.active <- struct{}{}  // this request's own active slot
+	adm.waiting <- struct{}{} // another request holds the only waiter slot
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		<-adm.waiting
+		time.Sleep(100 * time.Millisecond)
+		store.mu.Lock()
+		store.snapshot.Job.State = Assigned
+		store.mu.Unlock()
+	}()
+	started := time.Now()
+	w := serveStreamDirect(g, adm, context.Background())
+	if w.Code != http.StatusOK || !bytes.Equal(w.Body.Bytes(), encoded) || time.Since(started) < 100*time.Millisecond {
+		t.Fatalf("status=%d waited=%s", w.Code, time.Since(started))
+	}
+}
+
+func TestStreamQueryRefusesAfterBoundedWaitWhenWaiterSlotsStayFull(t *testing.T) {
+	g, store, _, _, _, _ := streamFixture(t, 0, 150*time.Millisecond, 0)
+	store.mu.Lock()
+	store.snapshot.Job.State = Queued
+	store.mu.Unlock()
+	adm := &requestAdmission{active: make(chan struct{}, 1), waiting: make(chan struct{}, 1), held: admissionActive}
+	adm.active <- struct{}{}
+	adm.waiting <- struct{}{}
+	started := time.Now()
+	w := serveStreamDirect(g, adm, context.Background())
+	if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") != "1" || time.Since(started) < 150*time.Millisecond || store.job().State != Cancelled {
+		t.Fatalf("status=%d waited=%s state=%s", w.Code, time.Since(started), store.job().State)
+	}
+}
+
+func TestStreamHeaderAlsoOnTrailingSlashPath(t *testing.T) {
+	g, _, encoded, _, _, _ := streamFixture(t, 0, time.Second, 0)
+	server := httptest.NewServer(g)
+	defer server.Close()
+	req, _ := http.NewRequest(http.MethodPost, server.URL+"/v1/queries/stream/", strings.NewReader(streamBody))
+	req.Header.Set("Authorization", "Bearer "+streamToken)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || resp.Header.Get(streamHeader) != "1" || !bytes.Equal(body, encoded) {
+		t.Fatalf("status=%d marker=%q", resp.StatusCode, resp.Header.Get(streamHeader))
+	}
+	// An unauthenticated request on that path is also a stream response.
+	anon, _ := http.Post(server.URL+"/v1/queries/stream/", "application/json", strings.NewReader(streamBody))
+	anon.Body.Close()
+	if anon.StatusCode != http.StatusUnauthorized || anon.Header.Get(streamHeader) != "1" {
+		t.Fatalf("anon status=%d marker=%q", anon.StatusCode, anon.Header.Get(streamHeader))
+	}
+}
