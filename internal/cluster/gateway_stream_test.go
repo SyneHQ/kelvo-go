@@ -131,6 +131,7 @@ func TestStreamQueryIsOneRequestWithArrowThenReceipt(t *testing.T) {
 	if got := requests.Load(); got != 1 || store.submits.Load() != 1 || workerHits.Load() != 1 {
 		t.Fatalf("one read must be one request: requests=%d submits=%d worker=%d", got, store.submits.Load(), workerHits.Load())
 	}
+	t.Logf("trace: POST /v1/queries/stream -> 200, %d Arrow bytes, receipt %s; gateway requests=%d store submits=%d worker fetches=%d", len(body), resp.Trailer.Get(receiptTrailer), requests.Load(), store.submits.Load(), workerHits.Load())
 	if store.snapshot.Job.State != Succeeded {
 		t.Fatalf("job state %s", store.snapshot.Job.State)
 	}
