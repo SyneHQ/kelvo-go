@@ -39,11 +39,16 @@ def inside(args):
     result = subprocess.run([str(out / "worker.test"), "-test.v", "-test.run=^" + args.gate + "$", "-test.timeout=120s"],
                             env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=150)
     (out / "worker.test.log").write_bytes(result.stdout)
-    statuses = re.findall(r"^--- (PASS|FAIL|SKIP): " + re.escape(args.gate) + r"\b", result.stdout.decode(errors="replace"), re.M)
+    log = result.stdout.decode(errors="replace")
+    statuses = re.findall(r"^--- (PASS|FAIL|SKIP): " + re.escape(args.gate) + r"\b", log, re.M)
+    # A gate may report measurements on one "GATE_METRICS {json}" log line.
+    metrics = [json.loads(m) for m in re.findall(r"GATE_METRICS (\{.*\})$", log, re.M)]
     passed = result.returncode == 0 and statuses == ["PASS"]
     remaining = sum(p.is_dir() for p in jobs.iterdir())
-    (out / "inside.json").write_text(json.dumps({"gate": args.gate, "status": statuses, "exit": result.returncode,
-                                                 "remaining_job_groups": remaining, "passed": passed and remaining == 0}))
+    inside = {"gate": args.gate, "status": statuses, "exit": result.returncode, "remaining_job_groups": remaining, "passed": passed and remaining == 0}
+    if metrics:
+        inside["metrics"] = metrics[-1]
+    (out / "inside.json").write_text(json.dumps(inside))
     return 0 if passed and remaining == 0 else 1
 
 
