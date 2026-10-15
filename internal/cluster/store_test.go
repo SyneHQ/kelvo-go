@@ -594,11 +594,22 @@ func TestNATSStoreTransientSlotAfterCancelOrFailureIsHeldOnlyIfClaimed(t *testin
 				store := openFixture(t)
 				ctx := context.Background()
 				request := query.Request{Mode: "federated", SQL: "select 1"}
-				first, err := store.SubmitTransient(ctx, request)
+				var submitted []string
+				// However this subtest ends, even on a failed assertion, leave
+				// the shared broker as found so later subtests are not starved.
+				t.Cleanup(func() { releaseJobs(store, submitted) })
+				submit := func() (Snapshot, error) {
+					s, err := store.SubmitTransient(ctx, request)
+					if err == nil {
+						submitted = append(submitted, s.Job.ID)
+					}
+					return s, err
+				}
+				first, err := submit()
 				if err != nil {
 					t.Fatal(err)
 				}
-				second, err := store.SubmitTransient(ctx, request)
+				second, err := submit()
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -607,11 +618,19 @@ func TestNATSStoreTransientSlotAfterCancelOrFailureIsHeldOnlyIfClaimed(t *testin
 				}
 				end(t, store, first)
 				succeedJob(t, store, second)
-				third, err := store.SubmitTransient(ctx, request)
+				// This process's freed-slot hints would reuse these slots without
+				// asking slotReusable. Drop them: another gateway's scan has none,
+				// and slotReusable alone must give the answer under test.
+				dropReuseHints(store)
+				third, err := submit()
 				if err != nil {
 					t.Fatalf("completed slot not reused: %v", err)
 				}
-				fourth, err := store.SubmitTransient(ctx, request)
+				if claimed && !sameSlot(t, third.Job.ID, second.Job.ID) {
+					t.Fatalf("the only free slot is the completed one, but %s took another", third.Job.ID)
+				}
+				dropReuseHints(store)
+				fourth, err := submit()
 				if claimed {
 					if !errors.Is(err, ErrCapacity) {
 						t.Fatalf("a claimed job's slot was reused inside the lease window: %v", err)
@@ -619,18 +638,46 @@ func TestNATSStoreTransientSlotAfterCancelOrFailureIsHeldOnlyIfClaimed(t *testin
 					if got, err := store.Get(ctx, first.Job.ID); err != nil || got.Job.State == Queued {
 						t.Fatalf("held slot was overwritten: %v %+v", err, got.Job.State)
 					}
-				} else {
-					if err != nil || !sameSlot(t, fourth.Job.ID, first.Job.ID) {
-						t.Fatalf("a never-claimed job's slot was held: %v", err)
-					}
-					succeedJob(t, store, fourth)
-				}
-				succeedJob(t, store, third)
-				if claimed { // leave the broker as found: wait out the held slot's lease window
-					time.Sleep(store.Policy().LeaseDuration + 200*time.Millisecond)
+				} else if err != nil || sameSlot(t, fourth.Job.ID, third.Job.ID) {
+					t.Fatalf("a never-claimed job's slot was held: %v", err)
 				}
 			})
 		}
+	}
+}
+
+func dropReuseHints(store *NATSStore) {
+	store.freedMu.Lock()
+	store.freed = nil
+	store.freedMu.Unlock()
+}
+
+// releaseJobs brings every job a test submitted to a state that frees its slot,
+// and waits out the lease window if one ended after a claim.
+func releaseJobs(store *NATSStore, ids []string) {
+	ctx := context.Background()
+	held := false
+	for _, id := range ids {
+		snap, err := store.Get(ctx, id)
+		if err != nil || snap.Job.ID != id {
+			continue // the slot already belongs to a newer job
+		}
+		if !snap.Job.Terminal() {
+			j := snap.Job
+			j.State = Cancelled
+			j.Error = query.PublicError(query.NewError("CANCELLED", "test cleanup"))
+			if next, err := store.CompareAndSwap(ctx, snap, j); err == nil {
+				snap = next
+			}
+		}
+		// Whether the code under test held it or not, give an early end the
+		// lease window so it cannot starve a later subtest.
+		if snap.Job.Transient && snap.Job.State != Succeeded {
+			held = true
+		}
+	}
+	if held {
+		time.Sleep(store.Policy().LeaseDuration + 200*time.Millisecond)
 	}
 }
 
