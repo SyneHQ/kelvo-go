@@ -33,7 +33,7 @@ warm_pool:
   reauthorize_every: 60s
 operations: {max_concurrent: 2, max_downloads: 2, max_result_bytes: 16777216}
 gateway: {max_http_requests: 256}
-audit: {max_entries: 1048576, max_pending: 512}
+audit: {max_entries: 262144, max_pending: 512}
 resolver: {delay: 300ms, max_concurrent: 16}
 source: {host: 127.0.0.1, port: 0, password: "", ca_pem: "", customers: 20}
 sample_interval: 1s

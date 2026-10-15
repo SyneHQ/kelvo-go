@@ -109,7 +109,7 @@ jobs:
         run: |
           mkdir -p artifacts/pooled-read-load
           cd artifacts/load-private/run
-          cp report.json loadgen-report.json node-cpu-top.txt node-cpu.pprof node-metrics.prom node-samples.json loadgen.log latproxy.stats.json ../../pooled-read-load/ 2>/dev/null || true
+          cp report.json audit-usage.json loadgen-report.json node-cpu-top.txt node-cpu.pprof node-metrics.prom node-samples.json loadgen.log latproxy.stats.json ../../pooled-read-load/ 2>/dev/null || true
           grep -av 'kelvo read failed' node.test.log | tail -c 200000 > ../../pooled-read-load/node.test.log 2>/dev/null || true
           tail -c 20000 service.log > ../../pooled-read-load/service.log 2>/dev/null || true
           tail -c 20000 nats.log > ../../pooled-read-load/nats.log 2>/dev/null || true
