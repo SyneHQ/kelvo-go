@@ -52,6 +52,7 @@ func (n *Node) initOperations(ctx context.Context) (resultErr error) {
 		}
 	}()
 	var err error
+	native.OperationAdapter = c.Adapter
 	if c.WarmPool != nil && c.WarmPool.Enabled {
 		native.WarmPool, err = worker.NewWarmPoolManager(*c.WarmPool, nil)
 		if err != nil {

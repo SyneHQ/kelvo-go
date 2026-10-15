@@ -96,6 +96,9 @@ type Executor struct {
 	connectionResolvers map[string]*ConnectionResolver
 	connectionSourceIDs map[string]string
 	WarmPool            *WarmPoolManager
+	// OperationAdapter is the pinned adapter binary for metadata inspections
+	// that no read worker takes.
+	OperationAdapter OperationProcessConfig
 }
 
 type boundCatalog struct {
@@ -264,10 +267,15 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 			return stats, query.NewError("CONFIGURATION_ERROR", "Contained workers require sandbox, managed scratch, and separate native and parent reservations")
 		}
 	}
-	if custody == nil {
+	// An inspection never reaches the query child: under custody it may still
+	// use a read worker, and its one-shot fallback refuses custody explicitly.
+	if custody == nil || r.Inspect != nil {
 		if warmStats, warmErr, handled := e.executeOnReadWorker(ctx, execution, dynamic, resolverRequest, r, sink); handled {
 			return warmStats, warmErr
 		}
+	}
+	if r.Inspect != nil {
+		return stats, query.NewError("UNAVAILABLE", "Metadata inspection is not available for this execution")
 	}
 	if custody != nil && e.ResourcePool != nil {
 		return stats, admission.ErrInvalid
