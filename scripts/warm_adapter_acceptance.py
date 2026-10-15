@@ -20,6 +20,13 @@ GATE = "TestContainedWarmAdapterReusesPostgresConnection"
 LIMITS = {"MemoryMax": "1G", "MemorySwapMax": "0", "CPUQuota": "100%", "TasksMax": "256", "RuntimeMaxSec": "300", "KillMode": "control-group"}
 
 
+def gate_passed(log, gate, returncode):
+    """A gate passes only on exit 0 with exactly one PASS line for it: a SKIP,
+    a missing line or a second result is a failure."""
+    statuses = re.findall(r"^--- (PASS|FAIL|SKIP): " + re.escape(gate) + r"\b", log, re.M)
+    return returncode == 0 and statuses == ["PASS"], statuses
+
+
 def inside(args):
     out = Path(args.output)
     relative = Path("/proc/self/cgroup").read_text().strip().split(":", 2)[2]
@@ -40,10 +47,9 @@ def inside(args):
                             env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=150)
     (out / "worker.test.log").write_bytes(result.stdout)
     log = result.stdout.decode(errors="replace")
-    statuses = re.findall(r"^--- (PASS|FAIL|SKIP): " + re.escape(args.gate) + r"\b", log, re.M)
+    passed, statuses = gate_passed(log, args.gate, result.returncode)
     # A gate may report measurements on one "GATE_METRICS {json}" log line.
     metrics = [json.loads(m) for m in re.findall(r"GATE_METRICS (\{.*\})$", log, re.M)]
-    passed = result.returncode == 0 and statuses == ["PASS"]
     remaining = sum(p.is_dir() for p in jobs.iterdir())
     inside = {"gate": args.gate, "status": statuses, "exit": result.returncode, "remaining_job_groups": remaining, "passed": passed and remaining == 0}
     if metrics:
