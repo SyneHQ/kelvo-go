@@ -53,7 +53,9 @@ func NewOperationWorker(policy Policy, store Store, ledger *operationstore.Store
 		return nil, errOperationConfig
 	}
 	policy, err := clonePolicy(policy)
-	if err != nil || ValidatePolicy(policy) != nil || policy.Operations == nil || operationStorePolicy(policy) != ledger.Policy() || !reflect.DeepEqual(store.Policy(), policy) || policy.Workers[cfg.Runtime.WorkerID] < 1 {
+	if err != nil || ValidatePolicy(policy) != nil || policy.Operations == nil || operationStorePolicy(policy) != ledger.Policy() || !reflect.DeepEqual(store.Policy(), policy) || policy.Workers[cfg.Runtime.WorkerID] < 1 ||
+		// Every claimed operation needs an audit reservation at execution.
+		cfg.Runtime.Concurrency > journal.journal.Snapshot().MaxPending {
 		return nil, errOperationConfig
 	}
 	if _, ok := store.(workerLeaseReader); !ok {
