@@ -85,7 +85,9 @@ type explorerGate struct {
 	pids  map[int64]bool
 }
 
-func newExplorerGate(t *testing.T, limits admission.Limits) *explorerGate {
+// cache turns on the dashboard result cache; the explorer gates measure the
+// worker path itself, so they run without it.
+func newExplorerGate(t *testing.T, limits admission.Limits, cache bool) *explorerGate {
 	t.Helper()
 	adapterPath, dsn := os.Getenv("KELVO_TEST_WARM_ADAPTER_BINARY"), os.Getenv("KELVO_TEST_WARM_POSTGRES_DSN")
 	if adapterPath == "" || dsn == "" {
@@ -136,6 +138,7 @@ func newExplorerGate(t *testing.T, limits admission.Limits) *explorerGate {
 	executor.Config = catalog.Config{Sources: []catalog.Source{{ID: "explorer", Type: "postgres", DSNEnv: "KELVO_TEST_WARM_POSTGRES_DSN"}}}
 	warm := DefaultWarmPoolConfig()
 	warm.Enabled = true
+	warm.CacheDisabled = !cache
 	mgr, err := NewWarmPoolManager(warm, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -233,7 +236,7 @@ func (g *explorerGate) drain() {
 // PostgreSQL. Every request must succeed, all on one worker holding one
 // reservation and at most pool_size backends; p50 and p95 are reported.
 func TestContainedReadWorkerServesExplorerPageOpen(t *testing.T) {
-	g := newExplorerGate(t, admission.Limits{MaxConcurrent: 2, MemoryBytes: 512 << 20, ScratchBytes: 64 << 20})
+	g := newExplorerGate(t, admission.Limits{MaxConcurrent: 2, MemoryBytes: 512 << 20, ScratchBytes: 64 << 20}, false)
 	// The first page open also starts the worker; the second finds it warm.
 	_, cold := g.burst("cold")
 	_, warmBurst := g.burst("warm")
@@ -256,7 +259,7 @@ func TestContainedReadWorkerServesExplorerPageOpen(t *testing.T) {
 func TestContainedExplorerUnaffectedByFullBackgroundClass(t *testing.T) {
 	const workerReservation = (64 + 160) << 20 // worker_memory_mb + the executor's overhead
 	g := newExplorerGate(t, admission.Limits{MaxConcurrent: 3, MemoryBytes: 3 * workerReservation, ScratchBytes: 96 << 20,
-		ReservedSlots: 1, ReservedMemoryBytes: workerReservation, ReservedScratchBytes: 32 << 20, SeparateClasses: true})
+		ReservedSlots: 1, ReservedMemoryBytes: workerReservation, ReservedScratchBytes: 32 << 20, SeparateClasses: true}, false)
 	// Durable operations run on the same executor, warm pool enabled: they
 	// must take the background class and never a read worker.
 	background := g.executor
@@ -331,6 +334,105 @@ func TestContainedExplorerUnaffectedByFullBackgroundClass(t *testing.T) {
 	if metrics.Spawns.Load() != 1 || metrics.Fallbacks.Load() != 0 || fullSamples != samples || loaded.Failures+idle.Failures+cold.Failures != 0 ||
 		loaded.P95MS > idle.P95MS*1.5+25 {
 		t.Fatal("explorer was affected by a full background class", string(report))
+	}
+	g.drain()
+}
+
+// This gate opens one six-panel dashboard in ten viewers at once, twice, a
+// cache_ttl apart, then refreshes one panel explicitly. pg_stat_statements on
+// the real PostgreSQL counts what reached the source: one execution per panel
+// per refresh, and one more for the explicit refresh.
+func TestContainedDashboardViewersShareOneSourceQueryPerPanel(t *testing.T) {
+	g := newExplorerGate(t, admission.Limits{MaxConcurrent: 2, MemoryBytes: 512 << 20, ScratchBytes: 64 << 20}, true)
+	setup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn, err := pgx.Connect(setup, os.Getenv("KELVO_TEST_WARM_POSTGRES_DSN"))
+	if err != nil {
+		t.Fatal("fixture connection failed")
+	}
+	defer conn.Close(context.Background())
+	if _, err := conn.Exec(setup, "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"); err != nil {
+		t.Fatal("pg_stat_statements unavailable:", err)
+	}
+	if _, err := conn.Exec(setup, "SELECT pg_stat_statements_reset()"); err != nil {
+		t.Fatal(err)
+	}
+	const panels, viewers = 6, 10
+	panel := func(i int) string {
+		return fmt.Sprintf("SELECT count(*)::bigint AS n, sum(amount)::float8 AS total FROM public.explorer_t%d WHERE id > 0", i)
+	}
+	calls := func() []int64 {
+		out := make([]int64, panels)
+		for i := range out {
+			if err := conn.QueryRow(setup, "SELECT coalesce(sum(calls), 0)::bigint FROM pg_stat_statements WHERE query LIKE $1",
+				fmt.Sprintf("%%sum(amount)%%explorer_t%d %%", i)).Scan(&out[i]); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return out
+	}
+	open := func(label string, refresh bool) burstResult {
+		durations := make([]time.Duration, 0, panels*viewers)
+		var mu sync.Mutex
+		var failures atomic.Int64
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		for v := 0; v < viewers; v++ {
+			for p := 0; p < panels; p++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+					sink := &workerTestSink{}
+					<-start
+					began := time.Now()
+					_, err := g.executor.Execute(ctx, query.Request{Mode: "native", ConnectionID: "explorer", SQL: panel(p), Refresh: refresh}, sink)
+					if err == nil && sink.rows != 1 {
+						err = fmt.Errorf("rows %d", sink.rows)
+					}
+					if err != nil {
+						failures.Add(1)
+						t.Errorf("%s viewer %d panel %d: %v", label, v, p, err)
+					}
+					mu.Lock()
+					durations = append(durations, time.Since(began))
+					mu.Unlock()
+				}()
+			}
+		}
+		close(start)
+		wg.Wait()
+		slices.Sort(durations)
+		return burstResult{N: len(durations), Failures: int(failures.Load()), P50MS: percentile(durations, 50), P95MS: percentile(durations, 95), MaxMS: percentile(durations, 100)}
+	}
+
+	first := open("refresh-1", false)
+	afterFirst := calls()
+	time.Sleep(g.mgr.cache.ttl + 500*time.Millisecond)
+	second := open("refresh-2", false)
+	afterSecond := calls()
+	sink := &workerTestSink{}
+	if _, err := g.executor.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "explorer", SQL: panel(0), Refresh: true}, sink); err != nil {
+		t.Fatal("explicit refresh failed:", err)
+	}
+	afterRefresh := calls()
+
+	report, _ := json.Marshal(map[string]any{"viewers": viewers, "panels": panels, "refresh_1": first, "refresh_2": second,
+		"source_calls_after_refresh_1": afterFirst, "source_calls_after_refresh_2": afterSecond, "source_calls_after_explicit_refresh": afterRefresh,
+		"cache_hits": g.mgr.cache.hits, "cache_ttl_ms": g.mgr.cache.ttl.Milliseconds(), "spawns": g.mgr.Metrics().Spawns.Load()})
+	t.Logf("GATE_METRICS %s", report)
+	for i := 0; i < panels; i++ {
+		wantRefresh := int64(2)
+		if i == 0 {
+			wantRefresh = 3
+		}
+		if afterFirst[i] != 1 || afterSecond[i] != 2 || afterRefresh[i] != wantRefresh {
+			t.Fatal("dashboard viewers did not share one source query per panel per refresh", string(report))
+		}
+	}
+	if first.Failures+second.Failures != 0 {
+		t.Fatal("dashboard reads failed", string(report))
 	}
 	g.drain()
 }

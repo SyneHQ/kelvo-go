@@ -1,7 +1,7 @@
 # Pooled read workers
 
 Status: draft for review. Nothing here is built unless a section says so.
-Phase 1 (#215), phase 2 (#217) and phase 2b (see "Phase 2b as built") are implemented.
+Phase 1 (#215), phase 2 (#217) and phase 2b and phase 2c (see "as built" sections) are implemented.
 
 ## Why
 
@@ -310,6 +310,23 @@ gain. Phase 3 is the security-sensitive one.
   `operations.queue_wait` (default 10s); a refusal is rejected before start
   with a retryable `RESOURCE_EXHAUSTED`. A tenant is one app team of one
   cluster tenant at one issuer; a connection is counted under its tenant.
+
+## Phase 2c as built
+
+- Native reads on read workers go through a result cache. The key hashes
+  (tenant, app team, connection, source revision, SQL, parameters, result
+  limits); the revision binds the source definition and its credentials, and
+  the tenant is in every key, so a key never crosses tenants.
+- Concurrent identical reads share one execution; its Arrow IPC result is
+  kept for `warm_pool.cache_ttl` (default 10s) and replayed to each caller.
+- Only complete, receipt-verified results are kept: at most
+  `cache_max_entry_bytes` (default 4 MiB) each, `cache_max_total_bytes`
+  (default 64 MiB) in all, oldest first out. Larger results are served but not
+  kept; failures are never kept.
+- `query.Request.refresh: true` skips the cache and any running identical
+  read, and replaces the kept result. It is not part of the signed digest: it
+  can only cause another source query, never widen access.
+- Metadata inspections are not cached. `cache_disabled: true` turns it off.
 
 ## Targets
 
