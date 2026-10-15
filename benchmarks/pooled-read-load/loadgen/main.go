@@ -140,9 +140,19 @@ func (d *driver) grant(c int, user string, r query.Request) (string, error) {
 		Sources: []delegation.Source{{Alias: "source_1", ConnectionID: fmt.Sprintf("cust-%02d", c), Database: fmt.Sprintf("cust%02d", c), Schema: "public"}}}, d.key)
 }
 
+var (
+	messagesMu sync.Mutex
+	messages   = map[string]string{} // first message seen per error code
+)
+
 func errorCode(err error) (string, float64) {
 	var e *client.Error
 	if errors.As(err, &e) {
+		messagesMu.Lock()
+		if _, ok := messages[e.Code]; !ok {
+			messages[e.Code] = e.Message
+		}
+		messagesMu.Unlock()
 		return e.Code, e.RetryAfter.Seconds()
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -577,6 +587,9 @@ func main() {
 	report["classes"] = classes
 	report["all_requests"] = summarize(all)
 	report["errors_by_code"] = codes
+	messagesMu.Lock()
+	report["first_error_message_by_code"] = messages
+	messagesMu.Unlock()
 	report["capacity_errors"] = capacity
 	report["peak_inflight_requests"] = d.rec.peak.Load()
 	report["mean_inflight_requests"] = meanInflight
