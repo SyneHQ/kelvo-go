@@ -99,9 +99,6 @@ type Executor struct {
 	// OperationAdapter is the pinned adapter binary for metadata inspections
 	// that no read worker takes.
 	OperationAdapter OperationProcessConfig
-	// OperationCaps bounds durable operations per tenant and per connection
-	// inside the background class. Nil means no caps.
-	OperationCaps *admission.Caps
 }
 
 type boundCatalog struct {
@@ -269,6 +266,24 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		if !e.ContainmentBudget.FitsOverhead(int64(e.Limits.MemoryMB), e.ResourceOverheadBytes>>20) || e.SandboxPath == "" || e.ScratchRoot == nil || (e.ResourcePool == nil && custody == nil) {
 			return stats, query.NewError("CONFIGURATION_ERROR", "Contained workers require sandbox, managed scratch, and separate native and parent reservations")
 		}
+	}
+	// Every interactive read, on a read worker or not, counts against its
+	// tenant's and connection's caps until it ends, fallback included.
+	if custody == nil && e.WarmPool != nil && e.WarmPool.Config().Enabled {
+		tenant, _ := readTenant(execution, dynamic)
+		started := time.Now()
+		deadline := started.Add(e.WarmPool.Config().QueueTimeout)
+		capCtx, cancelCap := context.WithDeadline(ctx, deadline)
+		releaseCaps, err := e.WarmPool.InteractiveCaps().Acquire(capCtx, tenant, r.ConnectionID)
+		cancelCap()
+		if err != nil {
+			if ctx.Err() != nil {
+				return stats, ctx.Err()
+			}
+			return stats, busyError("Read capacity for this tenant or connection is in use", time.Since(started))
+		}
+		defer releaseCaps()
+		ctx = withQueueDeadline(ctx, deadline)
 	}
 	// An inspection never reaches the query child: under custody it may still
 	// use a read worker, and its one-shot fallback refuses custody explicitly.

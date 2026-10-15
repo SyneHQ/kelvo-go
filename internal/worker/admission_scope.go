@@ -7,17 +7,6 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
 )
 
-type operationScopeKey struct{}
-
-type operationScope struct{ tenant, connection string }
-
-// WithOperationScope names the tenant and connection a durable operation runs
-// for, so per-tenant and per-connection caps apply before it takes a slot.
-// Trusted cluster code sets it from the operation's verified scope.
-func WithOperationScope(ctx context.Context, tenant, connection string) context.Context {
-	return context.WithValue(ctx, operationScopeKey{}, operationScope{tenant, connection})
-}
-
 type admissionClassKey struct{}
 
 // withAdmissionClass overrides the class a one-shot operation reserves in;

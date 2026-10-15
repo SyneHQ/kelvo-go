@@ -185,7 +185,10 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 		}
 		return cachedResolved, cachedPrivate, cachedResolveErr
 	}
-	if e.WarmPool != nil && e.WarmPool.Config().Enabled {
+	// Durable operations are background work and never use a read worker;
+	// only interactive reads (inspections routed from the query path) may.
+	class := admissionClass(parent, admission.ClassOperation)
+	if class == admission.ClassInteractive && e.WarmPool != nil && e.WarmPool.Config().Enabled {
 		resolvedInput, priv, err := wrappedResolve(parent)
 		if err == nil && priv == nil && e.WarmPool.IsEligible(resolvedInput) {
 			warmReceipt, warmErr := e.WarmPool.Execute(parent, e, cfg, resolvedInput, sink)
@@ -222,16 +225,7 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	if e.ResourceOverheadBytes < 0 || e.ResourceOverheadBytes > math.MaxInt64-memoryBytes {
 		return receipt, operationFailure("CONFIGURATION_ERROR")
 	}
-	// Durable operations are background work. Their tenant and connection
-	// caps are taken before a slot, so a capped operation never holds one.
-	if scope, ok := parent.Value(operationScopeKey{}).(operationScope); ok {
-		releaseCaps, err := e.OperationCaps.Acquire(ctx, scope.tenant, scope.connection)
-		if err != nil {
-			return rejectedOperation(input, "RESOURCE_EXHAUSTED"), operationFailure("RESOURCE_EXHAUSTED")
-		}
-		defer releaseCaps()
-	}
-	reservation, err := e.ResourcePool.Acquire(ctx, admission.Request{Class: admissionClass(parent, admission.ClassOperation), MemoryBytes: memoryBytes + e.ResourceOverheadBytes, ScratchBytes: int64(e.Limits.MaxTempMB) << 20})
+	reservation, err := e.ResourcePool.Acquire(ctx, admission.Request{Class: class, MemoryBytes: memoryBytes + e.ResourceOverheadBytes, ScratchBytes: int64(e.Limits.MaxTempMB) << 20})
 	if err != nil {
 		return rejectedOperation(input, "RESOURCE_EXHAUSTED"), operationFailure("RESOURCE_EXHAUSTED")
 	}

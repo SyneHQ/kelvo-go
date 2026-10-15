@@ -147,7 +147,8 @@ func TestContainedWarmWorkerServesRepeatedRequests(t *testing.T) {
 			values = append(values, batch.Column(0).(*array.Int64).Int64Values()...)
 			return nil
 		}}
-		receipt, err := executor.ExecuteOperation(ctx, cfg, operationProcessInput(t, operations.QueryRead, "serve"), sink)
+		// Interactive reads use the warm pool; durable operations never do.
+		receipt, err := executor.ExecuteOperation(withAdmissionClass(ctx, admission.ClassInteractive), cfg, operationProcessInput(t, operations.QueryRead, "serve"), sink)
 		cancel()
 		if err != nil || receipt.Outcome != operations.Completed || len(values) != 2 {
 			t.Fatal("warm request failed", i, receipt, err, values)
@@ -174,7 +175,7 @@ func TestContainedWarmWorkerServesRepeatedRequests(t *testing.T) {
 	}
 	other := operationProcessInput(t, operations.QueryRead, "fixture")
 	other.AppTeam = "another-team"
-	evicting, err := executor.ExecuteOperation(context.Background(), cfg, other, &workerTestSink{})
+	evicting, err := executor.ExecuteOperation(withAdmissionClass(context.Background(), admission.ClassInteractive), cfg, other, &workerTestSink{})
 	if err != nil || evicting.Outcome != operations.Completed || metrics.Fallbacks.Load() != 0 || metrics.Spawns.Load() != 2 || metrics.EvictionsLRU.Load() != 1 {
 		t.Fatal("a new key did not take over the idle worker's slot", evicting, err, metrics.Fallbacks.Load(), metrics.Spawns.Load(), metrics.EvictionsLRU.Load())
 	}
@@ -244,7 +245,7 @@ func TestContainedWarmAdapterReusesPostgresConnection(t *testing.T) {
 			return nil
 		}}
 		ctx, cancel := context.WithCancel(context.Background())
-		receipt, err := executor.ExecuteOperation(ctx, cfg, input, sink)
+		receipt, err := executor.ExecuteOperation(withAdmissionClass(ctx, admission.ClassInteractive), cfg, input, sink)
 		cancel()
 		if err != nil || receipt.Outcome != operations.Completed || len(values) != 1 || values[0] < 1 {
 			t.Fatal(label, "query failed", receipt.Outcome, receipt.ErrorCode, err, values)

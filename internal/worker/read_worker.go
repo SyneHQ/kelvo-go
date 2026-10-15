@@ -55,13 +55,11 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		}
 		resolved, until, err := e.resolveConnections(ctx, execution, resolverRequest)
 		selected := execution.Claims.Sources[0]
-		id.database, id.schema, id.team = selected.Database, selected.Schema, execution.Claims.AppTeam
+		id.database, id.schema = selected.Database, selected.Schema
 		// Workers are keyed by the saved connection, not the request's alias:
 		// apps reuse one alias for every connection.
 		id.saved = selected.ConnectionID
-		identity, _ := json.Marshal([]string{execution.Claims.Issuer, execution.Claims.ClusterTenant, execution.Claims.AppTeam})
-		sum := sha256.Sum256(append([]byte("kelvo.read-worker.tenant.v1\x00"), identity...))
-		id.tenant = hex.EncodeToString(sum[:])
+		id.tenant, id.team = readTenant(execution, dynamic)
 		return resolved, id, until, err
 	}
 	if !eligible {
@@ -178,6 +176,17 @@ func (s *countingSink) Write(batch arrow.RecordBatch) error {
 	s.rows += batch.NumRows()
 	s.batches++
 	return nil
+}
+
+// readTenant names a read's tenant: one app team of one cluster tenant at one
+// delegation issuer, or "static" for operator-configured sources.
+func readTenant(execution delegation.Execution, dynamic bool) (tenant, team string) {
+	if !dynamic {
+		return "static", ""
+	}
+	identity, _ := json.Marshal([]string{execution.Claims.Issuer, execution.Claims.ClusterTenant, execution.Claims.AppTeam})
+	sum := sha256.Sum256(append([]byte("kelvo.read-worker.tenant.v1\x00"), identity...))
+	return hex.EncodeToString(sum[:]), execution.Claims.AppTeam
 }
 
 func readOperationID() string {
@@ -305,7 +314,8 @@ func (e *Executor) inspectOneShot(ctx context.Context, source *Executor, id read
 	if input.Validate() != nil {
 		return query.Stats{}, query.NewError("INVALID_ARGUMENT", "Metadata inspection is not available for this source")
 	}
-	receipt, err := e.ExecuteOperation(ctx, e.OperationAdapter, input, sink)
+	// An inspection is an interactive read, never background work.
+	receipt, err := e.ExecuteOperation(withAdmissionClass(ctx, admission.ClassInteractive), e.OperationAdapter, input, sink)
 	return receiptStats(receipt, err), receiptError(receipt, err)
 }
 

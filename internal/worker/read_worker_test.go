@@ -15,6 +15,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/adapter/frame"
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
@@ -246,6 +247,99 @@ func TestReadWorkerKeyedBySavedConnection(t *testing.T) {
 	defer fs.mu.Unlock()
 	if len(fs.procs) != 2 || len(seen) != 3 || seen[0].Source.ConnectionID != "saved-a" || seen[1].Source.ConnectionID != "saved-b" || seen[0].Request.Connection.ID != "saved-a" {
 		t.Fatalf("workers keyed by alias: procs=%d first=%q second=%q", len(fs.procs), seen[0].Source.ConnectionID, seen[1].Source.ConnectionID)
+	}
+}
+
+// Durable operations are background work: with the warm pool enabled a
+// durable read still never reaches a read worker. Only an interactive caller
+// (an inspection from the query path) may use one.
+func TestDurableOperationsNeverUseReadWorkers(t *testing.T) {
+	fs := &fakeSet{serve: func(p *fakeWorkerProcess) { serveFake(p, nil) }}
+	launcher := fs.launcher()
+	e, mgr := readWorkerExecutor(t, fs)
+	mgr.launcher = launcher
+	durable := opReq("op-durable")
+	_, _ = e.ExecuteOperation(context.Background(), OperationProcessConfig{}, durable, &workerTestSink{})
+	if launcher.spawns != 0 || mgr.metrics.Hits.Load()+mgr.metrics.Misses.Load() != 0 {
+		t.Fatal("a durable operation reached the warm pool", launcher.spawns)
+	}
+	if _, err := e.ExecuteOperation(withAdmissionClass(context.Background(), admission.ClassInteractive), OperationProcessConfig{}, durable, &workerTestSink{}); err != nil || launcher.spawns != 1 {
+		t.Fatal("an interactive read did not use the warm pool", err, launcher.spawns)
+	}
+}
+
+// holdingServe holds reads of "SELECT 'hold'" until release is closed.
+func holdingServe(release chan struct{}) func(p *fakeWorkerProcess) {
+	return func(p *fakeWorkerProcess) {
+		var mu sync.Mutex
+		serveFake(p, func(f frame.Frame) {
+			if f.Type != frame.Request {
+				return
+			}
+			var r adapter.ProcessRequest
+			_ = json.Unmarshal(f.Payload, &r)
+			if r.Request.Spec.Query != nil && r.Request.Spec.Query.SQL == "SELECT 'hold'" {
+				go func() { <-release; mu.Lock(); replyOK(p.stdoutW, f.Stream, f.Payload); mu.Unlock() }()
+				return
+			}
+			mu.Lock()
+			replyOK(p.stdoutW, f.Stream, f.Payload)
+			mu.Unlock()
+		})
+	}
+}
+
+// Tenant caps cover every interactive read, not only reads a worker takes:
+// a read headed for the one-shot path waits for its tenant's cap and is
+// refused with a retry hint from its actual wait.
+func TestInteractiveCapsCoverEveryRead(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	fs := &fakeSet{serve: holdingServe(release)}
+	e, mgr := readWorkerExecutor(t, fs)
+	mgr.caps = &admission.Caps{MaxPerTenant: 1}
+	mgr.cfg.QueueTimeout = 1500 * time.Millisecond
+	go func() {
+		_, _ = e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "app", SQL: "SELECT 'hold'"}, &workerTestSink{})
+	}()
+	waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 1 })
+	// Node limits too large for a read worker: this read would go one-shot.
+	big := *e
+	big.Limits.MaxBytes = 256 << 20
+	start := time.Now()
+	_, err := big.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "app", SQL: "SELECT 2"}, &workerTestSink{})
+	var public *query.Error
+	if !errors.As(err, &public) || public.Code != "RESOURCE_EXHAUSTED" || !strings.Contains(public.Message, "retry after 2s") {
+		t.Fatal("a read off the worker path skipped its tenant cap:", err)
+	}
+	if waited := time.Since(start); waited < 1500*time.Millisecond {
+		t.Fatal("refused without waiting", waited)
+	}
+}
+
+// A read that waited for its tenant cap does not then wait a second full
+// queue_timeout for a full worker: both waits share one deadline.
+func TestCapacityWaitsShareOneDeadline(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	fs := &fakeSet{serve: holdingServe(release)}
+	e, mgr := readWorkerExecutor(t, fs)
+	mgr.cfg.MaxInFlight = 1
+	mgr.caps = &admission.Caps{MaxPerTenant: 2}
+	const timeout = 600 * time.Millisecond
+	mgr.cfg.QueueTimeout = timeout
+	hold := func() {
+		_, _ = e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "app", SQL: "SELECT 'hold'"}, &workerTestSink{})
+	}
+	go hold() // takes the worker's only slot
+	waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 1 })
+	go hold() // passes the caps, waits for the full worker until its deadline
+	time.Sleep(50 * time.Millisecond)
+	start := time.Now()
+	_, err := e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "app", SQL: "SELECT 3"}, &workerTestSink{})
+	waited := time.Since(start)
+	if err == nil || waited > timeout+timeout/2 {
+		t.Fatalf("waits stacked: refused after %v (queue_timeout %v): %v", waited, timeout, err)
 	}
 }
 

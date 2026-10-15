@@ -425,23 +425,43 @@ func (m *WarmPoolManager) evictStaleRevisionsLocked(tenantID, appTeam, connectio
 	}
 }
 
-// errWorkerBusy is a read that found no capacity within queue_timeout. It is
-// not a fallback: fifty one-shot children is the collapse the pool exists to
-// avoid.
-var errWorkerBusy = query.NewError("RESOURCE_EXHAUSTED", "Read worker is busy; retry after 1s")
+// busyError refuses an interactive read that waited for capacity. The retry
+// hint is the time it actually waited, in whole seconds: capacity did not free
+// within that, so retrying sooner is unlikely to help. A full worker is not a
+// fallback: fifty one-shot children is the collapse the pool exists to avoid.
+func busyError(what string, waited time.Duration) error {
+	seconds := max(1, int64((waited+time.Second-1)/time.Second))
+	return query.NewError("RESOURCE_EXHAUSTED", fmt.Sprintf("%s; retry after %ds", what, seconds))
+}
 
-// errTenantBusy is a tenant or connection at its interactive cap for
-// queue_timeout.
-var errTenantBusy = query.NewError("RESOURCE_EXHAUSTED", "Read capacity for this tenant or connection is in use; retry after 1s")
+type queueDeadlineKey struct{}
+
+// withQueueDeadline bounds every capacity wait of one read by one deadline,
+// so the tenant caps and a full worker never stack two queue timeouts.
+func withQueueDeadline(ctx context.Context, deadline time.Time) context.Context {
+	return context.WithValue(ctx, queueDeadlineKey{}, deadline)
+}
+
+func queueDeadline(ctx context.Context, timeout time.Duration) time.Time {
+	if deadline, ok := ctx.Value(queueDeadlineKey{}).(time.Time); ok {
+		return deadline
+	}
+	return time.Now().Add(timeout)
+}
+
+// InteractiveCaps bounds interactive reads per tenant and per connection.
+func (m *WarmPoolManager) InteractiveCaps() *admission.Caps { return m.caps }
 
 // Acquire takes a stream slot on a warm worker for input's key, launching one
 // when the key has none. Every wait for capacity (a slot, an evicted worker,
 // a node reservation) is bounded by one queue_timeout and ends in
-// errWorkerBusy. errWarmUnavailable or a launch error means no worker could
+// RESOURCE_EXHAUSTED with a retry hint. errWarmUnavailable or a launch error means no worker could
 // start and nothing was sent: only then does the read fall back.
 func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest) (*warmWorkerEntry, func(error), error) {
 	key := fmt.Sprintf("%s\x00%s\x00%s\x00%s", input.Source.TenantID, input.AppTeam, input.Source.ConnectionID, input.Source.Revision)
-	queueBy := time.Now().Add(m.cfg.QueueTimeout)
+	acquireStart := time.Now()
+	queueBy := queueDeadline(ctx, m.cfg.QueueTimeout)
+	busy := func() error { return busyError("Read worker is busy", time.Since(acquireStart)) }
 	var waiter *slotWaiter
 	var startWait time.Time
 	missed := false
@@ -506,7 +526,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 				return nil, nil, errWarmUnavailable
 			}
 			if !time.Now().Before(queueBy) {
-				return nil, nil, errWorkerBusy
+				return nil, nil, busy()
 			}
 			continue
 		}
@@ -563,7 +583,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 				return nil, nil, entry.launchErr
 			}
 			if waitCapacity || !time.Now().Before(queueBy) {
-				return nil, nil, errWorkerBusy
+				return nil, nil, busy()
 			}
 			if keyCount > 0 {
 				// Scaling out was refused, but this key has workers: their slots
@@ -586,7 +606,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			// A read already out of time evicts nothing on its way out.
 			if !time.Now().Before(queueBy) {
 				m.mu.Unlock()
-				return nil, nil, errWorkerBusy
+				return nil, nil, busy()
 			}
 			m.mu.Unlock()
 			if m.evictIdleOther(ctx, key, queueBy) {
@@ -602,7 +622,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 		if waiter == nil {
 			if len(m.waiters) >= m.cfg.QueueDepth {
 				m.mu.Unlock()
-				return nil, nil, query.NewError("RESOURCE_EXHAUSTED", "Warm worker pool queue depth exceeded; retry after 1s")
+				return nil, nil, busyError("Warm worker pool queue depth exceeded", m.cfg.QueueTimeout)
 			}
 			waiter = &slotWaiter{key: key, ready: make(chan struct{}, 1)}
 			m.waiters = append(m.waiters, waiter)
@@ -614,7 +634,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 		case <-waiter.ready:
 			timer.Stop()
 		case <-timer.C:
-			return nil, nil, errWorkerBusy
+			return nil, nil, busy()
 		case <-ctx.Done():
 			timer.Stop()
 			return nil, nil, ctx.Err()
@@ -969,18 +989,6 @@ func (m *WarmPoolManager) releaseWorker(w *warmWorkerEntry, err error) {
 
 // Execute runs an operation on a warm worker, streaming results to sink.
 func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest, sink query.Sink) (operations.Receipt, error) {
-	// One tenant or connection cannot take the whole interactive class: past
-	// its cap a read waits queue_timeout like a read for a full worker.
-	capCtx, cancelCap := context.WithTimeout(ctx, m.cfg.QueueTimeout)
-	releaseCaps, err := m.caps.Acquire(capCtx, input.Source.TenantID, input.Source.ConnectionID)
-	cancelCap()
-	if err != nil {
-		if ctx.Err() != nil {
-			return rejectedOperation(input, "CANCELLED"), ctx.Err()
-		}
-		return rejectedOperation(input, "RESOURCE_EXHAUSTED"), errTenantBusy
-	}
-	defer releaseCaps()
 	w, release, err := m.Acquire(ctx, e, cfg, input)
 	if err != nil {
 		if ctx.Err() != nil {
