@@ -361,6 +361,8 @@ jobs:
             --adapter artifacts/warm-private/kelvo-adapter-go \
             --postgres-dsn-file artifacts/warm-private/postgres.dsn \
             --output artifacts/warm-private/run-repeated
+      - name: Verify a skipped warm adapter gate fails
+        run: python3 -m unittest discover -s scripts -p test_warm_adapter_acceptance.py
       - name: Replay an explorer page open through the node to one read worker
         run: |
           python3 scripts/warm_adapter_acceptance.py --go go \
@@ -389,7 +391,7 @@ jobs:
           mkdir -p artifacts/warm-adapter/repeated
           cp artifacts/warm-private/run-repeated/report.json artifacts/warm-private/run-repeated/worker.test.log artifacts/warm-adapter/repeated/ 2>/dev/null || true
           mkdir -p artifacts/warm-adapter/explorer
-          cp artifacts/warm-private/run-explorer/report.json artifacts/warm-private/run-explorer/worker.test.log artifacts/warm-adapter/explorer/ 2>/dev/null || true
+          cp artifacts/warm-private/run-explorer/report.json artifacts/warm-private/run-explorer/worker.test.log artifacts/warm-adapter/explorer/
           cp artifacts/warm-private/concurrent.log artifacts/warm-adapter/ 2>/dev/null || true
           rm -f artifacts/warm-private/postgres.dsn
           docker rm -f -v kelvo-warm-postgres >/dev/null 2>&1 || true

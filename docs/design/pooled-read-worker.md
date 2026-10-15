@@ -242,6 +242,14 @@ gain. Phase 3 is the security-sensitive one.
   read wait up to `queue_timeout` (with `queue_depth`, default 64, waiting),
   then answers `RESOURCE_EXHAUSTED` with a retry hint; it does not fall back,
   since fifty one-shot children is the collapse this design avoids.
+- A local failure (caller cancel, sink error, node-side row or byte limit, a
+  consumer more than 8 MiB behind) abandons only its stream: the worker gets a
+  Cancel, the stream's frames are dropped, and the worker is kept if the
+  stream still ends with a Receipt (even a Completed one) within the 2s
+  grace. Workers are killed only for protocol violations, terminal Errors,
+  receipt mismatches, I/O errors, or an abandoned stream that does not end.
+  Node buffering per worker, `max_in_flight` × 8 MiB, must fit the per-job
+  memory overhead (`resources.overhead_mb`); config validation checks it.
 - Native reads route to a read worker from `Executor.execute`, before the
   per-read reservation, for PostgreSQL-family sources whose DSN the adapter
   accepts and when the node's limits fit the adapter's (1M rows, 64 MiB).
@@ -250,8 +258,9 @@ gain. Phase 3 is the security-sensitive one.
 - Metadata inspection becomes a transient query: `query.Request.inspect`
   carries an `operations.MetadataSpec` for one native connection. It is signed
   like SQL (the digest gains an `inspect` key only when present) and never
-  enters the operation ledger. It runs on the read worker, with a one-shot
-  adapter as fallback. This answers open question 4 for inspection; db-api
+  enters the operation ledger. It runs on the read worker; when no read worker
+  can take it (pool off, source shape, limits, caller custody) it runs on a
+  one-shot adapter, the path inspections took before. This answers open question 4 for inspection; db-api
   must switch its inspection calls to it.
 - The gate replays an explorer page open (50 parallel reads and inspections)
   through `Executor.Execute`, the node's query entry. The node's job permits
