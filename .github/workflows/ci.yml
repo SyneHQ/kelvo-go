@@ -399,6 +399,20 @@ jobs:
             --adapter artifacts/warm-private/kelvo-adapter-go \
             --postgres-dsn-file artifacts/warm-private/postgres.dsn \
             --output artifacts/warm-private/run-dashboard
+      - name: Refuse a revoked or changed source within reauthorize_every
+        run: |
+          python3 scripts/warm_adapter_acceptance.py --go go \
+            --gate TestContainedRevokedOrChangedSourceRefusedWithinReauthorization \
+            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --postgres-dsn-file artifacts/warm-private/postgres.dsn \
+            --output artifacts/warm-private/run-reauthorize
+      - name: Share one re-authorization under concurrency and a cancelled caller
+        run: |
+          python3 scripts/warm_adapter_acceptance.py --go go \
+            --gate TestContainedConcurrentReauthorizationKeepsWorker \
+            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --postgres-dsn-file artifacts/warm-private/postgres.dsn \
+            --output artifacts/warm-private/run-reauthorize-concurrent
       - name: Verify 50 concurrent reads share one bounded PostgreSQL pool
         run: |
           work=$(mktemp -d)
@@ -427,6 +441,10 @@ jobs:
           cp artifacts/warm-private/run-classes/report.json artifacts/warm-private/run-classes/worker.test.log artifacts/warm-adapter/classes/ 2>/dev/null || true
           mkdir -p artifacts/warm-adapter/dashboard
           cp artifacts/warm-private/run-dashboard/report.json artifacts/warm-private/run-dashboard/worker.test.log artifacts/warm-adapter/dashboard/ 2>/dev/null || true
+          for run in reauthorize reauthorize-concurrent; do
+            mkdir -p "artifacts/warm-adapter/$run"
+            cp "artifacts/warm-private/run-$run/report.json" "artifacts/warm-private/run-$run/worker.test.log" "artifacts/warm-adapter/$run/" 2>/dev/null || true
+          done
           cp artifacts/warm-private/concurrent.log artifacts/warm-adapter/ 2>/dev/null || true
           rm -f artifacts/warm-private/postgres.dsn
           docker rm -f -v kelvo-warm-postgres >/dev/null 2>&1 || true

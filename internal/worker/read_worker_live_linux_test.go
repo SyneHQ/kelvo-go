@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -433,6 +434,193 @@ func TestContainedDashboardViewersShareOneSourceQueryPerPanel(t *testing.T) {
 	}
 	if first.Failures+second.Failures != 0 {
 		t.Fatal("dashboard reads failed", string(report))
+	}
+	g.drain()
+}
+
+// gateSecrets is a source secret store the gate can rotate, lose (the
+// credential is not found: a definitive denial) or hold (a slow store).
+type gateSecrets struct {
+	mu      sync.Mutex
+	value   string
+	missing bool
+	hold    chan struct{}
+}
+
+func (s *gateSecrets) Resolve(ctx context.Context, name string) (string, bool, error) {
+	s.mu.Lock()
+	hold, value, missing := s.hold, s.value, s.missing
+	s.mu.Unlock()
+	if name != gateSourceSecret {
+		return "", false, nil
+	}
+	if hold != nil {
+		select {
+		case <-hold:
+		case <-ctx.Done():
+			return "", true, ctx.Err()
+		}
+	}
+	if missing {
+		return "", false, nil
+	}
+	return value, true, nil
+}
+
+func (s *gateSecrets) set(update func(*gateSecrets)) {
+	s.mu.Lock()
+	update(s)
+	s.mu.Unlock()
+}
+
+// gateSourceSecret is not in the process environment, so a lost credential is
+// not found rather than read from the environment.
+const gateSourceSecret = "KELVO_GATE_SOURCE_DSN"
+
+// newAuthorizationGate serves the explorer source from gateSecrets with
+// reauthorize_every at window.
+func newAuthorizationGate(t *testing.T, window time.Duration) (*explorerGate, *gateSecrets, func() (int64, error)) {
+	g := newExplorerGate(t, admission.Limits{MaxConcurrent: 2, MemoryBytes: 512 << 20, ScratchBytes: 64 << 20}, false)
+	g.mgr.cfg.ReauthorizeEvery = window
+	secrets := &gateSecrets{value: os.Getenv("KELVO_TEST_WARM_POSTGRES_DSN")}
+	g.executor.Config = catalog.Config{Sources: []catalog.Source{{ID: "explorer", Type: "postgres", DSNEnv: gateSourceSecret}}}
+	g.executor.Secrets = secrets
+	pid := func() (int64, error) {
+		var got int64
+		sink := &workerTestSink{write: func(b arrow.RecordBatch) error {
+			got = b.Column(0).(*array.Int64).Value(0)
+			return nil
+		}}
+		_, err := g.executor.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "explorer", SQL: "SELECT pg_backend_pid()::bigint AS pid"}, sink)
+		return got, err
+	}
+	return g, secrets, pid
+}
+
+// This gate shows the phase 3 trade-off on a real adapter and PostgreSQL:
+// one authorization serves many secretless reads; a revoked source (its
+// credential gone) and a source changed to credentials that no longer work
+// are refused within reauthorize_every (5s here, 60s by default); a rotated,
+// working source moves to a new worker and backend within the same bound,
+// draining the old worker rather than killing it.
+func TestContainedRevokedOrChangedSourceRefusedWithinReauthorization(t *testing.T) {
+	const window = 5 * time.Second
+	g, secrets, pid := newAuthorizationGate(t, window)
+	dsn := secrets.value
+	untilRefused := func(label string) (time.Duration, int) {
+		changed, served := time.Now(), 0
+		for time.Since(changed) < window+5*time.Second {
+			if _, err := pid(); err != nil {
+				return time.Since(changed), served
+			}
+			served++
+			time.Sleep(200 * time.Millisecond)
+		}
+		t.Fatalf("%s source still served %v after the change", label, time.Since(changed))
+		return 0, 0
+	}
+
+	first, err := pid()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 9; i++ {
+		if again, err := pid(); err != nil || again < 1 {
+			t.Fatal(again, err)
+		}
+	}
+	authorizationsForTen := g.mgr.Metrics().Authorizations.Load()
+
+	secrets.set(func(s *gateSecrets) { s.missing = true })
+	revokedAfter, servedAfterRevoke := untilRefused("revoked")
+	revokedKills := g.mgr.Metrics().EvictionsAuth.Load()
+
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := parsed.Query()
+	values.Set("connect_timeout", "7")
+	parsed.RawQuery = values.Encode()
+	rotated := parsed.String()
+	secrets.set(func(s *gateSecrets) { s.missing, s.value = false, rotated })
+	second, err := pid()
+	if err != nil {
+		t.Fatal("restored source refused:", err)
+	}
+	// Rotate again to working credentials: the old worker drains.
+	values.Set("connect_timeout", "8")
+	parsed.RawQuery = values.Encode()
+	secrets.set(func(s *gateSecrets) { s.value = parsed.String() })
+	time.Sleep(window + 200*time.Millisecond)
+	third, err := pid()
+	if err != nil {
+		t.Fatal("rotated source refused:", err)
+	}
+
+	parsed.User = url.UserPassword(parsed.User.Username(), "not-the-password")
+	secrets.set(func(s *gateSecrets) { s.value = parsed.String() })
+	changedAfter, servedAfterChange := untilRefused("changed")
+
+	metrics := g.mgr.Metrics()
+	report, _ := json.Marshal(map[string]any{"reauthorize_every_ms": window.Milliseconds(), "authorizations_for_first_10_reads": authorizationsForTen,
+		"revoked_refused_after_ms": revokedAfter.Milliseconds(), "reads_served_after_revoke": servedAfterRevoke,
+		"changed_refused_after_ms": changedAfter.Milliseconds(), "reads_served_after_change": servedAfterChange,
+		"evictions_auth": metrics.EvictionsAuth.Load(), "rotations": metrics.Rotations.Load(), "spawns": metrics.Spawns.Load(), "fallbacks": metrics.Fallbacks.Load(),
+		"backend_before": first, "backend_after_restore": second, "backend_after_rotation": third})
+	t.Logf("GATE_METRICS %s", report)
+	if metrics.Fallbacks.Load() != 0 || authorizationsForTen != 1 || revokedAfter > window+time.Second || changedAfter > window+time.Second ||
+		revokedKills != 1 || metrics.Rotations.Load() < 1 || first == second || second == third {
+		t.Fatal("source change not enforced within reauthorize_every", string(report))
+	}
+	g.drain()
+}
+
+// Concurrent reads that find the authorization stale share one
+// re-authorization; a caller cancelling during it does not disturb the
+// others or the shared worker.
+func TestContainedConcurrentReauthorizationKeepsWorker(t *testing.T) {
+	const window = 2 * time.Second
+	g, secrets, pid := newAuthorizationGate(t, window)
+	first, err := pid()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(window + 200*time.Millisecond)
+	hold := make(chan struct{})
+	secrets.set(func(s *gateSecrets) { s.hold = hold })
+	leaderCtx, cancelLeader := context.WithCancel(context.Background())
+	leader := make(chan error, 1)
+	go func() {
+		_, err := g.executor.Execute(leaderCtx, query.Request{Mode: "native", ConnectionID: "explorer", SQL: "SELECT 1"}, &workerTestSink{})
+		leader <- err
+	}()
+	time.Sleep(100 * time.Millisecond)
+	var wg sync.WaitGroup
+	pids := make([]int64, 8)
+	errs := make([]error, 8)
+	for i := range pids {
+		wg.Add(1)
+		go func() { defer wg.Done(); pids[i], errs[i] = pid() }()
+	}
+	time.Sleep(100 * time.Millisecond)
+	cancelLeader()
+	leaderErr := <-leader
+	secrets.set(func(s *gateSecrets) { s.hold = nil })
+	close(hold)
+	wg.Wait()
+	metrics := g.mgr.Metrics()
+	failures := 0
+	for _, err := range errs {
+		if err != nil {
+			failures++
+		}
+	}
+	report, _ := json.Marshal(map[string]any{"concurrent_reads": len(pids), "failures": failures, "leader_cancelled": errors.Is(leaderErr, context.Canceled),
+		"authorizations": metrics.Authorizations.Load(), "spawns": metrics.Spawns.Load(), "evictions_auth": metrics.EvictionsAuth.Load(), "backend_before": first, "backends_after": pids})
+	t.Logf("GATE_METRICS %s", report)
+	if failures != 0 || !errors.Is(leaderErr, context.Canceled) || metrics.Spawns.Load() != 1 || metrics.EvictionsAuth.Load() != 0 || metrics.Authorizations.Load() > 3 {
+		t.Fatal("a cancelled re-authorization disturbed other callers", string(report))
 	}
 	g.drain()
 }
