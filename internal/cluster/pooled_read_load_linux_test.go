@@ -27,6 +27,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/client"
 	"github.com/SYNEHQ/kelvo-go/delegation"
+	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
@@ -424,6 +425,10 @@ func TestPooledReadLoadNode(t *testing.T) {
 	}
 	resolverRef.Store(handler)
 
+	for name, a := range map[string]*ServiceAudit{"node": node.audit, "gateway": gateway.audit} {
+		_, err := a.begin(ctx, "a", &JobAuthority{PrincipalID: principal, PrincipalKind: "service"}, audit.QueryExecution)
+		t.Logf("AUDITPROBE %s: %v", name, err)
+	}
 	// One read through the whole path before the load starts. A failure is
 	// reported with the job's own error, which the load generator cannot see.
 	func() {
@@ -453,7 +458,7 @@ func TestPooledReadLoadNode(t *testing.T) {
 				t.Log("probe status:", err)
 				return
 			}
-			if status.State != "queued" && status.State != "claimed" && status.State != "running" {
+			if status.State == Failed || status.State == ResultReady || status.State == Succeeded || i == 99 {
 				e, _ := json.Marshal(status.Error)
 				t.Logf("PROBE state=%s error=%s", status.State, e)
 				return
