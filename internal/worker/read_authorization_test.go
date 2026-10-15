@@ -556,3 +556,31 @@ func TestAuthorizeOnceReusesFreshAuthorization(t *testing.T) {
 		t.Fatal("a caller needing credentials did not authorize", dsn, calls.Load())
 	}
 }
+
+// A read that outwaits its authorization while queued for a slot is
+// authorized again and served on the worker, not failed as stale.
+func TestReadOutwaitingItsAuthorizationIsReauthorized(t *testing.T) {
+	release := make(chan struct{})
+	fs := &fakeSet{serve: holdingServe(release)}
+	e, mgr := readWorkerExecutor(t, fs)
+	mgr.cfg.MaxInFlight, mgr.cfg.MaxPerKey, mgr.cfg.ReauthorizeEvery = 1, 1, time.Second
+	read := func(sql string) error {
+		_, err := e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "app", SQL: sql}, &workerTestSink{})
+		return err
+	}
+	held := make(chan error, 1)
+	go func() { held <- read("SELECT 'hold'") }() // takes the worker's only slot
+	waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 1 })
+	queued := make(chan error, 1)
+	go func() { queued <- read("SELECT 2") }()
+	waitFor(t, func() bool { mgr.mu.Lock(); defer mgr.mu.Unlock(); return len(mgr.waiters) == 1 })
+	authorized := mgr.metrics.Authorizations.Load()
+	time.Sleep(2100 * time.Millisecond) // past the authorization's bound
+	close(release)
+	if err := <-held; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-queued; err != nil || mgr.metrics.Fallbacks.Load() != 0 || mgr.metrics.Authorizations.Load() <= authorized {
+		t.Fatal("a read that outwaited its authorization was not re-authorized:", err, mgr.metrics.Fallbacks.Load(), mgr.metrics.Authorizations.Load())
+	}
+}
