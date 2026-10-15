@@ -386,7 +386,8 @@ func TestPooledReadLoadNode(t *testing.T) {
 			return resolver.Authorization{}, resolver.ErrInvalid
 		}
 		// One revision per connection: a change would revoke its workers.
-		return resolver.Authorization{Revision: "rev-" + connection, ValidUntil: time.Now().Add(10 * time.Minute)}, nil
+		sum := sha256.Sum256([]byte("revision\x00" + connection))
+		return resolver.Authorization{Revision: hex.EncodeToString(sum[:]), ValidUntil: time.Now().Add(10 * time.Minute)}, nil
 	}
 	material := func(ctx context.Context, id, connection string) (resolver.Source, map[string]string, error) {
 		select {
