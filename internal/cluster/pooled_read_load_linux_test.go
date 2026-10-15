@@ -452,20 +452,11 @@ func TestPooledReadLoadNode(t *testing.T) {
 			t.Log("probe submit:", err)
 			return
 		}
-		for i := 0; i < 100; i++ {
-			status, err := leases.Status(ctx, handle.ID, auth)
-			if err != nil {
-				t.Log("probe status:", err)
-				return
-			}
-			if status.State == Failed || status.State == ResultReady || status.State == Succeeded || i == 99 {
-				e, _ := json.Marshal(status.Error)
-				t.Logf("PROBE state=%s error=%s", status.State, e)
-				return
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		t.Log("probe timed out")
+		_, resultErr := leases.Results(ctx, handle.ID, auth, discardSink{})
+		status, err := leases.Status(ctx, handle.ID, auth)
+		e, _ := json.Marshal(status.Error)
+		t.Logf("PROBE results=%v state=%s error=%s status_err=%v", resultErr, status.State, e, err)
+		return
 	}()
 
 	seed := base64.StdEncoding.EncodeToString(key.Seed())
