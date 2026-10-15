@@ -32,16 +32,9 @@ jobs:
           # max_workers 4 is the default pool: 20 customers do not fit.
           # The first four are the measurement matrix; the product defects they hit are worked
           # around by the patches in benchmarks/pooled-read-load/patches (patched: true).
-          - {name: 2c1g-workers4, profile: 2c1g, patched: true, duration: '', set: ''}
-          - {name: 2c1g-workers20, profile: 2c1g, patched: true, duration: '', set: '--set warm_pool.max_workers=20 --set resources.max_concurrent=24 --set resources.query_reserve_slots=20 --set resources.memory_mb=2400 --set resources.query_reserve_memory_mb=1950 --set resources.query_reserve_scratch_mb=200 --set resources.scratch_mb=300'}
-          - {name: 4c8g-workers4, profile: 4c8g, patched: true, duration: '', set: ''}
           - {name: 4c8g-workers20, profile: 4c8g, patched: true, duration: '', set: '--set warm_pool.max_workers=20'}
           # Sweeps: half the virtual users on the small node, and a larger source connection pool per worker.
-          - {name: 2c1g-workers20-half, profile: 2c1g, patched: true, duration: '', set: '--set warm_pool.max_workers=20 --set resources.max_concurrent=24 --set resources.query_reserve_slots=20 --set resources.memory_mb=2400 --set resources.query_reserve_memory_mb=1950 --set resources.query_reserve_scratch_mb=200 --set resources.scratch_mb=300 --loadgen-arg=-explorers=10 --loadgen-arg=-viewers=5 --loadgen-arg=-consoles=5'}
-          - {name: 4c8g-workers20-pool16, profile: 4c8g, patched: true, experiment: pool-size-16, duration: '', set: '--set warm_pool.max_workers=20'}
           # Evidence runs: light load, 60 s.
-          - {name: evidence-unpatched, profile: 2c1g, patched: false, duration: '60', set: '--loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
-          - {name: evidence-shared-alias, profile: 2c1g, patched: true, duration: '60', set: '--loadgen-arg=-alias=shared --loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
     env:
       CGO_ENABLED: '1'
       GOTOOLCHAIN: local

@@ -160,9 +160,10 @@ func TestPooledReadLoadNode(t *testing.T) {
 					break
 				}
 				used += len(page.Events)
-				if len(page.Events) == 0 || page.Done {
+				if page.Done {
 					break
 				}
+				cursor = page.Next - 256 // the loop adds the page size back
 			}
 			usage[name+"_entries_used"], usage[name+"_journal_file_bytes"] = used, fileBytes
 		}
