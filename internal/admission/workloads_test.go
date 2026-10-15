@@ -327,14 +327,14 @@ func TestWorkloadConfigurationAndSnapshotsAreDetached(t *testing.T) {
 	limits.Classes[ClassExport] = ClassLimits{MaxConcurrent: 99}
 	limits.Classes["unknown"] = ClassLimits{}
 	first := p.Snapshot()
-	if len(first.Classes) != 3 || len(first.Limits.Classes) != 1 || first.Classes[ClassExport].Limits != want || first.Limits.Classes[ClassExport] != want {
+	if len(first.Classes) != 4 || len(first.Limits.Classes) != 1 || first.Classes[ClassExport].Limits != want || first.Limits.Classes[ClassExport] != want {
 		t.Fatalf("constructor retained caller's map: %+v", first)
 	}
 	delete(first.Limits.Classes, ClassExport)
 	first.Classes[ClassExport] = ClassSnapshot{}
 	first.Classes["unknown"] = ClassSnapshot{}
 	second := p.Snapshot()
-	if len(second.Classes) != 3 || !second.Classes[ClassExport].Enabled || second.Classes[ClassExport].Limits != want || second.Limits.Classes[ClassExport] != want {
+	if len(second.Classes) != 4 || !second.Classes[ClassExport].Enabled || second.Classes[ClassExport].Limits != want || second.Limits.Classes[ClassExport] != want {
 		t.Fatalf("snapshot mutation changed pool configuration: %+v", second)
 	}
 	r, err := p.TryAcquire(Request{Class: ClassExport, MemoryBytes: 10})
