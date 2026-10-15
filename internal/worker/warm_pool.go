@@ -129,6 +129,7 @@ type WarmPoolMetrics struct {
 	EvictionsRev   atomic.Int64
 	EvictionsErr   atomic.Int64
 	EvictionsDrain atomic.Int64
+	EvictionsLRU   atomic.Int64 // idle workers evicted to launch one for another connection
 	Fallbacks      atomic.Int64
 	SlowConsumers  atomic.Int64 // streams failed for falling 8 MiB behind
 }
@@ -163,6 +164,7 @@ type warmWorkerEntry struct {
 	sw                    *frame.SyncWriter
 	nextStream            atomic.Uint32
 	killOnce              sync.Once
+	dead                  chan struct{} // closed once the worker is killed and cleaned up
 
 	// The demux reader owns stdout and routes frames to streams by ID.
 	smu     sync.Mutex
@@ -283,6 +285,7 @@ func (m *WarmPoolManager) reapExpired() {
 // failed request and drain at once.
 func (m *WarmPoolManager) killWorker(w *warmWorkerEntry) {
 	w.killOnce.Do(func() {
+		defer close(w.dead)
 		if w.proc != nil {
 			// Kill first: a Close write blocks forever on a worker that stopped reading.
 			_ = w.proc.Kill()
@@ -399,6 +402,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 				lastActive:            time.Now(),
 				inFlight:              1,
 				ready:                 make(chan struct{}),
+				dead:                  make(chan struct{}),
 			}
 			m.workers[entry.id] = entry
 			m.mu.Unlock()
@@ -413,18 +417,31 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			}
 			if entry.launchErr != nil {
 				m.releaseWorker(entry, nil)
+				// The node had no reservation left for a new worker: free an idle
+				// worker of another connection and try again.
+				if errors.Is(entry.launchErr, errWarmUnavailable) && m.evictIdleOther(ctx, key) {
+					continue
+				}
 				return nil, nil, entry.launchErr
 			}
 			return entry, func(err error) { m.releaseWorker(entry, err) }, nil
 		}
 
 		if keyCount == 0 {
-			// Every slot belongs to other connections: run one-shot.
+			// Every slot belongs to other connections. Evict the least recently
+			// used idle one and launch for this connection once it has ended (its
+			// reservation is then free). If every worker is busy, wait below.
 			m.mu.Unlock()
-			return nil, nil, errWarmUnavailable
+			if m.evictIdleOther(ctx, key) {
+				continue
+			}
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			m.mu.Lock()
 		}
 
-		// This key's workers are all full: wait a bounded time for a slot.
+		// This key's workers, or all workers, are full: wait a bounded time.
 		if !waiting {
 			if m.waiting >= m.cfg.QueueDepth {
 				m.mu.Unlock()
@@ -446,6 +463,31 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 		case <-ctx.Done():
 			return nil, nil, ctx.Err()
 		}
+	}
+}
+
+// evictIdleOther evicts the least recently used idle worker of another key
+// and waits for it to end, so its reservation is free for a new worker. It
+// reports false when every other worker is busy (or ctx ended).
+func (m *WarmPoolManager) evictIdleOther(ctx context.Context, key string) bool {
+	m.mu.Lock()
+	var victim *warmWorkerEntry
+	for _, w := range m.workers {
+		if w.key != key && w.inFlight == 0 && (victim == nil || w.lastActive.Before(victim.lastActive)) {
+			victim = w
+		}
+	}
+	if victim == nil {
+		m.mu.Unlock()
+		return false
+	}
+	m.evictLocked(victim, &m.metrics.EvictionsLRU)
+	m.mu.Unlock()
+	select {
+	case <-victim.dead:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 

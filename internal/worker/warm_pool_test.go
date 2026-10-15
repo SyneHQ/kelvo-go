@@ -1388,3 +1388,112 @@ func TestWarmPool_LaunchSurvivesFirstCallerCancel(t *testing.T) {
 		t.Fatal("a sharer lost the worker when the first caller left", err)
 	}
 }
+
+// With more connections than workers, a new connection evicts the least
+// recently used idle worker instead of falling back to one-shot; when every
+// worker is busy it waits and is refused with a retry hint, never one-shot.
+func TestWarmPool_IdleLRUEvictionForNewKeys(t *testing.T) {
+	fs := &fakeSet{}
+	fs.serve = func(p *fakeWorkerProcess) { serveFake(p, nil) }
+	cfg := DefaultWarmPoolConfig()
+	cfg.Enabled = true
+	cfg.MaxWorkers = 2
+	cfg.QueueTimeout = 150 * time.Millisecond
+	mgr, err := NewWarmPoolManager(cfg, fs.launcher())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = mgr.Drain(context.Background()) }()
+	exec := &Executor{Limits: query.Limits{MemoryMB: 64, Timeout: 5 * time.Second}}
+	keyed := func(conn string) adapter.ProcessRequest {
+		r := testProcessRequest("op-"+conn, "tenant-a", "team-a", conn, strings.Repeat("1", 64))
+		r.CredentialsValidUntil = time.Now().Unix() + 4
+		return r
+	}
+	for _, conn := range []string{"c1", "c2", "c3", "c1", "c4"} {
+		if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, keyed(conn), &workerTestSink{}); err != nil {
+			t.Fatal(conn, err)
+		}
+	}
+	if mgr.metrics.Fallbacks.Load() != 0 || mgr.metrics.EvictionsLRU.Load() != 3 || mgr.metrics.Spawns.Load() != 5 {
+		t.Fatalf("fallbacks=%d lru=%d spawns=%d", mgr.metrics.Fallbacks.Load(), mgr.metrics.EvictionsLRU.Load(), mgr.metrics.Spawns.Load())
+	}
+	// Each eviction took the least recently used: c1 was used again after c3,
+	// so c4 replaced c3 and the survivors are c1 and c4.
+	mgr.mu.Lock()
+	keys := map[string]bool{}
+	for _, w := range mgr.workers {
+		keys[w.connectionID] = true
+	}
+	mgr.mu.Unlock()
+	if !keys["c1"] || !keys["c4"] || len(keys) != 2 {
+		t.Fatal("not the least recently used evicted", keys)
+	}
+}
+
+func TestWarmPool_AllBusyWaitsThenRefuses(t *testing.T) {
+	release := make(chan struct{})
+	fs := &fakeSet{serve: cancelServe("receipt")}
+	fs.serve = func(p *fakeWorkerProcess) {
+		var mu sync.Mutex
+		serveFake(p, func(f frame.Frame) {
+			if f.Type == frame.Request {
+				go func() { <-release; mu.Lock(); replyOK(p.stdoutW, f.Stream, f.Payload); mu.Unlock() }()
+			}
+		})
+	}
+	defer close(release)
+	cfg := DefaultWarmPoolConfig()
+	cfg.Enabled = true
+	cfg.MaxWorkers = 1
+	cfg.QueueTimeout = 150 * time.Millisecond
+	mgr, err := NewWarmPoolManager(cfg, fs.launcher())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = mgr.Drain(context.Background()) }()
+	exec := &Executor{Limits: query.Limits{MemoryMB: 64, Timeout: 5 * time.Second}}
+	go func() {
+		_, _ = mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-busy"), &workerTestSink{})
+	}()
+	waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 1 })
+	other := testProcessRequest("op-other", "tenant-a", "team-a", "conn-2", strings.Repeat("1", 64))
+	other.CredentialsValidUntil = time.Now().Unix() + 4
+	start := time.Now()
+	_, err = mgr.Execute(context.Background(), exec, OperationProcessConfig{}, other, &workerTestSink{})
+	var public *query.Error
+	if !errors.As(err, &public) || public.Code != "RESOURCE_EXHAUSTED" || !strings.Contains(public.Message, "retry after") || time.Since(start) < cfg.QueueTimeout {
+		t.Fatal("all-busy pool did not wait and refuse:", err)
+	}
+	if mgr.metrics.Fallbacks.Load() != 0 {
+		t.Fatal("all-busy pool fell back to one-shot")
+	}
+}
+
+// A launch refused for want of a reservation evicts an idle worker of
+// another connection and retries, instead of falling back.
+func TestWarmPool_LaunchRefusalEvictsIdleWorker(t *testing.T) {
+	var live atomic.Int32
+	launcher := &mockLauncher{onLaunch: func(context.Context) (WorkerProcess, func() error, error) {
+		if live.Load() >= 1 { // the node has room for one worker
+			return nil, nil, errWarmUnavailable
+		}
+		live.Add(1)
+		proc := newFakeWorkerProcess()
+		go serveFake(proc, nil)
+		return proc, func() error { live.Add(-1); return proc.Kill() }, nil
+	}}
+	mgr, exec := newTestPool(t, launcher)
+	first := opReq("op-first")
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, first, &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	second := testProcessRequest("op-second", "tenant-a", "team-a", "conn-2", strings.Repeat("1", 64))
+	second.CredentialsValidUntil = time.Now().Unix() + 4
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, second, &workerTestSink{}); err != nil {
+		t.Fatal("refused launch did not evict the idle worker:", err)
+	}
+	if mgr.metrics.EvictionsLRU.Load() != 1 || mgr.metrics.Fallbacks.Load() != 0 {
+		t.Fatal("lru", mgr.metrics.EvictionsLRU.Load(), "fallbacks", mgr.metrics.Fallbacks.Load())
+	}
+}
