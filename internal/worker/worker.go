@@ -179,6 +179,17 @@ func (b *boundedBuffer) Write(p []byte) (int, error) {
 }
 
 func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink) (stats query.Stats, resultErr error) {
+	// A read refused here (catalog authority, grant) never reaches execute, which
+	// logs its own failures; log these at the validation stage.
+	reachedExecute := false
+	if e.LogFailedReads {
+		early, started := newExecutionPhases(time.Now(), false), time.Now()
+		defer func() {
+			if !reachedExecute {
+				logFailedRead(ctx, started, resultErr, &early)
+			}
+		}()
+	}
 	if expected, present := ctx.Value(catalogAuthorityKey{}).(string); present {
 		actual := ""
 		if e.catalogBinding != nil {
@@ -197,6 +208,7 @@ func (e *Executor) Execute(ctx context.Context, r query.Request, sink query.Sink
 		ctx, cancel = context.WithDeadline(ctx, time.Unix(execution.Claims.ExpiresAt, 0))
 		defer cancel()
 	}
+	reachedExecute = true
 	if e.catalogBinding != nil {
 		bound := *e
 		bound.Config = e.catalogBinding.config

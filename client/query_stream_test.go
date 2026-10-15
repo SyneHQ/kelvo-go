@@ -18,6 +18,7 @@ func streamFixtureResponse(w http.ResponseWriter, data []byte, receipt string) {
 	w.Header().Set("Content-Type", "application/vnd.apache.arrow.stream")
 	w.Header().Set("Kelvo-Result-Completion", "durable-eos-v1")
 	w.Header().Set("Kelvo-Query-Id", "fixture_handle")
+	w.Header().Set(streamHeader, "1")
 	if receipt != "" {
 		w.Header().Set("Trailer", receiptTrailer)
 	}
@@ -95,7 +96,31 @@ func TestQueryStreamUnsupportedNodeAndRetryHint(t *testing.T) {
 			t.Fatalf("status %d: %v", status, err)
 		}
 	}
+	// A 404 that carries the node's marker is a real error, never a fallback.
+	for _, status := range []int{http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented} {
+		server := clientFixtureServer(t, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set(streamHeader, "1")
+			w.WriteHeader(status)
+		}, 0)
+		c := clientFixtureClient(t, clientFixtureConfig(t, server))
+		_, err := c.QueryStream(context.Background(), clientFixtureRequest(), Authority{}, &clientFixtureSink{})
+		if err == nil || errors.Is(err, ErrStreamUnsupported) {
+			t.Fatalf("status %d with marker: %v", status, err)
+		}
+	}
+	// A 200 without the marker is not our endpoint.
 	server := clientFixtureServer(t, func(w http.ResponseWriter, r *http.Request) {
+		data := clientFixtureIPC(t)
+		w.Header().Set("Content-Type", "application/vnd.apache.arrow.stream")
+		w.Header().Set("Kelvo-Result-Completion", "durable-eos-v1")
+		w.Header().Set("Kelvo-Query-Id", "fixture_handle")
+		_, _ = w.Write(data)
+	}, 0)
+	c0 := clientFixtureClient(t, clientFixtureConfig(t, server))
+	_, err0 := c0.QueryStream(context.Background(), clientFixtureRequest(), Authority{}, &clientFixtureSink{})
+	clientFixtureError(t, err0, "PROTOCOL_ERROR")
+	server = clientFixtureServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(streamHeader, "1")
 		w.Header().Set("Retry-After", "3")
 		w.WriteHeader(http.StatusTooManyRequests)
 	}, 0)
@@ -107,4 +132,3 @@ func TestQueryStreamUnsupportedNodeAndRetryHint(t *testing.T) {
 		t.Fatalf("retry hint %v", err)
 	}
 }
-

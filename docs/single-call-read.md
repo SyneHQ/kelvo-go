@@ -7,20 +7,30 @@ the same JSON as `POST /v1/queries`, including the optional `bypass_cache`.
   The gateway composes the existing submit and relay code; it adds no new
   execution path. The three-call path is unchanged.
 - Success: `200`, `Content-Type: application/vnd.apache.arrow.stream`,
-  `Kelvo-Result-Completion: durable-eos-v1`, `Kelvo-Query-Id: <id>`. The final
+  `Kelvo-Result-Completion: durable-eos-v1`, `Kelvo-Stream: 1`, `Kelvo-Query-Id: <id>`. The final
   Arrow EOS is released only after the durable `Succeeded` commit. The body is
   followed by the `Kelvo-Query-Receipt` HTTP trailer:
   `{"id":..., "state":"succeeded", "stats":{...}}`. A client must treat a missing
-  or inconsistent receipt as a failed read. `client.QueryStream` does.
-- Above capacity the request waits up to 5 s at each admission point (request
-  slot, tenant query slot, result slot), then gets `429` with `Retry-After: 1`
+  or inconsistent receipt as a failed read. `client.QueryStream` does. Before
+  it commits the job, the gateway checks that the worker's reported
+  `WireBytes` equal the bytes it relayed; on a mismatch the stream is aborted
+  with no EOS and no receipt.
+- The receipt travels in HTTP trailers. A proxy that strips trailers makes the
+  client fail the read (fail closed); it never reads as success.
+- Only an authenticated request may wait for a request slot; an unauthenticated
+  one is refused with 401 at once. Above capacity an authenticated request
+  waits up to 5 s at each admission point (request slot, tenant query slot,
+  result slot), then gets `429` with `Retry-After: 1`
   and code `RESOURCE_EXHAUSTED`. The wait is a constant until phase 4 moves
   capacity settings.
-- A stream abandoned before it finishes cancels its job; it does not hold its
-  tenant slot until expiry.
-- A node without the endpoint answers `404` or `405`. `client.QueryStream`
-  returns `client.ErrStreamUnsupported` before anything was submitted, so the
-  caller can fall back to `Query`.
+- A stream that does not finish cancels its job from the moment `Submit`
+  succeeds, including when the audit write that follows fails; it does not hold
+  its tenant slot until expiry.
+- Every response from the endpoint, errors included, carries `Kelvo-Stream: 1`.
+  `404`, `405` and `501` **without** it mean the node lacks the endpoint:
+  `client.QueryStream` returns `client.ErrStreamUnsupported` before anything was
+  submitted, and the caller may fall back to `Query`. With the header they are
+  real errors and must not fall back, so a read never runs twice.
 - `bypass_cache` asks for a fresh execution on an explicit refresh. It is part
   of the request, excluded from the delegation digest, and ignored until a
   result cache exists. An older node rejects the unknown field with `400`; a
