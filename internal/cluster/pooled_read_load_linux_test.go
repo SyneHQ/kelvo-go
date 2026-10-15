@@ -31,6 +31,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 	"github.com/SYNEHQ/kelvo-go/operations"
+	"github.com/SYNEHQ/kelvo-go/query"
 	"github.com/SYNEHQ/kelvo-go/resolver"
 	"go.yaml.in/yaml/v3"
 )
@@ -87,6 +88,27 @@ func readUint(path, key string) uint64 {
 		}
 	}
 	return 0
+}
+
+// statusRecorder keeps the status and the start of an error body, so a refusal
+// is reported with the gateway's own message rather than the client's.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	body   string
+}
+
+func (s *statusRecorder) WriteHeader(code int) { s.status = code; s.ResponseWriter.WriteHeader(code) }
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	if s.status >= 400 && len(s.body) < 160 {
+		s.body += string(b[:min(len(b), 160)])
+	}
+	return s.ResponseWriter.Write(b)
+}
+func (s *statusRecorder) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // TestPooledReadLoadNode runs the production gateway and node, in this process,
@@ -148,9 +170,20 @@ func TestPooledReadLoadNode(t *testing.T) {
 		return s
 	}
 	unavailable := func(w http.ResponseWriter) { http.Error(w, "starting", http.StatusServiceUnavailable) }
+	var (
+		gwMu    sync.Mutex
+		gwCount = map[string]int{}
+	)
 	publicServer := serve(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if g := gatewayRef.Load(); g != nil {
-			g.ServeHTTP(w, r)
+			rec := &statusRecorder{ResponseWriter: w, status: 200}
+			g.ServeHTTP(rec, r)
+			if rec.status >= 400 {
+				route := r.Method + " " + strings.Join(strings.Split(r.URL.Path, "/")[:min(3, len(strings.Split(r.URL.Path, "/")))], "/")
+				gwMu.Lock()
+				gwCount[fmt.Sprintf("%s -> %d %s", route, rec.status, strings.TrimSpace(rec.body))]++
+				gwMu.Unlock()
+			}
 			return
 		}
 		unavailable(w)
@@ -391,6 +424,45 @@ func TestPooledReadLoadNode(t *testing.T) {
 	}
 	resolverRef.Store(handler)
 
+	// One read through the whole path before the load starts. A failure is
+	// reported with the job's own error, which the load generator cannot see.
+	func() {
+		probe := query.Request{Mode: "native", ConnectionID: "source_1", SQL: "SELECT 1 AS one"}
+		digest, err := delegation.QueryDigest(probe)
+		if err != nil {
+			t.Log("probe digest:", err)
+			return
+		}
+		now := time.Now().Unix()
+		probe.Delegation, err = delegation.Sign(delegation.Claims{Version: 1, Issuer: issuer, Audience: audience, ClusterTenant: "a", ServicePrincipal: principal, AppTeam: "team-00",
+			Subject: delegation.Subject{Kind: "user", ID: "probe"}, ID: strings.Repeat("a", 48), IssuedAt: now - 1, ExpiresAt: now + 120, QuerySHA256: digest,
+			Sources: []delegation.Source{{Alias: "source_1", ConnectionID: "cust-00", Database: "cust00", Schema: "public"}}}, key)
+		if err != nil {
+			t.Log("probe sign:", err)
+			return
+		}
+		auth := client.Authority{Delegation: probe.Delegation}
+		handle, err := leases.Submit(ctx, probe, auth)
+		if err != nil {
+			t.Log("probe submit:", err)
+			return
+		}
+		for i := 0; i < 100; i++ {
+			status, err := leases.Status(ctx, handle.ID, auth)
+			if err != nil {
+				t.Log("probe status:", err)
+				return
+			}
+			if status.State != "queued" && status.State != "claimed" && status.State != "running" {
+				e, _ := json.Marshal(status.Error)
+				t.Logf("PROBE state=%s error=%s", status.State, e)
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		t.Log("probe timed out")
+	}()
+
 	seed := base64.StdEncoding.EncodeToString(key.Seed())
 	info, _ := json.Marshal(map[string]any{"url": publicServer.URL, "token": token, "ca_file": gatewayTLS.CAFile, "signing_seed": seed, "issuer": issuer, "audience": audience,
 		"cluster_tenant": "a", "service_principal": principal, "customers": sc.Source.Customers})
@@ -469,4 +541,14 @@ sampling:
 	if err := os.WriteFile(filepath.Join(out, "node-report.json"), raw, 0600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func gwCountCopy(mu *sync.Mutex, m map[string]int) map[string]int {
+	mu.Lock()
+	defer mu.Unlock()
+	out := make(map[string]int, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
