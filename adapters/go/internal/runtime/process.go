@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -242,8 +243,12 @@ func executeInvocation(ctx context.Context, input adapter.ProcessRequest, invoca
 		}
 		return receipt, err
 	case invocation.Query != nil || invocation.Metadata != nil:
-		wire := &boundedHashWriter{writer: output, hash: sha256.New(), maximum: input.Limits.MaxBytes}
-		sink := &arrowSink{ctx: ctx, wire: wire, maxRows: input.Limits.MaxRows, batchRows: int64(input.Limits.BatchRows)}
+		// Arrow IPC writes each message, buffer and pad separately; buffered,
+		// a small result leaves in one write (one Result frame) per batch.
+		// Limits and the digest still see every byte as it is produced.
+		buffered := bufio.NewWriterSize(output, resultBufferBytes)
+		wire := &boundedHashWriter{writer: buffered, hash: sha256.New(), maximum: input.Limits.MaxBytes}
+		sink := &arrowSink{ctx: ctx, wire: wire, flush: buffered.Flush, maxRows: input.Limits.MaxRows, batchRows: int64(input.Limits.BatchRows)}
 		var stats adapter.QueryStats
 		var err error
 		if invocation.Query != nil {
@@ -269,6 +274,9 @@ func executeInvocation(ctx context.Context, input adapter.ProcessRequest, invoca
 		}
 		if sink.writer != nil {
 			closeErr := sink.writer.Close()
+			if closeErr == nil {
+				closeErr = buffered.Flush()
+			}
 			if err == nil {
 				err = closeErr
 			}
@@ -289,6 +297,10 @@ func executeInvocation(ctx context.Context, input adapter.ProcessRequest, invoca
 		return receipt, adapter.ErrUnsupported
 	}
 }
+
+// resultBufferBytes holds a small result's IPC messages until its batch ends.
+// Larger writes pass straight through, so big results stream as before.
+const resultBufferBytes = 64 << 10
 
 type boundedHashWriter struct {
 	writer         io.Writer
@@ -318,6 +330,7 @@ type arrowSink struct {
 	ctx                      context.Context
 	wire                     *boundedHashWriter
 	writer                   *ipc.Writer
+	flush                    func() error // sends what one batch buffered
 	schema                   *arrow.Schema
 	rows, maxRows, batchRows int64
 }
@@ -345,6 +358,11 @@ func (s *arrowSink) Write(record arrow.RecordBatch) error {
 	}
 	if err := s.writer.Write(record); err != nil {
 		return err
+	}
+	if s.flush != nil {
+		if err := s.flush(); err != nil {
+			return err
+		}
 	}
 	s.rows += record.NumRows()
 	return nil
