@@ -97,3 +97,40 @@ func TestSeparateClassesKeepSlotsApart(t *testing.T) {
 		t.Fatal("accounting leaked", s)
 	}
 }
+
+// A tenant's waiters are served in arrival order: a later caller does not
+// overtake an earlier one, while another tenant is not held behind them.
+func TestCapsServeEachTenantFIFO(t *testing.T) {
+	caps := &Caps{MaxPerTenant: 1}
+	held, _ := caps.Acquire(context.Background(), "a", "c1")
+	order := make(chan int, 2)
+	for i := 1; i <= 2; i++ {
+		go func() {
+			release, err := caps.Acquire(context.Background(), "a", "c1")
+			if err == nil {
+				order <- i
+				time.Sleep(10 * time.Millisecond)
+				release()
+			}
+		}()
+		// Let caller i queue before caller i+1.
+		for {
+			caps.mu.Lock()
+			n := len(caps.waiters)
+			caps.mu.Unlock()
+			if n == i {
+				break
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	other, err := caps.Acquire(context.Background(), "b", "c1")
+	if err != nil {
+		t.Fatal("another tenant waited behind tenant a", err)
+	}
+	other()
+	held()
+	if first, second := <-order, <-order; first != 1 || second != 2 {
+		t.Fatal("tenant a's waiters were not served in order", first, second)
+	}
+}

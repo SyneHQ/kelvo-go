@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	ledger "github.com/SYNEHQ/kelvo-go/internal/operations"
 	api "github.com/SYNEHQ/kelvo-go/operations"
 )
@@ -318,6 +319,9 @@ func (r *Runtime) run(parent context.Context, queued ledger.Record) {
 		code := "UNAVAILABLE"
 		if errors.Is(err, api.ErrUnsupported) {
 			code = "UNSUPPORTED"
+		} else if errors.Is(err, admission.ErrBusy) {
+			// Capacity refused before start: nothing ran; the caller may retry.
+			code = "RESOURCE_EXHAUSTED"
 		}
 		r.reject(record, binding, code)
 		return

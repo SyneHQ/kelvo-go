@@ -86,7 +86,7 @@ func (c ApplicationConfig) Validate() error {
 		c.MaxStoredBytes < 2*c.MaxResultBytes || c.MaxStoredBytes > 1<<30 || c.Resolver.Validate() != nil ||
 		c.Adapter.JDBC != nil || c.Adapter.Validate() != nil || c.TLS.CertFile == "" || c.TLS.KeyFile == "" || c.TLS.Trust != nil || c.TLS.IdentityFile != "" || c.TLS.ReloadInterval != 0 ||
 		c.Containment.Validate(&c.Resources, c.Limits) != nil || !c.Resources.Fits(c.Limits, false) || c.Resources.Export != nil ||
-		3*c.MaxResultBytes+(2<<20) > (c.Resources.MemoryMB-c.Resources.BaselineMB)<<20 {
+		!c.Resources.FitsInteractive(3*c.MaxResultBytes+(2<<20)) {
 		return errApplicationConfig
 	}
 	if _, _, err := net.SplitHostPort(c.Listen); err != nil {
