@@ -391,7 +391,7 @@ func main() {
 	thinkMax := flag.Duration("explorer-think-max", 20*time.Second, "explorer think time, maximum")
 	refreshEvery := flag.Duration("dashboard-refresh", 30*time.Second, "dashboard refresh interval")
 	explicitPct := flag.Int("explicit-refresh-pct", 5, "percent of dashboard refreshes that bypass the cache")
-	maxConcurrent := flag.Int("max-concurrent", 128, "client MaxConcurrent, as db-api would configure")
+	maxConcurrent := flag.Int("max-concurrent", 256, "client MaxConcurrent, as db-api would configure")
 	timeout := flag.Duration("request-timeout", 30*time.Second, "per-request deadline")
 	pgAdmin := flag.String("pg-admin-dsn", "", "direct admin DSN of the source, for pg_stat_statements")
 	label := flag.String("label", "", "free text copied to the report")
