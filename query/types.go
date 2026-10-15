@@ -13,12 +13,13 @@ import (
 	"time"
 
 	federationapi "github.com/SYNEHQ/kelvo-go/federation"
+	"github.com/SYNEHQ/kelvo-go/operations"
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
-// Request selects either SQL or a native MongoDB aggregation. Mode must be
-// "native" with ConnectionID, or "federated" with an ordered list of Sources.
-// Delegation carries a signed grant for the exact SQL request.
+// Request selects SQL, a native MongoDB aggregation or a metadata inspection.
+// Mode must be "native" with ConnectionID, or "federated" with an ordered list
+// of Sources. Delegation carries a signed grant for the exact request.
 type Request struct {
 	Delegation      string        `json:"delegation,omitempty" yaml:"-"`
 	ScanDiagnostics bool          `json:"scan_diagnostics,omitempty" yaml:"scan_diagnostics,omitempty"`
@@ -32,6 +33,9 @@ type Request struct {
 	// no authority and is not part of the delegation digest; a node without a
 	// result cache ignores it.
 	BypassCache bool `json:"bypass_cache,omitempty"`
+	// Inspect asks a native connection for metadata (schemas, tables, columns)
+	// instead of running SQL. It is served by read workers only, never stored.
+	Inspect *operations.MetadataSpec `json:"inspect,omitempty" yaml:"inspect,omitempty"`
 }
 
 // MongoRequest carries native aggregation syntax. SQL and Mongo are mutually

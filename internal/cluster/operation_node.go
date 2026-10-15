@@ -57,6 +57,8 @@ func (n *Node) initOperations(ctx context.Context) (resultErr error) {
 		if err != nil {
 			return err
 		}
+		// Native reads and inspections from the query path use the same adapter.
+		native.WarmPool.Adapter = c.Adapter
 	}
 	bindings := make(map[string]worker.PrivateOperationBinding, len(c.PrivateSources))
 	for principal, config := range c.PrivateSources {

@@ -110,7 +110,12 @@ func QueryDigest(r query.Request) (string, error) {
 		parameters = append(parameters, map[string]any{"type": p.Type, "value": value})
 	}
 	sources := append([]string{}, r.Sources...)
-	b, err := json.Marshal(map[string]any{"mode": r.Mode, "sql": r.SQL, "parameters": parameters, "sources": sources, "connection_id": r.ConnectionID})
+	fields := map[string]any{"mode": r.Mode, "sql": r.SQL, "parameters": parameters, "sources": sources, "connection_id": r.ConnectionID}
+	if r.Inspect != nil {
+		// Present only for inspections, so every SQL grant keeps its digest.
+		fields["inspect"] = r.Inspect
+	}
+	b, err := json.Marshal(fields)
 	if err != nil {
 		return "", ErrInvalid
 	}
