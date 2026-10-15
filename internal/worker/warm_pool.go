@@ -38,6 +38,10 @@ type WarmPoolConfig struct {
 	WorkerMemoryMB int           `yaml:"worker_memory_mb"` // default 64
 }
 
+// errCredentialsExpired is a read whose credentials expired while it waited
+// for a slot. Nothing was sent; the read must authorize again.
+var errCredentialsExpired = errors.New("warm_pool: read credentials expired while it waited")
+
 // errWarmUnavailable means no warm worker could be obtained and nothing was
 // sent to one. The caller runs the operation on the one-shot path instead.
 var errWarmUnavailable = errors.New("warm_pool: no warm worker available")
@@ -928,6 +932,11 @@ func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg Operatio
 
 	receipt, execErr, keep, sent := m.executeOnWorker(ctx, e, w, input, sink)
 	switch {
+	case !sent && errors.Is(execErr, errCredentialsExpired):
+		// The read outwaited its credentials: nothing was sent and the worker
+		// is fine. The caller authorizes again.
+		release(nil)
+		return operations.Receipt{}, errCredentialsExpired
 	case !sent:
 		// The worker died between Acquire and our write: nothing was sent.
 		release(errWarmUnavailable)
@@ -989,6 +998,9 @@ func helloHandshake(ctx context.Context, proc WorkerProcess) error {
 // abandoned stream that does not end in time.
 func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *warmWorkerEntry, input adapter.ProcessRequest, sink query.Sink) (_ operations.Receipt, _ error, keep, sent bool) {
 	if bound, ok := credentialBound(ctx); ok {
+		if bound <= time.Now().Unix() {
+			return operations.Receipt{}, errCredentialsExpired, true, false
+		}
 		input.CredentialsValidUntil = credentialWindow(bound, input.ExpiresAt)
 	}
 	raw, err := adapter.EncodeProcessRequest(input)
