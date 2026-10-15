@@ -17,6 +17,10 @@ import (
 // source again and sends the read with credentials.
 var errNeedsCredentials = errors.New("warm_pool: read needs credentials")
 
+// errLaunchEvicted is a worker evicted while it launched; it never serves, and
+// the read that launched it falls back as from a failed launch.
+var errLaunchEvicted = errors.New("warm_pool: worker evicted during launch")
+
 // warmKey identifies the workers that may serve a read. Workers are shared by
 // source revision: principals whose authorizations resolve to the same
 // definition and credentials share them.

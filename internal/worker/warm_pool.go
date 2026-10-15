@@ -663,6 +663,9 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			// refused for want of a reservation is capacity: free an idle worker
 			// of another connection, else let the next launch wait for a
 			// reservation until the deadline.
+			if errors.Is(entry.launchErr, errLaunchEvicted) {
+				return nil, nil, errWarmUnavailable // nothing was sent
+			}
 			if !errors.Is(entry.launchErr, errWarmUnavailable) {
 				return nil, nil, entry.launchErr
 			}
@@ -790,8 +793,9 @@ func (m *WarmPoolManager) launch(e *Executor, cfg OperationProcessConfig, entry 
 		switch {
 		case err == nil:
 			delete(m.backoff, entry.key)
-		case !errors.Is(err, errWarmUnavailable):
-			// A capacity refusal is not a failure; anything else backs off.
+		case !errors.Is(err, errWarmUnavailable) && !errors.Is(err, errLaunchEvicted):
+			// A capacity refusal or an eviction is not a failure; anything
+			// else backs off.
 			m.recordLaunchFailureLocked(entry.key, stage, err)
 		}
 		if err != nil {
@@ -830,7 +834,7 @@ func (m *WarmPoolManager) launch(e *Executor, cfg OperationProcessConfig, entry 
 	m.mu.Unlock()
 	if evicted {
 		// Evicted while it launched (revoked, rotated or drained): never serve.
-		return errWarmUnavailable
+		return errLaunchEvicted
 	}
 	go m.demux(entry)
 	// Count only workers that actually started; refused launches are fallbacks.

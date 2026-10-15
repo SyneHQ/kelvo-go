@@ -233,6 +233,13 @@ func TestReadAuthorizationEvictionDuringLaunch(t *testing.T) {
 	if mgr.metrics.Spawns.Load() != 0 {
 		t.Fatal("an evicted launch counted as a spawn")
 	}
+	// An eviction is not a launch failure: the key may relaunch at once.
+	mgr.mu.Lock()
+	_, backingOff := mgr.backoff[key]
+	mgr.mu.Unlock()
+	if mgr.metrics.LaunchFailures.Load() != 0 || backingOff {
+		t.Fatal("an evicted launch opened a backoff window")
+	}
 }
 
 // Eviction waits are bounded by their context.
