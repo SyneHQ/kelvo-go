@@ -152,29 +152,28 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		return receiptStats(receipt, err), receiptError(receipt, err), true
 	}
 
-	// run executes the read on a worker, copying its result to buffer if any.
-	run := func(buffer *cappedBuffer) (query.Stats, error, bool) {
+	// execute runs the read on a worker, copying its result to tee if any.
+	execute := func(ctx context.Context, sink query.Sink, tee *cappedBuffer) (query.Stats, error) {
 		quotaCtx, releaseQuota, err := source.acquireSourceQuota(ctx, r)
 		if err != nil {
-			return query.Stats{}, err, false
+			return query.Stats{}, err
 		}
 		defer releaseQuota()
-		var tee io.Writer
-		if buffer != nil {
-			tee = buffer
+		var copyTo io.Writer
+		if tee != nil {
+			copyTo = tee
 		}
-		receipt, err := pool.execute(withCredentialBound(quotaCtx, min(validUntil, expires)), e, pool.Adapter, input, sink, tee)
-		err = receiptError(receipt, err)
-		return receiptStats(receipt, err), err, err == nil
+		receipt, err := pool.execute(withCredentialBound(quotaCtx, min(validUntil, expires)), e, pool.Adapter, input, sink, copyTo)
+		return receiptStats(receipt, err), receiptError(receipt, err)
 	}
 	if pool.cache == nil {
-		stats, err, _ = run(nil)
+		stats, err = execute(ctx, sink, nil)
 	} else {
-		key := resultCacheKey(tenant, team, r.ConnectionID, input.Source.Revision, r, e.Limits)
-		stats, err = pool.cache.do(ctx, key, r.Refresh, run, func(entry *cacheEntry) (query.Stats, error) {
+		key := resultCacheKey(tenant, team, r.ConnectionID, database, schema, input.Source.Revision, r, e.Limits)
+		stats, err = pool.cache.do(ctx, key, tenant, r.Refresh, sink, execute, func(entry *cacheEntry, sink query.Sink) (query.Stats, error) {
 			observed, err := e.readIPC(ctx, bytes.NewReader(entry.data), e.Limits, sink)
 			stats := entry.stats
-			stats.Rows, stats.WireBytes = observed.Rows, observed.WireBytes
+			stats.Rows, stats.WireBytes, stats.Bytes, stats.Batches = observed.Rows, observed.WireBytes, observed.Bytes, observed.Batches
 			return stats, err
 		})
 	}
