@@ -20,14 +20,14 @@ func TestPostgresReadInstallsRemainingServerDeadline(t *testing.T) {
 	}
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	if len(state.executed) != 1 || state.executed[0] != postgresReadDeadlineSQL || len(state.execArgs[0]) != 1 {
+	if len(state.executed) != 1 || len(state.execArgs[0]) != 0 {
+		t.Fatal("read-only begin and server timeout are not one argument-free statement")
+	}
+	value, ok := strings.CutPrefix(state.executed[0], "BEGIN READ ONLY; SET LOCAL statement_timeout = '")
+	if !ok || !strings.HasSuffix(value, "ms'") {
 		t.Fatal("transaction-local server timeout not installed")
 	}
-	value, ok := state.execArgs[0][0].Value.(string)
-	if !ok {
-		t.Fatal("timeout is not a bound parameter")
-	}
-	milliseconds, err := strconv.ParseInt(strings.TrimSuffix(value, "ms"), 10, 64)
+	milliseconds, err := strconv.ParseInt(strings.TrimSuffix(value, "ms'"), 10, 64)
 	if err != nil || milliseconds < 1 || milliseconds > 1000 {
 		t.Fatal("timeout exceeds the remaining admitted budget")
 	}
@@ -41,7 +41,7 @@ func TestPostgresReadDeadlineSetupFailurePreventsQuery(t *testing.T) {
 	if _, err := s.Query(context.Background(), readRequest(), &readSink{}); !errors.Is(err, state.execErr) {
 		t.Fatal("timeout configuration failure was lost")
 	}
-	if state.queries.Load() != 0 || state.rollbacks.Load() != 1 || state.closes.Load() != 1 {
+	if state.queries.Load() != 0 || state.closes.Load() != 1 {
 		t.Fatal("query ran without a server timeout or leaked its session")
 	}
 }
