@@ -29,11 +29,16 @@ type WarmPoolConfig struct {
 	MaxPerKey   int           `yaml:"max_per_key"`   // default 1
 	MaxInFlight int           `yaml:"max_in_flight"` // default 16, reads in flight per worker
 	// Caps inside the interactive class; 0 takes the default.
-	MaxPerTenant     int           `yaml:"max_per_tenant"`     // default 32 reads in flight per tenant
-	MaxPerConnection int           `yaml:"max_per_connection"` // default max_per_key × max_in_flight
-	QueueDepth       int           `yaml:"queue_depth"`        // default 64, reads waiting for a full worker
-	QueueTimeout     time.Duration `yaml:"queue_timeout"`      // default 10s
-	WorkerMemoryMB   int           `yaml:"worker_memory_mb"`   // default 64
+	MaxPerTenant     int `yaml:"max_per_tenant"`     // default 32 reads in flight per tenant
+	MaxPerConnection int `yaml:"max_per_connection"` // default max_per_key × max_in_flight
+	// Dashboard result cache for native reads; 0 takes the default.
+	CacheDisabled      bool          `yaml:"cache_disabled"`
+	CacheTTL           time.Duration `yaml:"cache_ttl"`             // default 10s
+	CacheMaxEntryBytes int64         `yaml:"cache_max_entry_bytes"` // default 4 MiB; larger results are not cached
+	CacheMaxTotalBytes int64         `yaml:"cache_max_total_bytes"` // default 64 MiB
+	QueueDepth         int           `yaml:"queue_depth"`           // default 64, reads waiting for a full worker
+	QueueTimeout       time.Duration `yaml:"queue_timeout"`         // default 10s
+	WorkerMemoryMB     int           `yaml:"worker_memory_mb"`      // default 64
 }
 
 // errWarmUnavailable means no warm worker could be obtained and nothing was
@@ -76,6 +81,9 @@ func (c WarmPoolConfig) Validate() error {
 	if c.MaxPerTenant < 0 || c.MaxPerTenant > 4096 || c.MaxPerConnection < 0 || c.MaxPerConnection > 4096 {
 		return errors.New("warm_pool: max_per_tenant and max_per_connection must be between 0 and 4096")
 	}
+	if c.CacheTTL < 0 || c.CacheTTL > 10*time.Minute || c.CacheMaxEntryBytes < 0 || c.CacheMaxEntryBytes > 64<<20 || c.CacheMaxTotalBytes < 0 || c.CacheMaxTotalBytes > 1<<30 {
+		return errors.New("warm_pool: cache_ttl must be at most 10m, cache_max_entry_bytes at most 64 MiB and cache_max_total_bytes at most 1 GiB")
+	}
 	if c.QueueDepth < 1 || c.QueueDepth > 1024 {
 		return errors.New("warm_pool: queue_depth must be between 1 and 1024")
 	}
@@ -106,6 +114,23 @@ func (c WarmPoolConfig) caps() *admission.Caps {
 		connection = c.MaxPerKey * c.maxInFlight()
 	}
 	return &admission.Caps{MaxPerTenant: tenant, MaxPerConnection: connection}
+}
+
+func (c WarmPoolConfig) resultCache() *resultCache {
+	if c.CacheDisabled {
+		return nil
+	}
+	ttl, entry, total := c.CacheTTL, c.CacheMaxEntryBytes, c.CacheMaxTotalBytes
+	if ttl == 0 {
+		ttl = 10 * time.Second
+	}
+	if entry == 0 {
+		entry = 4 << 20
+	}
+	if total == 0 {
+		total = 64 << 20
+	}
+	return newResultCache(ttl, min(entry, total), total)
 }
 
 // WarmPoolMetrics records observability counters for the warm pool.
@@ -163,6 +188,7 @@ type WarmPoolManager struct {
 	metrics  WarmPoolMetrics
 	launcher WorkerLauncher
 	caps     *admission.Caps
+	cache    *resultCache // nil when disabled
 	// Adapter is the pinned adapter binary for reads routed from the query
 	// path; operations pass their own.
 	Adapter OperationProcessConfig
@@ -187,6 +213,7 @@ func NewWarmPoolManager(cfg WarmPoolConfig, launcher WorkerLauncher) (*WarmPoolM
 		cfg:      cfg,
 		launcher: launcher,
 		caps:     cfg.caps(),
+		cache:    cfg.resultCache(),
 		workers:  make(map[string]*warmWorkerEntry),
 		changed:  make(chan struct{}),
 		stopRpr:  make(chan struct{}),
@@ -608,6 +635,11 @@ func (m *WarmPoolManager) releaseWorker(w *warmWorkerEntry, err error) {
 
 // Execute runs an operation on a warm worker, streaming results to sink.
 func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest, sink query.Sink) (operations.Receipt, error) {
+	return m.execute(ctx, e, cfg, input, sink, nil)
+}
+
+// execute is Execute that also copies the result's Arrow IPC bytes to tee.
+func (m *WarmPoolManager) execute(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest, sink query.Sink, tee io.Writer) (operations.Receipt, error) {
 	// One tenant or connection cannot take the whole interactive class: past
 	// its cap a read waits queue_timeout like a read for a full worker.
 	capCtx, cancelCap := context.WithTimeout(ctx, m.cfg.QueueTimeout)
@@ -635,7 +667,7 @@ func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg Operatio
 		return operations.Receipt{}, errWarmUnavailable
 	}
 
-	receipt, execErr, keep, sent := m.executeOnWorker(ctx, e, w, input, sink)
+	receipt, execErr, keep, sent := m.executeOnWorker(ctx, e, w, input, sink, tee)
 	switch {
 	case !sent:
 		// The worker died between Acquire and our write: nothing was sent.
@@ -685,7 +717,7 @@ func helloHandshake(ctx context.Context, proc WorkerProcess) error {
 // worker is still healthy: true only when the stream ended with a terminal frame
 // and nothing about the exchange was a protocol, limit, receipt or I/O failure.
 // sent is false only when nothing was written because the worker had died.
-func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *warmWorkerEntry, input adapter.ProcessRequest, sink query.Sink) (_ operations.Receipt, _ error, keep, sent bool) {
+func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *warmWorkerEntry, input adapter.ProcessRequest, sink query.Sink, tee io.Writer) (_ operations.Receipt, _ error, keep, sent bool) {
 	proc := w.proc
 	raw, err := adapter.EncodeProcessRequest(input)
 	if err != nil {
@@ -741,7 +773,11 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *w
 	limits.MaxRows = input.Limits.MaxRows
 	limits.MaxBytes = input.Limits.MaxBytes
 
-	observed, readErr := e.readIPC(ctx, reader, limits, sink)
+	var result io.Reader = reader
+	if tee != nil {
+		result = io.TeeReader(reader, tee)
+	}
+	observed, readErr := e.readIPC(ctx, result, limits, sink)
 	if ctx.Err() != nil && !reader.finished {
 		// readIPC may bail on ctx before the terminal frame; drain it.
 		_, _ = io.Copy(io.Discard, reader)

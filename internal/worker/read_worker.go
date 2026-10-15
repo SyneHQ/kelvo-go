@@ -2,12 +2,14 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/url"
 	"time"
 
@@ -113,33 +115,70 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		return stats, unavailable, r.Inspect != nil
 	}
 
-	quotaCtx, releaseQuota, err := source.acquireSourceQuota(ctx, r)
-	if err != nil {
-		return stats, err, true
-	}
-	defer releaseQuota()
-	var receipt operations.Receipt
 	if r.Inspect != nil {
+		quotaCtx, releaseQuota, err := source.acquireSourceQuota(ctx, r)
+		if err != nil {
+			return stats, err, true
+		}
+		defer releaseQuota()
 		// Inspection has no one-shot query child; the operation path falls back
 		// to a one-shot adapter itself.
-		receipt, err = e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), pool.Adapter, input, sink)
-	} else {
-		receipt, err = pool.Execute(quotaCtx, e, pool.Adapter, input, sink)
-		if errors.Is(err, errWarmUnavailable) {
-			return stats, nil, false
-		}
+		receipt, err := e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), pool.Adapter, input, sink)
+		return receiptStats(receipt, err), receiptError(receipt, err), true
 	}
+
+	// run executes the read on a worker, copying its result to buffer if any.
+	run := func(buffer *cappedBuffer) (query.Stats, error, bool) {
+		quotaCtx, releaseQuota, err := source.acquireSourceQuota(ctx, r)
+		if err != nil {
+			return query.Stats{}, err, false
+		}
+		defer releaseQuota()
+		var tee io.Writer
+		if buffer != nil {
+			tee = buffer
+		}
+		receipt, err := pool.execute(quotaCtx, e, pool.Adapter, input, sink, tee)
+		err = receiptError(receipt, err)
+		return receiptStats(receipt, err), err, err == nil
+	}
+	if pool.cache == nil {
+		stats, err, _ = run(nil)
+	} else {
+		key := resultCacheKey(tenant, team, r.ConnectionID, input.Source.Revision, r, e.Limits)
+		stats, err = pool.cache.do(ctx, key, r.Refresh, run, func(entry *cacheEntry) (query.Stats, error) {
+			limits := e.Limits
+			observed, err := e.readIPC(ctx, bytes.NewReader(entry.data), limits, sink)
+			stats := entry.stats
+			stats.Rows, stats.WireBytes = observed.Rows, observed.WireBytes
+			return stats, err
+		})
+	}
+	if errors.Is(err, errWarmUnavailable) {
+		return stats, nil, false
+	}
+	return stats, err, true
+}
+
+func receiptStats(receipt operations.Receipt, err error) query.Stats {
+	var stats query.Stats
 	if receipt.Result != nil {
 		stats.Rows, stats.WireBytes = receipt.Result.Rows, receipt.Result.Bytes
 	}
-	if err == nil && receipt.Outcome != operations.Completed {
-		code := receipt.ErrorCode
-		if code == "" {
-			code = "QUERY_FAILED"
-		}
-		err = query.NewError(code, "Source read failed")
+	return stats
+}
+
+// receiptError keeps err and turns a kept worker's non-Completed receipt into
+// a public error.
+func receiptError(receipt operations.Receipt, err error) error {
+	if err != nil || receipt.Outcome == operations.Completed {
+		return err
 	}
-	return stats, err, true
+	code := receipt.ErrorCode
+	if code == "" {
+		code = "QUERY_FAILED"
+	}
+	return query.NewError(code, "Source read failed")
 }
 
 // readWorkerSourceShape accepts a plain relational source whose only secret is

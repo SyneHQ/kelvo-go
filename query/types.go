@@ -32,6 +32,9 @@ type Request struct {
 	// Inspect asks a native connection for metadata (schemas, tables, columns)
 	// instead of running SQL. It is served by read workers only, never stored.
 	Inspect *operations.MetadataSpec `json:"inspect,omitempty" yaml:"inspect,omitempty"`
+	// Refresh skips the dashboard result cache and replaces its entry. It is
+	// not signed: it can only cause another source query, never widen access.
+	Refresh bool `json:"refresh,omitempty" yaml:"refresh,omitempty"`
 }
 
 // MongoRequest carries native aggregation syntax. SQL and Mongo are mutually
