@@ -38,11 +38,16 @@ type WarmPoolConfig struct {
 	// MaxPerTenant must exceed the largest burst one user makes, an explorer
 	// page open being about 42 reads, and may not exceed the pool's interactive
 	// capacity (max_workers x max_in_flight).
-	MaxPerTenant     int           `yaml:"max_per_tenant"`     // default 64 reads in flight per tenant, capped at capacity
-	MaxPerConnection int           `yaml:"max_per_connection"` // default max_per_key × max_in_flight
-	QueueDepth       int           `yaml:"queue_depth"`        // default 64, reads waiting for a full worker
-	QueueTimeout     time.Duration `yaml:"queue_timeout"`      // default 10s
-	WorkerMemoryMB   int           `yaml:"worker_memory_mb"`   // default 64
+	MaxPerTenant     int `yaml:"max_per_tenant"`     // default 64 reads in flight per tenant, capped at capacity
+	MaxPerConnection int `yaml:"max_per_connection"` // default max_per_key × max_in_flight
+	// Dashboard result cache for native reads; 0 takes the default.
+	CacheDisabled      bool          `yaml:"cache_disabled"`
+	CacheTTL           time.Duration `yaml:"cache_ttl"`             // default 10s
+	CacheMaxEntryBytes int64         `yaml:"cache_max_entry_bytes"` // default 4 MiB; larger results are not cached
+	CacheMaxTotalBytes int64         `yaml:"cache_max_total_bytes"` // default 64 MiB
+	QueueDepth         int           `yaml:"queue_depth"`           // default 64, reads waiting for a full worker
+	QueueTimeout       time.Duration `yaml:"queue_timeout"`         // default 10s
+	WorkerMemoryMB     int           `yaml:"worker_memory_mb"`      // default 64
 }
 
 // errCredentialsExpired is a read whose credentials expired while it waited
@@ -94,6 +99,9 @@ func (c WarmPoolConfig) Validate() error {
 	}
 	if c.MaxPerTenant > c.MaxWorkers*c.maxInFlight() {
 		return errors.New("warm_pool: max_per_tenant must not exceed max_workers x max_in_flight")
+	}
+	if c.CacheTTL < 0 || c.CacheTTL > 10*time.Minute || c.CacheMaxEntryBytes < 0 || c.CacheMaxEntryBytes > 64<<20 || c.CacheMaxTotalBytes < 0 || c.CacheMaxTotalBytes > 1<<30 {
+		return errors.New("warm_pool: cache_ttl must be at most 10m, cache_max_entry_bytes at most 64 MiB and cache_max_total_bytes at most 1 GiB")
 	}
 	if c.QueueDepth < 1 || c.QueueDepth > 1024 {
 		return errors.New("warm_pool: queue_depth must be between 1 and 1024")
@@ -150,6 +158,23 @@ func (c WarmPoolConfig) caps() *admission.Caps {
 		connection = c.MaxPerKey * c.maxInFlight()
 	}
 	return &admission.Caps{MaxPerTenant: tenant, MaxPerConnection: connection, MaxWaiting: c.QueueDepth}
+}
+
+func (c WarmPoolConfig) resultCache() *resultCache {
+	if c.CacheDisabled {
+		return nil
+	}
+	ttl, entry, total := c.CacheTTL, c.CacheMaxEntryBytes, c.CacheMaxTotalBytes
+	if ttl == 0 {
+		ttl = 10 * time.Second
+	}
+	if entry == 0 {
+		entry = 4 << 20
+	}
+	if total == 0 {
+		total = 64 << 20
+	}
+	return newResultCache(ttl, min(entry, total), total)
 }
 
 // WarmPoolMetrics records observability counters for the warm pool.
@@ -210,6 +235,7 @@ type WarmPoolManager struct {
 	metrics  WarmPoolMetrics
 	launcher WorkerLauncher
 	caps     *admission.Caps
+	cache    *resultCache // nil when disabled
 	// Adapter is the pinned adapter binary for reads routed from the query
 	// path; operations pass their own.
 	Adapter OperationProcessConfig
@@ -241,6 +267,7 @@ func NewWarmPoolManager(cfg WarmPoolConfig, launcher WorkerLauncher) (*WarmPoolM
 		cfg:      cfg,
 		launcher: launcher,
 		caps:     cfg.caps(),
+		cache:    cfg.resultCache(),
 		workers:  make(map[string]*warmWorkerEntry),
 		backoff:  make(map[string]launchBackoff),
 		stopRpr:  make(chan struct{}),
@@ -1013,6 +1040,11 @@ func (m *WarmPoolManager) releaseWorker(w *warmWorkerEntry, err error) {
 
 // Execute runs an operation on a warm worker, streaming results to sink.
 func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest, sink query.Sink) (operations.Receipt, error) {
+	return m.execute(ctx, e, cfg, input, sink, nil)
+}
+
+// execute is Execute that also copies the result's Arrow IPC bytes to tee.
+func (m *WarmPoolManager) execute(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest, sink query.Sink, tee io.Writer) (operations.Receipt, error) {
 	w, release, err := m.Acquire(ctx, e, cfg, input)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -1028,7 +1060,7 @@ func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg Operatio
 		return operations.Receipt{}, errWarmUnavailable
 	}
 
-	receipt, execErr, keep, sent := m.executeOnWorker(ctx, e, w, input, sink)
+	receipt, execErr, keep, sent := m.executeOnWorker(ctx, e, w, input, sink, tee)
 	switch {
 	case !sent && errors.Is(execErr, errCredentialsExpired):
 		// The read outwaited its credentials: nothing was sent and the worker
@@ -1094,7 +1126,7 @@ func helloHandshake(ctx context.Context, proc WorkerProcess) error {
 // still ends with a Receipt within cancelGrace. The worker is killed for a
 // protocol violation, a terminal Error, a receipt mismatch, an I/O error, or an
 // abandoned stream that does not end in time.
-func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *warmWorkerEntry, input adapter.ProcessRequest, sink query.Sink) (_ operations.Receipt, _ error, keep, sent bool) {
+func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *warmWorkerEntry, input adapter.ProcessRequest, sink query.Sink, tee io.Writer) (_ operations.Receipt, _ error, keep, sent bool) {
 	if bound, ok := credentialBound(ctx); ok {
 		if bound <= time.Now().Unix() {
 			return operations.Receipt{}, errCredentialsExpired, true, false
@@ -1134,7 +1166,11 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *w
 	limits := e.Limits
 	limits.MaxRows = input.Limits.MaxRows
 	limits.MaxBytes = input.Limits.MaxBytes
-	observed, readErr := e.readIPC(ctx, reader, limits, watched)
+	var result io.Reader = reader
+	if tee != nil {
+		result = io.TeeReader(reader, tee)
+	}
+	observed, readErr := e.readIPC(ctx, result, limits, watched)
 
 	if reader.finished && reader.terminal {
 		// The stream ended on its own terminal frame.
