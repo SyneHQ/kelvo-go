@@ -159,7 +159,9 @@ func openWithIO(cfg Config, scope Scope, operations diskIO) (journal *Journal, e
 			return nil, ErrCorrupt
 		}
 		h, e := decodeHeader(raw, cfg.Directory)
-		if e != nil || !reflect.DeepEqual(h.Config, cfg) || !reflect.DeepEqual(h.Scope, scope) {
+		bound := cfg
+		bound.MaxPending = h.Config.MaxPending // concurrency limit is not bound to the journal
+		if e != nil || !reflect.DeepEqual(h.Config, bound) || !reflect.DeepEqual(h.Scope, scope) {
 			return nil, ErrCorrupt
 		}
 	}

@@ -38,7 +38,7 @@ const (
 type Config struct {
 	Directory    string        `yaml:"directory" json:"-"`
 	MaxEntries   int           `yaml:"max_entries" json:"max_entries"`
-	MaxPending   int           `yaml:"max_pending" json:"max_pending"`
+	MaxPending   int           `yaml:"max_pending" json:"max_pending,omitempty"` // runtime limit; not bound by the journal header
 	Retention    time.Duration `yaml:"retention" json:"retention_ns"`
 	WriteTimeout time.Duration `yaml:"write_timeout" json:"write_timeout_ns"`
 }
