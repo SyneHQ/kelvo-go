@@ -1128,6 +1128,7 @@ func TestWarmPool_ConcurrentReadsMultiplexOneWorker(t *testing.T) {
 	fs := &fakeSet{serve: interleavedServe(&peak)}
 	cfg := DefaultWarmPoolConfig()
 	cfg.Enabled = true
+	cfg.MaxPerKey = 1
 	mgr, err := NewWarmPoolManager(cfg, fs.launcher())
 	if err != nil {
 		t.Fatal(err)
@@ -1168,6 +1169,7 @@ func TestWarmPool_FullWorkerWaitsThenRefuses(t *testing.T) {
 	fs := &fakeSet{serve: cancelServe("receipt")}
 	cfg := DefaultWarmPoolConfig()
 	cfg.Enabled = true
+	cfg.MaxPerKey = 1
 	cfg.MaxInFlight = 1
 	cfg.QueueTimeout = 100 * time.Millisecond
 	mgr, err := NewWarmPoolManager(cfg, fs.launcher())
@@ -1530,6 +1532,7 @@ func TestWarmPool_AllBusyWaitsThenRefuses(t *testing.T) {
 	cfg := DefaultWarmPoolConfig()
 	cfg.Enabled = true
 	cfg.MaxWorkers = 1
+	cfg.MaxPerKey = 1
 	cfg.QueueTimeout = 150 * time.Millisecond
 	mgr, err := NewWarmPoolManager(cfg, fs.launcher())
 	if err != nil {

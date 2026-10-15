@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -244,5 +246,57 @@ func TestReadWorkerKeyedBySavedConnection(t *testing.T) {
 	defer fs.mu.Unlock()
 	if len(fs.procs) != 2 || len(seen) != 3 || seen[0].Source.ConnectionID != "saved-a" || seen[1].Source.ConnectionID != "saved-b" || seen[0].Request.Connection.ID != "saved-a" {
 		t.Fatalf("workers keyed by alias: procs=%d first=%q second=%q", len(fs.procs), seen[0].Source.ConnectionID, seen[1].Source.ConnectionID)
+	}
+}
+
+// A burst on one connection queues or scales out; no read fails. Each worker
+// serves four reads at a time (the adapter's source pool), so most of the
+// fifty wait for a slot, some longer than a credential window: the window is
+// stamped when a read is sent, not when it queued. A key at max_in_flight
+// launches a second worker (max_per_key 2).
+func TestReadWorkerBurstOnOneConnectionNeverFails(t *testing.T) {
+	old := credentialWindowMax
+	credentialWindowMax = time.Second
+	defer func() { credentialWindowMax = old }()
+	fs := &fakeSet{}
+	fs.serve = func(p *fakeWorkerProcess) {
+		source := make(chan struct{}, 4)
+		var write sync.Mutex // one frame at a time, as the adapter's writer does
+		serveFake(p, func(f frame.Frame) {
+			if f.Type != frame.Request {
+				return
+			}
+			go func() {
+				source <- struct{}{}
+				time.Sleep(250 * time.Millisecond)
+				<-source
+				write.Lock()
+				defer write.Unlock()
+				replyOK(p.stdoutW, f.Stream, f.Payload)
+			}()
+		})
+	}
+	e, mgr := readWorkerExecutor(t, fs)
+	const readers = 50
+	var wg sync.WaitGroup
+	var failed atomic.Int32
+	var firstErr atomic.Value
+	for i := 0; i < readers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r := query.Request{Mode: "native", ConnectionID: "app", SQL: fmt.Sprintf("SELECT %d", i)}
+			if _, err := e.Execute(context.Background(), r, &workerTestSink{}); err != nil {
+				failed.Add(1)
+				firstErr.CompareAndSwap(nil, err.Error())
+			}
+		}()
+	}
+	wg.Wait()
+	if failed.Load() != 0 || mgr.metrics.Fallbacks.Load() != 0 {
+		t.Fatal("burst reads failed:", failed.Load(), firstErr.Load(), "fallbacks", mgr.metrics.Fallbacks.Load())
+	}
+	if mgr.metrics.Spawns.Load() != 2 {
+		t.Fatal("a key at max_in_flight did not scale out to max_per_key workers:", mgr.metrics.Spawns.Load())
 	}
 }
