@@ -65,8 +65,12 @@ type Job struct {
 	WorkerID    string           `json:"worker_id,omitempty"`
 	Owner       string           `json:"owner,omitempty"`
 	Claim       string           `json:"claim,omitempty"`
-	Stats       query.Stats      `json:"stats"`
-	Error       *query.Error     `json:"error,omitempty"`
+	// Transient marks a single-call read: its caller learns the outcome from the
+	// same response, never polls it afterwards, so a finished job's slot is free
+	// at once. Immutable after Submit.
+	Transient bool         `json:"transient,omitempty"`
+	Stats     query.Stats  `json:"stats"`
+	Error     *query.Error `json:"error,omitempty"`
 }
 
 func (j Job) Terminal() bool {
@@ -76,6 +80,12 @@ func (j Job) Terminal() bool {
 type Snapshot struct {
 	Job      Job
 	Revision uint64
+	// raw is the record as stored at Revision. CompareAndSwap decodes its own
+	// copy of it, so a caller that mutates a pointer inside Job (a trace, an
+	// authority, request parameters) cannot change what the checks compare
+	// against, and no second read of the record is needed. Snapshots a store
+	// did not produce have none and are compared against a fresh read.
+	raw []byte
 }
 
 // Delivery contains only a job ID. SQL lives in tenant-scoped state; credentials

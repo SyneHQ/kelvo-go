@@ -576,7 +576,7 @@ func (g *Gateway) submitJob(w http.ResponseWriter, r *http.Request, t gatewayTen
 	outcome := telemetry.OutcomeError
 	defer finishClusterTrace(span, r.Context(), &outcome)
 	ctx := tracing.WithCarrier(r.Context(), span.Carrier())
-	s, e := t.store.Submit(ctx, req)
+	s, e := submitRead(ctx, t.store, req, wait > 0)
 	if wait > 0 && errors.Is(e, ErrCapacity) {
 		deadline := time.NewTimer(wait)
 		defer deadline.Stop()
@@ -590,7 +590,7 @@ func (g *Gateway) submitJob(w http.ResponseWriter, r *http.Request, t gatewayTen
 			case <-deadline.C:
 				break waiting
 			case <-poll.C:
-				s, e = t.store.Submit(ctx, req)
+				s, e = submitRead(ctx, t.store, req, true)
 			}
 		}
 	}
@@ -612,7 +612,7 @@ func (g *Gateway) submitJob(w http.ResponseWriter, r *http.Request, t gatewayTen
 	}
 	// Submission is durable before enqueue. Reconciliation republishes queued jobs,
 	// so a transient broker failure must not discard this accepted handle.
-	_ = t.store.Enqueue(r.Context(), s.Job.ID)
+	_ = enqueueRead(r.Context(), t.store, s, wait > 0)
 	if !g.auditSuccess(w, r, op) {
 		return Snapshot{}, false
 	}

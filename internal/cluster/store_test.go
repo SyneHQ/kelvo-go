@@ -501,3 +501,87 @@ func TestNATSStoreSubmitPrefersAgedSlots(t *testing.T) {
 		t.Fatalf("capacity beyond max_queries was accepted: %v", err)
 	}
 }
+
+// A finished transient job's slot is free at once, and is taken before a slot
+// whose job a client may still confirm.
+func TestNATSStoreTransientSlotIsReusedBeforeAConfirmableOne(t *testing.T) {
+	store := openFixture(t)
+	ctx := context.Background()
+	request := query.Request{Mode: "federated", SQL: "select 1"}
+	keep, err := store.Submit(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transient, err := store.SubmitTransient(ctx, request)
+	if err != nil || !transient.Job.Transient {
+		t.Fatalf("transient submit: %v", err)
+	}
+	failJob(t, store, keep)
+	failJob(t, store, transient)
+	next, err := store.SubmitTransient(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Job.ID == transient.Job.ID || !sameSlot(t, next.Job.ID, transient.Job.ID) {
+		t.Fatalf("next job %s did not reuse the transient job's slot %s", next.Job.ID, transient.Job.ID)
+	}
+	if got, err := store.Get(ctx, keep.Job.ID); err != nil || got.Job.State != Failed {
+		t.Fatalf("a confirmable terminal job lost its slot: %v %+v", err, got.Job.State)
+	}
+	failJob(t, store, next)
+}
+
+func sameSlot(t *testing.T, a, b string) bool {
+	t.Helper()
+	x, okA := slot(a)
+	y, okB := slot(b)
+	return okA && okB && x == y
+}
+
+// Round trips are the cost being cut: a transition is one request, and a submit
+// that reuses a slot this process saw finish is one request.
+func TestNATSStoreTransitionAndReusedSubmitCostOneRequestEach(t *testing.T) {
+	store := openFixture(t)
+	ctx := context.Background()
+	request := query.Request{Mode: "federated", SQL: "select 1"}
+	first, err := store.SubmitTransient(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := store.nc.Stats().OutMsgs
+	failed := failJob(t, store, first) // one compare-and-swap
+	if sent := store.nc.Stats().OutMsgs - before; sent != 1 {
+		t.Fatalf("compare-and-swap sent %d requests, want 1", sent)
+	}
+	before = store.nc.Stats().OutMsgs
+	second, err := store.SubmitTransient(ctx, request) // reuses the slot just freed
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sent := store.nc.Stats().OutMsgs - before; sent != 1 {
+		t.Fatalf("submit into a freed slot sent %d requests, want 1", sent)
+	}
+	_ = failed
+	failJob(t, store, second)
+}
+
+// A stale snapshot is still refused: the revision check moved into the update.
+func TestNATSStoreCompareAndSwapRefusesAStaleSnapshotWithoutReading(t *testing.T) {
+	store := openFixture(t)
+	ctx := context.Background()
+	snap, err := store.Submit(ctx, query.Request{Mode: "federated", SQL: "select 1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failJob(t, store, snap)
+	next := snap.Job
+	next.State = Cancelled
+	if _, err := store.CompareAndSwap(ctx, snap, next); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale snapshot: %v", err)
+	}
+	// A snapshot with nothing from the store is compared against a fresh read.
+	bare := Snapshot{Job: snap.Job, Revision: snap.Revision}
+	if _, err := store.CompareAndSwap(ctx, bare, next); err == nil {
+		t.Fatal("snapshot without a stored record was accepted")
+	}
+}
