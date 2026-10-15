@@ -13,6 +13,7 @@ import (
 
 const (
 	receiptTrailer  = "Kelvo-Query-Receipt"
+	streamHeader    = "Kelvo-Stream"
 	maxReceiptBytes = 8 << 10
 	maxRetryAfter   = time.Minute
 )
@@ -62,6 +63,9 @@ func (c *Client) QueryStreamWithLimits(ctx context.Context, request query.Reques
 	if response.StatusCode != http.StatusOK {
 		return stats, streamStatusFailure(response)
 	}
+	if response.Header.Get(streamHeader) != "1" {
+		return stats, failure("PROTOCOL_ERROR")
+	}
 	id := response.Header.Get("Kelvo-Query-Id")
 	completion := response.Header.Values("Kelvo-Result-Completion")
 	if !operationContentType(response, "application/vnd.apache.arrow.stream") || len(completion) != 1 || completion[0] != "durable-eos-v1" || !handleName.MatchString(id) {
@@ -101,12 +105,18 @@ func (c *Client) QueryStreamWithLimits(ctx context.Context, request query.Reques
 	return stats, nil
 }
 
-// streamStatusFailure maps a refusal before the first byte. A missing endpoint
-// is not a missing query, so it must not surface as NOT_FOUND.
+// streamStatusFailure maps a refusal before the first byte. A node that has the
+// endpoint marks every response with Kelvo-Stream: 1, so 404, 405 and 501 mean
+// "no such endpoint" only without it. With the header they are real errors and
+// the caller must not fall back, which could run a read twice.
 func streamStatusFailure(response *http.Response) error {
+	if response.Header.Get(streamHeader) != "1" {
+		switch response.StatusCode {
+		case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
+			return ErrStreamUnsupported
+		}
+	}
 	switch response.StatusCode {
-	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
-		return ErrStreamUnsupported
 	case http.StatusTooManyRequests:
 		e := failure("RESOURCE_EXHAUSTED")
 		if seconds, err := strconv.Atoi(response.Header.Get("Retry-After")); err == nil && seconds > 0 {

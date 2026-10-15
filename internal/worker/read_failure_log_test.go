@@ -95,3 +95,13 @@ func TestOnlyNodeExecutorsLogFailedReads(t *testing.T) {
 		}
 	}
 }
+
+func TestRefusedDelegationIsLogged(t *testing.T) {
+	buf := captureLog(t)
+	e := &Executor{Limits: query.DefaultLimits(), LogFailedReads: true}
+	req := query.Request{SQL: "select 1", Mode: "native", ConnectionID: "x", Delegation: "not-a-grant"}
+	_, err := e.Execute(context.Background(), req, nil)
+	if err == nil || !strings.Contains(buf.String(), "kelvo read failed:") || !strings.Contains(buf.String(), "stage=validation") {
+		t.Fatalf("err=%v log=%q", err, buf.String())
+	}
+}
