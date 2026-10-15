@@ -2,7 +2,11 @@
 package cluster
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"os"
 	"path/filepath"
 	"testing"
@@ -107,6 +111,20 @@ func TestPooledReadLoadScenariosAreValid(t *testing.T) {
 		}
 		if err := (ContainmentConfig{Config: sc.Containment, Budget: sc.Budget}).Validate(&sc.Resources, sc.Policy.Limits); err != nil {
 			t.Fatalf("%s: containment: %v", path, err)
+		}
+		exe, _ := os.Executable()
+		bytes, _ := os.ReadFile(exe)
+		sum := sha256.Sum256(bytes)
+		self := worker.OperationProcessConfig{Binary: exe, SHA256: hex.EncodeToString(sum[:])}
+		tls := TLSConfig{CAFile: "/x/ca", CertFile: "/x/c", KeyFile: "/x/k"}
+		node := NodeConfig{Policy: sc.Policy, Resources: &sc.Resources, ScratchDirectory: "/x/scratch", SandboxPath: "/x/sb", Containment: &ContainmentConfig{Config: sc.Containment, Budget: sc.Budget},
+			Audit: &ServiceAuditConfig{Config: audit.Config{Directory: "/x/audit", MaxEntries: sc.Audit.MaxEntries, MaxPending: sc.Audit.MaxPending}},
+			Operations: &OperationNodeConfig{InputURL: "https://127.0.0.1:1", TLS: tls, Results: OperationInputConfig{Directory: "/x/results", MaxEntries: 256, MaxStoredBytes: 1 << 30},
+				MaxResultBytes: sc.Operations.MaxResultBytes, MaxConcurrent: sc.Operations.MaxConcurrent, MaxDownloads: sc.Operations.MaxDownloads, PollInterval: 20 * time.Millisecond, WarmPool: &sc.WarmPool,
+				Adapter: self}}
+		// The adapter binary is checked on the real file by the load run itself.
+		if err := validateNodeOperations(node); errors.Is(err, errOperationConfig) {
+			t.Fatalf("%s: operations: %v", path, err)
 		}
 		if sc.WarmPool.MaxWorkers > sc.Resources.MaxConcurrent {
 			t.Fatalf("%s: warm_pool.max_workers exceeds resources.max_concurrent", path)
