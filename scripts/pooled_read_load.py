@@ -121,6 +121,69 @@ def container_cpu(name):
     return 0.0
 
 
+def profile_plain(args, out, report, pg, proxy, nats_port, certs, scenario, password, proxy_port):
+    """One plain read, end to end, at low load and at 50 concurrent: windows on the node, the source and the adapter."""
+    admin_dsn = "postgres://postgres:%s@127.0.0.1:%d/postgres?sslmode=disable" % (password, args.postgres_port)
+    loadgen = str(Path(args.loadgen).resolve())
+    stats_file = out / "latproxy.stats.json"
+
+    def proxy_stats():
+        time.sleep(2.5)  # the proxy writes its counters once a second
+        return json.loads(stats_file.read_text())
+
+    def statements(db):
+        query = ("SELECT s.calls || chr(9) || s.rows || chr(9) || left(replace(s.query, chr(10), ' '), 110) FROM pg_stat_statements s JOIN pg_database d ON d.oid = s.dbid "
+                 "WHERE d.datname = '%s' ORDER BY s.calls DESC LIMIT 12" % db)
+        text = sh(pg + ["-d", "postgres", "-c", query]).stdout.decode()
+        return [line.split("\t") for line in text.strip().splitlines() if line]
+
+    common = ["-node", str(out / "node.json"), "-mode", "plain", "-pg-admin-dsn", ""]
+    phases = {}
+    # Cold reads first: a new connection costs a resolve and a worker spawn.
+    cold_before = proxy_stats()
+    run = subprocess.run([loadgen, *common, "-vus", "0", "-cold", "5", "-warmup", "0", "-duration", "0s", "-out", str(out / "plain-cold.json"), "-label", "cold"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    (out / "plain-cold.log").write_bytes(run.stdout)
+    phases["cold"] = {"proxy_before": cold_before, "proxy_after": proxy_stats()}
+    for name, vus in (("low", 1), ("c50", 50)):
+        sh(pg + ["-d", "postgres", "-c", "SELECT pg_stat_statements_reset()"])
+        before = proxy_stats()
+        (out / ("window-%s.start" % name)).touch()
+        wait_for(lambda: (out / ("window-%s.started" % name)).exists(), "profile window start", timeout=30)
+        run = subprocess.run([loadgen, *common, "-vus", str(vus), "-cold", "0", "-warmup", "5", "-duration", "%ds" % args.duration, "-out", str(out / ("plain-%s.json" % name)), "-label", name],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        (out / ("plain-%s.log" % name)).write_bytes(run.stdout)
+        (out / ("window-%s.stop" % name)).touch()
+        wait_for(lambda: (out / ("window-%s.done" % name)).exists(), "profile window end", timeout=60)
+        after = proxy_stats()
+        phases[name] = {"proxy_before": before, "proxy_after": after, "source_statements": statements("cust00")}
+        window = json.loads((out / ("window-%s.json" % name)).read_text())
+        plain = json.loads((out / ("plain-%s.json" % name)).read_text())
+        reads = sum(c["n"] for k, c in plain["classes"].items() if k in ("plain_warm", "plain_warmup"))
+        turns = after["exchanges"] - before["exchanges"]
+        phases[name].update(window=window, loadgen=plain, reads=reads, source_round_trips_per_read=turns / max(reads, 1),
+                            source_bytes_per_read=(after["bytes_from_source"] - before["bytes_from_source"]) / max(reads, 1),
+                            node_cpu_ms_per_read=1000 * (window["unit_cpu_s"] - window["worker_cgroups_cpu_s"]) / max(reads, 1),
+                            worker_cpu_ms_per_read=1000 * window["worker_cgroups_cpu_s"] / max(reads, 1))
+    report["profile_plain"] = phases
+    # The adapter alone, in process, against the same source.
+    if args.adapter_profile_test:
+        ca = str(out / "pg-ca.pem")
+        dsn = "postgres://cust00:%s@127.0.0.1:%d/cust00?sslmode=verify-full&connect_timeout=5" % (password, proxy_port)
+        adapter_runs = {}
+        for name, streams in (("low", 1), ("c50", 50)):
+            env = {k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "LANG", "TMPDIR")}
+            env.update(KELVO_TEST_PROFILE_DSN=dsn, KELVO_TEST_PROFILE_CA_FILE=ca, KELVO_TEST_PROFILE_STREAMS=str(streams), KELVO_TEST_PROFILE_SECONDS=str(args.duration),
+                       KELVO_TEST_PROFILE_OUT=str(out / ("adapter-%s.json" % name)))
+            run = subprocess.run([str(args.adapter_profile_test), "-test.run=^TestServeLoopProfilePlainRead$", "-test.v", "-test.cpuprofile=" + str(out / ("adapter-%s.cpu.pprof" % name)),
+                                  "-test.memprofile=" + str(out / ("adapter-%s.allocs.pprof" % name)), "-test.memprofilerate=4096"], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=args.duration + 120)
+            (out / ("adapter-%s.log" % name)).write_bytes(run.stdout)
+            adapter_runs[name] = json.loads((out / ("adapter-%s.json" % name)).read_text()) if (out / ("adapter-%s.json" % name)).exists() else {"error": run.stdout.decode(errors="replace")[-400:]}
+        report["profile_plain_adapter"] = adapter_runs
+    (out / "stop").touch()
+    report["passed"] = all(phases[k].get("reads", 1) > 0 for k in ("low", "c50"))
+    report["gate"] = {"profiled_reads": report["passed"]}
+
+
 def set_override(tree, dotted, value):
     keys = dotted.split(".")
     for key in keys[:-1]:
@@ -149,6 +212,8 @@ def main():
     parser.add_argument("--nats-server", type=Path, help="default: download the pinned release")
     parser.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override a scenario key, e.g. warm_pool.max_workers=20")
     parser.add_argument("--loadgen-arg", action="append", default=[], help="extra loadgen flag, e.g. --loadgen-arg=-explorers=10")
+    parser.add_argument("--profile-plain", action="store_true", help="profile one plain 50-row read at low load and at 50 concurrent, instead of the mixed load")
+    parser.add_argument("--adapter-profile-test", type=Path, help="adapters/go/internal/runtime test binary (go test -c) for the in-process adapter profile")
     parser.add_argument("--inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--unit", help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -258,6 +323,8 @@ def main():
                "KELVO_LOAD_ADAPTER_BINARY": str(out / "kelvo-adapter-go"), "KELVO_LOAD_NATS_URL": "tls://127.0.0.1:%d" % nats_port, "KELVO_LOAD_NATS_CA_FILE": str(certs / "ca.pem")}
         for role, prefix in (("admin", "NATS"), ("worker", "NATS_WORKER"), ("gateway", "NATS_GATEWAY")):
             env["KELVO_LOAD_%s_USER" % prefix], env["KELVO_LOAD_%s_PASSWORD" % prefix] = role, users[role]
+        if args.profile_plain:
+            env["KELVO_LOAD_PROFILE_WINDOWS"] = "1"
         (out / "node-env.json").write_text(json.dumps(env))
 
         # 5. The node, in a delegated service with production-like limits.
@@ -276,85 +343,88 @@ def main():
             raise SystemExit("node did not start; see node.test.log")
         print("node ready", flush=True)
 
-        # 6. Load, with runner-wide samplers beside it.
-        samples = {"runner_cpu_busy_pct": [], "source_backends": []}
-        stop_sampling = threading.Event()
+        if args.profile_plain:
+            profile_plain(args, out, report, pg, proxy, nats_port, certs, scenario, password, proxy_port)
+        else:
+            # 6. Load, with runner-wide samplers beside it.
+            samples = {"runner_cpu_busy_pct": [], "source_backends": []}
+            stop_sampling = threading.Event()
 
-        def sample_runner():
-            total, idle = cpu_times()
-            while not stop_sampling.wait(1):
-                t, i = cpu_times()
-                samples["runner_cpu_busy_pct"].append(round(100 * (1 - (i - idle) / max(t - total, 1)), 1))
-                total, idle = t, i
+            def sample_runner():
+                total, idle = cpu_times()
+                while not stop_sampling.wait(1):
+                    t, i = cpu_times()
+                    samples["runner_cpu_busy_pct"].append(round(100 * (1 - (i - idle) / max(t - total, 1)), 1))
+                    total, idle = t, i
 
-        def sample_source():
-            while not stop_sampling.wait(5):
-                try:
-                    count = sh(pg + ["-d", "postgres", "-c", "SELECT count(*) FROM pg_stat_activity WHERE datname LIKE 'cust%'"]).stdout.decode().strip()
-                    samples["source_backends"].append(int(count))
-                except Exception:
-                    pass
+            def sample_source():
+                while not stop_sampling.wait(5):
+                    try:
+                        count = sh(pg + ["-d", "postgres", "-c", "SELECT count(*) FROM pg_stat_activity WHERE datname LIKE 'cust%'"]).stdout.decode().strip()
+                        samples["source_backends"].append(int(count))
+                    except Exception:
+                        pass
 
-        threads = [threading.Thread(target=f, daemon=True) for f in (sample_runner, sample_source)]
-        for t in threads:
-            t.start()
-        admin_dsn = "postgres://postgres:%s@127.0.0.1:%d/postgres?sslmode=disable" % (password, args.postgres_port)
-        load = [str(shutil_bins["loadgen"]), "-node", str(out / "node.json"), "-out", str(out / "loadgen-report.json"), "-duration", "%ds" % args.duration, "-pg-admin-dsn", admin_dsn,
-                "-label", args.label or args.profile, *args.loadgen_arg]
-        import resource
-        proxy_cpu_before = proc_cpu(proxy.pid)
-        pg_cpu_before = container_cpu(args.postgres_container)
-        children_before = resource.getrusage(resource.RUSAGE_CHILDREN)
-        with (out / "loadgen.log").open("wb") as log:
-            load_exit = subprocess.run(load, stdout=log, stderr=subprocess.STDOUT).returncode
-        children = resource.getrusage(resource.RUSAGE_CHILDREN)
-        outside_cpu = {"loadgen_cpu_s": round(children.ru_utime + children.ru_stime - children_before.ru_utime - children_before.ru_stime, 1),
-                       "latency_proxy_cpu_s": round(proc_cpu(proxy.pid) - proxy_cpu_before, 1),
-                       "postgres_container_cpu_s": round(container_cpu(args.postgres_container) - pg_cpu_before, 1)}
-        stop_sampling.set()
-        for t in threads:
-            t.join(timeout=10)
-        (out / "stop").touch()
-        service_exit = service.wait(timeout=300)
+            threads = [threading.Thread(target=f, daemon=True) for f in (sample_runner, sample_source)]
+            for t in threads:
+                t.start()
+            admin_dsn = "postgres://postgres:%s@127.0.0.1:%d/postgres?sslmode=disable" % (password, args.postgres_port)
+            load = [str(shutil_bins["loadgen"]), "-node", str(out / "node.json"), "-out", str(out / "loadgen-report.json"), "-duration", "%ds" % args.duration, "-pg-admin-dsn", admin_dsn,
+                    "-label", args.label or args.profile, *args.loadgen_arg]
+            import resource
+            proxy_cpu_before = proc_cpu(proxy.pid)
+            pg_cpu_before = container_cpu(args.postgres_container)
+            children_before = resource.getrusage(resource.RUSAGE_CHILDREN)
+            with (out / "loadgen.log").open("wb") as log:
+                load_exit = subprocess.run(load, stdout=log, stderr=subprocess.STDOUT).returncode
+            children = resource.getrusage(resource.RUSAGE_CHILDREN)
+            outside_cpu = {"loadgen_cpu_s": round(children.ru_utime + children.ru_stime - children_before.ru_utime - children_before.ru_stime, 1),
+                           "latency_proxy_cpu_s": round(proc_cpu(proxy.pid) - proxy_cpu_before, 1),
+                           "postgres_container_cpu_s": round(container_cpu(args.postgres_container) - pg_cpu_before, 1)}
+            stop_sampling.set()
+            for t in threads:
+                t.join(timeout=10)
+            (out / "stop").touch()
+            service_exit = service.wait(timeout=300)
 
-        # 7. Assemble.
-        node = json.loads((out / "node-report.json").read_text()) if (out / "node-report.json").exists() else {}
-        loadgen = json.loads((out / "loadgen-report.json").read_text()) if (out / "loadgen-report.json").exists() else {}
-        node_log = (out / "node.test.log").read_text(errors="replace")
-        failed_reads = {}
-        for code, klass, stage in re.findall(r"kelvo read failed: code=(\S+) class=(\S+) stage=(\S+)", node_log):
-            key = "%s/%s/%s" % (code, klass, stage)
-            failed_reads[key] = failed_reads.get(key, 0) + 1
-        duration = max(node.get("duration_s", 1), 1)
-        series = node.pop("samples", [])
-        (out / "node-samples.json").write_text(json.dumps(series))
-        (out / "node-metrics.prom").write_text(node.pop("metrics_text", ""))
-        cores = node.get("cpu_usage_usec", 0) / 1e6 / duration
-        top = lambda key: max([s.get(key, 0) for s in series] or [0])
-        mean = lambda key: sum(s.get(key, 0) for s in series) / max(len(series), 1)
-        report["node"] = {**node, "cpu_cores_mean": round(cores, 2), "cpu_pct_of_limit": round(100 * cores / profile["cpus"], 1),
-                          "memory_peak_mib": round(node.get("memory_peak_bytes", 0) / 2**20, 1),
-                          "rss_node_peak_mib": round(top("rss_node_bytes") / 2**20, 1), "rss_workers_peak_mib": round(top("rss_workers_bytes") / 2**20, 1),
-                          "rss_workers_mean_mib": round(mean("rss_workers_bytes") / 2**20, 1), "job_cgroups_peak": top("job_cgroups"), "job_cgroups_mean": round(mean("job_cgroups"), 1),
-                          "failed_reads_logged": failed_reads, "samples_file": "node-samples.json"}
-        report["loadgen"] = loadgen
-        if (out / "audit-usage.json").exists():
-            report["audit_journal"] = json.loads((out / "audit-usage.json").read_text())
-        report["outside_node_cpu"] = outside_cpu
-        profile = out / "node-cpu.pprof"
-        if profile.exists():
-            top = subprocess.run([args.go, "tool", "pprof", "-top", "-nodecount=40", str(out / "cluster.test"), str(profile)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            (out / "node-cpu-top.txt").write_bytes(top.stdout)
-        report["runner_cpu_busy_pct"] = {"mean": round(sum(samples["runner_cpu_busy_pct"]) / max(len(samples["runner_cpu_busy_pct"]), 1), 1), "max": max(samples["runner_cpu_busy_pct"] or [0])}
-        report["source_backends"] = {"max": max(samples["source_backends"] or [0]), "samples": samples["source_backends"]}
-        proxy_stats = out / "latproxy.stats.json"
-        if proxy_stats.exists():
-            report["source_proxy"] = json.loads(proxy_stats.read_text())
-        capacity = loadgen.get("capacity_errors")
-        gate = {"loadgen_exit_zero": load_exit == 0, "node_exit_zero": service_exit == 0, "no_capacity_errors": capacity == 0, "load_generator_not_capped": loadgen.get("client_admission_refusals", 1) == 0, "no_oom_kill": node.get("memory_events_oom", 0) == 0,
-                "no_capacity_failures_logged_by_node": not any(k.split("/")[1] == "capacity" for k in failed_reads)}
-        report["gate"] = gate
-        report["passed"] = all(gate.values())
+            # 7. Assemble.
+            node = json.loads((out / "node-report.json").read_text()) if (out / "node-report.json").exists() else {}
+            loadgen = json.loads((out / "loadgen-report.json").read_text()) if (out / "loadgen-report.json").exists() else {}
+            node_log = (out / "node.test.log").read_text(errors="replace")
+            failed_reads = {}
+            for code, klass, stage in re.findall(r"kelvo read failed: code=(\S+) class=(\S+) stage=(\S+)", node_log):
+                key = "%s/%s/%s" % (code, klass, stage)
+                failed_reads[key] = failed_reads.get(key, 0) + 1
+            duration = max(node.get("duration_s", 1), 1)
+            series = node.pop("samples", [])
+            (out / "node-samples.json").write_text(json.dumps(series))
+            (out / "node-metrics.prom").write_text(node.pop("metrics_text", ""))
+            cores = node.get("cpu_usage_usec", 0) / 1e6 / duration
+            top = lambda key: max([s.get(key, 0) for s in series] or [0])
+            mean = lambda key: sum(s.get(key, 0) for s in series) / max(len(series), 1)
+            report["node"] = {**node, "cpu_cores_mean": round(cores, 2), "cpu_pct_of_limit": round(100 * cores / profile["cpus"], 1),
+                              "memory_peak_mib": round(node.get("memory_peak_bytes", 0) / 2**20, 1),
+                              "rss_node_peak_mib": round(top("rss_node_bytes") / 2**20, 1), "rss_workers_peak_mib": round(top("rss_workers_bytes") / 2**20, 1),
+                              "rss_workers_mean_mib": round(mean("rss_workers_bytes") / 2**20, 1), "job_cgroups_peak": top("job_cgroups"), "job_cgroups_mean": round(mean("job_cgroups"), 1),
+                              "failed_reads_logged": failed_reads, "samples_file": "node-samples.json"}
+            report["loadgen"] = loadgen
+            if (out / "audit-usage.json").exists():
+                report["audit_journal"] = json.loads((out / "audit-usage.json").read_text())
+            report["outside_node_cpu"] = outside_cpu
+            profile = out / "node-cpu.pprof"
+            if profile.exists():
+                top = subprocess.run([args.go, "tool", "pprof", "-top", "-nodecount=40", str(out / "cluster.test"), str(profile)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                (out / "node-cpu-top.txt").write_bytes(top.stdout)
+            report["runner_cpu_busy_pct"] = {"mean": round(sum(samples["runner_cpu_busy_pct"]) / max(len(samples["runner_cpu_busy_pct"]), 1), 1), "max": max(samples["runner_cpu_busy_pct"] or [0])}
+            report["source_backends"] = {"max": max(samples["source_backends"] or [0]), "samples": samples["source_backends"]}
+            proxy_stats = out / "latproxy.stats.json"
+            if proxy_stats.exists():
+                report["source_proxy"] = json.loads(proxy_stats.read_text())
+            capacity = loadgen.get("capacity_errors")
+            gate = {"loadgen_exit_zero": load_exit == 0, "node_exit_zero": service_exit == 0, "no_capacity_errors": capacity == 0, "load_generator_not_capped": loadgen.get("client_admission_refusals", 1) == 0, "no_oom_kill": node.get("memory_events_oom", 0) == 0,
+                    "no_capacity_failures_logged_by_node": not any(k.split("/")[1] == "capacity" for k in failed_reads)}
+            report["gate"] = gate
+            report["passed"] = all(gate.values())
     finally:
         for proc in reversed(started):
             if proc.poll() is None:

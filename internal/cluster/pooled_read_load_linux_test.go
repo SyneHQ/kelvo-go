@@ -98,9 +98,17 @@ type statusRecorder struct {
 	http.ResponseWriter
 	status int
 	body   string
+	start  time.Time
+	ttfb   float64
 }
 
-func (s *statusRecorder) WriteHeader(code int) { s.status = code; s.ResponseWriter.WriteHeader(code) }
+func (s *statusRecorder) WriteHeader(code int) {
+	if s.ttfb == 0 && !s.start.IsZero() {
+		s.ttfb = time.Since(s.start).Seconds()
+	}
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
+}
 func (s *statusRecorder) Write(b []byte) (int, error) {
 	if s.status >= 400 && len(s.body) < 160 {
 		s.body += string(b[:min(len(b), 160)])
@@ -184,6 +192,12 @@ func TestPooledReadLoadNode(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Durations of the stages the load driver can observe from the outside of each
+	// component. A profiling window reports the slice that fell inside it.
+	logs := map[string]*durationLog{}
+	for _, name := range []string{"gateway_stream_total", "gateway_stream_first_byte", "node_results_total", "resolver_http_total", "resolver_lease_check", "resolver_credential_lookup"} {
+		logs[name] = &durationLog{}
+	}
 	// Every listener is started before the policy, which names the resolver URL.
 	var (
 		gatewayRef  atomic.Pointer[Gateway]
@@ -205,8 +219,14 @@ func TestPooledReadLoadNode(t *testing.T) {
 	)
 	publicServer := serve(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if g := gatewayRef.Load(); g != nil {
-			rec := &statusRecorder{ResponseWriter: w, status: 200}
+			rec := &statusRecorder{ResponseWriter: w, status: 200, start: time.Now()}
 			g.ServeHTTP(rec, r)
+			if r.URL.Path == "/v1/queries/stream" {
+				logs["gateway_stream_total"].add(time.Since(rec.start).Seconds())
+				if rec.ttfb > 0 {
+					logs["gateway_stream_first_byte"].add(rec.ttfb)
+				}
+			}
 			if rec.status >= 400 {
 				route := r.Method + " " + strings.Join(strings.Split(r.URL.Path, "/")[:min(3, len(strings.Split(r.URL.Path, "/")))], "/")
 				gwMu.Lock()
@@ -228,7 +248,9 @@ func TestPooledReadLoadNode(t *testing.T) {
 	resolverServer := serve(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if h := resolverRef.Load(); h != nil {
 			rec := &statusRecorder{ResponseWriter: w, status: 200}
+			began := time.Now()
 			h.ServeHTTP(rec, r)
+			logs["resolver_http_total"].add(time.Since(began).Seconds())
 			resolverTally.note(fmt.Sprintf("%s %s -> %d", r.Method, r.URL.Path, rec.status), nil)
 			return
 		}
@@ -240,7 +262,11 @@ func TestPooledReadLoadNode(t *testing.T) {
 	}
 	workerServer := serve(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if n := nodeRef.Load(); n != nil {
+			began := time.Now()
 			n.ServeHTTP(w, r)
+			if strings.HasPrefix(r.URL.Path, "/internal/queries/") && strings.HasSuffix(r.URL.Path, "/results") {
+				logs["node_results_total"].add(time.Since(began).Seconds())
+			}
 			return
 		}
 		unavailable(w)
@@ -420,11 +446,13 @@ func TestPooledReadLoadNode(t *testing.T) {
 		return resolver.Authorization{Revision: hex.EncodeToString(sum[:]), ValidUntil: time.Now().Add(10 * time.Minute)}, nil
 	}
 	material := func(ctx context.Context, id, connection string) (resolver.Source, map[string]string, error) {
+		lookupBegan := time.Now()
 		select {
 		case <-time.After(sc.Resolver.Delay):
 		case <-ctx.Done():
 			return resolver.Source{}, nil, ctx.Err()
 		}
+		logs["resolver_credential_lookup"].add(time.Since(lookupBegan).Seconds())
 		value, ok := dsn(connection)
 		if !ok {
 			return resolver.Source{}, nil, resolver.ErrInvalid
@@ -439,7 +467,7 @@ func TestPooledReadLoadNode(t *testing.T) {
 	handler, err := resolver.NewHandler(resolver.Config{
 		QueryTrust:     []delegation.Trust{{Issuer: issuer, Audience: audience, ClusterTenant: "a", ServicePrincipal: principal, PublicKey: pub}},
 		OperationTrust: []operations.GrantTrust{{Issuer: issuer, Audience: audience, ClusterTenant: "a", ServicePrincipal: principal, PublicKey: pub}},
-		Leases:         &countingLeases{inner: leases, errs: refusals}, Timeout: 15 * time.Second, MaxConcurrent: max(sc.Resolver.MaxConcurrent, 1),
+		Leases:         &countingLeases{inner: leases, errs: refusals, took: logs["resolver_lease_check"]}, Timeout: 15 * time.Second, MaxConcurrent: max(sc.Resolver.MaxConcurrent, 1),
 		AuthorizeQuery: func(_ context.Context, _ resolver.QueryRequest, c delegation.Claims) (resolver.Authorization, error) {
 			a, err := authorization(c.Sources[0].ConnectionID)
 			refusals.note("authorize_query", err)
@@ -505,12 +533,17 @@ func TestPooledReadLoadNode(t *testing.T) {
 		t.Fatal("publish node.json", err)
 	}
 
-	// A CPU profile of the whole load shows where the node's cores go.
-	if f, err := os.Create(filepath.Join(out, "node-cpu.pprof")); err == nil {
-		if pprof.StartCPUProfile(f) == nil {
-			defer func() { pprof.StopCPUProfile(); _ = f.Close() }()
+	// A CPU profile of the whole load shows where the node's cores go. A profiling run
+	// brackets its own windows instead (only one CPU profile can run at a time).
+	windows := newProfileWindows(out, cgroupRoot, unitCgroup, logs)
+	if os.Getenv("KELVO_LOAD_PROFILE_WINDOWS") == "" {
+		if f, err := os.Create(filepath.Join(out, "node-cpu.pprof")); err == nil {
+			if pprof.StartCPUProfile(f) == nil {
+				defer func() { pprof.StopCPUProfile(); _ = f.Close() }()
+			}
 		}
 	}
+	verifyUnit := ed25519VerifyMicros(key, pub)
 	// Sample the delegated cgroup until the load generator is done.
 	began := time.Now()
 	var samples []loadSample
@@ -528,6 +561,7 @@ sampling:
 		case <-ctx.Done():
 			t.Fatal("load run exceeded its deadline")
 		case <-ticker.C:
+			windows.poll(t)
 			entries, _ := os.ReadDir(cgroupRoot)
 			groups := 0
 			for _, e := range entries {
@@ -557,20 +591,21 @@ sampling:
 	}
 	resolveMu.Unlock()
 	report := map[string]any{
-		"duration_s":           time.Since(began).Seconds(),
-		"cpu_usage_usec":       readUint(filepath.Join(unitCgroup, "cpu.stat"), "usage_usec"),
-		"cpu_throttled_usec":   readUint(filepath.Join(unitCgroup, "cpu.stat"), "throttled_usec"),
-		"nr_throttled":         readUint(filepath.Join(unitCgroup, "cpu.stat"), "nr_throttled"),
-		"memory_peak_bytes":    readUint(filepath.Join(unitCgroup, "memory.peak"), ""),
-		"memory_events_oom":    readUint(filepath.Join(unitCgroup, "memory.events"), "oom_kill"),
-		"peak_job_cgroups":     peakGroups,
-		"samples":              samples,
-		"resolver_http":        resolverTally.copy(),
-		"resolver_hook_errors": refusals.copy(),
-		"gateway_refusals":     gwCountCopy(&gwMu, gwCount),
-		"resolver_calls":       resolveTotal.Load(),
-		"resolver_authorize":   authCalls.Load(),
-		"resolver_per_conn":    perConnection,
+		"duration_s":            time.Since(began).Seconds(),
+		"cpu_usage_usec":        readUint(filepath.Join(unitCgroup, "cpu.stat"), "usage_usec"),
+		"cpu_throttled_usec":    readUint(filepath.Join(unitCgroup, "cpu.stat"), "throttled_usec"),
+		"nr_throttled":          readUint(filepath.Join(unitCgroup, "cpu.stat"), "nr_throttled"),
+		"memory_peak_bytes":     readUint(filepath.Join(unitCgroup, "memory.peak"), ""),
+		"memory_events_oom":     readUint(filepath.Join(unitCgroup, "memory.events"), "oom_kill"),
+		"peak_job_cgroups":      peakGroups,
+		"samples":               samples,
+		"ed25519_verify_micros": verifyUnit,
+		"resolver_http":         resolverTally.copy(),
+		"resolver_hook_errors":  refusals.copy(),
+		"gateway_refusals":      gwCountCopy(&gwMu, gwCount),
+		"resolver_calls":        resolveTotal.Load(),
+		"resolver_authorize":    authCalls.Load(),
+		"resolver_per_conn":     perConnection,
 		"warm_pool": map[string]int64{"hits": pm.Hits.Load(), "misses": pm.Misses.Load(), "spawns": pm.Spawns.Load(), "queue_wait_ms": pm.QueueWaitMS.Load(),
 			"evictions_ttl": pm.EvictionsTTL.Load(), "evictions_revision": pm.EvictionsRev.Load(), "evictions_error": pm.EvictionsErr.Load(), "evictions_drain": pm.EvictionsDrain.Load(),
 			"evictions_auth": pm.EvictionsAuth.Load(), "authorizations": pm.Authorizations.Load(), "fallbacks": pm.Fallbacks.Load()},
@@ -624,10 +659,13 @@ func (r *refusalTally) copy() map[string]int {
 type countingLeases struct {
 	inner *client.Client
 	errs  *refusalTally
+	took  *durationLog
 }
 
 func (c *countingLeases) ValidateConnectionLease(ctx context.Context, id, grant string, b resolver.Binding) (time.Time, error) {
+	began := time.Now()
 	until, err := c.inner.ValidateConnectionLease(ctx, id, grant, b)
+	c.took.add(time.Since(began).Seconds())
 	c.errs.note("lease_query", err)
 	return until, err
 }
@@ -635,4 +673,17 @@ func (c *countingLeases) ValidateOperationLease(ctx context.Context, id, grant s
 	until, err := c.inner.ValidateOperationLease(ctx, id, grant, b)
 	c.errs.note("lease_operation", err)
 	return until, err
+}
+
+// ed25519VerifyMicros is the cost of one signature verification on this node,
+// inside its cgroup, for turning profile time into a verification count.
+func ed25519VerifyMicros(key ed25519.PrivateKey, pub ed25519.PublicKey) float64 {
+	message := []byte("one delegation grant, about as long as a signed token payload")
+	signature := ed25519.Sign(key, message)
+	const rounds = 5000
+	began := time.Now()
+	for i := 0; i < rounds; i++ {
+		_ = ed25519.Verify(pub, message, signature)
+	}
+	return float64(time.Since(began).Microseconds()) / rounds
 }

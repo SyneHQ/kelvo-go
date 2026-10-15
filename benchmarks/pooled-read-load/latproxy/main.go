@@ -23,7 +23,21 @@ type chunk struct {
 	due  time.Time
 }
 
-func pump(dst net.Conn, src net.Conn, delay time.Duration, bytes *atomic.Int64) {
+// exchange counts request/response turns: a chunk toward the client that follows
+// a chunk toward the source. One source round trip is one exchange. TLS hides
+// the protocol, but not the direction of each record.
+type exchange struct {
+	last  atomic.Int32 // 1 toward the source, 2 toward the client
+	turns *atomic.Int64
+}
+
+func (e *exchange) note(direction int32) {
+	if e.last.Swap(direction) == 1 && direction == 2 {
+		e.turns.Add(1)
+	}
+}
+
+func pump(dst net.Conn, src net.Conn, delay time.Duration, bytes *atomic.Int64, e *exchange, direction int32) {
 	queue := make(chan chunk, 4096)
 	done := make(chan struct{})
 	go func() {
@@ -44,6 +58,7 @@ func pump(dst net.Conn, src net.Conn, delay time.Duration, bytes *atomic.Int64) 
 		n, err := src.Read(buf)
 		if n > 0 {
 			bytes.Add(int64(n))
+			e.note(direction)
 			queue <- chunk{data: append([]byte(nil), buf[:n]...), due: time.Now().Add(delay)}
 		}
 		if err != nil {
@@ -76,11 +91,11 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	var conns, toUpstream, toClient atomic.Int64
+	var conns, toUpstream, toClient, turns atomic.Int64
 	if *stats != "" {
 		go func() {
 			for range time.Tick(time.Second) {
-				raw, _ := json.Marshal(map[string]any{"connections": conns.Load(), "bytes_to_source": toUpstream.Load(), "bytes_from_source": toClient.Load(), "one_way_ms": oneWay.Milliseconds()})
+				raw, _ := json.Marshal(map[string]any{"connections": conns.Load(), "bytes_to_source": toUpstream.Load(), "bytes_from_source": toClient.Load(), "exchanges": turns.Load(), "one_way_ms": oneWay.Milliseconds()})
 				_ = os.WriteFile(*stats, raw, 0600)
 			}
 		}()
@@ -100,8 +115,9 @@ func main() {
 			}
 			defer u.Close()
 			done := make(chan struct{}, 2)
-			go func() { pump(u, c, *oneWay, &toUpstream); done <- struct{}{} }()
-			go func() { pump(c, u, *oneWay, &toClient); done <- struct{}{} }()
+			e := &exchange{turns: &turns}
+			go func() { pump(u, c, *oneWay, &toUpstream, e, 1); done <- struct{}{} }()
+			go func() { pump(c, u, *oneWay, &toClient, e, 2); done <- struct{}{} }()
 			<-done
 			<-done
 		}()
