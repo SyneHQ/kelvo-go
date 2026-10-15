@@ -319,8 +319,10 @@ gain. Phase 3 is the security-sensitive one.
   It deliberately leaves out the principal: a result depends only on its
   source, every read is authorized before the cache is consulted, and
   restricted principals never reach the cache.
-- Concurrent identical reads share one execution. It runs detached from any
-  one caller and stops only when every interested caller has gone; the leader
+- Concurrent identical reads share one execution. Its deadline is the latest
+  of its current participants' deadlines, so no caller ever gets another's
+  deadline; when the last participant leaves, the flight is dead at once and
+  later identical reads lead a fresh one. The leader
   streams to its own client while it waits. Waiters replay the result, get
   the execution's error if it failed, or run their own read if the result was
   too large to keep. A panicking execution still releases its waiters.
@@ -329,8 +331,10 @@ gain. Phase 3 is the security-sensitive one.
   entries, a quarter of the total per tenant, and `cache_max_entry_bytes`
   (default 4 MiB) per entry. A result never replaces one from an execution
   that started later.
-- `query.Request.refresh: true` skips kept results and joins only an
-  execution that started at or after it arrived. It is not part of the signed
+- `query.Request.refresh: true` skips the kept result and joins a running
+  execution only if it started after that result was stored (or when nothing
+  is kept). A burst of refreshes therefore shares one execution: at most one
+  refresh execution per key at a time, never older than what it refreshes. It is not part of the signed
   digest: it can only cause another source query, never widen access.
 - Hits report `cached: true` with their own replay time. Inspections are not
   cached. `cache_disabled: true` turns the cache off.
