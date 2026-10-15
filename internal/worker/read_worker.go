@@ -15,6 +15,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/internal/access"
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
@@ -148,7 +149,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 	if r.Inspect != nil {
 		// Inspection has no one-shot query child; the operation path falls back
 		// to a one-shot adapter itself.
-		receipt, err = e.ExecuteOperation(quotaCtx, pool.Adapter, input, sink)
+		receipt, err = e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), pool.Adapter, input, sink)
 	} else {
 		receipt, err = pool.Execute(withCredentialBound(quotaCtx, min(validUntil, expires)), e, pool.Adapter, input, sink)
 		// A read that outwaited its credentials takes the regular path, which

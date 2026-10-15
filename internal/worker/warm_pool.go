@@ -17,6 +17,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/adapter/frame"
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/operations"
 	"github.com/apache/arrow-go/v18/arrow"
@@ -32,10 +33,13 @@ type WarmPoolConfig struct {
 	// StreamBufferMB caps the unread result bytes the node buffers per stream
 	// (default 8). A slow client reading a large result then fails fast with
 	// RESOURCE_EXHAUSTED instead of holding node memory for it.
-	StreamBufferMB int           `yaml:"stream_buffer_mb"`
-	QueueDepth     int           `yaml:"queue_depth"`      // default 64, reads waiting for a full worker
-	QueueTimeout   time.Duration `yaml:"queue_timeout"`    // default 10s
-	WorkerMemoryMB int           `yaml:"worker_memory_mb"` // default 64
+	StreamBufferMB int `yaml:"stream_buffer_mb"`
+	// Caps inside the interactive class; 0 takes the default.
+	MaxPerTenant     int           `yaml:"max_per_tenant"`     // default 32 reads in flight per tenant
+	MaxPerConnection int           `yaml:"max_per_connection"` // default max_per_key × max_in_flight
+	QueueDepth       int           `yaml:"queue_depth"`        // default 64, reads waiting for a full worker
+	QueueTimeout     time.Duration `yaml:"queue_timeout"`      // default 10s
+	WorkerMemoryMB   int           `yaml:"worker_memory_mb"`   // default 64
 }
 
 // errCredentialsExpired is a read whose credentials expired while it waited
@@ -82,6 +86,9 @@ func (c WarmPoolConfig) Validate() error {
 	if c.MaxInFlight < 0 || c.MaxInFlight > 64 {
 		return errors.New("warm_pool: max_in_flight must be between 1 and 64")
 	}
+	if c.MaxPerTenant < 0 || c.MaxPerTenant > 4096 || c.MaxPerConnection < 0 || c.MaxPerConnection > 4096 {
+		return errors.New("warm_pool: max_per_tenant and max_per_connection must be between 0 and 4096")
+	}
 	if c.QueueDepth < 1 || c.QueueDepth > 1024 {
 		return errors.New("warm_pool: queue_depth must be between 1 and 1024")
 	}
@@ -126,6 +133,17 @@ func (c WarmPoolConfig) FitsOverhead(overheadBytes int64) error {
 		return errors.New("warm_pool: max_in_flight × stream_buffer_mb of stream buffers exceeds the per-job memory overhead")
 	}
 	return nil
+}
+
+func (c WarmPoolConfig) caps() *admission.Caps {
+	tenant, connection := c.MaxPerTenant, c.MaxPerConnection
+	if tenant == 0 {
+		tenant = 32
+	}
+	if connection == 0 {
+		connection = c.MaxPerKey * c.maxInFlight()
+	}
+	return &admission.Caps{MaxPerTenant: tenant, MaxPerConnection: connection}
 }
 
 // WarmPoolMetrics records observability counters for the warm pool.
@@ -185,6 +203,7 @@ type WarmPoolManager struct {
 	cfg      WarmPoolConfig
 	metrics  WarmPoolMetrics
 	launcher WorkerLauncher
+	caps     *admission.Caps
 	// Adapter is the pinned adapter binary for reads routed from the query
 	// path; operations pass their own.
 	Adapter OperationProcessConfig
@@ -215,6 +234,7 @@ func NewWarmPoolManager(cfg WarmPoolConfig, launcher WorkerLauncher) (*WarmPoolM
 	mgr := &WarmPoolManager{
 		cfg:      cfg,
 		launcher: launcher,
+		caps:     cfg.caps(),
 		workers:  make(map[string]*warmWorkerEntry),
 		backoff:  make(map[string]launchBackoff),
 		stopRpr:  make(chan struct{}),
@@ -409,6 +429,10 @@ func (m *WarmPoolManager) evictStaleRevisionsLocked(tenantID, appTeam, connectio
 // not a fallback: fifty one-shot children is the collapse the pool exists to
 // avoid.
 var errWorkerBusy = query.NewError("RESOURCE_EXHAUSTED", "Read worker is busy; retry after 1s")
+
+// errTenantBusy is a tenant or connection at its interactive cap for
+// queue_timeout.
+var errTenantBusy = query.NewError("RESOURCE_EXHAUSTED", "Read capacity for this tenant or connection is in use; retry after 1s")
 
 // Acquire takes a stream slot on a warm worker for input's key, launching one
 // when the key has none. Every wait for capacity (a slot, an evicted worker,
@@ -945,6 +969,18 @@ func (m *WarmPoolManager) releaseWorker(w *warmWorkerEntry, err error) {
 
 // Execute runs an operation on a warm worker, streaming results to sink.
 func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg OperationProcessConfig, input adapter.ProcessRequest, sink query.Sink) (operations.Receipt, error) {
+	// One tenant or connection cannot take the whole interactive class: past
+	// its cap a read waits queue_timeout like a read for a full worker.
+	capCtx, cancelCap := context.WithTimeout(ctx, m.cfg.QueueTimeout)
+	releaseCaps, err := m.caps.Acquire(capCtx, input.Source.TenantID, input.Source.ConnectionID)
+	cancelCap()
+	if err != nil {
+		if ctx.Err() != nil {
+			return rejectedOperation(input, "CANCELLED"), ctx.Err()
+		}
+		return rejectedOperation(input, "RESOURCE_EXHAUSTED"), errTenantBusy
+	}
+	defer releaseCaps()
 	w, release, err := m.Acquire(ctx, e, cfg, input)
 	if err != nil {
 		if ctx.Err() != nil {

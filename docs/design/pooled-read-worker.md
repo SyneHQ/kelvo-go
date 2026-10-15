@@ -1,7 +1,7 @@
 # Pooled read workers
 
 Status: draft for review. Nothing here is built unless a section says so.
-Phase 1 (#215) and phase 2 (see "Phase 2 as built") are implemented.
+Phase 1 (#215), phase 2 (#217) and phase 2b (see "Phase 2b as built") are implemented.
 
 ## Why
 
@@ -271,6 +271,24 @@ gain. Phase 3 is the security-sensitive one.
 - The gate replays an explorer page open (50 parallel reads and inspections)
   through `Executor.Execute`, the node's query entry. The node's job permits
   (`policy.workers`) still bound how many reach it at once; that is phase 4.
+
+## Phase 2b as built
+
+- Admission gains an `operation` class for durable operations and analysis
+  (federated) queries; with refresh and export it is background work. Read
+  workers and native reads stay interactive.
+- `resources.separate_classes: true` makes the query reserve
+  (`query_reserve_slots`, `_memory_mb`, `_scratch_mb`) the interactive share
+  and the rest the background share. Background never had the reserve; now
+  interactive work cannot take the background share either.
+- Caps inside a class. Interactive: `warm_pool.max_per_tenant` (default 32
+  reads in flight) and `max_per_connection` (default max_per_key ×
+  max_in_flight); past a cap a read waits `queue_timeout`, then gets
+  `RESOURCE_EXHAUSTED`. Background: `operations.max_per_tenant` and
+  `max_per_connection` (0 = none); an operation waits for its caps before it
+  takes a slot, so a capped operation never holds one. A tenant is one app
+  team of one cluster tenant at one issuer; a connection is counted under its
+  tenant.
 
 ## Targets
 
