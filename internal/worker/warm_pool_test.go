@@ -49,7 +49,7 @@ func newFakeWorkerProcess() *fakeWorkerProcess {
 	return p
 }
 
-func (p *fakeWorkerProcess) Stdin() io.Writer { return p.stdinW }
+func (p *fakeWorkerProcess) Stdin() io.Writer  { return p.stdinW }
 func (p *fakeWorkerProcess) Stdout() io.Reader { return p.stdoutR }
 func (p *fakeWorkerProcess) Kill() error {
 	p.killed.Store(true)
@@ -347,6 +347,7 @@ func TestWarmPool_QueueBoundAndFailFast(t *testing.T) {
 	cfg.Enabled = true
 	cfg.MaxWorkers = 1
 	cfg.MaxPerKey = 1
+	cfg.MaxInFlight = 1
 	cfg.QueueDepth = 2
 	cfg.QueueTimeout = 200 * time.Millisecond
 	launcher := &mockLauncher{}
@@ -412,11 +413,12 @@ func TestWarmPool_QueueBoundAndFailFast(t *testing.T) {
 	}
 }
 
-func TestWarmPool_ConcurrentSameKeySerialization(t *testing.T) {
+func TestWarmPool_ConcurrentSameKeyCappedByMaxInFlight(t *testing.T) {
 	cfg := DefaultWarmPoolConfig()
 	cfg.Enabled = true
 	cfg.MaxWorkers = 4
-	cfg.MaxPerKey = 1 // Only 1 worker per connection key!
+	cfg.MaxPerKey = 1   // Only 1 worker per connection key...
+	cfg.MaxInFlight = 2 // ...admitting two requests at once
 	launcher := &mockLauncher{}
 
 	mgr, err := NewWarmPoolManager(cfg, launcher)
@@ -458,8 +460,8 @@ func TestWarmPool_ConcurrentSameKeySerialization(t *testing.T) {
 
 	wg.Wait()
 
-	if maxObservedConcurrent.Load() > 1 {
-		t.Fatalf("expected MaxPerKey=1 to serialize requests (max concurrent 1), but observed %d", maxObservedConcurrent.Load())
+	if maxObservedConcurrent.Load() != 2 || launcher.spawns != 1 {
+		t.Fatalf("expected one worker admitting exactly max_in_flight=2 at once, observed %d on %d workers", maxObservedConcurrent.Load(), launcher.spawns)
 	}
 }
 
@@ -566,7 +568,6 @@ func TestWarmPool_BenchmarkTiming_ColdVsWarm(t *testing.T) {
 		t.Fatalf("expected warm hit (%v) to be significantly faster than cold (%v)", warmDuration, coldDuration)
 	}
 }
-
 
 // replyOK answers a request on its stream with one Arrow batch and a Receipt
 // whose result reference matches it, as the real adapter does.
@@ -983,7 +984,7 @@ func TestWarmPool_GraceFiredNeverKeeps(t *testing.T) {
 		mgr.mu.Lock()
 		kept := 0
 		for _, w := range mgr.workers {
-			if !w.busy {
+			if w.inFlight == 0 {
 				kept++
 			}
 		}
@@ -993,5 +994,154 @@ func TestWarmPool_GraceFiredNeverKeeps(t *testing.T) {
 		if kept == 1 && fs.procs[0].killed.Load() {
 			t.Fatal("worker killed by grace timer but returned to the pool")
 		}
+	}
+}
+
+// interleavedServe answers every request from its own goroutine after a short
+// delay, with the Result and Receipt frames written separately, so streams'
+// frames interleave on stdout. It records the peak number of open streams.
+func interleavedServe(peak *atomic.Int32) func(p *fakeWorkerProcess) {
+	return func(p *fakeWorkerProcess) {
+		var mu sync.Mutex
+		var open atomic.Int32
+		serveFake(p, func(f frame.Frame) {
+			if f.Type != frame.Request {
+				return
+			}
+			n := open.Add(1)
+			for old := peak.Load(); n > old && !peak.CompareAndSwap(old, n); old = peak.Load() {
+			}
+			go func() {
+				var wire bytes.Buffer
+				replyOK(&wire, f.Stream, f.Payload)
+				result, _ := frame.Read(&wire)
+				receipt, _ := frame.Read(&wire)
+				time.Sleep(time.Duration(f.Stream%7) * 3 * time.Millisecond)
+				mu.Lock()
+				_ = frame.Write(p.stdoutW, result.Type, result.Stream, result.Payload)
+				mu.Unlock()
+				time.Sleep(time.Millisecond)
+				open.Add(-1)
+				mu.Lock()
+				_ = frame.Write(p.stdoutW, receipt.Type, receipt.Stream, receipt.Payload)
+				mu.Unlock()
+			}()
+		})
+	}
+}
+
+// Fifty parallel reads for one connection share one worker, never exceed
+// max_in_flight streams on it, and all succeed with cross-checked receipts.
+func TestWarmPool_ConcurrentReadsMultiplexOneWorker(t *testing.T) {
+	var peak atomic.Int32
+	fs := &fakeSet{serve: interleavedServe(&peak)}
+	cfg := DefaultWarmPoolConfig()
+	cfg.Enabled = true
+	mgr, err := NewWarmPoolManager(cfg, fs.launcher())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = mgr.Drain(context.Background()) }()
+	exec := &Executor{Limits: query.Limits{MemoryMB: 64, Timeout: 5 * time.Second}}
+	var wg sync.WaitGroup
+	var failures atomic.Int32
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rows := 0
+			sink := &workerTestSink{write: func(b arrow.RecordBatch) error { rows += int(b.NumRows()); return nil }}
+			rec, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-par"), sink)
+			if err != nil || rec.Outcome != operations.Completed || rows != 1 {
+				failures.Add(1)
+				t.Error(rec.Outcome, err, rows)
+			}
+		}()
+	}
+	wg.Wait()
+	if failures.Load() != 0 || len(fs.procs) != 1 || peak.Load() > int32(cfg.MaxInFlight) || peak.Load() < 2 {
+		t.Fatalf("failures=%d procs=%d peak=%d", failures.Load(), len(fs.procs), peak.Load())
+	}
+	mgr.mu.Lock()
+	defer mgr.mu.Unlock()
+	for _, w := range mgr.workers {
+		if w.inFlight != 0 {
+			t.Fatal("slots leaked", w.inFlight)
+		}
+	}
+}
+
+// A full worker makes the next read wait queue_timeout, then refuses it with
+// a retryable RESOURCE_EXHAUSTED instead of starting a one-shot child.
+func TestWarmPool_FullWorkerWaitsThenRefuses(t *testing.T) {
+	fs := &fakeSet{serve: cancelServe("receipt")}
+	cfg := DefaultWarmPoolConfig()
+	cfg.Enabled = true
+	cfg.MaxInFlight = 1
+	cfg.QueueTimeout = 100 * time.Millisecond
+	mgr, err := NewWarmPoolManager(cfg, fs.launcher())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = mgr.Drain(context.Background()) }()
+	exec := &Executor{Limits: query.Limits{MemoryMB: 64, Timeout: 5 * time.Second}}
+	holdCtx, release := context.WithCancel(context.Background())
+	held := make(chan struct{})
+	go func() {
+		defer close(held)
+		_, _ = mgr.Execute(holdCtx, exec, OperationProcessConfig{}, opReq("op-hold"), &workerTestSink{})
+	}()
+	waitFor(t, func() bool {
+		mgr.mu.Lock()
+		defer mgr.mu.Unlock()
+		return len(mgr.workers) == 1 && mgr.metrics.Spawns.Load() == 1
+	})
+	start := time.Now()
+	rec, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-next"), &workerTestSink{})
+	var public *query.Error
+	if !errors.As(err, &public) || public.Code != "RESOURCE_EXHAUSTED" || !strings.Contains(public.Message, "retry") || rec.ErrorCode != "RESOURCE_EXHAUSTED" {
+		t.Fatalf("got %+v %v", rec, err)
+	}
+	if d := time.Since(start); d < cfg.QueueTimeout {
+		t.Fatalf("refused after %v without waiting", d)
+	}
+	if mgr.metrics.Fallbacks.Load() != 0 {
+		t.Fatal("a busy worker must not fall back to one-shot")
+	}
+	// The held read ends with a Receipt; its slot frees and the next read runs.
+	release()
+	<-held
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-after"), &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A frame for an unknown stream kills the worker and fails every read in
+// flight on it, not only the one it seemed to answer.
+func TestWarmPool_UnknownStreamFailsAllInFlight(t *testing.T) {
+	fs := &fakeSet{}
+	var requests atomic.Int32
+	fs.serve = func(p *fakeWorkerProcess) {
+		serveFake(p, func(f frame.Frame) {
+			if f.Type == frame.Request && requests.Add(1) == 3 {
+				_ = frame.WriteError(p.stdoutW, 999, "stray")
+			}
+		})
+	}
+	mgr, exec := newTestPool(t, fs.launcher())
+	var wg sync.WaitGroup
+	var failed atomic.Int32
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-stray"), &workerTestSink{}); err != nil && !errors.Is(err, errWarmUnavailable) {
+				failed.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if failed.Load() != 3 || !fs.procs[0].killed.Load() || mgr.metrics.EvictionsErr.Load() != 1 {
+		t.Fatalf("failed=%d killed=%v evictions=%d", failed.Load(), fs.procs[0].killed.Load(), mgr.metrics.EvictionsErr.Load())
 	}
 }
