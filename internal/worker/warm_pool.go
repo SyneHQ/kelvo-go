@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -132,6 +133,7 @@ type WarmPoolMetrics struct {
 	EvictionsLRU   atomic.Int64 // idle workers evicted to launch one for another connection
 	Fallbacks      atomic.Int64
 	SlowConsumers  atomic.Int64 // streams failed for falling 8 MiB behind
+	LaunchFailures atomic.Int64 // launches that failed to start or handshake
 }
 
 // WorkerProcess represents an interactive worker process with framed IO.
@@ -186,6 +188,14 @@ type WarmPoolManager struct {
 	changed chan struct{}               // closed and replaced whenever a slot frees
 	closed  bool
 	stopRpr chan struct{}
+	// backoff holds, per key, the window after a failed launch during which
+	// reads go straight to the one-shot path instead of relaunching.
+	backoff map[string]launchBackoff
+}
+
+type launchBackoff struct {
+	until  time.Time
+	window time.Duration
 }
 
 // NewWarmPoolManager creates a new pool manager.
@@ -200,6 +210,7 @@ func NewWarmPoolManager(cfg WarmPoolConfig, launcher WorkerLauncher) (*WarmPoolM
 		cfg:      cfg,
 		launcher: launcher,
 		workers:  make(map[string]*warmWorkerEntry),
+		backoff:  make(map[string]launchBackoff),
 		changed:  make(chan struct{}),
 		stopRpr:  make(chan struct{}),
 	}
@@ -389,8 +400,15 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			missed = true
 			m.metrics.Misses.Add(1)
 		}
+		// A key whose last launch failed does not relaunch until its window
+		// ends: with no worker it falls back, otherwise it waits for a slot.
+		backingOff := time.Now().Before(m.backoff[key].until)
+		if backingOff && keyCount == 0 {
+			m.mu.Unlock()
+			return nil, nil, errWarmUnavailable
+		}
 
-		if keyCount < m.cfg.MaxPerKey && len(m.workers) < m.cfg.MaxWorkers {
+		if !backingOff && keyCount < m.cfg.MaxPerKey && len(m.workers) < m.cfg.MaxWorkers {
 			entry := &warmWorkerEntry{
 				id:                    fmt.Sprintf("worker-%d", time.Now().UnixNano()),
 				key:                   key,
@@ -501,16 +519,24 @@ func (m *WarmPoolManager) evictIdleOther(ctx context.Context, key string) bool {
 func (m *WarmPoolManager) launch(e *Executor, cfg OperationProcessConfig, entry *warmWorkerEntry) (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), launchTimeout)
 	defer cancel()
+	stage := "launch"
 	defer func() {
+		m.mu.Lock()
+		switch {
+		case err == nil:
+			delete(m.backoff, entry.key)
+		case !errors.Is(err, errWarmUnavailable):
+			// A capacity refusal is not a failure; anything else backs off.
+			m.recordLaunchFailureLocked(entry.key, stage, err)
+		}
 		if err != nil {
-			m.mu.Lock()
 			entry.launchErr = err
 			if m.workers[entry.id] == entry {
 				delete(m.workers, entry.id)
 			}
 			m.broadcastLocked()
-			m.mu.Unlock()
 		}
+		m.mu.Unlock()
 		close(entry.ready)
 	}()
 	limits := e.Limits
@@ -522,6 +548,7 @@ func (m *WarmPoolManager) launch(e *Executor, cfg OperationProcessConfig, entry 
 	entry.proc = proc
 	entry.cleanup = cleanup
 	entry.sw = frame.NewSyncWriter(proc.Stdin())
+	stage = "hello"
 	if err := helloHandshake(ctx, proc); err != nil {
 		// A worker that cannot speak v2 is a launch failure: fall back to one-shot.
 		m.killWorker(entry)
@@ -532,6 +559,54 @@ func (m *WarmPoolManager) launch(e *Executor, cfg OperationProcessConfig, entry 
 	// Count only workers that actually started; refused launches are fallbacks.
 	m.metrics.Spawns.Add(1)
 	return nil
+}
+
+// launchBackoffBase and launchBackoffMax bound the per-key window after a
+// failed launch: it starts at the base, doubles on each failure that follows
+// it, and is cleared by a launch that succeeds. Vars so tests can shorten them.
+var (
+	launchBackoffBase = 5 * time.Second
+	launchBackoffMax  = 60 * time.Second
+)
+
+// recordLaunchFailureLocked opens or extends key's backoff window and logs
+// once per window. The log carries the stage and an error code, never the
+// error text, which can name paths or connection details.
+func (m *WarmPoolManager) recordLaunchFailureLocked(key, stage string, err error) {
+	m.metrics.LaunchFailures.Add(1)
+	now := time.Now()
+	// Failures are rare, so prune here: a key quiet for a full max window
+	// starts again at the base.
+	for k, old := range m.backoff {
+		if now.Sub(old.until) > launchBackoffMax {
+			delete(m.backoff, k)
+		}
+	}
+	b := m.backoff[key]
+	if now.Before(b.until) {
+		return // a concurrent launch already opened this window
+	}
+	switch {
+	case b.window == 0:
+		b.window = launchBackoffBase
+	case b.window < launchBackoffMax:
+		b.window = min(2*b.window, launchBackoffMax)
+	}
+	b.until = now.Add(b.window)
+	m.backoff[key] = b
+	log.Printf("Kelvo warm worker launch failed: stage=%s code=%s backoff=%s", stage, launchFailureCode(err), b.window)
+}
+
+func launchFailureCode(err error) string {
+	var public *query.Error
+	switch {
+	case errors.As(err, &public):
+		return public.Code
+	case errors.Is(err, context.DeadlineExceeded):
+		return "TIMEOUT"
+	default:
+		return "UNAVAILABLE"
+	}
 }
 
 // demux is the only reader of a worker's stdout. It routes each frame to its

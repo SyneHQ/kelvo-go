@@ -906,13 +906,97 @@ func TestWarmPool_LaunchFailureFallsBackToOneShot(t *testing.T) {
 	mgr.mu.Lock()
 	leaked := len(mgr.workers)
 	mgr.mu.Unlock()
-	if launcher.calls != 2 || leaked != 0 || mgr.metrics.Fallbacks.Load() != 2 {
+	// The second read is inside the failure's backoff window: no relaunch.
+	if launcher.calls != 1 || leaked != 0 || mgr.metrics.Fallbacks.Load() != 2 {
 		t.Fatalf("calls=%d leaked=%d fallbacks=%d", launcher.calls, leaked, mgr.metrics.Fallbacks.Load())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if _, err := mgr.Execute(ctx, exec, OperationProcessConfig{}, req, nil); errors.Is(err, errWarmUnavailable) || err == nil {
 		t.Fatalf("a cancelled request must not fall back: %v", err)
+	}
+}
+
+// A failed launch opens a per-key window (base, doubling to the max, cleared
+// by a success) in which reads fall back without launching; other keys still
+// launch. One launch per window.
+func TestWarmPool_LaunchFailureBacksOffPerKey(t *testing.T) {
+	var fail atomic.Bool
+	fail.Store(true)
+	fs := &fakeSet{serve: func(p *fakeWorkerProcess) { serveFake(p, nil) }}
+	ok := fs.launcher()
+	l := &mockLauncher{onLaunch: func(ctx context.Context) (WorkerProcess, func() error, error) {
+		if fail.Load() {
+			return nil, nil, errors.New("sandbox refused the worker")
+		}
+		return ok.onLaunch(ctx)
+	}}
+	mgr, exec := newTestPool(t, l)
+	req := opReq("op-backoff")
+	read := func() error {
+		_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, req, &workerTestSink{})
+		return err
+	}
+	spawns := func() int { l.mu.Lock(); defer l.mu.Unlock(); return l.spawns }
+	// The failing key is the only one backing off: end its window now.
+	expire := func() time.Duration {
+		mgr.mu.Lock()
+		defer mgr.mu.Unlock()
+		if len(mgr.backoff) != 1 {
+			t.Fatalf("backing off %d keys, want 1", len(mgr.backoff))
+		}
+		for k, b := range mgr.backoff {
+			b.until = time.Now().Add(-time.Millisecond)
+			mgr.backoff[k] = b
+			return b.window
+		}
+		return 0
+	}
+
+	for i := 0; i < 5; i++ {
+		if err := read(); !errors.Is(err, errWarmUnavailable) {
+			t.Fatalf("read %d: want fallback, got %v", i, err)
+		}
+	}
+	if spawns() != 1 || mgr.metrics.LaunchFailures.Load() != 1 || mgr.metrics.Fallbacks.Load() != 5 {
+		t.Fatalf("first window: spawns=%d failures=%d fallbacks=%d", spawns(), mgr.metrics.LaunchFailures.Load(), mgr.metrics.Fallbacks.Load())
+	}
+	// Each window that ends allows one launch; another failure doubles it.
+	want := launchBackoffBase
+	for w := 2; w <= 6; w++ {
+		if got := expire(); got != want {
+			t.Fatalf("window %d: backoff %v, want %v", w, got, want)
+		}
+		for i := 0; i < 3; i++ {
+			_ = read()
+		}
+		if spawns() != w {
+			t.Fatalf("window %d: spawns=%d", w, spawns())
+		}
+		want = min(2*want, launchBackoffMax)
+	}
+	if got := expire(); got != launchBackoffMax {
+		t.Fatalf("backoff not capped: %v", got)
+	}
+
+	// Another connection is not held back by this one's failures.
+	fail.Store(false)
+	other := testProcessRequest("op-other", "tenant-a", "team-a", "conn-other", strings.Repeat("1", 64))
+	other.CredentialsValidUntil = req.CredentialsValidUntil
+	before := spawns()
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, other, &workerTestSink{}); err != nil || spawns() != before+1 {
+		t.Fatalf("other key did not launch: err=%v spawns=%d", err, spawns())
+	}
+
+	// A success clears the window.
+	if err := read(); err != nil {
+		t.Fatalf("read after window: %v", err)
+	}
+	mgr.mu.Lock()
+	still := len(mgr.backoff)
+	mgr.mu.Unlock()
+	if still != 0 {
+		t.Fatal("success did not clear the backoff")
 	}
 }
 
