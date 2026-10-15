@@ -1,6 +1,7 @@
 # Pooled read workers
 
 Status: draft for review. Nothing here is built unless a section says so.
+Phase 1 (#215) and phase 2 (see "Phase 2 as built") are implemented.
 
 ## Why
 
@@ -232,6 +233,29 @@ PostgreSQL, like the two gates added in #209.
 
 Phase 0 is independent and should ship first. Phases 1-2 deliver the bulk of the
 gain. Phase 3 is the security-sensitive one.
+
+## Phase 2 as built
+
+- The pool manager counts reads in flight per worker up to `max_in_flight`
+  (default 16). One demux reader per worker routes frames by stream ID; a
+  burst for a launching worker shares that launch. A full worker makes a
+  read wait up to `queue_timeout` (with `queue_depth`, default 64, waiting),
+  then answers `RESOURCE_EXHAUSTED` with a retry hint; it does not fall back,
+  since fifty one-shot children is the collapse this design avoids.
+- Native reads route to a read worker from `Executor.execute`, before the
+  per-read reservation, for PostgreSQL-family sources whose DSN the adapter
+  accepts and when the node's limits fit the adapter's (1M rows, 64 MiB).
+  Otherwise, or when no worker can be obtained and nothing was sent, the read
+  takes the one-shot child.
+- Metadata inspection becomes a transient query: `query.Request.inspect`
+  carries an `operations.MetadataSpec` for one native connection. It is signed
+  like SQL (the digest gains an `inspect` key only when present) and never
+  enters the operation ledger. It runs on the read worker, with a one-shot
+  adapter as fallback. This answers open question 4 for inspection; db-api
+  must switch its inspection calls to it.
+- The gate replays an explorer page open (50 parallel reads and inspections)
+  through `Executor.Execute`, the node's query entry. The node's job permits
+  (`policy.workers`) still bound how many reach it at once; that is phase 4.
 
 ## Targets
 
