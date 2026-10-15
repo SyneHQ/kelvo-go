@@ -3,6 +3,7 @@ package relational
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/adapters/go/connectors/sqlsession"
@@ -20,8 +21,26 @@ type Session struct {
 	reusable bool
 }
 
-// PoolSize is the number of source connections a warm session may hold.
-const PoolSize = 4
+const (
+	// DefaultPoolSize is the pool a warm session gets unless the node asks for another.
+	DefaultPoolSize = 4
+	// MaxPoolSize bounds what a node may ask for.
+	MaxPoolSize = 32
+)
+
+// PoolSize is the number of source connections a warm session may hold. The
+// serve process sets it once at startup, from the node's read_workers.pool_size,
+// before any session opens.
+var PoolSize = DefaultPoolSize
+
+// SetPoolSize sets PoolSize. It must be called before the first session opens.
+func SetPoolSize(n int) error {
+	if n < 1 || n > MaxPoolSize {
+		return fmt.Errorf("relational: pool size must be between 1 and %d", MaxPoolSize)
+	}
+	PoolSize = n
+	return nil
+}
 
 // KeepOpen lets a warm worker run several reads on this session's single
 // pool of PoolSize connections, safe for concurrent reads; a failed or

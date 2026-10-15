@@ -130,10 +130,10 @@ func LoadNode(path string) (NodeConfig, error) {
 	}
 	if c.ReadWorkers != nil {
 		rw := c.ReadWorkers.withDefaults()
-		if err := rw.validate(c.Resources); err != nil {
+		c.ReadWorkers = &rw
+		if err := validateNodeReadWorkers(c); err != nil {
 			return c, err
 		}
-		c.ReadWorkers = &rw
 	}
 	resolveTLS(base, &c.TLS)
 	if err := validateTLSRotation(c.TLS); err != nil {

@@ -13,3 +13,6 @@ import (
 func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg OperationProcessConfig, limits query.Limits) (WorkerProcess, func() error, error) {
 	return nil, nil, errors.New("warm_pool: default launcher requires Linux environment")
 }
+
+// NewServeLauncher exists for portability; the serve launcher requires Linux.
+func NewServeLauncher(poolSize int) WorkerLauncher { return &defaultWorkerLauncher{} }

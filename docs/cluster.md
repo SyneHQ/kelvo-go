@@ -86,16 +86,25 @@ References: [consumers](https://docs.nats.io/nats-concepts/jetstream/consumers),
 Read capacity is a node setting, not cluster state. It is not part of `policy`, is never written to or compared with the `KELVO_META` record, and changes with a restart of that node only. No NATS record is deleted, the cluster is not re-initialized, and the audit journal is kept.
 
 ```yaml
+operations:
+  warm_pool: {enabled: true, max_per_key: 1, queue_depth: 64, worker_memory_mb: 64}
 read_workers:
-  max_workers: 4      # required, 1-64, no larger than resources.max_concurrent
-  max_in_flight: 16   # reads per worker, 1-256, default 16
-  pool_size: 4        # source connections per worker, 1-64, default 4
-  idle_ttl: 30m       # 10ms-24h, default 30m
-  queue_wait: 2s      # bounded admission wait, 10ms-1m, default 2s
+  max_workers: 4        # required, 1-64; one admission reservation each
+  max_in_flight: 16     # reads per worker, 1-64, default 16
+  pool_size: 4          # source connections per worker, 1-32, default 4
+  idle_ttl: 30m         # 10ms-24h, default 30m
+  queue_wait: 2s        # bounded admission wait, 10ms-1m, default 2s
+  stream_buffer_mb: 8   # unread result bytes per stream, 1-256, default 8
 ```
 
-`operations.max_concurrent` is bounded by `resources.max_concurrent` and `audit.max_pending` (every claimed operation needs an audit reservation), and no longer by `policy.workers`. Raise `audit.max_pending` together with it. `policy.workers` still names the worker identities and sizes the legacy NATS job queue (consumer `max_ack_pending`, job store); those stay pinned in the metadata check.
+`read_workers` is the single source of read-worker capacity. It sizes the warm pool (`max_workers`, `max_in_flight`, `idle_ttl`, `queue_wait` as the pool's queue timeout, `stream_buffer_mb`) and the adapter's source connection pool: the launcher starts each adapter with `serve --pool-size N`. `max_workers × pool_size` may not exceed 256 source connections.
 
-The settings are validated by `kelvo node --check-config`. They are not yet read by the warm pool: wiring them into `internal/worker/warm_pool.go` is a follow-up owned by the read-path work.
+`operations.warm_pool` keeps `enabled` and the non-capacity fields (`max_per_key`, `queue_depth`, `worker_memory_mb`, caps, cache, `reauthorize_every`). It must be enabled when `read_workers` is set, and setting `idle_ttl`, `max_workers`, `max_in_flight`, `queue_timeout` or `stream_buffer_mb` there as well is a configuration error. The check fails with a static message and prints no values.
+
+**Migration.** A node without `read_workers` keeps working: its pool is sized from the same fields in `operations.warm_pool` and the adapter keeps its default pool of 4. To migrate, move those five fields into `read_workers` (`queue_timeout` becomes `queue_wait`), add `pool_size` if the default of 4 is not wanted, and delete them from `warm_pool`. Run `kelvo node --check-config` before restarting.
+
+**Mixed versions.** An adapter built before `--pool-size` exits on the unknown argument and a sandbox launcher built before it refuses the argument. Either way the worker never answers the hello, the launch fails, and reads run on the one-shot path. Roll the adapter and launcher out with the node.
+
+`operations.max_concurrent` is bounded by `resources.max_concurrent` and `audit.max_pending` (every claimed operation needs an audit reservation), and no longer by `policy.workers`. Raise `audit.max_pending` together with it. `policy.workers` still names the worker identities and sizes the legacy NATS job queue (consumer `max_ack_pending`, job store); those stay pinned in the metadata check.
 
 The audit journal header no longer binds `audit.max_pending`. Journals written by earlier versions carry a value that is ignored on open; all other limits (`max_entries`, `retention`, `write_timeout`) and the scope remain bound.

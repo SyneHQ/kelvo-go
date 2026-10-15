@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
@@ -99,6 +100,23 @@ func reserveWorker(ctx context.Context, pool *admission.Pool, request admission.
 }
 
 func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg OperationProcessConfig, limits query.Limits) (WorkerProcess, func() error, error) {
+	return launchServe(ctx, e, cfg, limits, 0)
+}
+
+// serveLauncher starts adapters with an explicit source-connection pool size.
+type serveLauncher struct{ poolSize int }
+
+// NewServeLauncher returns the default launcher, passing `--pool-size N` to the
+// adapter's serve command. An adapter that does not know the flag exits at
+// once, the hello handshake fails, and the pool falls back to one-shot.
+func NewServeLauncher(poolSize int) WorkerLauncher { return &serveLauncher{poolSize: poolSize} }
+
+func (l *serveLauncher) Launch(ctx context.Context, e *Executor, cfg OperationProcessConfig, limits query.Limits) (WorkerProcess, func() error, error) {
+	return launchServe(ctx, e, cfg, limits, l.poolSize)
+}
+
+// launchServe starts one serve process; poolSize 0 leaves the adapter's default.
+func launchServe(ctx context.Context, e *Executor, cfg OperationProcessConfig, limits query.Limits, poolSize int) (WorkerProcess, func() error, error) {
 	if e == nil || e.ResourcePool == nil || e.ScratchRoot == nil || e.Containment == nil {
 		return nil, nil, errors.New("warm_pool: executor runtime unavailable")
 	}
@@ -142,6 +160,9 @@ func (l *defaultWorkerLauncher) Launch(ctx context.Context, e *Executor, cfg Ope
 	// Target serve subcommand instead of worker
 	args[len(args)-2] = "/proc/self/fd/5"
 	args[len(args)-1] = "serve"
+	if poolSize > 0 {
+		args = append(args, "--pool-size", strconv.Itoa(poolSize))
+	}
 
 	processLimits, err := e.ContainmentBudget.ProcessLimits(int64(limits.MemoryMB), limits.Threads)
 	if err != nil {

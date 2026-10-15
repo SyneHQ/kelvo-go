@@ -182,20 +182,29 @@ func TestNodeCheckConfigReadWorkersAreNodeSettings(t *testing.T) {
 	}
 	path, config, _ := nodeCheckFixture(t, "127.0.0.1:1")
 	// policy.workers stays {a1: 1}; capacity is raised only through node settings.
-	raised := strings.Replace(config, "resources: {max_concurrent: 1,", "resources: {max_concurrent: 4,", 1)
+	raised := strings.Replace(config, "resources: {max_concurrent: 1, memory_mb: 512,", "resources: {max_concurrent: 4, memory_mb: 4096,", 1)
 	raised = strings.Replace(raised, "max_concurrent: 1\n  max_downloads", "max_concurrent: 4\n  max_downloads", 1)
+	pool := func(fields string) string {
+		return strings.Replace(raised, "  poll_interval: 100ms\n", "  poll_interval: 100ms\n  warm_pool: {enabled: true, max_per_key: 1, queue_depth: 64, worker_memory_mb: 64"+fields+"}\n", 1)
+	}
 	for name, tc := range map[string]struct {
 		body  string
 		valid bool
 	}{
-		"operations above policy.workers":    {raised, true},
-		"read workers with defaults":         {raised + "read_workers: {max_workers: 4}\n", true},
-		"read workers all settings":          {raised + "read_workers: {max_workers: 2, max_in_flight: 32, pool_size: 8, idle_ttl: 10m, queue_wait: 500ms}\n", true},
-		"operations above audit max_pending": {strings.Replace(raised, "max_pending: 8", "max_pending: 2", 1), false},
-		"read workers without capacity":      {raised + "read_workers: {max_in_flight: 16}\n", false},
-		"read workers above admission":       {raised + "read_workers: {max_workers: 5}\n", false},
-		"read workers bad pool":              {raised + "read_workers: {max_workers: 1, pool_size: 65}\n", false},
-		"read workers unknown key":           {raised + "read_workers: {max_workers: 1, secret_canary: x}\n", false},
+		"operations above policy.workers":       {raised, true},
+		"read workers with defaults":            {pool("") + "read_workers: {max_workers: 2}\n", true},
+		"read workers all settings":             {pool("") + "read_workers: {max_workers: 2, max_in_flight: 8, pool_size: 8, idle_ttl: 10m, queue_wait: 500ms, stream_buffer_mb: 4}\n", true},
+		"read workers without capacity":         {pool("") + "read_workers: {max_in_flight: 16}\n", false},
+		"read workers above admission":          {pool("") + "read_workers: {max_workers: 5}\n", false},
+		"read workers bad pool":                 {pool("") + "read_workers: {max_workers: 1, pool_size: 33}\n", false},
+		"read workers bad in flight":            {pool("") + "read_workers: {max_workers: 1, max_in_flight: 65}\n", false},
+		"read workers unknown key":              {pool("") + "read_workers: {max_workers: 1, secret_canary: x}\n", false},
+		"read workers without a warm pool":      {raised + "read_workers: {max_workers: 2}\n", false},
+		"read workers with a disabled pool":     {strings.Replace(pool(""), "enabled: true", "enabled: false", 1) + "read_workers: {max_workers: 2}\n", false},
+		"capacity set in both places":           {pool(", max_workers: 2") + "read_workers: {max_workers: 2}\n", false},
+		"stream buffer set in both places":      {pool(", stream_buffer_mb: 8") + "read_workers: {max_workers: 2}\n", false},
+		"legacy warm pool capacity still works": {pool(", idle_ttl: 30m, max_workers: 2, max_in_flight: 16, queue_timeout: 5s"), true},
+		"operations above audit max_pending":    {strings.Replace(raised, "max_pending: 8", "max_pending: 2", 1), false},
 	} {
 		if err := os.WriteFile(path, []byte(tc.body), 0600); err != nil {
 			t.Fatal(err)
