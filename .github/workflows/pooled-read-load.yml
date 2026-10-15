@@ -30,7 +30,8 @@ jobs:
       matrix:
         include:
           # max_workers 4 is the default pool: 20 customers do not fit.
-          - {name: 2c1g-workers4, profile: 2c1g, set: '--loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
+          - {name: 2c1g-light-patched, profile: 2c1g, patched: true, set: '--loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
+          - {name: 2c1g-light-unpatched, profile: 2c1g, patched: false, set: '--loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
     env:
       CGO_ENABLED: '1'
       GOTOOLCHAIN: local
@@ -42,6 +43,11 @@ jobs:
           cache-dependency-path: |
             go.sum
             adapters/go/go.sum
+      - name: Apply the measurement-only workarounds
+        if: matrix.patched
+        run: |
+          # Each patch works around a product defect reported in the PR; none is a fix.
+          for p in benchmarks/pooled-read-load/patches/*.patch; do git apply --check "$p" && git apply "$p"; done
       - name: Python dependencies
         run: python3 -c 'import yaml' || pip install --user pyyaml
       - name: Start a disposable PostgreSQL source
