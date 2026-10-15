@@ -1,0 +1,106 @@
+name: Pooled read load
+# Production-like load test of the pooled read workers: 20 customer databases,
+# 80 ms to the source, 300 ms per credential resolve, 50 virtual users for 5
+# minutes, the node in a cgroup sized like production (2 vCPU / 1 GB) and larger
+# (4 vCPU / 8 GB). Publishes one JSON report per run. See
+# docs/operations/pooled-read-workers.md and benchmarks/pooled-read-load.
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: Load seconds
+        default: '300'
+      extra:
+        description: Extra scripts/pooled_read_load.py flags, e.g. --set warm_pool.max_workers=8
+        default: ''
+  pull_request:
+    paths:
+      - 'benchmarks/pooled-read-load/**'
+      - 'scripts/pooled_read_load*.py'
+      - 'internal/cluster/pooled_read_load*'
+      - '.github/workflows/pooled-read-load.yml'
+permissions:
+  contents: read
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # max_workers 4 is the default pool: 20 customers do not fit.
+          - {name: 2c1g-workers4, profile: 2c1g, set: ''}
+          - {name: 2c1g-workers20, profile: 2c1g, set: '--set warm_pool.max_workers=20 --set resources.max_concurrent=24 --set resources.query_reserve_slots=20 --set resources.memory_mb=2400 --set resources.query_reserve_memory_mb=1950 --set resources.query_reserve_scratch_mb=200 --set resources.scratch_mb=300'}
+          - {name: 4c8g-workers4, profile: 4c8g, set: ''}
+          - {name: 4c8g-workers20, profile: 4c8g, set: '--set warm_pool.max_workers=20'}
+    env:
+      CGO_ENABLED: '1'
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.8'
+          cache-dependency-path: |
+            go.sum
+            adapters/go/go.sum
+      - name: Python dependencies
+        run: python3 -c 'import yaml' || pip install --user pyyaml
+      - name: Start a disposable PostgreSQL source
+        run: |
+          umask 077
+          mkdir -p artifacts/load-private
+          openssl rand -hex 16 > artifacts/load-private/pg.password
+          docker run -d --name kelvo-load-postgres -p 127.0.0.1:55433:5432 \
+            -e POSTGRES_PASSWORD="$(cat artifacts/load-private/pg.password)" postgres:17.6 \
+            -c shared_preload_libraries=pg_stat_statements -c max_connections=400 -c fsync=off >/dev/null
+          for attempt in $(seq 1 60); do
+            docker exec -e PGPASSWORD="$(cat artifacts/load-private/pg.password)" kelvo-load-postgres \
+              psql -h 127.0.0.1 -U postgres -Atc 'select 1' >/dev/null 2>&1 && break
+            sleep 1
+          done
+      - name: Build the binaries under test
+        run: |
+          bin=$PWD/artifacts/load-private/bin
+          mkdir -p "$bin"
+          go build -tags duckdb_arrow -o "$bin/kelvo" ./cmd/kelvo
+          cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o "$bin/kelvo-landlock"
+          go test -c -tags duckdb_arrow -o "$bin/cluster.test" ./internal/cluster
+          go build -o "$bin/loadgen" ./benchmarks/pooled-read-load/loadgen
+          go build -o "$bin/latproxy" ./benchmarks/pooled-read-load/latproxy
+          work=$(mktemp -d)
+          export GOWORK="$work/go.work"
+          (cd "$work" && go work init "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/adapters/go")
+          sdk_version=$(awk '$1 == "github.com/SYNEHQ/kelvo-go" { print $2 }' adapters/go/go.mod)
+          go work edit "-replace=github.com/SYNEHQ/kelvo-go@${sdk_version}=$GITHUB_WORKSPACE"
+          go work edit "-replace=github.com/sijms/go-ora/v2@v2.9.0=$GITHUB_WORKSPACE/third_party/go-ora-v2.9.0"
+          (cd adapters/go && go build -mod=readonly -p 2 -tags duckdb_arrow -trimpath -o "$bin/kelvo-adapter-go" ./cmd/kelvo-adapter-go)
+      - name: Run the load test (${{ matrix.name }})
+        run: |
+          bin=$PWD/artifacts/load-private/bin
+          python3 scripts/pooled_read_load.py --profile ${{ matrix.profile }} --label ${{ matrix.name }} \
+            --duration "${{ inputs.duration || '300' }}" --output "$PWD/artifacts/load-private/run" \
+            --postgres-password-file artifacts/load-private/pg.password \
+            --kelvo "$bin/kelvo" --launcher "$bin/kelvo-landlock" --adapter "$bin/kelvo-adapter-go" \
+            --cluster-test "$bin/cluster.test" --loadgen "$bin/loadgen" --latproxy "$bin/latproxy" \
+            ${{ matrix.set }} ${{ inputs.extra }}
+      - name: Summarize
+        if: always()
+        run: python3 scripts/pooled_read_load_summary.py artifacts/load-private/run/report.json >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Retain the load report
+        if: always()
+        run: |
+          mkdir -p artifacts/pooled-read-load
+          cd artifacts/load-private/run
+          cp report.json loadgen-report.json node-metrics.prom node-samples.json loadgen.log latproxy.stats.json ../../pooled-read-load/ 2>/dev/null || true
+          tail -c 200000 node.test.log > ../../pooled-read-load/node.test.log 2>/dev/null || true
+          tail -c 20000 service.log > ../../pooled-read-load/service.log 2>/dev/null || true
+          tail -c 20000 nats.log > ../../pooled-read-load/nats.log 2>/dev/null || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pooled-read-load-${{ matrix.name }}
+          path: artifacts/pooled-read-load/
+          if-no-files-found: warn
+          retention-days: 30
