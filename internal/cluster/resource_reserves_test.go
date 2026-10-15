@@ -169,7 +169,7 @@ func TestValidateNodeOperationsProtectsInteractiveShare(t *testing.T) {
 	warm := worker.DefaultWarmPoolConfig()
 	warm.Enabled = true
 	base := func() NodeConfig {
-		return NodeConfig{Policy: policy, WorkerID: "worker-a", Audit: &ServiceAuditConfig{Config: audit.Config{Directory: "/var/lib/kelvo/audit"}}, ScratchDirectory: "/var/lib/kelvo/scratch", SandboxPath: "/usr/lib/kelvo/landlock",
+		return NodeConfig{Policy: policy, WorkerID: "worker-a", Audit: &ServiceAuditConfig{Config: audit.Config{Directory: "/var/lib/kelvo/audit", MaxPending: 8}}, ScratchDirectory: "/var/lib/kelvo/scratch", SandboxPath: "/usr/lib/kelvo/landlock",
 			Containment: &ContainmentConfig{},
 			Resources: &ResourceConfig{MaxConcurrent: 6, MemoryMB: 4096, BaselineMB: 256, OverheadMB: 160, ScratchMB: 1024,
 				QueryReserveSlots: 5, QueryReserveMemoryMB: 2048, QueryReserveScratchMB: 256, SeparateClasses: true},
