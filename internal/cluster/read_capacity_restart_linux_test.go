@@ -6,6 +6,7 @@ package cluster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,9 +35,9 @@ func TestReadCapacityChangesByRestartOnly(t *testing.T) {
 		pending int
 	}
 	starts := []start{
-		{ReadWorkersConfig{MaxWorkers: 1}.withDefaults(), 4},
-		{ReadWorkersConfig{MaxWorkers: 4, MaxInFlight: 32, PoolSize: 8, IdleTTL: time.Minute, QueueWait: time.Second}.withDefaults(), 64},
-		{ReadWorkersConfig{MaxWorkers: 2, MaxInFlight: 8}.withDefaults(), 8},
+		{ReadWorkersConfig{MaxWorkers: 1}.withDefaults(), 8},
+		{ReadWorkersConfig{MaxWorkers: 4, MaxInFlight: 32, PoolSize: 8, IdleTTL: time.Minute, QueueWait: time.Second}.withDefaults(), 2}, // below the receipts held across this restart
+		{ReadWorkersConfig{MaxWorkers: 2, MaxInFlight: 8}.withDefaults(), 64},
 	}
 	var record string
 	for i, s := range starts {
@@ -75,10 +76,75 @@ func TestReadCapacityChangesByRestartOnly(t *testing.T) {
 		if got := journal.Snapshot().MaxPending; got != s.pending {
 			t.Fatalf("start %d: journal limit %d, want %d", i, got, s.pending)
 		}
+		binding := audit.Binding{TenantID: policy.TenantID, ServiceID: scope.ServiceID, ServiceKind: scope.ServiceKind, PrincipalID: "analyst-one", PrincipalKind: "user", PolicyVersion: strings.Repeat("a", 64)}
+		switch i {
+		case 0:
+			// Leave three executions in flight and three finished when the node stops.
+			for n := range 6 {
+				r, err := journal.Begin(context.Background(), binding, audit.QuerySubmit)
+				if err != nil {
+					t.Fatalf("begin %d: %v", n, err)
+				}
+				if n < 3 {
+					if err := r.Finish(context.Background(), audit.Succeeded, audit.None); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+		case 1:
+			// max_pending dropped below the six receipts the journal holds: they
+			// are all retained, the in-flight ones are finalized as interrupted,
+			// and the new limit applies to new work only.
+			if s := journal.Snapshot(); s.Retained != 6 || s.Active != 0 || s.MaxPending != 2 {
+				t.Fatalf("restart with lower max_pending: %+v", s)
+			}
+			var held []*audit.Receipt
+			for range 2 {
+				r, err := journal.Begin(context.Background(), binding, audit.QuerySubmit)
+				if err != nil {
+					t.Fatalf("new work under the lower limit: %v", err)
+				}
+				held = append(held, r)
+			}
+			if _, err := journal.Begin(context.Background(), binding, audit.QuerySubmit); !errors.Is(err, audit.ErrBusy) {
+				t.Fatalf("lower max_pending not enforced: %v", err)
+			}
+			for _, r := range held {
+				if err := r.Finish(context.Background(), audit.Succeeded, audit.None); err != nil {
+					t.Fatal(err)
+				}
+			}
+		default:
+			if s := journal.Snapshot(); s.Retained != 8 || s.Active != 0 {
+				t.Fatalf("raised max_pending lost receipts: %+v", s)
+			}
+		}
 		closeCtx, closeCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		if err := journal.Close(closeCtx); err != nil {
 			t.Fatal(err)
 		}
 		closeCancel()
+		if i == 1 {
+			counts := map[audit.Outcome]int{}
+			for cursor := 0; ; {
+				page, err := audit.ReadPage(context.Background(), journalDir, cursor, 16)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, e := range page.Events {
+					counts[e.Outcome]++
+					if e.Outcome == audit.Unknown && e.Category != audit.Interrupted {
+						t.Fatalf("in-flight receipt finalized as %q", e.Category)
+					}
+				}
+				if page.Done {
+					break
+				}
+				cursor = page.Next
+			}
+			if counts[audit.Succeeded] != 5 || counts[audit.Unknown] != 3 {
+				t.Fatalf("receipts after restart (3 finished, 3 interrupted, 2 new): %v", counts)
+			}
+		}
 	}
 }

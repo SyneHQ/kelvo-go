@@ -322,3 +322,30 @@ func TestOperationWorkerRequiresExplicitTLSAndWorkerCertificate(t *testing.T) {
 		t.Fatal("gateway identity used as worker")
 	}
 }
+
+// Operation concurrency is a node setting. policy.workers (cluster metadata)
+// no longer bounds it; the audit journal's pending limit does, because every
+// claimed operation needs an audit reservation.
+func TestNewOperationWorkerConcurrencyIsBoundedByAuditNotPolicyWorkers(t *testing.T) {
+	f := operationWorkerFixture(t)
+	if f.policy.Workers["worker-a"] != 2 {
+		t.Fatal("fixture no longer provisions two workers")
+	}
+	_, endpoint, workerTLS := operationTLSClient(t, f.g.OperationInputs())
+	prepare := func(context.Context, ledger.Record, operations.Request, ledger.Binding) (operationrun.Prepared, error) {
+		return nil, operations.ErrInvalid
+	}
+	build := func(concurrency, pending int) error {
+		w, err := NewOperationWorker(f.policy, f.cluster, f.state.store, OperationWorkerConfig{Runtime: operationrun.Config{WorkerID: "worker-a", Owner: strings.Repeat("a", 32), Concurrency: concurrency, PollInterval: 10 * time.Millisecond}, InputURL: endpoint, TLS: workerTLS}, operationJournal(t, pending), prepare)
+		if err == nil {
+			_ = w
+		}
+		return err
+	}
+	if err := build(4, 8); err != nil { // above policy.workers (2), within the journal limit
+		t.Fatalf("concurrency above policy.workers rejected: %v", err)
+	}
+	if err := build(5, 4); !errors.Is(err, errOperationConfig) { // above max_pending
+		t.Fatalf("concurrency above audit max_pending accepted: %v", err)
+	}
+}

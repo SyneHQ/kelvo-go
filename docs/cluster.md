@@ -94,7 +94,7 @@ read_workers:
   queue_wait: 2s      # bounded admission wait, 10ms-1m, default 2s
 ```
 
-`operations.max_concurrent` is bounded by `resources.max_concurrent` and no longer by `policy.workers`. `policy.workers` still names the worker identities and sizes the legacy NATS job queue (consumer `max_ack_pending`, job store); those stay pinned in the metadata check.
+`operations.max_concurrent` is bounded by `resources.max_concurrent` and `audit.max_pending` (every claimed operation needs an audit reservation), and no longer by `policy.workers`. Raise `audit.max_pending` together with it. `policy.workers` still names the worker identities and sizes the legacy NATS job queue (consumer `max_ack_pending`, job store); those stay pinned in the metadata check.
 
 The settings are validated by `kelvo node --check-config`. They are not yet read by the warm pool: wiring them into `internal/worker/warm_pool.go` is a follow-up owned by the read-path work.
 
