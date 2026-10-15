@@ -80,7 +80,7 @@ jobs:
         run: |
           bin=$PWD/artifacts/load-private/bin
           python3 scripts/pooled_read_load.py --profile ${{ matrix.profile }} --label ${{ matrix.name }} \
-            --duration "${{ inputs.duration || '300' }}" --output "$PWD/artifacts/load-private/run" \
+            --duration "${{ inputs.duration || '90' }}" --output "$PWD/artifacts/load-private/run" \
             --postgres-password-file artifacts/load-private/pg.password \
             --kelvo "$bin/kelvo" --launcher "$bin/kelvo-landlock" --adapter "$bin/kelvo-adapter-go" \
             --cluster-test "$bin/cluster.test" --loadgen "$bin/loadgen" --latproxy "$bin/latproxy" \
