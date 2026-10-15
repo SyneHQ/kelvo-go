@@ -150,7 +150,9 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		receipt, err = e.ExecuteOperation(quotaCtx, pool.Adapter, input, sink)
 	} else {
 		receipt, err = pool.Execute(withCredentialBound(quotaCtx, min(validUntil, expires)), e, pool.Adapter, input, sink)
-		if errors.Is(err, errWarmUnavailable) {
+		// A read that outwaited its credentials takes the regular path, which
+		// resolves them again; nothing reached a worker.
+		if errors.Is(err, errWarmUnavailable) || errors.Is(err, errCredentialsExpired) {
 			return stats, nil, false
 		}
 	}

@@ -274,3 +274,40 @@ func TestWarmPool_WaitersServedInOrder(t *testing.T) {
 		t.Fatal("waiters served out of order:", order)
 	}
 }
+
+// A read whose credentials expire while it waits for a slot is not sent with
+// stale ones and does not cost the worker: the caller authorizes again.
+func TestWarmPool_CredentialsExpiredWhileWaiting(t *testing.T) {
+	fs := &fakeSet{}
+	fs.serve = func(p *fakeWorkerProcess) {
+		serveFake(p, func(f frame.Frame) {
+			fs.record(f)
+			if f.Type == frame.Request {
+				replyOK(p.stdoutW, f.Stream, f.Payload)
+			}
+		})
+	}
+	mgr, exec := newTestPool(t, fs.launcher())
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-warm"), &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	expired := withCredentialBound(context.Background(), time.Now().Unix()-1)
+	if _, err := mgr.Execute(expired, exec, OperationProcessConfig{}, opReq("op-stale"), &workerTestSink{}); !errors.Is(err, errCredentialsExpired) {
+		t.Fatal("a read with expired credentials was not sent back to authorize:", err)
+	}
+	fs.mu.Lock()
+	requests := 0
+	for _, f := range fs.frames {
+		if f.Type == frame.Request {
+			requests++
+		}
+	}
+	fs.mu.Unlock()
+	if requests != 1 || mgr.metrics.EvictionsErr.Load() != 0 || mgr.metrics.Fallbacks.Load() != 0 {
+		t.Fatal("stale read reached or cost the worker:", requests, mgr.metrics.EvictionsErr.Load(), mgr.metrics.Fallbacks.Load())
+	}
+	// The worker still serves.
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-after"), &workerTestSink{}); err != nil || mgr.metrics.Spawns.Load() != 1 {
+		t.Fatal(err, mgr.metrics.Spawns.Load())
+	}
+}
