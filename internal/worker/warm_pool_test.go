@@ -777,15 +777,21 @@ func waitFor(t *testing.T, cond func() bool) {
 	t.Fatal("condition not met")
 }
 
-// cancelServe holds the first request until Cancel arrives, then ends it with
-// a terminal Error (or never, when silent).
-func cancelServe(silent bool) func(p *fakeWorkerProcess) {
+// cancelServe holds the "op-hold" request until Cancel arrives, then ends it
+// per mode: "receipt" (non-Completed Receipt), "error" (terminal Error) or
+// "silent" (nothing).
+func cancelServe(mode string) func(p *fakeWorkerProcess) {
 	return func(p *fakeWorkerProcess) {
 		serveFake(p, func(f frame.Frame) {
 			switch f.Type {
 			case frame.Cancel:
-				if !silent {
+				switch mode {
+				case "error":
 					_ = frame.WriteError(p.stdoutW, f.Stream, "cancelled")
+				case "receipt":
+					raw, _ := json.Marshal(operations.Receipt{Version: operations.Version, OperationID: "op-hold",
+						RequestSHA256: strings.Repeat("a", 64), Outcome: operations.Failed, Effect: operations.EffectNone, ErrorCode: "CANCELLED"})
+					_ = frame.WriteReceipt(p.stdoutW, f.Stream, raw)
 				}
 			case frame.Request:
 				var req adapter.ProcessRequest
@@ -799,7 +805,7 @@ func cancelServe(silent bool) func(p *fakeWorkerProcess) {
 }
 
 func TestWarmPool_CancelWithTerminalKeepsWorker(t *testing.T) {
-	fs := &fakeSet{serve: cancelServe(false)}
+	fs := &fakeSet{serve: cancelServe("receipt")}
 	mgr, exec := newTestPool(t, fs.launcher())
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -815,7 +821,7 @@ func TestWarmPool_CancelWithTerminalKeepsWorker(t *testing.T) {
 }
 
 func TestWarmPool_CancelWithoutTerminalKillsWorker(t *testing.T) {
-	fs := &fakeSet{serve: cancelServe(true)}
+	fs := &fakeSet{serve: cancelServe("silent")}
 	mgr, exec := newTestPool(t, fs.launcher())
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -832,7 +838,7 @@ func TestWarmPool_CancelWithoutTerminalKillsWorker(t *testing.T) {
 	}
 }
 
-func TestWarmPool_StreamErrorKeepsWorker(t *testing.T) {
+func TestWarmPool_StreamErrorKillsWorker(t *testing.T) {
 	fs := &fakeSet{}
 	fs.serve = func(p *fakeWorkerProcess) {
 		serveFake(p, func(f frame.Frame) {
@@ -855,8 +861,9 @@ func TestWarmPool_StreamErrorKeepsWorker(t *testing.T) {
 	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-ok"), &workerTestSink{}); err != nil {
 		t.Fatal(err)
 	}
-	if len(fs.procs) != 1 || fs.procs[0].killed.Load() || mgr.metrics.EvictionsErr.Load() != 0 {
-		t.Fatalf("worker was not kept: procs=%d evictions=%d", len(fs.procs), mgr.metrics.EvictionsErr.Load())
+	waitFor(t, func() bool { return fs.procs[0].killed.Load() })
+	if len(fs.procs) != 2 || mgr.metrics.EvictionsErr.Load() != 1 {
+		t.Fatalf("errored worker was reused: procs=%d evictions=%d", len(fs.procs), mgr.metrics.EvictionsErr.Load())
 	}
 }
 
@@ -929,5 +936,62 @@ func TestWarmPool_FailedReceiptReturnedAndWorkerKept(t *testing.T) {
 	}
 	if len(fs.procs) != 1 || fs.procs[0].killed.Load() || mgr.metrics.Hits.Load() != 1 {
 		t.Fatalf("worker not reused: procs=%d hits=%d", len(fs.procs), mgr.metrics.Hits.Load())
+	}
+}
+
+// A terminal Error during Cancel means the adapter is dying: kill, do not reuse.
+func TestWarmPool_CancelWithErrorTerminalKillsWorker(t *testing.T) {
+	fs := &fakeSet{serve: cancelServe("error")}
+	mgr, exec := newTestPool(t, fs.launcher())
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := mgr.Execute(ctx, exec, OperationProcessConfig{}, opReq("op-hold"), &workerTestSink{}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("got %v", err)
+	}
+	waitFor(t, func() bool { return fs.procs[0].killed.Load() })
+	if mgr.metrics.EvictionsErr.Load() != 1 {
+		t.Fatalf("evictions=%d", mgr.metrics.EvictionsErr.Load())
+	}
+}
+
+// A Receipt landing right at the grace deadline races the AfterFunc kill. The
+// outcome is inherently timing-dependent, so this asserts the invariant for
+// either winner (never "killed yet returned to the pool") over many rounds
+// instead of forcing one interleaving.
+func TestWarmPool_GraceFiredNeverKeeps(t *testing.T) {
+	old := cancelGrace
+	cancelGrace = 20 * time.Millisecond
+	grace := cancelGrace // fakes read this copy, not the var the test restores
+	defer func() { cancelGrace = old }()
+	for i := 0; i < 20; i++ {
+		fs := &fakeSet{}
+		fs.serve = func(p *fakeWorkerProcess) {
+			serveFake(p, func(f frame.Frame) {
+				if f.Type != frame.Cancel {
+					return
+				}
+				time.Sleep(grace) // answer right at the deadline
+				raw, _ := json.Marshal(operations.Receipt{Version: operations.Version, OperationID: "op-hold",
+					RequestSHA256: strings.Repeat("a", 64), Outcome: operations.Failed, Effect: operations.EffectNone, ErrorCode: "CANCELLED"})
+				_ = frame.WriteReceipt(p.stdoutW, f.Stream, raw)
+			})
+		}
+		mgr, exec := newTestPool(t, fs.launcher())
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		_, _ = mgr.Execute(ctx, exec, OperationProcessConfig{}, opReq("op-hold"), &workerTestSink{})
+		cancel()
+		mgr.mu.Lock()
+		kept := 0
+		for _, w := range mgr.workers {
+			if !w.busy {
+				kept++
+			}
+		}
+		mgr.mu.Unlock()
+		// Either the Receipt won the race cleanly (kept, never killed) or the
+		// timer fired (evicted). A kept worker that was killed is the bug.
+		if kept == 1 && fs.procs[0].killed.Load() {
+			t.Fatal("worker killed by grace timer but returned to the pool")
+		}
 	}
 }

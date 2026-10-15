@@ -132,7 +132,7 @@ func (r Runner) Serve(parent context.Context, input io.Reader, output io.Writer)
 
 		switch f.Type {
 		case frame.Ping:
-			if err := frame.WritePong(output); err != nil {
+			if err := sw.Write(frame.Pong, 0, nil); err != nil {
 				return fmt.Errorf("serve: pong write error: %w", err)
 			}
 
