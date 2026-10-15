@@ -59,6 +59,7 @@ type Snapshot struct {
 	Duration          [2]Histogram
 	Phases            [2][PhaseCount]Histogram
 	FirstBatch        [2]Histogram
+	Resolve           [2]Histogram
 	SinkDuration      [2]Histogram
 	ChildReports      [2][childTimingStatusCount]uint64
 	ChildUnknown      [2][ChildStageCount][childTimingStatusCount]uint64

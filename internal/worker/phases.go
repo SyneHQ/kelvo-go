@@ -15,7 +15,11 @@ type executionPhases struct {
 	enabled bool
 	start   time.Time
 	current telemetry.Phase
-	timings telemetry.PhaseTimings
+	// reached is the last phase entered. It is kept even when timing is off so a
+	// failed read can name its stage in the node log.
+	reached   telemetry.Phase
+	resolving bool
+	timings   telemetry.PhaseTimings
 }
 
 func newExecutionPhases(start time.Time, enabled bool) executionPhases {
@@ -27,6 +31,9 @@ func newExecutionPhases(start time.Time, enabled bool) executionPhases {
 }
 
 func (p *executionPhases) enter(phase telemetry.Phase) {
+	if phase > p.reached && phase < telemetry.PhaseCount {
+		p.reached = phase
+	}
 	if p.enabled {
 		p.enterAt(phase, time.Now())
 	}

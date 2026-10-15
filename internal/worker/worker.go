@@ -278,10 +278,14 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	if dynamic {
 		// Network/metadata resolution consumes the same bounded reservation as
 		// query execution; queued requests retain no source credentials.
+		phases.resolving = true
+		resolveStarted, metrics := time.Now(), e.Metrics
 		e, connectionValidUntil, err = e.resolveConnections(ctx, execution, resolverRequest)
+		observeResolve(metrics, ctx, time.Since(resolveStarted))
 		if err != nil {
-			return stats, err
+			return stats, err // phases.resolving stays set so the failure log names the stage
 		}
+		phases.resolving = false
 		r.Delegation = ""
 		if err := access.ValidateRequest(ctx, e.Config, r); err != nil {
 			return stats, err
