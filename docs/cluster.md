@@ -96,11 +96,17 @@ read_workers:
   idle_ttl: 30m         # 10ms-24h, default 30m
   queue_wait: 2s        # bounded admission wait, 10ms up to the 30s launch timeout (exclusive), default 2s
   stream_buffer_mb: 8   # unread result bytes per stream, 1-256, default 8
+  adapter: relational   # relational (default) or full
+  relational_adapter:   # the slim read adapter, pinned like operations.adapter
+    binary: /usr/local/bin/kelvo-adapter-relational
+    sha256: <digest>
 ```
 
 `read_workers` is the single source of read-worker capacity. It sizes the warm pool (`max_workers`, `max_per_key`, `max_in_flight`, `idle_ttl`, `queue_wait` as the pool's queue timeout, `stream_buffer_mb`) and, when `pool_size` is set, the adapter's source connection pool: the launcher then starts each adapter with `serve --pool-size N`. With `pool_size` unset no flag is sent and the adapter keeps its own pool of 4. `max_workers × pool_size` (4 when unset) may not exceed 256 source connections.
 
 `operations.warm_pool` keeps `enabled` and the non-capacity fields (`queue_depth`, `worker_memory_mb`, caps, cache, `reauthorize_every`). It must be enabled when `read_workers` is set, and setting `idle_ttl`, `max_workers`, `max_per_key`, `max_in_flight`, `queue_timeout` or `stream_buffer_mb` there as well is a configuration error. The check fails with a static message and prints no values.
+
+**Slim read adapter.** Read workers need only the relational engines, so the image also carries `kelvo-adapter-relational`: the same adapter source built with `-tags slim`, with no DuckDB, MongoDB, ClickHouse, Cassandra, Oracle or cloud SDKs and no one-shot mode. Pin it with `read_workers.relational_adapter` (digest in `/usr/share/kelvo/kelvo-adapter-relational.sha256`). With `adapter: relational` (the default) native reads use it when it is configured and its file is present and matches its digest; otherwise, and with `adapter: full`, they use `operations.adapter`. Durable operations always use the full adapter, which also serves any engine the slim build lacks, and a read never fails because the slim binary is absent. A configured but unusable slim binary logs one line at startup.
 
 **Migration.** A node without `read_workers` keeps working: its pool is sized from the same fields in `operations.warm_pool` and the adapter keeps its default pool of 4. To migrate, move those six fields into `read_workers` (`queue_timeout` becomes `queue_wait`), add `pool_size` once the new adapter and launcher are deployed, and delete them from `warm_pool`. Run `kelvo node --check-config` before restarting.
 

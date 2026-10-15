@@ -3,9 +3,11 @@ package cluster
 
 import (
 	"errors"
+	"path/filepath"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
+	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
 // ReadWorkersConfig sizes the pooled read workers of one node. It is a node
@@ -26,6 +28,14 @@ type ReadWorkersConfig struct {
 	IdleTTL        time.Duration `yaml:"idle_ttl"`         // idle worker lifetime, default 30m
 	QueueWait      time.Duration `yaml:"queue_wait"`       // bounded admission wait before a retryable refusal, default 2s
 	StreamBufferMB int           `yaml:"stream_buffer_mb"` // unread result bytes buffered per stream, default 8
+
+	// Adapter names the binary native reads run on: "relational" (default), a
+	// slim build with only the relational engines read workers serve, or "full".
+	// RelationalAdapter pins the slim binary like operations.adapter pins the
+	// full one. Without it, or when the file is missing or does not match its
+	// digest, the node uses the full adapter: a read never fails for that.
+	Adapter           string                         `yaml:"adapter"`
+	RelationalAdapter *worker.OperationProcessConfig `yaml:"relational_adapter,omitempty"`
 }
 
 const (
@@ -36,7 +46,9 @@ const (
 	defaultReadQueueWait   = 2 * time.Second
 	defaultReadStreamMB    = 8
 	// maxReadQueueWait is the warm pool's worker launch timeout: a queue wait must stay below it.
-	maxReadQueueWait = 30 * time.Second
+	maxReadQueueWait  = 30 * time.Second
+	adapterRelational = "relational"
+	adapterFull       = "full"
 	// maxSourceConnections bounds max_workers × pool_size: what one node may
 	// hold open against its sources.
 	maxSourceConnections = 256
@@ -66,6 +78,9 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 	if c.StreamBufferMB == 0 {
 		c.StreamBufferMB = defaultReadStreamMB
 	}
+	if c.Adapter == "" {
+		c.Adapter = adapterRelational
+	}
 	return c
 }
 
@@ -80,6 +95,9 @@ func (c ReadWorkersConfig) validate(resources *ResourceConfig) error {
 	}
 	if c.MaxWorkers*pool > maxSourceConnections {
 		return errReadWorkersConnections
+	}
+	if (c.Adapter != adapterRelational && c.Adapter != adapterFull) || (c.RelationalAdapter != nil && !validAdapterPin(*c.RelationalAdapter)) {
+		return errReadWorkersConfig
 	}
 	// One reservation per worker must fit the node's admission pool.
 	if resources != nil && c.MaxWorkers > resources.MaxConcurrent {
@@ -128,4 +146,27 @@ func (c NodeConfig) readPoolSize() int {
 		return 0
 	}
 	return c.ReadWorkers.PoolSize
+}
+
+// validAdapterPin checks the shape of a pin without touching the file: a
+// missing or changed slim binary is a fallback at startup, not a config error.
+func validAdapterPin(a worker.OperationProcessConfig) bool {
+	return filepath.IsAbs(a.Binary) && filepath.Clean(a.Binary) == a.Binary && len(a.Binary) <= 4096 && operations.ValidDigest(a.SHA256) && a.JDBC == nil
+}
+
+// readAdapter is the adapter binary native reads run on. The slim relational
+// build is used only when it is configured and usable now; otherwise, and
+// whenever it is not, the full adapter. Operations always use the full one: they
+// may open engines the slim build does not carry. usable reports a binary the
+// launcher would accept.
+func readAdapter(rw *ReadWorkersConfig, full worker.OperationProcessConfig, usable func(worker.OperationProcessConfig) bool) (adapter worker.OperationProcessConfig, slim bool) {
+	if rw == nil || rw.Adapter != adapterRelational || rw.RelationalAdapter == nil {
+		return full, false
+	}
+	candidate := *rw.RelationalAdapter
+	candidate.PrivateOpenDiagnostics = full.PrivateOpenDiagnostics
+	if !usable(candidate) {
+		return full, false
+	}
+	return candidate, true
 }

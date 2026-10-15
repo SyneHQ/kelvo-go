@@ -9,7 +9,7 @@ func TestParseArgs(t *testing.T) {
 		pool int
 		ok   bool
 	}{
-		{[]string{"worker"}, "worker", 4, true},
+		{[]string{"worker"}, "worker", 4, hasWorkerMode}, // the slim adapter has no one-shot mode
 		{[]string{"serve"}, "serve", 4, true},
 		{[]string{"serve", "--pool-size", "8"}, "serve", 8, true},
 		{[]string{"serve", "--pool-size", "1"}, "serve", 1, true},
@@ -24,6 +24,9 @@ func TestParseArgs(t *testing.T) {
 		{[]string{"other"}, "", 0, false},
 	} {
 		mode, pool, err := parseArgs(tc.args)
+		if !tc.ok {
+			tc.mode, tc.pool = "", 0
+		}
 		if (err == nil) != tc.ok || mode != tc.mode || pool != tc.pool {
 			t.Errorf("%v: got %q %d %v", tc.args, mode, pool, err)
 		}

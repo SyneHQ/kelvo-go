@@ -349,6 +349,9 @@ jobs:
           cd adapters/go
           go build -mod=readonly -p 2 -tags duckdb_arrow -trimpath \
             -o "$GITHUB_WORKSPACE/artifacts/warm-private/kelvo-adapter-go" ./cmd/kelvo-adapter-go
+          # The slim read adapter: relational engines only, no DuckDB or cgo.
+          CGO_ENABLED=0 go build -mod=readonly -p 2 -tags slim -trimpath -ldflags "-s -w" \
+            -o "$GITHUB_WORKSPACE/artifacts/warm-private/kelvo-adapter-relational" ./cmd/kelvo-adapter-go
       - name: Verify one warm adapter reuses one PostgreSQL connection
         run: |
           python3 scripts/warm_adapter_acceptance.py --go go \
@@ -364,18 +367,19 @@ jobs:
             --output artifacts/warm-private/run-repeated
       - name: Verify a skipped warm adapter gate fails
         run: python3 -m unittest discover -s scripts -p test_warm_adapter_acceptance.py
+      # Read-worker gates below run on the slim relational adapter.
       - name: Replay an explorer page open through the node to one read worker
         run: |
           python3 scripts/warm_adapter_acceptance.py --go go \
             --gate TestContainedReadWorkerServesExplorerPageOpen \
-            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --adapter artifacts/warm-private/kelvo-adapter-relational \
             --postgres-dsn-file artifacts/warm-private/postgres.dsn \
             --output artifacts/warm-private/run-explorer
       - name: Read through the real Go client, gateway and node to a read worker
         run: |
           python3 scripts/warm_adapter_acceptance.py --go go \
             --package ./internal/cluster --gate TestContainedReadWorkerThroughGoClient \
-            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --adapter artifacts/warm-private/kelvo-adapter-relational \
             --postgres-dsn-file artifacts/warm-private/postgres.dsn \
             --output artifacts/warm-private/run-client
       - name: Verify the warm pool's capacity contract on the real launcher
@@ -389,10 +393,11 @@ jobs:
         run: |
           python3 scripts/warm_adapter_acceptance.py --go go \
             --gate TestContainedReadWorkersSizeWorkersAndBackends \
-            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --adapter artifacts/warm-private/kelvo-adapter-relational \
             --postgres-dsn-file artifacts/warm-private/postgres.dsn \
             --output artifacts/warm-private/run-read-workers
       - name: Keep explorer p95 steady while the background class is full
+        # Durable operations run one-shot, which only the full adapter has.
         run: |
           python3 scripts/warm_adapter_acceptance.py --go go \
             --gate TestContainedExplorerUnaffectedByFullBackgroundClass \
@@ -403,21 +408,21 @@ jobs:
         run: |
           python3 scripts/warm_adapter_acceptance.py --go go \
             --gate TestContainedDashboardViewersShareOneSourceQueryPerPanel \
-            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --adapter artifacts/warm-private/kelvo-adapter-relational \
             --postgres-dsn-file artifacts/warm-private/postgres.dsn \
             --output artifacts/warm-private/run-dashboard
       - name: Refuse a revoked or changed source within reauthorize_every
         run: |
           python3 scripts/warm_adapter_acceptance.py --go go \
             --gate TestContainedRevokedOrChangedSourceRefusedWithinReauthorization \
-            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --adapter artifacts/warm-private/kelvo-adapter-relational \
             --postgres-dsn-file artifacts/warm-private/postgres.dsn \
             --output artifacts/warm-private/run-reauthorize
       - name: Share one re-authorization under concurrency and a cancelled caller
         run: |
           python3 scripts/warm_adapter_acceptance.py --go go \
             --gate TestContainedConcurrentReauthorizationKeepsWorker \
-            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --adapter artifacts/warm-private/kelvo-adapter-relational \
             --postgres-dsn-file artifacts/warm-private/postgres.dsn \
             --output artifacts/warm-private/run-reauthorize-concurrent
       - name: Verify 50 concurrent reads share one bounded PostgreSQL pool
@@ -430,9 +435,29 @@ jobs:
           go work edit "-replace=github.com/sijms/go-ora/v2@v2.9.0=$GITHUB_WORKSPACE/third_party/go-ora-v2.9.0"
           cd adapters/go
           gate=TestServeLoop_ConcurrentPostgresReadsShareBoundedPool
-          KELVO_TEST_WARM_POSTGRES_DSN=$(cat "$GITHUB_WORKSPACE/artifacts/warm-private/postgres.dsn") \
-            go test -race -count=1 -v -run "^${gate}\$" ./internal/runtime | tee "$GITHUB_WORKSPACE/artifacts/warm-private/concurrent.log"
-          grep -q "^--- PASS: ${gate}" "$GITHUB_WORKSPACE/artifacts/warm-private/concurrent.log"
+          for tags in "" "-tags slim"; do
+            KELVO_TEST_WARM_POSTGRES_DSN=$(cat "$GITHUB_WORKSPACE/artifacts/warm-private/postgres.dsn") \
+              go test $tags -race -count=1 -v -run "^${gate}\$" ./internal/runtime | tee -a "$GITHUB_WORKSPACE/artifacts/warm-private/concurrent.log"
+          done
+          test "$(grep -c "^--- PASS: ${gate}" "$GITHUB_WORKSPACE/artifacts/warm-private/concurrent.log")" = 2
+      - name: Measure the full and the slim adapter as warm workers
+        run: |
+          work=$(mktemp -d)
+          export GOWORK="$work/go.work"
+          (cd "$work" && go work init "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/adapters/go")
+          sdk_version=$(awk '$1 == "github.com/SYNEHQ/kelvo-go" { print $2 }' adapters/go/go.mod)
+          go work edit "-replace=github.com/SYNEHQ/kelvo-go@${sdk_version}=$GITHUB_WORKSPACE"
+          go work edit "-replace=github.com/sijms/go-ora/v2@v2.9.0=$GITHUB_WORKSPACE/third_party/go-ora-v2.9.0"
+          cd adapters/go
+          : > "$GITHUB_WORKSPACE/artifacts/warm-private/footprint.log"
+          for binary in kelvo-adapter-go kelvo-adapter-relational; do
+            KELVO_TEST_FOOTPRINT_ADAPTER="$GITHUB_WORKSPACE/artifacts/warm-private/$binary" \
+            KELVO_TEST_WARM_POSTGRES_DSN=$(cat "$GITHUB_WORKSPACE/artifacts/warm-private/postgres.dsn") \
+              go test -count=1 -v -run '^TestServeBinaryFootprint$' ./internal/runtime | tee -a "$GITHUB_WORKSPACE/artifacts/warm-private/footprint.log"
+          done
+          grep -c '^    footprint_test.go:[0-9]*: FOOTPRINT ' "$GITHUB_WORKSPACE/artifacts/warm-private/footprint.log" | grep -qx 2
+          go version -m "$GITHUB_WORKSPACE/artifacts/warm-private/kelvo-adapter-relational" > "$GITHUB_WORKSPACE/artifacts/warm-private/slim-modules.txt"
+          ! grep -Eiq 'duckdb|mongo|aws-sdk|go-ora|clickhouse|gocql' "$GITHUB_WORKSPACE/artifacts/warm-private/slim-modules.txt"
       - name: Retain the sanitized warm adapter report
         if: always()
         run: |
@@ -454,7 +479,7 @@ jobs:
             mkdir -p "artifacts/warm-adapter/$run"
             cp "artifacts/warm-private/run-$run/report.json" "artifacts/warm-private/run-$run/worker.test.log" "artifacts/warm-adapter/$run/" 2>/dev/null || true
           done
-          cp artifacts/warm-private/concurrent.log artifacts/warm-adapter/ 2>/dev/null || true
+          cp artifacts/warm-private/concurrent.log artifacts/warm-private/footprint.log artifacts/warm-private/slim-modules.txt artifacts/warm-adapter/ 2>/dev/null || true
           rm -f artifacts/warm-private/postgres.dsn
           docker rm -f -v kelvo-warm-postgres >/dev/null 2>&1 || true
       - if: always()

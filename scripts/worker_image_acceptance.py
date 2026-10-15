@@ -126,7 +126,7 @@ def run(runtime_image, worker_image, run_id=None):
         # All subsequent runs use immutable local image IDs, not mutable tags.
         common = "sha256sum /usr/local/bin/kelvo /usr/local/bin/kelvo-landlock"
         base = execute(images["runtime"], "/bin/sh", ["-ec", "test ! -e /usr/local/bin/kelvo-adapter-go; " + common])
-        packaged = execute(images["worker"], "/bin/sh", ["-ec", "cd /usr/local/bin; sha256sum -c /usr/share/kelvo/kelvo-adapter-go.sha256 >/dev/null; " + common + "; sha256sum /usr/local/bin/kelvo-adapter-go; test \"$(stat -c '%a:%u:%g' /usr/local/bin/kelvo-adapter-go)\" = 555:0:0"])
+        packaged = execute(images["worker"], "/bin/sh", ["-ec", "cd /usr/local/bin; sha256sum -c /usr/share/kelvo/kelvo-adapter-go.sha256 >/dev/null; sha256sum -c /usr/share/kelvo/kelvo-adapter-relational.sha256 >/dev/null; " + common + "; sha256sum /usr/local/bin/kelvo-adapter-go; test \"$(stat -c '%a:%u:%g' /usr/local/bin/kelvo-adapter-go)\" = 555:0:0"])
         require(base.stdout.splitlines() == packaged.stdout.splitlines()[:2], "Core binaries differ between runtime and worker images")
         report["gates"]["packaged_binaries"] = {"passed": True, "sha256": dict(line.decode().split()[::-1] for line in packaged.stdout.splitlines())}
         policy = execute(images["worker"], "/bin/sh", ["-ec", "test \"$(id -u)\" = 65532; touch /tmp/allowed; if touch /var/tmp/forbidden 2>/dev/null; then exit 9; fi; cat /proc/self/status"])

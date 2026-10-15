@@ -55,7 +55,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     && cd adapters/go \
     && go build -mod=readonly -p 2 -tags duckdb_arrow -trimpath \
          -ldflags "-s -w" -o /out/kelvo-adapter-go ./cmd/kelvo-adapter-go \
-    && cd /out && sha256sum kelvo-adapter-go > kelvo-adapter-go.sha256
+    && CGO_ENABLED=0 go build -mod=readonly -p 2 -tags slim -trimpath \
+         -ldflags "-s -w" -o /out/kelvo-adapter-relational ./cmd/kelvo-adapter-go \
+    && cd /out && sha256sum kelvo-adapter-go > kelvo-adapter-go.sha256 \
+    && sha256sum kelvo-adapter-relational > kelvo-adapter-relational.sha256
 
 FROM debian:bookworm-slim AS runtime-base
 RUN apt-get update \
@@ -81,11 +84,12 @@ STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/local/bin/kelvo"]
 CMD ["help"]
 
-# The worker target adds the optional database-operation adapter. Containment
-# remains mandatory. This image does not grant host or cgroup privileges.
+# The worker target adds the optional database-operation adapter and the slim
+# relational adapter that read workers use (read_workers.relational_adapter).
+# Containment remains mandatory. This image does not grant host or cgroup privileges.
 FROM runtime-base AS worker
-COPY --from=adapter-build --chmod=0555 /out/kelvo-adapter-go /usr/local/bin/
-COPY --from=adapter-build --chmod=0444 /out/kelvo-adapter-go.sha256 /usr/share/kelvo/
+COPY --from=adapter-build --chmod=0555 /out/kelvo-adapter-go /out/kelvo-adapter-relational /usr/local/bin/
+COPY --from=adapter-build --chmod=0444 /out/kelvo-adapter-go.sha256 /out/kelvo-adapter-relational.sha256 /usr/share/kelvo/
 
 # Keep the default target small for gateways and read-only deployments.
 FROM runtime-base AS runtime

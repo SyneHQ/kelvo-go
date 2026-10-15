@@ -13,13 +13,13 @@ import (
 	"github.com/SYNEHQ/kelvo-go/adapters/go/internal/runtime"
 )
 
-const usage = "usage: kelvo-adapter-go worker | serve [--pool-size N]"
+const usage = "usage: " + usageModes
 
 // parseArgs accepts "worker" and "serve [--pool-size N]". Anything else is a
 // usage error, so an adapter never starts with a setting it did not understand
 // (and an older adapter refuses the flag the same way).
 func parseArgs(args []string) (mode string, poolSize int, err error) {
-	if len(args) == 0 || (args[0] != "worker" && args[0] != "serve") {
+	if len(args) == 0 || (args[0] != "serve" && (args[0] != "worker" || !hasWorkerMode)) {
 		return "", 0, errors.New(usage)
 	}
 	mode, poolSize = args[0], relational.DefaultPoolSize
@@ -47,16 +47,7 @@ func main() {
 	defer cancel()
 
 	if mode == "worker" {
-		receipt := os.NewFile(3, "operation-receipt")
-		if receipt == nil {
-			fmt.Fprintln(os.Stderr, "adapter receipt pipe unavailable")
-			os.Exit(2)
-		}
-		defer receipt.Close()
-		if err := (runtime.Runner{}).Run(ctx, os.Stdin, os.Stdout, receipt); err != nil {
-			fmt.Fprintln(os.Stderr, "adapter operation failed")
-			os.Exit(1)
-		}
+		runWorker(ctx)
 		return
 	}
 

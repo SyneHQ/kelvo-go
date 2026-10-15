@@ -1,3 +1,5 @@
+//go:build !slim
+
 // Copyright 2026 SYNEHQ. SPDX-License-Identifier: Apache-2.0
 package runtime
 
