@@ -196,9 +196,12 @@ func TestPooledReadLoadNode(t *testing.T) {
 		}
 		unavailable(w)
 	}), privateTLS)
+	resolverTally := &refusalTally{m: map[string]int{}}
 	resolverServer := serve(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if h := resolverRef.Load(); h != nil {
-			h.ServeHTTP(w, r)
+			rec := &statusRecorder{ResponseWriter: w, status: 200}
+			h.ServeHTTP(rec, r)
+			resolverTally.note(fmt.Sprintf("%s %s -> %d", r.Method, r.URL.Path, rec.status), nil)
 			return
 		}
 		unavailable(w)
@@ -359,6 +362,7 @@ func TestPooledReadLoadNode(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = leases.Close() })
+	refusals := &refusalTally{m: map[string]int{}}
 	var (
 		resolveMu    sync.Mutex
 		resolveCalls = map[string]int{}
@@ -404,12 +408,15 @@ func TestPooledReadLoadNode(t *testing.T) {
 	handler, err := resolver.NewHandler(resolver.Config{
 		QueryTrust:     []delegation.Trust{{Issuer: issuer, Audience: audience, ClusterTenant: "a", ServicePrincipal: principal, PublicKey: pub}},
 		OperationTrust: []operations.GrantTrust{{Issuer: issuer, Audience: audience, ClusterTenant: "a", ServicePrincipal: principal, PublicKey: pub}},
-		Leases:         leases, Timeout: 15 * time.Second, MaxConcurrent: max(sc.Resolver.MaxConcurrent, 1),
+		Leases:         &countingLeases{inner: leases, errs: refusals}, Timeout: 15 * time.Second, MaxConcurrent: max(sc.Resolver.MaxConcurrent, 1),
 		AuthorizeQuery: func(_ context.Context, _ resolver.QueryRequest, c delegation.Claims) (resolver.Authorization, error) {
-			return authorization(c.Sources[0].ConnectionID)
+			a, err := authorization(c.Sources[0].ConnectionID)
+			refusals.note("authorize_query", err)
+			return a, err
 		},
 		ResolveQuery: func(ctx context.Context, _ resolver.QueryRequest, c delegation.Claims, a resolver.Authorization) (resolver.QueryMaterial, error) {
 			source, secrets, err := material(ctx, c.Sources[0].Alias, c.Sources[0].ConnectionID)
+			refusals.note("resolve_query", err)
 			return resolver.QueryMaterial{Sources: []resolver.Source{source}, Secrets: secrets, ValidUntil: a.ValidUntil}, err
 		},
 		AuthorizeOperation: func(_ context.Context, r resolver.OperationRequest, _ operations.GrantClaims) (resolver.Authorization, error) {
@@ -513,18 +520,20 @@ sampling:
 	}
 	resolveMu.Unlock()
 	report := map[string]any{
-		"duration_s":         time.Since(began).Seconds(),
-		"cpu_usage_usec":     readUint(filepath.Join(unitCgroup, "cpu.stat"), "usage_usec"),
-		"cpu_throttled_usec": readUint(filepath.Join(unitCgroup, "cpu.stat"), "throttled_usec"),
-		"nr_throttled":       readUint(filepath.Join(unitCgroup, "cpu.stat"), "nr_throttled"),
-		"memory_peak_bytes":  readUint(filepath.Join(unitCgroup, "memory.peak"), ""),
-		"memory_events_oom":  readUint(filepath.Join(unitCgroup, "memory.events"), "oom_kill"),
-		"peak_job_cgroups":   peakGroups,
-		"samples":            samples,
-		"gateway_refusals":   gwCountCopy(&gwMu, gwCount),
-		"resolver_calls":     resolveTotal.Load(),
-		"resolver_authorize": authCalls.Load(),
-		"resolver_per_conn":  perConnection,
+		"duration_s":           time.Since(began).Seconds(),
+		"cpu_usage_usec":       readUint(filepath.Join(unitCgroup, "cpu.stat"), "usage_usec"),
+		"cpu_throttled_usec":   readUint(filepath.Join(unitCgroup, "cpu.stat"), "throttled_usec"),
+		"nr_throttled":         readUint(filepath.Join(unitCgroup, "cpu.stat"), "nr_throttled"),
+		"memory_peak_bytes":    readUint(filepath.Join(unitCgroup, "memory.peak"), ""),
+		"memory_events_oom":    readUint(filepath.Join(unitCgroup, "memory.events"), "oom_kill"),
+		"peak_job_cgroups":     peakGroups,
+		"samples":              samples,
+		"resolver_http":        resolverTally.copy(),
+		"resolver_hook_errors": refusals.copy(),
+		"gateway_refusals":     gwCountCopy(&gwMu, gwCount),
+		"resolver_calls":       resolveTotal.Load(),
+		"resolver_authorize":   authCalls.Load(),
+		"resolver_per_conn":    perConnection,
 		"warm_pool": map[string]int64{"hits": pm.Hits.Load(), "misses": pm.Misses.Load(), "spawns": pm.Spawns.Load(), "queue_wait_ms": pm.QueueWaitMS.Load(),
 			"evictions_ttl": pm.EvictionsTTL.Load(), "evictions_revision": pm.EvictionsRev.Load(), "evictions_error": pm.EvictionsErr.Load(), "evictions_drain": pm.EvictionsDrain.Load(),
 			"evictions_auth": pm.EvictionsAuth.Load(), "authorizations": pm.Authorizations.Load(), "fallbacks": pm.Fallbacks.Load()},
@@ -548,4 +557,45 @@ func gwCountCopy(mu *sync.Mutex, m map[string]int) map[string]int {
 		out[k] = v
 	}
 	return out
+}
+
+// refusalTally counts outcomes by label and error text, for the report.
+type refusalTally struct {
+	mu sync.Mutex
+	m  map[string]int
+}
+
+func (r *refusalTally) note(label string, err error) {
+	if err != nil {
+		label += ": " + err.Error()
+	}
+	r.mu.Lock()
+	r.m[label]++
+	r.mu.Unlock()
+}
+func (r *refusalTally) copy() map[string]int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]int, len(r.m))
+	for k, v := range r.m {
+		out[k] = v
+	}
+	return out
+}
+
+// countingLeases reports why a custody check failed; the handler hides it.
+type countingLeases struct {
+	inner *client.Client
+	errs  *refusalTally
+}
+
+func (c *countingLeases) ValidateConnectionLease(ctx context.Context, id, grant string, b resolver.Binding) (time.Time, error) {
+	until, err := c.inner.ValidateConnectionLease(ctx, id, grant, b)
+	c.errs.note("lease_query", err)
+	return until, err
+}
+func (c *countingLeases) ValidateOperationLease(ctx context.Context, id, grant string, b resolver.Binding) (time.Time, error) {
+	until, err := c.inner.ValidateOperationLease(ctx, id, grant, b)
+	c.errs.note("lease_operation", err)
+	return until, err
 }
