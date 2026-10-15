@@ -169,8 +169,8 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 	if pool.cache == nil {
 		stats, err = execute(ctx, sink, nil)
 	} else {
-		key := resultCacheKey(tenant, team, r.ConnectionID, database, schema, input.Source.Revision, r, e.Limits)
-		stats, err = pool.cache.do(ctx, key, tenant, r.Refresh, sink, execute, func(entry *cacheEntry, sink query.Sink) (query.Stats, error) {
+		key := resultCacheKey(tenant, team, id.saved, database, schema, input.Source.Revision, r, e.Limits)
+		stats, err = pool.cache.do(ctx, key, tenant, r.BypassCache, sink, execute, func(entry *cacheEntry, sink query.Sink) (query.Stats, error) {
 			observed, err := e.readIPC(ctx, bytes.NewReader(entry.data), e.Limits, sink)
 			stats := entry.stats
 			stats.Rows, stats.WireBytes, stats.Bytes, stats.Batches = observed.Rows, observed.WireBytes, observed.Bytes, observed.Batches

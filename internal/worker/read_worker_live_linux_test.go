@@ -387,7 +387,7 @@ func TestContainedDashboardViewersShareOneSourceQueryPerPanel(t *testing.T) {
 					sink := &workerTestSink{}
 					<-start
 					began := time.Now()
-					_, err := g.executor.Execute(ctx, query.Request{Mode: "native", ConnectionID: "explorer", SQL: panel(p), Refresh: refresh}, sink)
+					_, err := g.executor.Execute(ctx, query.Request{Mode: "native", ConnectionID: "explorer", SQL: panel(p), BypassCache: refresh}, sink)
 					if err == nil && sink.rows != 1 {
 						err = fmt.Errorf("rows %d", sink.rows)
 					}
@@ -413,7 +413,7 @@ func TestContainedDashboardViewersShareOneSourceQueryPerPanel(t *testing.T) {
 	second := open("refresh-2", false)
 	afterSecond := calls()
 	sink := &workerTestSink{}
-	if _, err := g.executor.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "explorer", SQL: panel(0), Refresh: true}, sink); err != nil {
+	if _, err := g.executor.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "explorer", SQL: panel(0), BypassCache: true}, sink); err != nil {
 		t.Fatal("explicit refresh failed:", err)
 	}
 	afterRefresh := calls()
