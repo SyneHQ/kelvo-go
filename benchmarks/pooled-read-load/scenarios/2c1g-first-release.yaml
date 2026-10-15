@@ -1,0 +1,40 @@
+# First-release config for the CURRENT 2 vCPU / 1 GB node: a few active users, load shed at the door,
+# 8 workers (about 0.6 GiB). See docs/operations/pooled-read-workers-upgrade.md. The cgroup is set
+# by scripts/pooled_read_load.py; these are the Kelvo settings run inside it.
+# Secrets (source.password) and the proxy port are filled in by the runner.
+policy:
+  max_queries: 32
+  job_ttl: 2m
+  lease_duration: 5s
+  replicas: 1
+  workers: {a1: 16}        # node job permits for the query path; read_workers does not replace it yet
+  limits: {max_rows: 1000000, max_bytes: 67108864, timeout: 30s, memory_mb: 32, threads: 1, max_temp_mb: 16}
+resources:
+  max_concurrent: 12
+  memory_mb: 1400
+  baseline_mb: 250
+  overhead_mb: 64
+  scratch_mb: 256
+  separate_classes: true
+  query_reserve_slots: 10
+  query_reserve_memory_mb: 1000
+  query_reserve_scratch_mb: 160
+containment: {max_groups: 64}
+containment_budget: {native_overhead_mb: 16, parent_overhead_mb: 16, max_processes: 64}
+warm_pool:
+  enabled: true
+  idle_ttl: 30m
+  max_workers: 8
+  max_per_key: 1
+  max_in_flight: 16
+  queue_depth: 64
+  queue_timeout: 10s
+  worker_memory_mb: 64
+  cache_ttl: 10s
+  reauthorize_every: 60s
+operations: {max_concurrent: 1, max_downloads: 1, max_result_bytes: 16777216}
+gateway: {max_http_requests: 64}
+audit: {max_entries: 262144, max_pending: 64}
+resolver: {delay: 300ms, max_concurrent: 16}
+source: {host: 127.0.0.1, port: 0, password: "", ca_pem: "", customers: 20}
+sample_interval: 1s
