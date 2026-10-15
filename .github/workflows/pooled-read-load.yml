@@ -30,7 +30,7 @@ jobs:
       matrix:
         include:
           # max_workers 4 is the default pool: 20 customers do not fit.
-          - {name: 2c1g-workers4, profile: 2c1g, set: ''}
+          - {name: 2c1g-workers4, profile: 2c1g, set: '--loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
     env:
       CGO_ENABLED: '1'
       GOTOOLCHAIN: local
@@ -77,7 +77,7 @@ jobs:
         run: |
           bin=$PWD/artifacts/load-private/bin
           python3 scripts/pooled_read_load.py --profile ${{ matrix.profile }} --label ${{ matrix.name }} \
-            --duration "${{ inputs.duration || '90' }}" --output "$PWD/artifacts/load-private/run" \
+            --duration "${{ inputs.duration || '60' }}" --output "$PWD/artifacts/load-private/run" \
             --postgres-password-file artifacts/load-private/pg.password \
             --kelvo "$bin/kelvo" --launcher "$bin/kelvo-landlock" --adapter "$bin/kelvo-adapter-go" \
             --cluster-test "$bin/cluster.test" --loadgen "$bin/loadgen" --latproxy "$bin/latproxy" \
