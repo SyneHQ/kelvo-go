@@ -116,11 +116,12 @@ func TestReadAuthorizationOncePerWindow(t *testing.T) {
 	if mgr.metrics.Authorizations.Load() != 2 || last.Source.DSN == "" {
 		t.Fatal("stale authorization reused", mgr.metrics.Authorizations.Load())
 	}
-	// The reaper prunes an authorization nobody may rely on any more.
+	// An expired authorization is kept while its worker lives, so a later
+	// denial can still revoke it (TestReadAuthorizationExpiredStillRevokes).
 	time.Sleep(350 * time.Millisecond)
 	mgr.reapExpired()
-	if mgr.currentAuthorization(readAuthKeyFor(readIdentity{tenant: "static"}, "app", "app", "static")) != nil {
-		t.Fatal("expired authorization not pruned")
+	if mgr.currentAuthorization(readAuthKeyFor(readIdentity{tenant: "static"}, "app", "app", "static")) == nil {
+		t.Fatal("expired authorization of a live worker was pruned")
 	}
 }
 
@@ -266,6 +267,7 @@ type dynamicReads struct {
 	seen     []adapter.ProcessRequest
 	calls    sync.Map // grant -> *atomic.Int32
 	validFor atomic.Int64
+	grantTTL atomic.Int64 // how long each read's delegation lasts
 	hold     atomic.Pointer[chan struct{}]
 	deny     sync.Map // grant -> true
 }
@@ -274,6 +276,7 @@ func newDynamicReads(t *testing.T) *dynamicReads {
 	t.Helper()
 	d := &dynamicReads{t: t, fs: &fakeSet{}}
 	d.validFor.Store(int64(30 * time.Second)) // inside the grants' one-minute expiry
+	d.grantTTL.Store(int64(time.Minute))
 	d.fs.serve = recordingServe(d.fs, &d.seen)
 	resolverClient := fixtureConnectionResolver(t, func(w http.ResponseWriter, r *http.Request) {
 		var body resolver.QueryRequest
@@ -311,7 +314,7 @@ func (d *dynamicReads) read(ctx context.Context, subject, saved, sql string) err
 		return err
 	}
 	claims := delegation.Claims{Issuer: "gateway", ClusterTenant: "tenant", AppTeam: "team-a", ServicePrincipal: "db-api", Subject: delegation.Subject{Kind: "user", ID: subject},
-		QuerySHA256: digest, ExpiresAt: time.Now().Add(time.Minute).Unix(), Sources: []delegation.Source{{Alias: "selected", ConnectionID: saved, Database: "analytics"}}}
+		QuerySHA256: digest, ExpiresAt: time.Now().Add(time.Duration(d.grantTTL.Load())).Unix(), Sources: []delegation.Source{{Alias: "selected", ConnectionID: saved, Database: "analytics"}}}
 	ctx = delegation.WithExecution(ctx, claims, r.Delegation, delegation.ExecutionBinding{JobID: "job", WorkerID: "worker", Owner: "owner", Claim: "claim"})
 	_, err = d.e.Execute(ctx, r, &workerTestSink{})
 	return err
@@ -437,5 +440,89 @@ func TestReadAuthorizationDenialSparesOtherPrincipals(t *testing.T) {
 	}
 	if err := d.read(context.Background(), "p2", "saved-a", "SELECT 1"); err != nil {
 		t.Fatal("other principal refused after a denial", err)
+	}
+}
+
+// db-api issues query-path read credentials for 75s (reauthorize_every plus
+// 15s slack). The node accepts them, and an authorization is then fresh for
+// reauthorize_every (60s), not the 5s operation-resolver window.
+func TestReadAuthorizationAcceptsSeventyFiveSecondReadCredential(t *testing.T) {
+	d := newDynamicReads(t)
+	d.grantTTL.Store(int64(5 * time.Minute))
+	d.validFor.Store(int64(75 * time.Second))
+	start := time.Now()
+	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err != nil {
+		t.Fatal("75s read credential refused:", err)
+	}
+	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err != nil || d.resolves("p1", "saved-a") != 1 {
+		t.Fatal("75s authorization not reused", err)
+	}
+	_, saved, principal := readPrincipal(delegation.Execution{Claims: delegation.Claims{Issuer: "gateway", ClusterTenant: "tenant", AppTeam: "team-a", ServicePrincipal: "db-api",
+		Subject: delegation.Subject{Kind: "user", ID: "p1"}, Sources: []delegation.Source{{Alias: "selected", ConnectionID: "saved-a", Database: "analytics"}}}}, true, "selected")
+	id, _, _ := readPrincipal(delegation.Execution{Claims: delegation.Claims{Issuer: "gateway", ClusterTenant: "tenant", AppTeam: "team-a",
+		Sources: []delegation.Source{{Alias: "selected", ConnectionID: "saved-a", Database: "analytics"}}}}, true, "selected")
+	a := d.mgr.currentAuthorization(readAuthKeyFor(id, "selected", saved, principal))
+	if a == nil || a.validUntil.Before(start.Add(74*time.Second)) {
+		t.Fatal("the resolver's 75s window was not kept", a)
+	}
+	// Fresh until reauthorize_every (60s) even though the credential runs 75s.
+	if !a.fresh(start.Add(59*time.Second), d.mgr.cfg.reauthorizeEvery()) || a.fresh(start.Add(61*time.Second), d.mgr.cfg.reauthorizeEvery()) {
+		t.Fatal("authorization window is not min(reauthorize_every, ValidUntil)")
+	}
+}
+
+// A pruned-looking (expired) authorization whose worker still lives is kept,
+// so a later definitive denial still kills that worker; once the worker is
+// gone the reaper drops it.
+func TestReadAuthorizationExpiredStillRevokes(t *testing.T) {
+	fs := &fakeSet{}
+	var seen []adapter.ProcessRequest
+	fs.serve = recordingServe(fs, &seen)
+	secrets := &switchableSecrets{value: "postgres://reader:secret@db.internal:5432/appdb?sslmode=verify-full"}
+	e, mgr := staticAuthorizationExecutor(t, fs, secrets)
+	mgr.cfg.ReauthorizeEvery = 100 * time.Millisecond
+	read := func() error {
+		_, err := e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "app", SQL: "SELECT 1"}, &workerTestSink{})
+		return err
+	}
+	if err := read(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(150 * time.Millisecond)
+	mgr.reapExpired() // expired, but its worker lives
+	secrets.set(func(s *switchableSecrets) { s.missing = true })
+	if err := read(); err == nil {
+		t.Fatal("read served for a credential that is gone")
+	}
+	waitFor(t, func() bool { return fs.procs[0].killed.Load() })
+	waitFor(t, func() bool { mgr.mu.Lock(); defer mgr.mu.Unlock(); return len(mgr.workers) == 0 })
+	mgr.reapExpired()
+	mgr.authMu.Lock()
+	left := len(mgr.auths)
+	mgr.authMu.Unlock()
+	if mgr.metrics.EvictionsAuth.Load() != 1 || left != 0 {
+		t.Fatal("denial after expiry did not revoke, or the reaper kept a dead authorization", mgr.metrics.EvictionsAuth.Load(), left)
+	}
+}
+
+// A rotation waits for the old idle worker to end before the new read
+// launches its replacement, so the old reservation is free.
+func TestReadAuthorizationRotationWaitsForIdleWorker(t *testing.T) {
+	var cleaned atomic.Int32
+	launcher := &mockLauncher{onLaunch: func(context.Context) (WorkerProcess, func() error, error) {
+		proc := newFakeWorkerProcess()
+		go serveFake(proc, nil)
+		return proc, func() error { time.Sleep(100 * time.Millisecond); cleaned.Add(1); return proc.Kill() }, nil
+	}}
+	mgr, exec := newTestPool(t, launcher)
+	req := opReq("op-a")
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, req, &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	key := warmKey(req.Source.TenantID, req.AppTeam, req.Source.ConnectionID, req.Source.Database, req.Source.Schema, req.Source.Revision)
+	mgr.storeAuthorization("p", &readAuthorization{workerKey: key, at: time.Now()})
+	mgr.storeAuthorization("p", &readAuthorization{workerKey: "rotated", at: time.Now()})
+	if cleaned.Load() != 1 {
+		t.Fatal("rotation returned before the idle old worker was cleaned up")
 	}
 }

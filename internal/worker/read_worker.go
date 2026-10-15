@@ -98,7 +98,9 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 			case a == nil:
 				pool.retireAuthorization(authKey, observed)
 			default:
-				pool.storeAuthorization(authKey, a)
+				drainCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				pool.storeAuthorizationWithin(drainCtx, authKey, a)
+				cancel()
 			}
 			return a, secret, err
 		})
