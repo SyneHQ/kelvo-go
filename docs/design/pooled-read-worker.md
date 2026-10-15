@@ -331,7 +331,7 @@ gain. Phase 3 is the security-sensitive one.
   entries, a quarter of the total per tenant, and `cache_max_entry_bytes`
   (default 4 MiB) per entry. A result never replaces one from an execution
   that started later.
-- `query.Request.refresh: true` skips the kept result and joins a running
+- `query.Request.bypass_cache: true` (the gateway sets it on an explicit refresh) skips the kept result and joins a running
   execution only if it started after that result was stored (or when nothing
   is kept). A burst of refreshes therefore shares one execution: at most one
   refresh execution per key at a time, never older than what it refreshes. It is not part of the signed

@@ -385,7 +385,7 @@ func TestResultCacheKeyNeverCrossesTenants(t *testing.T) {
 		}
 	}
 	refresh := r
-	refresh.Refresh = true
+	refresh.BypassCache = true
 	if resultCacheKey("tenant-a", "team", "app", "db", "public", "rev", refresh, l) != base {
 		t.Fatal("refresh changed the key")
 	}
@@ -429,7 +429,8 @@ func TestReadWorkerCacheServesTenViewersOnce(t *testing.T) {
 			defer wg.Done()
 			sink := &workerTestSink{}
 			stats, err := e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "app", SQL: "SELECT 1"}, sink)
-			if err != nil || sink.rows != 1 || stats.Rows != 1 {
+			// Hits and the leader alike report the batches this caller received.
+			if err != nil || sink.rows != 1 || stats.Rows != 1 || stats.Batches != int64(sink.batches) || stats.Batches != 1 {
 				t.Error(stats, err, sink.rows)
 			}
 		}()
@@ -439,7 +440,23 @@ func TestReadWorkerCacheServesTenViewersOnce(t *testing.T) {
 		t.Fatalf("worker requests=%d cache hits=%d", requests.Load(), mgr.cache.Hits())
 	}
 	sink := &workerTestSink{}
-	if _, err := e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "app", SQL: "SELECT 1", Refresh: true}, sink); err != nil || sink.rows != 1 || requests.Load() != 2 {
+	if _, err := e.Execute(context.Background(), query.Request{Mode: "native", ConnectionID: "app", SQL: "SELECT 1", BypassCache: true}, sink); err != nil || sink.rows != 1 || requests.Load() != 2 {
 		t.Fatal("refresh did not reach the worker", err, requests.Load())
+	}
+}
+
+// The gateway sets bypass_cache on an explicit refresh; the node reads that
+// field to skip the kept result.
+func TestBypassCacheWireField(t *testing.T) {
+	var r query.Request
+	if err := json.Unmarshal([]byte(`{"mode":"native","connection_id":"app","sql":"SELECT 1","bypass_cache":true}`), &r); err != nil || !r.BypassCache {
+		t.Fatal("bypass_cache not decoded", err, r.BypassCache)
+	}
+	c := newResultCache(time.Minute, 16, 1<<20)
+	read := &fakeRead{data: "x"}
+	_, _ = c.do(context.Background(), "k", "t", false, nil, read.execute, noReplay)
+	_, _ = c.do(context.Background(), "k", "t", r.BypassCache, nil, read.execute, noReplay)
+	if read.runs.Load() != 2 {
+		t.Fatal("bypass_cache did not skip the kept result")
 	}
 }
