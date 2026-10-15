@@ -1,7 +1,7 @@
 # Pooled read workers
 
 Status: draft for review. Nothing here is built unless a section says so.
-Phase 1 (#215), phase 2 (#217) and phase 2b and phase 2c (see "as built" sections) are implemented.
+Phase 1 (#215), phase 2 (#217) and phase 2b, 2c and 3 (see "as built" sections) are implemented.
 
 ## Why
 
@@ -338,6 +338,41 @@ gain. Phase 3 is the security-sensitive one.
   digest: it can only cause another source query, never widen access.
 - Hits report `cached: true` with their own replay time. Inspections are not
   cached. `cache_disabled: true` turns the cache off.
+
+## Phase 3 as built
+
+Signed off by the owner: `reauthorize_every` = 60s, and per-connection
+isolation for all tenants.
+
+- Each principal authorizes a source once per window. The authorization key
+  is tenant, app team, alias, the delegation's saved connection, the claims'
+  subject and service principal, database and schema; static operator
+  sources have one principal. The node keeps the source definition, its
+  revision and the check time, never secret values. Workers are shared by
+  revision (definition and credentials), keyed with database and schema; the
+  adapter binds a worker to the same.
+- An authorization is fresh until the earlier of `authorizedAt +
+  reauthorize_every` and the resolver's `ValidUntil`; worker requests carry
+  that window as `CredentialsValidUntil`. Within it reads carry no secrets
+  and the adapter serves them with the credentials it holds. Concurrent reads
+  of one principal share one re-authorization.
+- Caller authority (principal, policy, delegation) is still checked for every
+  read before anything is forwarded.
+- A worker starts only from credentials of its source's current
+  authorization: a secretless or stale read re-authorizes first. A worker
+  evicted while it launches never serves.
+- A new revision for the same authorization is a credential rotation: the old
+  revision's workers drain (no new streams, in-flight ones finish), unless
+  another principal's authorization still uses them.
+- Only a definitive denial (resolver denied or not found; a static credential
+  that is gone) revokes, and only the authorization that read observed: its
+  workers are killed unless another principal still uses them. A caller's
+  cancel or deadline, or a resolver or secret-store outage, refuses that read
+  and revokes nothing.
+- Idle workers end at `idle_ttl` (30 min); the reaper prunes expired
+  authorizations. Eviction and drain waits are bounded by a context.
+- The adapter's own connection pool (up to 4) grows with the credentials its
+  worker holds; node-side growth (a new worker) always re-authorizes.
 
 ## Targets
 
