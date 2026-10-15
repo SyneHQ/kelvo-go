@@ -348,9 +348,10 @@ isolation for all tenants.
   is tenant, app team, alias, the delegation's saved connection, the claims'
   subject and service principal, database and schema; static operator
   sources have one principal. The node keeps the source definition, its
-  revision and the check time, never secret values. Workers are shared by
-  revision (definition and credentials), keyed with database and schema; the
-  adapter binds a worker to the same.
+  revision and the check time, never secret values. Workers are keyed by
+  the saved connection (never the request alias, which apps reuse), database,
+  schema and revision; principals of one saved connection share its workers,
+  and the adapter binds a worker to the same key.
 - An authorization is fresh until the earlier of `authorizedAt +
   reauthorize_every` and the resolver's `ValidUntil`; worker requests carry
   that window as `CredentialsValidUntil`. Within it reads carry no secrets
