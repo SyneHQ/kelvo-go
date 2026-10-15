@@ -455,11 +455,14 @@ func scalarText(value any) (string, error) {
 
 var decimalSyntax = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?$`)
 
-// exactNumericText marks a string column carrying source decimal text verbatim:
-// plain digits, or exactly NaN, Infinity or -Infinity. Anything else is rejected.
+// exactNumericText marks a string column carrying source decimal text verbatim,
+// in PostgreSQL's output form: plain digits without leading zeros or negative
+// zero, or exactly NaN, Infinity or -Infinity. Anything else is rejected.
+// The text is exact, not canonical: the source's display scale is kept, so
+// equal values may differ in bytes ("4.0" vs "4.00").
 const exactNumericText = "exact_numeric_text"
 
-var exactDecimalTextSyntax = regexp.MustCompile(`^(?:-?[0-9]+(?:\.[0-9]+)?|NaN|-?Infinity)$`)
+var exactDecimalTextSyntax = regexp.MustCompile(`^(?:0(?:\.[0-9]+)?|-?[1-9][0-9]*(?:\.[0-9]+)?|-0\.[0-9]*[1-9][0-9]*|NaN|-?Infinity)$`)
 
 func exactDecimalTextValue(value any) (any, error) {
 	var text string
