@@ -1,0 +1,39 @@
+# Production-like node: 2 vCPU, 1 GB (the 2026-10-12 Mumbai node). The cgroup is set
+# by scripts/pooled_read_load.py; these are the Kelvo settings run inside it.
+# Secrets (source.password) and the proxy port are filled in by the runner.
+policy:
+  max_queries: 256
+  job_ttl: 2m
+  lease_duration: 5s
+  replicas: 1
+  workers: {a1: 64}        # node job permits for the query path; read_workers does not replace it yet
+  limits: {max_rows: 1000000, max_bytes: 67108864, timeout: 30s, memory_mb: 32, threads: 1, max_temp_mb: 16}
+resources:
+  max_concurrent: 16
+  memory_mb: 900
+  baseline_mb: 200
+  overhead_mb: 64
+  scratch_mb: 256
+  separate_classes: true
+  query_reserve_slots: 12
+  query_reserve_memory_mb: 560
+  query_reserve_scratch_mb: 160
+containment: {max_groups: 64}
+containment_budget: {native_overhead_mb: 16, parent_overhead_mb: 16, max_processes: 64}
+warm_pool:
+  enabled: true
+  idle_ttl: 30m
+  max_workers: 4
+  max_per_key: 1
+  max_in_flight: 16
+  queue_depth: 64
+  queue_timeout: 10s
+  worker_memory_mb: 64
+  cache_ttl: 10s
+  reauthorize_every: 60s
+operations: {max_concurrent: 2, max_downloads: 2, max_result_bytes: 33554432}
+gateway: {max_http_requests: 256}
+audit: {max_entries: 4096, max_pending: 512}
+resolver: {delay: 300ms, max_concurrent: 16}
+source: {host: 127.0.0.1, port: 0, password: "", customers: 20}
+sample_interval: 1s
