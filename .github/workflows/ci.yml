@@ -489,3 +489,56 @@ jobs:
           path: artifacts/warm-adapter/
           if-no-files-found: warn
           retention-days: 14
+
+  source-roundtrips:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CGO_ENABLED: '1'
+      GOMAXPROCS: '2'
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.8'
+          cache-dependency-path: |
+            go.sum
+            adapters/go/go.sum
+      - name: Start disposable PostgreSQL and MySQL fixtures
+        run: |
+          pg=$(openssl rand -hex 16)
+          my=$(openssl rand -hex 16)
+          echo "::add-mask::$pg"
+          echo "::add-mask::$my"
+          docker run -d --name kelvo-rt-postgres -p 127.0.0.1:55433:5432 \
+            -e POSTGRES_PASSWORD="$pg" -e POSTGRES_DB=rt postgres:17.6 >/dev/null
+          docker run -d --name kelvo-rt-mysql -p 127.0.0.1:55434:3306 \
+            -e MYSQL_ROOT_PASSWORD="$my" -e MYSQL_DATABASE=rt mysql:8.4 >/dev/null
+          for attempt in $(seq 1 90); do
+            if docker exec -e PGPASSWORD="$pg" kelvo-rt-postgres psql -h 127.0.0.1 -U postgres -d rt -Atc 'select 1' >/dev/null 2>&1 &&
+               docker exec kelvo-rt-mysql mysql -h127.0.0.1 -uroot -p"$my" rt -e 'select 1' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec -e PGPASSWORD="$pg" kelvo-rt-postgres psql -h 127.0.0.1 -U postgres -d rt -Atc 'select 1' >/dev/null
+          docker exec kelvo-rt-mysql mysql -h127.0.0.1 -uroot -p"$my" rt -e 'select 1' >/dev/null
+          echo "KELVO_RT_POSTGRESQL=postgres:$pg@127.0.0.1:55433/rt" >> "$GITHUB_ENV"
+          echo "KELVO_RT_MYSQL=root:$my@127.0.0.1:55434/rt" >> "$GITHUB_ENV"
+      - name: Verify source round trips per read at an injected 80 ms RTT
+        run: |
+          set -o pipefail
+          work=$(mktemp -d)
+          export GOWORK="$work/go.work"
+          (cd "$work" && go work init "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/adapters/go")
+          sdk_version=$(awk '$1 == "github.com/SYNEHQ/kelvo-go" { print $2 }' adapters/go/go.mod)
+          go work edit "-replace=github.com/SYNEHQ/kelvo-go@${sdk_version}=$GITHUB_WORKSPACE"
+          go work edit "-replace=github.com/sijms/go-ora/v2@v2.9.0=$GITHUB_WORKSPACE/third_party/go-ora-v2.9.0"
+          cd adapters/go
+          KELVO_RT_ASSERT=1 KELVO_RT_DELAY_MS=80 go test -race -count=1 -v -timeout 10m \
+            -run 'TestReadRoundTripsLive|TestReadScenariosLive|TestPostgresReadSemanticsLive|TestPostgresDeadIdleConnectionsAreReplacedLive' \
+            ./connectors/relational | grep -E "^(---|\s+---|ok|FAIL|panic)|ENGINE=|SCENARIO"
+      - name: Remove the fixtures
+        if: always()
+        run: docker rm -f -v kelvo-rt-postgres kelvo-rt-mysql >/dev/null 2>&1 || true

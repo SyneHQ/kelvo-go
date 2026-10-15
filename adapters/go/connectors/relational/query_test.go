@@ -37,6 +37,7 @@ type readState struct {
 	started                                               chan struct{}
 	rollbackGate                                          chan struct{}
 	rollbackErr                                           error
+	execBadConn, queryBadConn                             atomic.Bool
 }
 type readConnector struct{ s *readState }
 
@@ -75,6 +76,9 @@ func (c *readConn) ExecContext(_ context.Context, query string, args []driver.Na
 		}
 		return driver.RowsAffected(0), nil
 	}
+	if c.s.execBadConn.CompareAndSwap(true, false) {
+		return nil, driver.ErrBadConn
+	}
 	if strings.HasPrefix(query, "BEGIN READ ONLY; ") {
 		c.s.readOnly.Store(true)
 	}
@@ -92,6 +96,9 @@ func (c *readConn) QueryContext(ctx context.Context, _ string, args []driver.Nam
 	c.s.mu.Lock()
 	c.s.args = append([]driver.NamedValue{}, args...)
 	c.s.mu.Unlock()
+	if c.s.queryBadConn.Load() {
+		return nil, driver.ErrBadConn
+	}
 	if c.s.queryErr.Load() {
 		return nil, errors.New("query failed")
 	}
@@ -472,5 +479,84 @@ func TestKeepOpenFailedRollbackDiscardsConnection(t *testing.T) {
 func waitRollbacks() {
 	for end := time.Now().Add(5 * time.Second); asyncRollbacks.Load() != 0 && time.Now().Before(end); {
 		time.Sleep(time.Millisecond)
+	}
+}
+
+// A pooled connection that died while idle fails its first server-built
+// statement; that read is retried on another connection.
+func TestKeepOpenRetriesOnceWhenFirstStatementFindsDeadConnection(t *testing.T) {
+	s, state, _, release := newPoolSession(t)
+	close(release)
+	if err := runRead(s, context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	state.execBadConn.Store(true)
+	if err := runRead(s, context.Background()); err != nil {
+		t.Fatalf("read not retried on a fresh connection: %v", err)
+	}
+	if state.opens.Load() != 2 || state.closes.Load() != 1 || state.queries.Load() != 2 {
+		t.Fatalf("opens=%d closes=%d queries=%d", state.opens.Load(), state.closes.Load(), state.queries.Load())
+	}
+}
+
+func TestKeepOpenRetryIsBounded(t *testing.T) {
+	s, state, _, release := newPoolSession(t)
+	close(release)
+	state.execErr = driver.ErrBadConn
+	if err := runRead(s, context.Background()); !errors.Is(err, driver.ErrBadConn) {
+		t.Fatalf("second failure not reported: %v", err)
+	}
+	if state.queries.Load() != 0 || state.opens.Load() != PoolSize+1 {
+		t.Fatalf("retries not bounded: queries=%d opens=%d", state.queries.Load(), state.opens.Load())
+	}
+}
+
+// Once the caller's SQL has been sent it may have run: never replay it.
+func TestKeepOpenNeverRetriesAfterQuerySent(t *testing.T) {
+	s, state, _, release := newPoolSession(t)
+	close(release)
+	state.queryBadConn.Store(true)
+	if err := runRead(s, context.Background()); err == nil {
+		t.Fatal("expected failure")
+	}
+	if state.queries.Load() != 1 {
+		t.Fatalf("query replayed: %d", state.queries.Load())
+	}
+}
+
+func TestOneShotReadDoesNotRetry(t *testing.T) {
+	s, state := newReadSession(t, "postgresql")
+	state.execBadConn.Store(true)
+	if err := runRead(s, context.Background()); !errors.Is(err, driver.ErrBadConn) || state.opens.Load() != 1 {
+		t.Fatalf("one-shot read retried: %v opens=%d", err, state.opens.Load())
+	}
+}
+
+// With no idle connection, a read waits for a connection finishing its
+// background rollback instead of dialing a new one.
+func TestKeepOpenReadWaitsForRollbackInsteadOfDialing(t *testing.T) {
+	s, state, _, release := newPoolSession(t)
+	close(release)
+	state.rollbackGate = make(chan struct{})
+	if _, err := s.Query(context.Background(), readRequest(), &readSink{}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := s.Query(context.Background(), readRequest(), &readSink{}); done <- err }()
+	select {
+	case err := <-done:
+		t.Fatalf("read did not wait for the rollback: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if state.opens.Load() != 1 {
+		t.Fatalf("dialed a new connection while one was rolling back: %d", state.opens.Load())
+	}
+	close(state.rollbackGate)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	waitRollbacks()
+	if state.opens.Load() != 1 {
+		t.Fatalf("opens=%d", state.opens.Load())
 	}
 }

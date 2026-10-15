@@ -195,12 +195,20 @@ func TestReadRoundTripsLive(t *testing.T) {
 				defer cancel()
 				start := time.Now()
 				if _, err := s.Query(ctx, rtQuery(engine), nopSink{}); err != nil {
-					t.Fatal(err)
+					t.Error(err)
 				}
 				return time.Since(start)
 			}
-			read() // connect + warm statement caches
-			read()
+			// Warm PoolSize connections and their statement caches, as a busy
+			// worker has; sequential reads then always find an idle connection.
+			for range 2 {
+				var wg sync.WaitGroup
+				for range PoolSize {
+					wg.Add(1)
+					go func() { defer wg.Done(); read() }()
+				}
+				wg.Wait()
+			}
 			time.Sleep(2 * time.Second) // let any asynchronous cleanup flights land
 			before := proxy.flights.Load()
 			const n = 10
@@ -214,6 +222,16 @@ func TestReadRoundTripsLive(t *testing.T) {
 			flights := float64(proxy.flights.Load()-before) / n
 			slices.Sort(d)
 			t.Logf("ENGINE=%s rtt=%dms flights/read=%.1f p50=%v", engine, rttMS, flights, d[n/2])
+			// CI ceilings (KELVO_RT_ASSERT=1), with margin over the measured
+			// values: flights include the background ROLLBACK; the p50 ceiling in
+			// RTTs covers only what the caller waits for. Before this change
+			// PostgreSQL measured 4.1 flights / 4.1 RTT, MySQL 5.0 / 5.2.
+			if os.Getenv("KELVO_RT_ASSERT") == "1" && rttMS >= 40 {
+				ceiling := map[string][2]float64{"postgresql": {3.6, 3.0}, "mysql": {4.5, 4.0}, "mariadb": {4.5, 4.0}, "sqlserver": {3.5, 3.0}}[engine]
+				if flights > ceiling[0] || float64(d[n/2]) > ceiling[1]*float64(rttMS)*float64(time.Millisecond) {
+					t.Fatalf("round trips regressed: flights/read=%.1f (max %.1f) p50=%v (max %.1f RTT)", flights, ceiling[0], d[n/2], ceiling[1])
+				}
+			}
 		})
 	}
 }
@@ -334,4 +352,115 @@ func TestPostgresReadSemanticsLive(t *testing.T) {
 			t.Fatalf("connections left in a transaction: %d %v", idleInTx, err)
 		}
 	})
+}
+
+// Scenarios where the background ROLLBACK can hurt: a cold pool, reads
+// back-to-back on one connection, and bursts larger than the warm pool.
+func TestReadScenariosLive(t *testing.T) {
+	rttMS := 80
+	if v, err := strconv.Atoi(os.Getenv("KELVO_RT_DELAY_MS")); err == nil {
+		rttMS = v
+	}
+	for _, engine := range []string{"postgresql", "mysql", "mariadb", "sqlserver"} {
+		creds := os.Getenv("KELVO_RT_" + strings.ToUpper(engine))
+		if creds == "" {
+			continue
+		}
+		t.Run(engine, func(t *testing.T) {
+			_, rest, _ := strings.Cut(creds, "@")
+			target, _, _ := strings.Cut(rest, "/")
+			proxy := newDelayProxy(t, target, time.Duration(rttMS)*time.Millisecond/2)
+			timed := func(s *Session) time.Duration {
+				start := time.Now()
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if _, err := s.Query(ctx, rtQuery(engine), nopSink{}); err != nil {
+					t.Fatal(err)
+				}
+				return time.Since(start)
+			}
+			burst := func(s *Session, n int) time.Duration {
+				var wg sync.WaitGroup
+				start := time.Now()
+				for range n {
+					wg.Add(1)
+					go func() { defer wg.Done(); timed(s) }()
+				}
+				wg.Wait()
+				return time.Since(start)
+			}
+			p50 := func(s *Session, n int) time.Duration {
+				var d []time.Duration
+				for range n {
+					d = append(d, timed(s))
+				}
+				slices.Sort(d)
+				return d[n/2]
+			}
+			cold := liveSession(t, engine, proxy.addr(), creds)
+			coldFirst := timed(cold)
+
+			single := liveSession(t, engine, proxy.addr(), creds)
+			single.Pool.SetMaxOpenConns(1)
+			timed(single)
+			singleP50 := p50(single, 8)
+
+			one := liveSession(t, engine, proxy.addr(), creds) // warmed to one connection
+			timed(one)
+			waitRollbacks()
+			burstOne := burst(one, PoolSize+1)
+
+			four := liveSession(t, engine, proxy.addr(), creds) // warmed to PoolSize connections
+			burst(four, PoolSize)
+			waitRollbacks()
+			burstFour := burst(four, PoolSize+1)
+			waitRollbacks()
+			t.Logf("SCENARIO engine=%s rtt=%dms cold-first-read=%v single-conn-back-to-back-p50=%v burst%d-on-1-warm-conn=%v burst%d-on-%d-warm-conns=%v",
+				engine, rttMS, coldFirst, singleP50, PoolSize+1, burstOne, PoolSize+1, PoolSize, burstFour)
+		})
+	}
+}
+
+func TestPostgresDeadIdleConnectionsAreReplacedLive(t *testing.T) {
+	creds := os.Getenv("KELVO_RT_POSTGRESQL")
+	if creds == "" {
+		t.Skip("KELVO_RT_POSTGRESQL not set")
+	}
+	_, rest, _ := strings.Cut(creds, "@")
+	target, _, _ := strings.Cut(rest, "/")
+	proxy := newDelayProxy(t, target, 0)
+	s := liveSession(t, "postgresql", proxy.addr(), creds)
+	admin, err := sql.Open("pgx", "postgres://"+creds+"?sslmode=disable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	var wg sync.WaitGroup
+	for range 2 { // warm PoolSize connections
+		for range PoolSize {
+			wg.Add(1)
+			go func() { defer wg.Done(); _, _ = liveRead(s, context.Background(), "SELECT pg_sleep(0.2)::text AS s") }()
+		}
+		wg.Wait()
+	}
+	if open := s.Pool.Stats().OpenConnections; open != PoolSize {
+		t.Fatalf("pool not warm: %d", open)
+	}
+	// Failover or PgBouncer restart: every idle backend dies between reads.
+	if _, err := admin.Exec("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'kelvo-go'"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	for i := range PoolSize + 1 {
+		if sink, err := liveRead(s, context.Background(), "SELECT 1"); err != nil || sink.row[0] != "1" {
+			t.Fatalf("read %d after the outage failed: %v", i, err)
+		}
+	}
+	// A query that kills its own backend after being sent is never replayed.
+	if _, err := liveRead(s, context.Background(), "SELECT pg_terminate_backend(pg_backend_pid())"); err == nil {
+		t.Fatal("query that killed its own backend reported success")
+	}
+	if sink, err := liveRead(s, context.Background(), "SELECT 1"); err != nil || sink.row[0] != "1" {
+		t.Fatalf("pool unusable after a killed query: %v", err)
+	}
 }
