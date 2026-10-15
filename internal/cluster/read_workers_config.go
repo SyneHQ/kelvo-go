@@ -21,7 +21,7 @@ import (
 type ReadWorkersConfig struct {
 	MaxWorkers     int           `yaml:"max_workers"`      // workers this node admits; one admission reservation each
 	MaxInFlight    int           `yaml:"max_in_flight"`    // concurrent reads per worker, default 16, at most 64
-	PoolSize       int           `yaml:"pool_size"`        // source connections per worker, default 4, at most 32
+	PoolSize       int           `yaml:"pool_size"`        // source connections per worker, 1-32; unset leaves the adapter's own 4 and sends no flag
 	IdleTTL        time.Duration `yaml:"idle_ttl"`         // idle worker lifetime, default 30m
 	QueueWait      time.Duration `yaml:"queue_wait"`       // bounded admission wait before a retryable refusal, default 2s
 	StreamBufferMB int           `yaml:"stream_buffer_mb"` // unread result bytes buffered per stream, default 8
@@ -50,9 +50,6 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 	if c.MaxInFlight == 0 {
 		c.MaxInFlight = defaultReadMaxInFlight
 	}
-	if c.PoolSize == 0 {
-		c.PoolSize = defaultReadPoolSize
-	}
 	if c.IdleTTL == 0 {
 		c.IdleTTL = defaultReadIdleTTL
 	}
@@ -66,11 +63,15 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 }
 
 func (c ReadWorkersConfig) validate(resources *ResourceConfig) error {
-	if c.MaxWorkers < 1 || c.MaxWorkers > 64 || c.MaxInFlight < 1 || c.MaxInFlight > 64 || c.PoolSize < 1 || c.PoolSize > 32 || c.StreamBufferMB < 1 || c.StreamBufferMB > 256 ||
+	if c.MaxWorkers < 1 || c.MaxWorkers > 64 || c.MaxInFlight < 1 || c.MaxInFlight > 64 || c.PoolSize < 0 || c.PoolSize > 32 || c.StreamBufferMB < 1 || c.StreamBufferMB > 256 ||
 		c.IdleTTL < 10*time.Millisecond || c.IdleTTL > 24*time.Hour || c.QueueWait < 10*time.Millisecond || c.QueueWait > time.Minute {
 		return errReadWorkersConfig
 	}
-	if c.MaxWorkers*c.PoolSize > maxSourceConnections {
+	pool := c.PoolSize
+	if pool == 0 {
+		pool = defaultReadPoolSize // the adapter's own default
+	}
+	if c.MaxWorkers*pool > maxSourceConnections {
 		return errReadWorkersConnections
 	}
 	// One reservation per worker must fit the node's admission pool.
@@ -112,8 +113,9 @@ func (c NodeConfig) effectiveWarmPool() *worker.WarmPoolConfig {
 	return &w
 }
 
-// readPoolSize is the adapter connection pool size to request, 0 when the node
-// leaves it to the adapter's default.
+// readPoolSize is the adapter connection pool size to request, 0 when pool_size
+// is not set. Then no --pool-size is sent, so an adapter or launcher built
+// before the flag keeps serving warm reads.
 func (c NodeConfig) readPoolSize() int {
 	if c.ReadWorkers == nil {
 		return 0
