@@ -27,7 +27,7 @@ type WarmPoolConfig struct {
 	Enabled     bool          `yaml:"enabled"`
 	IdleTTL     time.Duration `yaml:"idle_ttl"`      // default 30m
 	MaxWorkers  int           `yaml:"max_workers"`   // default 4
-	MaxPerKey   int           `yaml:"max_per_key"`   // default 1
+	MaxPerKey   int           `yaml:"max_per_key"`   // default 2: a key at max_in_flight scales out
 	MaxInFlight int           `yaml:"max_in_flight"` // default 16, reads in flight per worker
 	// StreamBufferMB caps the unread result bytes the node buffers per stream
 	// (default 8). A slow client reading a large result then fails fast with
@@ -47,7 +47,7 @@ func DefaultWarmPoolConfig() WarmPoolConfig {
 		Enabled:     false,
 		IdleTTL:     30 * time.Minute,
 		MaxWorkers:  4,
-		MaxPerKey:   1,
+		MaxPerKey:   2,
 		MaxInFlight: 16,
 		// An explorer page opens ~50 reads at once: 16 in flight plus 64
 		// waiting absorbs it without a refusal.
@@ -988,6 +988,9 @@ func helloHandshake(ctx context.Context, proc WorkerProcess) error {
 // protocol violation, a terminal Error, a receipt mismatch, an I/O error, or an
 // abandoned stream that does not end in time.
 func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *warmWorkerEntry, input adapter.ProcessRequest, sink query.Sink) (_ operations.Receipt, _ error, keep, sent bool) {
+	if bound, ok := credentialBound(ctx); ok {
+		input.CredentialsValidUntil = credentialWindow(bound, input.ExpiresAt)
+	}
 	raw, err := adapter.EncodeProcessRequest(input)
 	if err != nil {
 		return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT"), true, true

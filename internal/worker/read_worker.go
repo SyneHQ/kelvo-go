@@ -149,7 +149,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		// to a one-shot adapter itself.
 		receipt, err = e.ExecuteOperation(quotaCtx, pool.Adapter, input, sink)
 	} else {
-		receipt, err = pool.Execute(quotaCtx, e, pool.Adapter, input, sink)
+		receipt, err = pool.Execute(withCredentialBound(quotaCtx, min(validUntil, expires)), e, pool.Adapter, input, sink)
 		if errors.Is(err, errWarmUnavailable) {
 			return stats, nil, false
 		}
@@ -186,7 +186,25 @@ func readOperationID() string {
 // validity (75s for read credentials) and the read's own expiry, within the
 // five seconds a process request may claim.
 func credentialWindow(validUntil, expires int64) int64 {
-	return min(validUntil, expires, time.Now().Unix()+5)
+	return min(validUntil, expires, time.Now().Add(credentialWindowMax).Unix())
+}
+
+// credentialWindowMax is the most a process request may claim; a var so tests
+// can make a queued read outlast it.
+var credentialWindowMax = 5 * time.Second
+
+type credentialBoundKey struct{}
+
+// withCredentialBound records how long a read's credentials stay usable, so
+// its window is stamped when the request is sent to a worker, not when the
+// read started: a read that queued for a slot still carries a valid one.
+func withCredentialBound(ctx context.Context, bound int64) context.Context {
+	return context.WithValue(ctx, credentialBoundKey{}, bound)
+}
+
+func credentialBound(ctx context.Context) (int64, bool) {
+	bound, ok := ctx.Value(credentialBoundKey{}).(int64)
+	return bound, ok
 }
 
 // readDeadline returns a worker request's ExpiresAt (whole seconds, rounded
