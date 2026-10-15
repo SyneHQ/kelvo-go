@@ -691,10 +691,14 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 	waitStarted := false
 	waitOutcome := telemetry.OutcomeError
 	defer func() { finishClusterTrace(wait, r.Context(), &waitOutcome) }()
-	poll := time.NewTicker(50 * time.Millisecond)
-	defer poll.Stop()
+	// Verify the job's authority once; a re-read costs one store get. The wait
+	// then sleeps until the store says the job changed (or the job expires),
+	// not on a fixed 50 ms tick that re-verified two signatures each time.
+	var authorized authorizedJob
+	waiter := newJobWaiter(r.Context(), t.store, id)
+	defer waiter.stop()
 	for {
-		s, e = principalSnapshot(r.Context(), t, id)
+		s, e = authorized.snapshot(r.Context(), t, id)
 		if e != nil {
 			if errors.Is(e, ErrNotFound) {
 				g.auditError(w, op, 404, "NOT_FOUND", "Query not found")
@@ -728,12 +732,10 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 				g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Queued result wait capacity unavailable")
 				return
 			}
-			select {
-			case <-r.Context().Done():
+			if !waiter.wait(r.Context(), s.Job.ExpiresAt) {
 				return
-			case <-poll.C:
-				continue
 			}
+			continue
 		}
 		if s.Job.State == Claimed || s.Job.State == Running || s.Job.State == ResultReady || s.Job.State == Succeeded {
 			g.auditError(w, op, 409, "ALREADY_CONSUMED", "Query results are single-consumer")

@@ -234,6 +234,18 @@ func submissionAuthority(ctx context.Context, p Policy, request query.Request) (
 // principalSnapshot returns NOT_FOUND for foreign handles before state, query
 // statistics or error information can escape to another user in the tenant.
 func principalSnapshot(ctx context.Context, t gatewayTenant, id string) (Snapshot, error) {
+	s, err := readSnapshot(ctx, t, id)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if _, err := authorizeSnapshot(ctx, t, s); err != nil {
+		return Snapshot{}, err
+	}
+	return s, nil
+}
+
+// readSnapshot reads job id while the request's own key authority is live.
+func readSnapshot(ctx context.Context, t gatewayTenant, id string) (Snapshot, error) {
 	if err := requestAuthorityErr(ctx); err != nil {
 		return Snapshot{}, err
 	}
@@ -241,9 +253,15 @@ func principalSnapshot(ctx context.Context, t gatewayTenant, id string) (Snapsho
 	if err == nil {
 		err = requestAuthorityErr(ctx)
 	}
-	if err != nil {
-		return Snapshot{}, err
-	}
+	return s, err
+}
+
+// authorizeSnapshot checks that the request's principal may see job s: the
+// delegation header, the job's stored authority and, when delegated, the
+// grant's signature. It returns the delegation's expiry (Unix seconds, zero when
+// none), after which the same job is no longer visible. The signature work is
+// what costs CPU; see authorizedJob for avoiding it on repeated reads.
+func authorizeSnapshot(ctx context.Context, t gatewayTenant, s Snapshot) (int64, error) {
 	a, ok := jobAuthorityFromContext(ctx)
 	now := time.Now()
 	if grace, allowed := ctx.Value(delegationCancelKey{}).(bool); allowed && grace {
@@ -251,23 +269,71 @@ func principalSnapshot(ctx context.Context, t gatewayTenant, id string) (Snapsho
 	}
 	header, _ := ctx.Value(delegationHeaderKey{}).(string)
 	if header != s.Job.Request.Delegation {
-		return Snapshot{}, ErrNotFound
+		return 0, ErrNotFound
 	}
 	if t.store.Policy().Access == nil {
 		if ok || s.Job.Authority != nil {
-			return Snapshot{}, ErrNotFound
+			return 0, ErrNotFound
+		}
+		return 0, nil
+	}
+	var expires int64
+	if ok && s.Job.Request.Delegation != "" {
+		bound, claims, err := delegatedAuthority(t.store.Policy(), a, s.Job.Request, now)
+		if err != nil {
+			return 0, ErrNotFound
+		}
+		a, expires = bound, claims.ExpiresAt
+	}
+	if !ok || s.Job.Authority == nil || a != *s.Job.Authority || validateJobAuthorityAt(t.store.Policy(), &a, s.Job.Request, now) != nil {
+		return 0, ErrNotFound
+	}
+	return expires, nil
+}
+
+// authorizedJob lets a request that re-reads one job many times (a result
+// wait) verify its authority once. The stored authority and delegation of a job
+// never change, so after the first full check a re-read needs only the cheap
+// parts: the request's key authority, the job's identity, and the delegation's
+// expiry. No signature is verified again.
+type authorizedJob struct {
+	set        bool
+	delegation string
+	authority  *JobAuthority
+	expires    int64
+}
+
+// snapshot is principalSnapshot with the verification cached after the first
+// success. A changed or expired job falls back to the full check.
+func (c *authorizedJob) snapshot(ctx context.Context, t gatewayTenant, id string) (Snapshot, error) {
+	if !c.set {
+		s, err := readSnapshot(ctx, t, id)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		expires, err := authorizeSnapshot(ctx, t, s)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		c.set, c.delegation, c.expires = true, s.Job.Request.Delegation, expires
+		if s.Job.Authority != nil {
+			a := *s.Job.Authority
+			c.authority = &a
 		}
 		return s, nil
 	}
-	if ok && s.Job.Request.Delegation != "" {
-		bound, _, err := delegatedAuthority(t.store.Policy(), a, s.Job.Request, now)
-		if err != nil {
-			return Snapshot{}, ErrNotFound
-		}
-		a = bound
+	s, err := readSnapshot(ctx, t, id)
+	if err != nil {
+		return Snapshot{}, err
 	}
-	if !ok || s.Job.Authority == nil || a != *s.Job.Authority || validateJobAuthorityAt(t.store.Policy(), &a, s.Job.Request, now) != nil {
-		return Snapshot{}, ErrNotFound
+	header, _ := ctx.Value(delegationHeaderKey{}).(string)
+	same := header == s.Job.Request.Delegation && s.Job.Request.Delegation == c.delegation &&
+		(s.Job.Authority == nil) == (c.authority == nil) && (c.authority == nil || *s.Job.Authority == *c.authority)
+	if same && (c.expires == 0 || time.Now().Unix() < c.expires) {
+		return s, nil
+	}
+	if _, err := authorizeSnapshot(ctx, t, s); err != nil {
+		return Snapshot{}, err
 	}
 	return s, nil
 }

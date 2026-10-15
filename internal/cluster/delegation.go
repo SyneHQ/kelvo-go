@@ -50,6 +50,10 @@ func resolverTrust(p Policy, a JobAuthority) (delegation.Trust, error) {
 func baseJobAuthority(a JobAuthority) JobAuthority {
 	return JobAuthority{PrincipalID: a.PrincipalID, PrincipalKind: a.PrincipalKind, PolicyVersion: a.PolicyVersion}
 }
+
+// verifyDelegation is a variable so tests can count signature verifications.
+var verifyDelegation = delegation.Verify
+
 func delegatedAuthority(p Policy, a JobAuthority, r query.Request, now time.Time) (JobAuthority, delegation.Claims, error) {
 	denied := query.NewError("PERMISSION_DENIED", "Query access denied")
 	current, ok := authorityForPrincipal(p, a.PrincipalID)
@@ -60,7 +64,7 @@ func delegatedAuthority(p Policy, a JobAuthority, r query.Request, now time.Time
 	if err != nil {
 		return JobAuthority{}, delegation.Claims{}, denied
 	}
-	c, err := delegation.Verify(r.Delegation, trust, r, now)
+	c, err := verifyDelegation(r.Delegation, trust, r, now)
 	if err != nil {
 		return JobAuthority{}, delegation.Claims{}, denied
 	}
