@@ -318,7 +318,8 @@ func TestContainedWarmPoolCapacityContract(t *testing.T) {
 	read := func(ctx context.Context, team, mode string) (operations.Receipt, error) {
 		input := operationProcessInput(t, operations.QueryRead, mode)
 		input.AppTeam = team
-		return executor.ExecuteOperation(ctx, cfg, input, &workerTestSink{})
+		// Interactive reads use the warm pool; durable operations never do.
+		return executor.ExecuteOperation(withAdmissionClass(ctx, admission.ClassInteractive), cfg, input, &workerTestSink{})
 	}
 
 	busy := make(chan error, 1)
