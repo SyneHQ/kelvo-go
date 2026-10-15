@@ -188,13 +188,14 @@ func TestNodeCheckConfigReadWorkersAreNodeSettings(t *testing.T) {
 		body  string
 		valid bool
 	}{
-		"operations above policy.workers": {raised, true},
-		"read workers with defaults":      {raised + "read_workers: {max_workers: 4}\n", true},
-		"read workers all settings":       {raised + "read_workers: {max_workers: 2, max_in_flight: 32, pool_size: 8, idle_ttl: 10m, queue_wait: 500ms}\n", true},
-		"read workers without capacity":   {raised + "read_workers: {max_in_flight: 16}\n", false},
-		"read workers above admission":    {raised + "read_workers: {max_workers: 5}\n", false},
-		"read workers bad pool":           {raised + "read_workers: {max_workers: 1, pool_size: 65}\n", false},
-		"read workers unknown key":        {raised + "read_workers: {max_workers: 1, secret_canary: x}\n", false},
+		"operations above policy.workers":    {raised, true},
+		"read workers with defaults":         {raised + "read_workers: {max_workers: 4}\n", true},
+		"read workers all settings":          {raised + "read_workers: {max_workers: 2, max_in_flight: 32, pool_size: 8, idle_ttl: 10m, queue_wait: 500ms}\n", true},
+		"operations above audit max_pending": {strings.Replace(raised, "max_pending: 8", "max_pending: 2", 1), false},
+		"read workers without capacity":      {raised + "read_workers: {max_in_flight: 16}\n", false},
+		"read workers above admission":       {raised + "read_workers: {max_workers: 5}\n", false},
+		"read workers bad pool":              {raised + "read_workers: {max_workers: 1, pool_size: 65}\n", false},
+		"read workers unknown key":           {raised + "read_workers: {max_workers: 1, secret_canary: x}\n", false},
 	} {
 		if err := os.WriteFile(path, []byte(tc.body), 0600); err != nil {
 			t.Fatal(err)

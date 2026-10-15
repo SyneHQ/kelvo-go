@@ -39,7 +39,7 @@ func validateNodeOperations(c NodeConfig) error {
 	if c.Policy.Operations == nil || o == nil || c.Audit == nil || c.Resources == nil || c.Containment == nil || c.ScratchDirectory == "" || c.SandboxPath == "" ||
 		!validEndpoint(o.InputURL) || o.TLS.CAFile == "" || o.TLS.CertFile == "" || o.TLS.KeyFile == "" || o.TLS.Trust != nil || o.TLS.IdentityFile != "" || o.TLS.ReloadInterval != 0 ||
 		o.QueueWait < 0 || o.QueueWait > time.Minute || o.MaxPerTenant < 0 || o.MaxPerTenant > 64 || o.MaxPerConnection < 0 || o.MaxPerConnection > 64 ||
-		o.MaxConcurrent < 1 || o.MaxConcurrent > c.Resources.MaxConcurrent || o.MaxDownloads < 1 || o.MaxDownloads > 64 ||
+		o.MaxConcurrent < 1 || o.MaxConcurrent > c.Resources.MaxConcurrent || o.MaxConcurrent > c.Audit.MaxPending || o.MaxDownloads < 1 || o.MaxDownloads > 64 ||
 		o.PollInterval < 10*time.Millisecond || o.PollInterval > time.Second || o.MaxResultBytes < 1024 || o.MaxResultBytes > operationinput.MaxInputBytes || o.MaxResultBytes > c.Policy.Limits.MaxBytes ||
 		o.Results.MaxEntries < 1 || o.Results.MaxEntries > 4096 || o.Results.MaxStoredBytes < 2*o.MaxResultBytes || o.Results.MaxStoredBytes > 1<<40 ||
 		!filepath.IsAbs(o.Results.Directory) || filepath.Clean(o.Results.Directory) != o.Results.Directory || o.Results.Directory == "/" || len(o.Results.Directory) > 4096 {
