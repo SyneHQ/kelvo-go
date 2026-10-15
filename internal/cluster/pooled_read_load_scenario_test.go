@@ -57,6 +57,7 @@ type loadScenarioSource struct {
 	Host      string `yaml:"host"`
 	Port      int    `yaml:"port"`
 	Password  string `yaml:"password"`
+	CAPEM     string `yaml:"ca_pem"` // trust root for the source's TLS; the query path requires verify-full
 	Customers int    `yaml:"customers"`
 }
 

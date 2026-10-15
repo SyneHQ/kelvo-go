@@ -378,7 +378,7 @@ func TestPooledReadLoadNode(t *testing.T) {
 		if err != nil || n < 0 || n >= sc.Source.Customers {
 			return "", false
 		}
-		return fmt.Sprintf("postgres://cust%02d:%s@%s:%d/cust%02d?sslmode=disable&connect_timeout=10", n, sc.Source.Password, sc.Source.Host, sc.Source.Port, n), true
+		return fmt.Sprintf("postgres://cust%02d:%s@%s:%d/cust%02d?sslmode=verify-full&connect_timeout=5", n, sc.Source.Password, sc.Source.Host, sc.Source.Port, n), true
 	}
 	authorization := func(connection string) (resolver.Authorization, error) {
 		authCalls.Add(1)
@@ -404,7 +404,7 @@ func TestPooledReadLoadNode(t *testing.T) {
 		resolveCalls[connection]++
 		resolveMu.Unlock()
 		ref, _ := resolver.SecretReference(0, "DSN")
-		return resolver.Source{ID: id, Type: "postgres", DSNEnv: ref}, map[string]string{ref: value}, nil
+		return resolver.Source{ID: id, Type: "postgres", DSNEnv: ref, Options: map[string]string{"tls_ca_pem": sc.Source.CAPEM}}, map[string]string{ref: value}, nil
 	}
 	handler, err := resolver.NewHandler(resolver.Config{
 		QueryTrust:     []delegation.Trust{{Issuer: issuer, Audience: audience, ClusterTenant: "a", ServicePrincipal: principal, PublicKey: pub}},

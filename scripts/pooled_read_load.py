@@ -153,6 +153,16 @@ def main():
     try:
         # 1. Source: 20 customer databases, each with its own role.
         run_psql("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+        # The delegated query path accepts only sslmode=verify-full, so the source needs TLS.
+        sh(["docker", "exec", "-u", "root", args.postgres_container, "bash", "-ec",
+            "d=/var/lib/postgresql/tls; mkdir -p $d; cd $d; "
+            "openssl req -x509 -newkey rsa:2048 -nodes -keyout ca.key -out ca.crt -days 2 -subj /CN=pgca -addext basicConstraints=critical,CA:true -addext keyUsage=critical,keyCertSign; "
+            "openssl req -new -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj /CN=localhost; "
+            "echo subjectAltName=DNS:localhost,IP:127.0.0.1 > ext; "
+            "openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 2 -extfile ext; "
+            "chown postgres:postgres $d/*; chmod 600 server.key"])
+        run_psql("ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/tls/server.crt'; ALTER SYSTEM SET ssl_key_file = '/var/lib/postgresql/tls/server.key'; ALTER SYSTEM SET ssl = on; SELECT pg_reload_conf()")
+        sh(["docker", "cp", args.postgres_container + ":/var/lib/postgresql/tls/ca.crt", str(out / "pg-ca.pem")])
         for n in range(CUSTOMERS):
             name = "cust%02d" % n
             sql = f"CREATE ROLE {name} LOGIN PASSWORD '{password}';\nCREATE DATABASE {name} OWNER {name};\n"
@@ -204,7 +214,7 @@ def main():
 
         # 4. Scenario: the Kelvo settings under test.
         scenario = yaml.safe_load((ROOT / "benchmarks/pooled-read-load/scenarios" / profile["scenario"]).read_text())
-        scenario["source"].update(host="127.0.0.1", port=proxy_port, password=password, customers=CUSTOMERS)
+        scenario["source"].update(host="127.0.0.1", port=proxy_port, password=password, customers=CUSTOMERS, ca_pem=(out / "pg-ca.pem").read_text())
         scenario["resolver"]["delay"] = "%dms" % args.resolve_ms
         for item in args.set:
             key, value = item.split("=", 1)
@@ -212,6 +222,7 @@ def main():
         (out / "scenario.yaml").write_text(yaml.safe_dump(scenario))
         public = json.loads(json.dumps(scenario))
         public["source"]["password"] = "<redacted>"
+        public["source"]["ca_pem"] = "<fixture CA>"
         report["scenario"] = public
         shutil_bins = {name: Path(getattr(args, name)).resolve() for name in ("kelvo", "launcher", "adapter", "cluster_test", "loadgen")}
         for name, path in shutil_bins.items():
