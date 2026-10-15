@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,8 +15,10 @@ import (
 	"github.com/SYNEHQ/kelvo-go/adapter/frame"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
+	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/operations"
+	"github.com/SYNEHQ/kelvo-go/resolver"
 )
 
 func readWorkerExecutor(t *testing.T, fs *fakeSet) (*Executor, *WarmPoolManager) {
@@ -62,7 +66,8 @@ func TestReadWorkerServesNativeReadsAndInspections(t *testing.T) {
 	for _, r := range []query.Request{read, inspect} {
 		sink := &workerTestSink{}
 		stats, err := e.Execute(context.Background(), r, sink)
-		if err != nil || stats.Rows != 1 || sink.rows != 1 {
+		// The client checks the job's rows and batches against what it decoded.
+		if err != nil || stats.Rows != 1 || sink.rows != 1 || stats.Batches != int64(sink.batches) || stats.Batches != 1 {
 			t.Fatal(stats, err, sink.rows)
 		}
 	}
@@ -186,5 +191,58 @@ func TestInspectionFallsBackWhenReadWorkerCannotTakeIt(t *testing.T) {
 	none.WarmPool, none.OperationAdapter = nil, OperationProcessConfig{}
 	if _, err := none.Execute(context.Background(), inspect, &workerTestSink{}); err == nil || !strings.Contains(err.Error(), "operation adapter") {
 		t.Fatal("inspection without an adapter:", err)
+	}
+}
+
+// Apps send one alias for every connection: workers are keyed by the
+// delegation's saved connection, so two connections behind the same alias get
+// separate workers and the adapter sees the saved connection.
+func TestReadWorkerKeyedBySavedConnection(t *testing.T) {
+	fs := &fakeSet{}
+	var seen []adapter.ProcessRequest
+	fs.serve = func(p *fakeWorkerProcess) {
+		var mu sync.Mutex
+		serveFake(p, func(f frame.Frame) {
+			if f.Type == frame.Request {
+				var r adapter.ProcessRequest
+				_ = json.Unmarshal(f.Payload, &r)
+				fs.mu.Lock()
+				seen = append(seen, r)
+				fs.mu.Unlock()
+				mu.Lock()
+				replyOK(p.stdoutW, f.Stream, f.Payload)
+				mu.Unlock()
+			}
+		})
+	}
+	e, _ := readWorkerExecutor(t, fs)
+	resolverClient := fixtureConnectionResolver(t, func(w http.ResponseWriter, r *http.Request) {
+		var body resolver.QueryRequest
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		writeConnectionResponse(t, w, connectionResolution{Version: 1, DelegationSHA256: delegation.Digest(body.Delegation), ValidUntil: time.Now().Add(30 * time.Second).Unix(),
+			Sources: []catalog.Source{{ID: "selected", Type: "postgres", DSNEnv: "KELVO_SOURCE_REQUEST_0_DSN"}},
+			Secrets: map[string]string{"KELVO_SOURCE_REQUEST_0_DSN": connectionFixtureDSN}})
+	})
+	e, err := e.WithConnectionResolvers(map[string]*ConnectionResolver{"gateway": resolverClient})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(saved string) {
+		r := query.Request{Mode: "native", ConnectionID: "selected", SQL: "SELECT 1", Delegation: "grant-" + saved}
+		digest, _ := delegation.QueryDigest(r)
+		claims := delegation.Claims{Issuer: "gateway", ClusterTenant: "tenant", AppTeam: "team-a", QuerySHA256: digest, ExpiresAt: time.Now().Add(time.Minute).Unix(),
+			Sources: []delegation.Source{{Alias: "selected", ConnectionID: saved, Database: "analytics"}}}
+		ctx := delegation.WithExecution(context.Background(), claims, r.Delegation, delegation.ExecutionBinding{JobID: "job", WorkerID: "worker", Owner: "owner", Claim: "claim"})
+		if _, err := e.Execute(ctx, r, &workerTestSink{}); err != nil {
+			t.Fatal(saved, err)
+		}
+	}
+	read("saved-a")
+	read("saved-b")
+	read("saved-a")
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	if len(fs.procs) != 2 || len(seen) != 3 || seen[0].Source.ConnectionID != "saved-a" || seen[1].Source.ConnectionID != "saved-b" || seen[0].Request.Connection.ID != "saved-a" {
+		t.Fatalf("workers keyed by alias: procs=%d first=%q second=%q", len(fs.procs), seen[0].Source.ConnectionID, seen[1].Source.ConnectionID)
 	}
 }

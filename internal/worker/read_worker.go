@@ -18,6 +18,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/operations"
+	"github.com/apache/arrow-go/v18/arrow"
 )
 
 // Engines whose native reads run on read workers. The adapter opens all four
@@ -34,6 +35,11 @@ const readWorkerMaxRows, readWorkerMaxBytes = 1_000_000, 64 << 20
 // obtained and nothing was sent. A worker holds its own reservation, so a read
 // here takes none of its own.
 func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation.Execution, dynamic bool, resolverRequest, r query.Request, sink query.Sink) (stats query.Stats, resultErr error, handled bool) {
+	// The job's rows and batches must be what this caller's sink received:
+	// the client checks both against what it decoded.
+	counted := &countingSink{Sink: sink}
+	sink = counted
+	defer func() { stats.Rows, stats.Batches = counted.rows, counted.batches }()
 	pool := e.WarmPool
 	eligible := pool != nil && pool.Config().Enabled && pool.Adapter.Binary != "" && r.Mode == "native" && r.Mongo == nil && !r.ScanDiagnostics &&
 		!access.Restricted(ctx) && e.Limits.MaxRows <= readWorkerMaxRows && e.Limits.MaxBytes <= readWorkerMaxBytes
@@ -41,13 +47,16 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 	// ponytail: resolves before any reservation; the node's job permits bound
 	// it today. Phase 3 resolves once per worker instead of once per read.
 	resolve := func() (*Executor, readIdentity, int64, error) {
-		id := readIdentity{tenant: "static"}
+		id := readIdentity{tenant: "static", saved: r.ConnectionID}
 		if !dynamic {
 			return e, id, time.Now().Unix() + 5, nil
 		}
 		resolved, until, err := e.resolveConnections(ctx, execution, resolverRequest)
 		selected := execution.Claims.Sources[0]
 		id.database, id.schema, id.team = selected.Database, selected.Schema, execution.Claims.AppTeam
+		// Workers are keyed by the saved connection, not the request's alias:
+		// apps reuse one alias for every connection.
+		id.saved = selected.ConnectionID
 		identity, _ := json.Marshal([]string{execution.Claims.Issuer, execution.Claims.ClusterTenant, execution.Claims.AppTeam})
 		sum := sha256.Sum256(append([]byte("kelvo.read-worker.tenant.v1\x00"), identity...))
 		id.tenant = hex.EncodeToString(sum[:])
@@ -99,7 +108,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 	}
 	database = db
 
-	request := operations.Request{Version: operations.Version, Connection: operations.ConnectionRef{ID: r.ConnectionID, Database: database, Schema: schema}}
+	request := operations.Request{Version: operations.Version, Connection: operations.ConnectionRef{ID: id.saved, Database: database, Schema: schema}}
 	if r.Inspect != nil {
 		request.Kind, request.Spec.Metadata = operations.MetadataInspect, r.Inspect
 	} else {
@@ -122,9 +131,9 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		return stats, query.NewError("DEADLINE_EXCEEDED", "Read deadline passed before it could be sent"), true
 	}
 	input := adapter.ProcessRequest{Version: adapter.ProcessVersion, OperationID: readOperationID(), RequestSHA256: digest, Request: request, AppTeam: team,
-		Source:                adapter.ConnectionSpec{Engine: s.Type, DSN: dsn, Options: s.Options, TenantID: tenant, ConnectionID: r.ConnectionID, Revision: hex.EncodeToString(revision[:]), Database: database, Schema: schema},
+		Source:                adapter.ConnectionSpec{Engine: s.Type, DSN: dsn, Options: s.Options, TenantID: tenant, ConnectionID: id.saved, Revision: hex.EncodeToString(revision[:]), Database: database, Schema: schema},
 		Limits:                adapter.ProcessLimits{MaxRows: e.Limits.MaxRows, MaxBytes: e.Limits.MaxBytes, BatchRows: 1024, TimeoutMS: timeoutMS},
-		CredentialsValidUntil: min(validUntil, expires), ExpiresAt: expires}
+		CredentialsValidUntil: credentialWindow(validUntil, expires), ExpiresAt: expires}
 	if input.Validate() != nil || !pool.IsEligible(input) {
 		return unavailable()
 	}
@@ -148,12 +157,36 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 	return receiptStats(receipt, err), receiptError(receipt, err), true
 }
 
-type readIdentity struct{ tenant, team, database, schema string }
+// readIdentity names whose read this is: tenant, app team, the saved
+// connection behind the request's alias, database and schema.
+type readIdentity struct{ tenant, team, saved, database, schema string }
+
+// countingSink counts the rows and batches its caller's sink received.
+type countingSink struct {
+	query.Sink
+	rows, batches int64
+}
+
+func (s *countingSink) Write(batch arrow.RecordBatch) error {
+	if err := s.Sink.Write(batch); err != nil {
+		return err
+	}
+	s.rows += batch.NumRows()
+	s.batches++
+	return nil
+}
 
 func readOperationID() string {
 	id := make([]byte, 12)
 	_, _ = rand.Read(id)
 	return "read-" + hex.EncodeToString(id)
+}
+
+// credentialWindow is the window one worker request carries: the resolver's
+// validity (75s for read credentials) and the read's own expiry, within the
+// five seconds a process request may claim.
+func credentialWindow(validUntil, expires int64) int64 {
+	return min(validUntil, expires, time.Now().Unix()+5)
 }
 
 // readDeadline returns a worker request's ExpiresAt (whole seconds, rounded
@@ -225,7 +258,7 @@ func (e *Executor) inspectOneShot(ctx context.Context, source *Executor, id read
 		database = u.Path[1:]
 	}
 	request := operations.Request{Version: operations.Version, Kind: operations.MetadataInspect,
-		Connection: operations.ConnectionRef{ID: r.ConnectionID, Database: database, Schema: id.schema}, Spec: operations.Spec{Metadata: r.Inspect}}
+		Connection: operations.ConnectionRef{ID: id.saved, Database: database, Schema: id.schema}, Spec: operations.Spec{Metadata: r.Inspect}}
 	digest, err := operations.Digest(request)
 	expires, timeoutMS, ok := readDeadline(ctx, e.Limits.Timeout)
 	if err != nil || !ok {
@@ -235,9 +268,9 @@ func (e *Executor) inspectOneShot(ctx context.Context, source *Executor, id read
 	revision := sha256.Sum256(append(append(definition, 0), strings.Join(secrets[:], "\x00")...))
 	input := adapter.ProcessRequest{Version: adapter.ProcessVersion, OperationID: readOperationID(), RequestSHA256: digest, Request: request, AppTeam: id.team,
 		Source: adapter.ConnectionSpec{Engine: s.Type, DSN: secrets[0], URL: secrets[1], Username: secrets[2], Password: secrets[3], Token: secrets[4], Options: s.Options,
-			TenantID: id.tenant, ConnectionID: r.ConnectionID, Revision: hex.EncodeToString(revision[:]), Database: database, Schema: id.schema},
+			TenantID: id.tenant, ConnectionID: id.saved, Revision: hex.EncodeToString(revision[:]), Database: database, Schema: id.schema},
 		Limits:                adapter.ProcessLimits{MaxRows: min(e.Limits.MaxRows, readWorkerMaxRows), MaxBytes: min(e.Limits.MaxBytes, readWorkerMaxBytes), BatchRows: 1024, TimeoutMS: timeoutMS},
-		CredentialsValidUntil: min(validUntil, expires), ExpiresAt: expires}
+		CredentialsValidUntil: credentialWindow(validUntil, expires), ExpiresAt: expires}
 	if input.Validate() != nil {
 		return query.Stats{}, query.NewError("INVALID_ARGUMENT", "Metadata inspection is not available for this source")
 	}
