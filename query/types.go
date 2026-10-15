@@ -28,6 +28,10 @@ type Request struct {
 	ConnectionID    string        `json:"connection_id,omitempty" yaml:"connection_id,omitempty"`
 	Parameters      []Parameter   `json:"parameters,omitempty" yaml:"parameters,omitempty"`
 	Mongo           *MongoRequest `json:"mongo,omitempty" yaml:"mongo,omitempty"`
+	// BypassCache asks for a fresh execution on an explicit refresh. It carries
+	// no authority and is not part of the delegation digest; a node without a
+	// result cache ignores it.
+	BypassCache bool `json:"bypass_cache,omitempty" yaml:"-"`
 }
 
 // MongoRequest carries native aggregation syntax. SQL and Mongo are mutually
