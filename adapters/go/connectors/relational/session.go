@@ -20,15 +20,20 @@ type Session struct {
 	reusable bool
 }
 
+// PoolSize is the number of source connections a warm session may hold.
+const PoolSize = 4
+
 // KeepOpen lets a warm worker run several reads on this session's single
-// connection. One-shot operations never call it: their first read consumes the
-// pool so nothing else can borrow the session. A warm worker instead exits on
-// any failed or cancelled request, which closes the connection with it.
+// pool of PoolSize connections, safe for concurrent reads; a failed or
+// cancelled read discards only its own connection. One-shot operations never
+// call it: their first read consumes the pool.
 func (s *Session) KeepOpen() {
 	if s == nil || s.Session == nil || s.Pool == nil {
 		return
 	}
 	s.reusable = true
+	s.Pool.SetMaxOpenConns(PoolSize)
+	s.Pool.SetMaxIdleConns(PoolSize)
 	// The worker's idle TTL bounds the connection, not the pool's own timers.
 	s.Pool.SetConnMaxLifetime(0)
 	s.Pool.SetConnMaxIdleTime(0)

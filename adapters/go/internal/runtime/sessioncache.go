@@ -8,78 +8,113 @@ import (
 	"github.com/SYNEHQ/kelvo-go/adapter"
 )
 
-// SessionCache keeps opened adapter sessions warm between requests.
-// Entries are keyed by the caller (tenant+team+connection+source revision), so a
-// revision change misses the cache and the stale entry ages out. A session is
-// checked out exclusively: one request at a time, never shared.
+// SessionCache keeps one opened adapter session per key (tenant+team+connection+
+// source revision) shared by all concurrent requests. Concurrent first requests
+// open once; the others wait. A session that did not accept KeepOpen is
+// single-use: it is handed to the opener only and never cached.
 type SessionCache struct {
 	TTL time.Duration // idle lifetime, e.g. 30m
-	Max int           // max idle sessions; oldest evicted
+	Max int           // max cached sessions; oldest evicted
 
-	mu   sync.Mutex
-	idle map[string]cached
-	now  func() time.Time
+	mu      sync.Mutex
+	entries map[string]*cacheEntry
+	now     func() time.Time
 }
 
-type cached struct {
+type cacheEntry struct {
+	ready   chan struct{} // closed once open finished
 	session adapter.Session
+	err     error
 	at      time.Time
 }
 
-// Get returns a warm session for key, or opens one. Call Put on success, or
-// session.Close on any failure so a broken connection is never reused.
+// Get returns the shared session for key, opening it if needed. For a
+// non-reusable session the caller owns it and must Close it.
 func (c *SessionCache) Get(ctx context.Context, key string, open func(context.Context) (adapter.Session, error)) (adapter.Session, error) {
-	c.mu.Lock()
-	e, ok := c.idle[key]
-	delete(c.idle, key)
+	for {
+		c.mu.Lock()
+		if c.entries == nil {
+			c.entries = map[string]*cacheEntry{}
+		}
+		e := c.entries[key]
+		if e != nil && e.isReady() && c.clock().Sub(e.at) >= c.TTL {
+			delete(c.entries, key)
+			_ = e.session.Close()
+			e = nil
+		}
+		if e == nil {
+			break // still locked: we are the opener
+		}
+		e.at = c.clock()
+		c.mu.Unlock()
+		select {
+		case <-e.ready:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		if e.err != nil {
+			return nil, e.err
+		}
+		if e.session != nil {
+			return e.session, nil
+		}
+		// opener's session was single-use: open our own
+	}
+	e := &cacheEntry{ready: make(chan struct{}), at: c.clock()}
+	c.entries[key] = e
+	c.evictLocked(key)
 	c.mu.Unlock()
-	if ok && c.clock().Sub(e.at) < c.TTL {
-		return e.session, nil
+
+	s, err := open(ctx)
+	_, reusable := s.(reusableSession)
+	c.mu.Lock()
+	if err != nil || !reusable {
+		delete(c.entries, key)
+		e.err = err
+	} else {
+		e.session = s
 	}
-	if ok {
-		_ = e.session.Close()
-	}
-	return open(ctx)
+	c.mu.Unlock()
+	close(e.ready)
+	return s, err
 }
 
-// Put returns a healthy session to the cache, evicting expired and surplus entries.
-func (c *SessionCache) Put(key string, s adapter.Session) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.idle == nil {
-		c.idle = map[string]cached{}
+func (e *cacheEntry) isReady() bool {
+	select {
+	case <-e.ready:
+		return true
+	default:
+		return false
 	}
-	now := c.clock()
-	if old, ok := c.idle[key]; ok {
-		_ = old.session.Close()
-	}
-	c.idle[key] = cached{s, now}
-	for k, e := range c.idle {
-		if now.Sub(e.at) >= c.TTL {
-			_ = e.session.Close()
-			delete(c.idle, k)
-		}
-	}
-	for len(c.idle) > c.Max {
+}
+
+// evictLocked drops the oldest ready entries beyond Max (never keep).
+func (c *SessionCache) evictLocked(keep string) {
+	for len(c.entries) > c.Max {
 		var oldest string
 		var at time.Time
-		for k, e := range c.idle {
-			if oldest == "" || e.at.Before(at) {
+		for k, e := range c.entries {
+			if k != keep && e.isReady() && (oldest == "" || e.at.Before(at)) {
 				oldest, at = k, e.at
 			}
 		}
-		_ = c.idle[oldest].session.Close()
-		delete(c.idle, oldest)
+		if oldest == "" {
+			return
+		}
+		_ = c.entries[oldest].session.Close()
+		delete(c.entries, oldest)
 	}
 }
 
-// Close drops every idle session.
+// Close drops every ready session.
 func (c *SessionCache) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for k, e := range c.idle {
-		_ = e.session.Close()
-		delete(c.idle, k)
+	for k, e := range c.entries {
+		if e.isReady() && e.session != nil {
+			_ = e.session.Close()
+		}
+		delete(c.entries, k)
 	}
 }
 

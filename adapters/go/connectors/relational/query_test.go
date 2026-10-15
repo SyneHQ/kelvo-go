@@ -31,6 +31,9 @@ type readState struct {
 	execErr                                               error
 	engine                                                string
 	block                                                 bool
+	queryErr                                              atomic.Bool
+	gate                                                  chan struct{}
+	started                                               chan struct{}
 }
 type readConnector struct{ s *readState }
 
@@ -72,6 +75,17 @@ func (c *readConn) QueryContext(ctx context.Context, _ string, args []driver.Nam
 	c.s.mu.Lock()
 	c.s.args = append([]driver.NamedValue{}, args...)
 	c.s.mu.Unlock()
+	if c.s.queryErr.Load() {
+		return nil, errors.New("query failed")
+	}
+	if c.s.gate != nil {
+		c.s.started <- struct{}{}
+		select {
+		case <-c.s.gate:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 	if c.s.block {
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -266,5 +280,130 @@ func TestReadDiscardsPreviouslyAdmittedPhysicalConnection(t *testing.T) {
 				t.Fatal("admitted physical session was reopened, retained, or not rolled back")
 			}
 		})
+	}
+}
+
+func newPoolSession(t *testing.T) (*Session, *readState, chan struct{}, chan struct{}) {
+	s, state := newReadSession(t, "postgresql")
+	s.KeepOpen()
+	started, release := make(chan struct{}, 16), make(chan struct{})
+	state.gate, state.started = release, started
+	return s, state, started, release
+}
+
+func runRead(s *Session, ctx context.Context) error {
+	sink := &readSink{}
+	defer sink.Close()
+	_, err := s.Query(ctx, readRequest(), sink)
+	return err
+}
+
+func TestKeepOpenPoolRunsFourConcurrentReadsAndFifthWaits(t *testing.T) {
+	s, state, started, release := newPoolSession(t)
+	errs := make(chan error, 5)
+	for i := 0; i < 5; i++ {
+		go func() { errs <- runRead(s, context.Background()) }()
+	}
+	for i := 0; i < PoolSize; i++ {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("only %d reads running", i)
+		}
+	}
+	select {
+	case <-started:
+		t.Fatal("fifth read ran beyond PoolSize")
+	case <-time.After(50 * time.Millisecond):
+	}
+	if state.opens.Load() != PoolSize {
+		t.Fatalf("opens=%d", state.opens.Load())
+	}
+	close(release)
+	for i := 0; i < 5; i++ {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if state.opens.Load() != PoolSize || state.closes.Load() != 0 {
+		t.Fatalf("healthy connections not reused: opens=%d closes=%d", state.opens.Load(), state.closes.Load())
+	}
+}
+
+func TestKeepOpenDiscardsOnlyFailedReadConnection(t *testing.T) {
+	for _, mode := range []string{"query error", "cancel", "sink error"} {
+		t.Run(mode, func(t *testing.T) {
+			s, state, _, release := newPoolSession(t)
+			close(release)
+			if err := runRead(s, context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if state.opens.Load() != 1 || s.Pool.Stats().Idle != 1 {
+				t.Fatal("healthy read did not return its connection")
+			}
+			var err error
+			switch mode {
+			case "query error":
+				state.queryErr.Store(true)
+				err = runRead(s, context.Background())
+				state.queryErr.Store(false)
+			case "cancel":
+				state.block = true
+				ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+				defer cancel()
+				err = runRead(s, ctx)
+				state.block = false
+			case "sink error":
+				_, err = s.Query(context.Background(), readRequest(), &readSink{fail: true})
+			}
+			if err == nil {
+				t.Fatal("expected failure")
+			}
+			deadline := time.Now().Add(time.Second)
+			for state.closes.Load() != 1 && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+			if state.closes.Load() != 1 || s.Pool.Stats().OpenConnections != 0 {
+				t.Fatalf("failed connection retained: closes=%d open=%d", state.closes.Load(), s.Pool.Stats().OpenConnections)
+			}
+			if err := runRead(s, context.Background()); err != nil {
+				t.Fatalf("pool unusable after discard: %v", err)
+			}
+			if state.opens.Load() != 2 {
+				t.Fatalf("next read should get a new connection, opens=%d", state.opens.Load())
+			}
+		})
+	}
+}
+
+func TestKeepOpenFailedReadLeavesConcurrentReadUntouched(t *testing.T) {
+	s, state, started, release := newPoolSession(t)
+	good := make(chan error, 1)
+	go func() { good <- runRead(s, context.Background()) }()
+	<-started
+	ctx, cancel := context.WithCancel(context.Background())
+	bad := make(chan error, 1)
+	go func() { bad <- runRead(s, ctx) }()
+	<-started
+	cancel()
+	if err := <-bad; err == nil {
+		t.Fatal("cancelled read succeeded")
+	}
+	close(release)
+	if err := <-good; err != nil {
+		t.Fatalf("sibling read broken by discard: %v", err)
+	}
+	if state.opens.Load() != 2 || state.closes.Load() != 1 || s.Pool.Stats().Idle != 1 {
+		t.Fatalf("opens=%d closes=%d idle=%d", state.opens.Load(), state.closes.Load(), s.Pool.Stats().Idle)
+	}
+}
+
+func TestOneShotReadStillClosesPool(t *testing.T) {
+	s, state := newReadSession(t, "postgresql")
+	if err := runRead(s, context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Pool.PingContext(context.Background()); err == nil || state.closes.Load() != 1 {
+		t.Fatal("one-shot read left its pool open")
 	}
 }

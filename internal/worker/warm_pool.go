@@ -110,6 +110,8 @@ type warmWorkerEntry struct {
 	proc                  WorkerProcess
 	cleanup               func() error
 	busy                  bool
+	sw                    *frame.SyncWriter
+	nextStream            uint32 // only touched by the single in-flight request
 }
 
 type queueWaiter struct {
@@ -226,8 +228,9 @@ func (m *WarmPoolManager) reapExpired() {
 
 func (m *WarmPoolManager) killWorker(w *warmWorkerEntry) {
 	if w.proc != nil {
-		_ = frame.WriteClose(w.proc.Stdin())
+		// Kill first: a Close write blocks forever on a worker that stopped reading.
 		_ = w.proc.Kill()
+		_ = frame.WriteClose(w.proc.Stdin())
 		_ = w.proc.Wait()
 	}
 	if w.cleanup != nil {
@@ -322,10 +325,24 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 			return nil, nil, err
 		}
 
-		// Count only workers that actually started; refused launches are fallbacks.
-		m.metrics.Spawns.Add(1)
 		entry.proc = proc
 		entry.cleanup = cleanup
+		entry.sw = frame.NewSyncWriter(proc.Stdin())
+		if err := helloHandshake(ctx, proc); err != nil {
+			// A worker that cannot speak v2 is a launch failure: fall back to one-shot.
+			_ = proc.Kill()
+			_ = proc.Wait()
+			if cleanup != nil {
+				_ = cleanup()
+			}
+			m.mu.Lock()
+			delete(m.workers, workerID)
+			m.mu.Unlock()
+			return nil, nil, err
+		}
+
+		// Count only workers that actually started; refused launches are fallbacks.
+		m.metrics.Spawns.Add(1)
 
 		release := func(execErr error) {
 			m.releaseWorker(entry, execErr)
@@ -424,24 +441,85 @@ func (m *WarmPoolManager) Execute(ctx context.Context, e *Executor, cfg Operatio
 		return operations.Receipt{}, errWarmUnavailable
 	}
 
-	receipt, execErr := m.executeOnWorker(ctx, e, w.proc, input, sink)
-	release(execErr)
+	receipt, execErr, keep := m.executeOnWorker(ctx, e, w, input, sink)
+	if keep {
+		// The stream ended with its own terminal frame: the worker is healthy.
+		release(nil)
+	} else {
+		release(execErr)
+	}
 	return receipt, execErr
 }
 
-func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, proc WorkerProcess, input adapter.ProcessRequest, sink query.Sink) (operations.Receipt, error) {
+const (
+	helloTimeout = 5 * time.Second
+	cancelGrace  = 2 * time.Second
+)
+
+// helloHandshake sends Hello and requires a matching Hello back. A stuck
+// worker is abandoned on ctx/timeout; the caller kills it, which unblocks the goroutine.
+func helloHandshake(ctx context.Context, proc WorkerProcess) error {
+	ctx, cancel := context.WithTimeout(ctx, helloTimeout)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		if err := frame.WriteHello(proc.Stdin()); err != nil {
+			done <- err
+			return
+		}
+		f, err := frame.Read(proc.Stdout())
+		if err == nil {
+			err = frame.CheckHello(f)
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// executeOnWorker runs one request on its own stream. keep reports whether the
+// worker is still healthy: true only when the stream ended with a terminal frame
+// and nothing about the exchange was a protocol, limit, receipt or I/O failure.
+func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, w *warmWorkerEntry, input adapter.ProcessRequest, sink query.Sink) (operations.Receipt, error, bool) {
+	proc := w.proc
 	raw, err := adapter.EncodeProcessRequest(input)
 	if err != nil {
-		return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT")
+		return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT"), true
 	}
 
-	if err := frame.WriteRequest(proc.Stdin(), raw); err != nil {
-		return uncertainOperation(input), operationFailure("QUERY_FAILED")
+	w.nextStream++
+	stream := w.nextStream
+	if err := w.sw.Write(frame.Request, stream, raw); err != nil {
+		return uncertainOperation(input), operationFailure("QUERY_FAILED"), false
 	}
+
+	// On caller cancellation tell the worker, then give the stream cancelGrace
+	// to end; past that the worker is killed, which also unblocks the reader.
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		select {
+		case <-stop:
+			return
+		case <-ctx.Done():
+		}
+		t := time.AfterFunc(cancelGrace, func() { _ = proc.Kill() })
+		defer t.Stop()
+		_ = w.sw.Write(frame.Cancel, stream, nil)
+		<-stop
+	}()
+	defer func() { close(stop); wg.Wait() }()
 
 	hasher := sha256.New()
 	reader := &framedResultReader{
 		r:        proc.Stdout(),
+		stream:   stream,
 		hasher:   hasher,
 		maxBytes: input.Limits.MaxBytes,
 	}
@@ -451,8 +529,21 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, proc
 	limits.MaxBytes = input.Limits.MaxBytes
 
 	observed, readErr := e.readIPC(ctx, reader, limits, sink)
+	if ctx.Err() != nil && !reader.finished {
+		// readIPC may bail on ctx before the terminal frame; drain it.
+		_, _ = io.Copy(io.Discard, reader)
+	}
+	if ctx.Err() != nil {
+		keep := reader.finished && (reader.remoteErr || reader.receipt != nil)
+		return uncertainOperation(input), ctx.Err(), keep
+	}
 	if readErr != nil || reader.errFrame != nil || reader.receipt == nil {
-		return uncertainOperation(input), operationFailure("QUERY_FAILED")
+		// A terminal Error, or a non-Completed Receipt, ended the stream cleanly.
+		keep := reader.remoteErr || (reader.receipt != nil && reader.receipt.Outcome != operations.Completed)
+		if reader.receipt != nil && keep && readErr != nil {
+			return *reader.receipt, nil, true
+		}
+		return uncertainOperation(input), operationFailure("QUERY_FAILED"), keep
 	}
 
 	receipt := *reader.receipt
@@ -462,11 +553,11 @@ func (m *WarmPoolManager) executeOnWorker(ctx context.Context, e *Executor, proc
 	if receipt.Outcome == operations.Completed {
 		ref := receipt.Result
 		if ref == nil || ref.ID != input.OperationID || ref.Format != "arrow_ipc" || ref.Rows != observed.Rows || ref.Bytes != observed.WireBytes || ref.SHA256 != wireDigest {
-			return uncertainOperation(input), operationFailure("QUERY_FAILED")
+			return uncertainOperation(input), operationFailure("QUERY_FAILED"), false
 		}
 	}
 
-	return receipt, nil
+	return receipt, nil, true
 }
 
 // Drain gracefully stops all workers in the pool.
@@ -497,6 +588,8 @@ func (m *WarmPoolManager) Drain(ctx context.Context) error {
 
 type framedResultReader struct {
 	r          io.Reader
+	stream     uint32
+	remoteErr  bool // stream ended with a worker Error terminal frame
 	curr       []byte
 	hasher     hash.Hash
 	receipt    *operations.Receipt
@@ -517,11 +610,20 @@ func (fr *framedResultReader) Read(p []byte) (int, error) {
 	}
 
 	for {
-		fType, payload, err := frame.Read(fr.r)
+		f, err := frame.Read(fr.r)
 		if err != nil {
 			fr.finished = true
 			fr.errFrame = err
 			return 0, err
+		}
+		fType, payload := f.Type, f.Payload
+		if fType == frame.Pong {
+			continue
+		}
+		if f.Stream != fr.stream {
+			fr.finished = true
+			fr.errFrame = fmt.Errorf("frame %v for stream %d, expected %d", fType, f.Stream, fr.stream)
+			return 0, io.EOF
 		}
 
 		switch fType {
@@ -551,6 +653,7 @@ func (fr *framedResultReader) Read(p []byte) (int, error) {
 
 		case frame.Error:
 			fr.errFrame = errors.New(string(payload))
+			fr.remoteErr = true
 			fr.finished = true
 			return 0, io.EOF
 
