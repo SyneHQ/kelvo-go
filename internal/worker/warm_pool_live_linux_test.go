@@ -21,6 +21,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/adapter/frame"
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
+	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/operations"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -80,6 +81,10 @@ func operationFixtureServe() int {
 			return 47
 		}
 		served++
+		// "SELECT slow" keeps the worker busy, for the capacity gate.
+		if input.Request.Spec.Query != nil && input.Request.Spec.Query.SQL == "SELECT slow" {
+			time.Sleep(1500 * time.Millisecond)
+		}
 		values := []int64{int64(os.Getpid()), served}
 		schema := arrow.NewSchema([]arrow.Field{{Name: "value", Type: arrow.PrimitiveTypes.Int64}}, nil)
 		builder := array.NewInt64Builder(memory.DefaultAllocator)
@@ -282,4 +287,80 @@ func TestContainedWarmAdapterReusesPostgresConnection(t *testing.T) {
 		t.Fatal("one-shot operations shared a PostgreSQL connection", first, coldA, coldB)
 	}
 	t.Logf("warm backend %d served three requests; one-shot backends %d and %d", first, coldA, coldB)
+}
+
+// This gate checks the warm pool's capacity contract on the real launcher, in
+// a node with room for one worker:
+//   - every worker busy: a read for another key waits queue_timeout and is
+//     refused with RESOURCE_EXHAUSTED and a retry hint, and no one-shot child
+//     runs it;
+//   - the worker idle again: the next read evicts it and launches its own;
+//   - a launch that fails (here, a worker too large for the node) still falls
+//     back to the one-shot path, since nothing was sent.
+func TestContainedWarmPoolCapacityContract(t *testing.T) {
+	executor, _, _ := containedExecutor(t)
+	pool, err := admission.New(admission.Limits{MaxConcurrent: 2, MemoryBytes: 512 << 20, ScratchBytes: 64 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.ResourcePool = pool
+	cfg := operationExecutable(t)
+	warm := DefaultWarmPoolConfig()
+	warm.Enabled = true
+	warm.QueueTimeout = 500 * time.Millisecond
+	mgr, err := NewWarmPoolManager(warm, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.WarmPool = mgr
+	defer func() { _ = mgr.Drain(context.Background()) }()
+	read := func(ctx context.Context, team, mode string) (operations.Receipt, error) {
+		input := operationProcessInput(t, operations.QueryRead, mode)
+		input.AppTeam = team
+		return executor.ExecuteOperation(ctx, cfg, input, &workerTestSink{})
+	}
+
+	busy := make(chan error, 1)
+	go func() { _, err := read(context.Background(), "team-a", "slow"); busy <- err }()
+	waitFor := func(cond func() bool) {
+		for i := 0; !cond(); i++ {
+			if i > 500 {
+				t.Fatal("condition not met")
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	waitFor(func() bool { return mgr.Metrics().Spawns.Load() == 1 })
+	start := time.Now()
+	refused, err := read(context.Background(), "team-b", "serve")
+	waited := time.Since(start)
+	var public *query.Error
+	if !errors.As(err, &public) || public.Code != "RESOURCE_EXHAUSTED" || !strings.Contains(public.Message, "retry after") ||
+		refused.ErrorCode != "RESOURCE_EXHAUSTED" || waited < warm.QueueTimeout || mgr.Metrics().Fallbacks.Load() != 0 {
+		t.Fatal("a read with every worker busy was not refused after the wait", refused, err, waited, mgr.Metrics().Fallbacks.Load())
+	}
+	if err := <-busy; err != nil {
+		t.Fatal(err)
+	}
+	replaced, err := read(context.Background(), "team-b", "serve")
+	if err != nil || replaced.Outcome != operations.Completed || mgr.Metrics().EvictionsLRU.Load() != 1 || mgr.Metrics().Spawns.Load() != 2 || mgr.Metrics().Fallbacks.Load() != 0 {
+		t.Fatal("the idle worker was not evicted and replaced", replaced, err, mgr.Metrics().EvictionsLRU.Load(), mgr.Metrics().Spawns.Load())
+	}
+	if err := mgr.Drain(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	// A worker larger than the node: the launch fails and the read runs one-shot.
+	tooLarge := DefaultWarmPoolConfig()
+	tooLarge.Enabled, tooLarge.WorkerMemoryMB = true, 1024
+	failing, err := NewWarmPoolManager(tooLarge, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor.WarmPool = failing
+	defer func() { _ = failing.Drain(context.Background()) }()
+	oneShot, err := read(context.Background(), "team-c", "fixture")
+	if err != nil || oneShot.Outcome != operations.Completed || failing.Metrics().Fallbacks.Load() != 1 || failing.Metrics().Spawns.Load() != 0 {
+		t.Fatal("a failed launch did not fall back to one-shot", oneShot, err, failing.Metrics().Fallbacks.Load(), failing.Metrics().Spawns.Load())
+	}
 }

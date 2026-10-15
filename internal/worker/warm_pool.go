@@ -415,19 +415,24 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 				m.releaseWorker(entry, nil)
 				return nil, nil, ctx.Err()
 			}
-			if entry.launchErr != nil {
-				m.releaseWorker(entry, nil)
-				// The node had no reservation left for a new worker: free an idle
-				// worker of another connection and try again.
-				if errors.Is(entry.launchErr, errWarmUnavailable) && m.evictIdleOther(ctx, key) {
-					continue
-				}
+			if entry.launchErr == nil {
+				return entry, func(err error) { m.releaseWorker(entry, err) }, nil
+			}
+			m.releaseWorker(entry, nil)
+			// Only a launch that failed falls back to one-shot. A launch the node
+			// refused for want of a reservation is capacity: free an idle worker
+			// of another connection, or wait below like a read for a full worker.
+			if !errors.Is(entry.launchErr, errWarmUnavailable) {
 				return nil, nil, entry.launchErr
 			}
-			return entry, func(err error) { m.releaseWorker(entry, err) }, nil
-		}
-
-		if keyCount == 0 {
+			if m.evictIdleOther(ctx, key) {
+				continue
+			}
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			m.mu.Lock()
+		} else if keyCount == 0 {
 			// Every slot belongs to other connections. Evict the least recently
 			// used idle one and launch for this connection once it has ended (its
 			// reservation is then free). If every worker is busy, wait below.
