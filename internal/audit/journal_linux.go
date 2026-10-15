@@ -28,6 +28,10 @@ import (
 // the sync that covers its writes has returned.
 const maxGroupSize = 64
 
+// groupWindow is groupCommitWindow; a variable so a test can make the wait long
+// enough to tell apart from scheduling noise.
+var groupWindow = groupCommitWindow
+
 type diskIO struct {
 	write    func(*os.File, []byte, int64) error
 	sync     func(*os.File) error
@@ -387,7 +391,7 @@ func (j *Journal) collect(first *operation) []*operation {
 	}
 	drain()
 	if len(group) > 1 {
-		timer := time.NewTimer(groupCommitWindow)
+		timer := time.NewTimer(groupWindow)
 		defer timer.Stop()
 	wait:
 		for len(group) < maxGroupSize {

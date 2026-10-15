@@ -66,12 +66,14 @@ func (s *NATSStore) slotReusable(j Job, now time.Time, strict bool) bool {
 	}
 	if j.Transient {
 		// Its caller read the outcome from the response itself, so a completed
-		// read's slot is free at once. A cancelled or failed one is not: its
-		// node may still be executing until it next renews its lease (up to
-		// about a second), and a slot reused now would let that work run outside
-		// max_queries. Those wait out the lease window, in the saturated pass
-		// too: a transient job that did not complete is never taken early.
-		if j.State == Succeeded {
+		// read's slot is free at once. So is one that ended before any claim: the
+		// node runs only Claimed jobs, so nothing can be executing, and holding
+		// it would let a retry storm of refused-then-cancelled reads fill
+		// max_queries. One that ended after a claim (Claim is kept on the record)
+		// may still be executing until its node next renews its lease (up to about
+		// a second), and a slot reused now would let that work run outside
+		// max_queries: it waits out the lease window, in the saturated pass too.
+		if j.State == Succeeded || j.Claim == "" {
 			return true
 		}
 		return now.Sub(j.HeartbeatAt) >= s.policy.LeaseDuration
@@ -368,8 +370,9 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 
 // SubmitTransient stores a single-call read. It differs from Submit only in
 // the slot's lifetime: the job is marked Transient, so once it has Succeeded
-// its slot is reused at once instead of after the lease window. A cancelled or
-// failed one keeps the lease window.
+// its slot is reused at once instead of after the lease window, as is one that
+// ended before any claim. One cancelled or failed after a claim keeps the lease
+// window.
 func (s *NATSStore) SubmitTransient(ctx context.Context, r query.Request) (Snapshot, error) {
 	return s.submit(ctx, r, true)
 }
@@ -600,8 +603,8 @@ func (s *NATSStore) CompareAndSwap(ctx context.Context, old Snapshot, next Job) 
 		}
 		return Snapshot{}, errors.New("job store unavailable")
 	}
-	if next.Transient && next.State == Succeeded {
-		s.pushFreed(n, rev) // only a completed read frees its slot at once
+	if next.Transient && (next.State == Succeeded || (next.Terminal() && next.Claim == "")) {
+		s.pushFreed(n, rev) // a completed or never-claimed read frees its slot at once
 	}
 	return Snapshot{Job: next, Revision: rev, raw: b}, nil
 }
