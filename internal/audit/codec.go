@@ -115,7 +115,12 @@ func decodeHeader(frame []byte, directory string) (journalHeader, error) {
 	id, err := decodeFrame(frame, headerFrame, &h)
 	h.Config.Directory = directory
 	scope, scopeErr := normalizedScope(h.Scope)
-	if err != nil || h.Version != 1 || h.ID != id || h.Config.Validate() != nil || scopeErr != nil || !reflect.DeepEqual(scope, h.Scope) {
+	// MaxPending is not bound by the journal: it is derived from the running
+	// configuration at open time. Headers written by earlier versions carry a
+	// value, later ones may omit it; neither is trusted or required.
+	check := h.Config
+	check.MaxPending = 1
+	if err != nil || h.Version != 1 || h.ID != id || check.Validate() != nil || scopeErr != nil || !reflect.DeepEqual(scope, h.Scope) {
 		return journalHeader{}, ErrCorrupt
 	}
 	return h, nil

@@ -462,3 +462,82 @@ func TestAuditReaderPaginationAndMaximumLabels(t *testing.T) {
 		t.Fatal("maximum event changed")
 	}
 }
+
+// Concurrency is a runtime setting. A journal written with one max_pending, or
+// by a version whose header omits it, opens under any other valid value.
+func TestAuditReopensWithDifferentMaxPending(t *testing.T) {
+	cfg := testConfig(t.TempDir())
+	scope := testScope()
+	first := openTest(t, cfg, scope) // header written by this version carries max_pending=4
+	r, err := first.Begin(context.Background(), testBinding(), QuerySubmit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = r.Finish(context.Background(), Succeeded, None); err != nil {
+		t.Fatal(err)
+	}
+	closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err = first.Close(closeCtx); err != nil {
+		t.Fatal(err)
+	}
+	for _, pending := range []int{8, 1, 4} {
+		next := cfg
+		next.MaxPending = pending
+		j := openTest(t, next, scope)
+		if s := j.Snapshot(); s.MaxPending != pending || s.Retained != 1 {
+			t.Fatalf("max_pending %d: %+v", pending, s)
+		}
+		if err = j.Close(closeCtx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A header that omits max_pending (written by a later version) still opens.
+	raw := make([]byte, headerSize)
+	f, err := os.OpenFile(filepath.Join(cfg.Directory, journalName), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err = readExact(f, raw, 0); err != nil {
+		t.Fatal(err)
+	}
+	h, err := decodeHeader(raw, cfg.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type bare struct {
+		Version int    `json:"version"`
+		ID      string `json:"id"`
+		Config  struct {
+			MaxEntries   int           `json:"max_entries"`
+			Retention    time.Duration `json:"retention_ns"`
+			WriteTimeout time.Duration `json:"write_timeout_ns"`
+		} `json:"config"`
+		Scope Scope `json:"scope"`
+	}
+	b := bare{Version: 1, ID: h.ID, Scope: h.Scope}
+	b.Config.MaxEntries, b.Config.Retention, b.Config.WriteTimeout = h.Config.MaxEntries, h.Config.Retention, h.Config.WriteTimeout
+	frame, err := encodeFrame(headerFrame, h.ID, b, headerSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.WriteAt(frame, 0); err != nil {
+		t.Fatal(err)
+	}
+	next := cfg
+	next.MaxPending = 6
+	headerless := openTest(t, next, scope)
+	if s := headerless.Snapshot(); s.MaxPending != 6 || s.Retained != 1 {
+		t.Fatalf("headerless max_pending: %+v", s)
+	}
+	if err = headerless.Close(closeCtx); err != nil {
+		t.Fatal(err)
+	}
+	// Everything else is still bound.
+	bad := cfg
+	bad.Retention = 2 * time.Hour
+	if _, err = Open(bad, scope); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("retention change accepted: %v", err)
+	}
+}

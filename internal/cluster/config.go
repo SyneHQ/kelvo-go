@@ -128,6 +128,13 @@ func LoadNode(path string) (NodeConfig, error) {
 			return c, errors.New("containment requires managed scratch and the sandbox launcher")
 		}
 	}
+	if c.ReadWorkers != nil {
+		rw := c.ReadWorkers.withDefaults()
+		if err := rw.validate(c.Resources); err != nil {
+			return c, err
+		}
+		c.ReadWorkers = &rw
+	}
 	resolveTLS(base, &c.TLS)
 	if err := validateTLSRotation(c.TLS); err != nil {
 		return c, err

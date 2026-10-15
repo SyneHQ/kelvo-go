@@ -161,6 +161,7 @@ type NodeConfig struct {
 	Operations          *OperationNodeConfig                       `yaml:"operations,omitempty"`
 	ConnectionResolvers map[string]worker.ConnectionResolverConfig `yaml:"connection_resolvers,omitempty"`
 	Exports             *ExportNodeConfig                          `yaml:"exports,omitempty"`
+	ReadWorkers         *ReadWorkersConfig                         `yaml:"read_workers,omitempty"`
 	RuntimeExportStore  ExportStore                                `yaml:"-"`
 	Metrics             *MetricsConfig                             `yaml:"metrics,omitempty"`
 	Audit               *ServiceAuditConfig                        `yaml:"audit,omitempty"`

@@ -80,3 +80,22 @@ python3 scripts/cluster_fixture.py stop
 Always stop owned fixtures, including on failure. Provisioning downloads checksum-pinned NATS v2.15.0, binds loopback ports and generates private identities under ignored `artifacts/cluster-private`. Container acceptance separately checks network isolation. Keep keys, customer SQL and private paths out of public evidence.
 
 References: [consumers](https://docs.nats.io/nats-concepts/jetstream/consumers), [KV](https://docs.nats.io/nats-concepts/jetstream/key-value-store), [accounts](https://docs.nats.io/running-a-nats-service/configuration/securing_nats/accounts), [NATS release](https://github.com/nats-io/nats-server/releases/tag/v2.15.0), [Landlock](https://docs.kernel.org/userspace-api/landlock.html), [Arrow IPC](https://arrow.apache.org/docs/format/Columnar.html#serialization-and-interprocess-communication-ipc).
+
+## Read worker capacity (node setting)
+
+Read capacity is a node setting, not cluster state. It is not part of `policy`, is never written to or compared with the `KELVO_META` record, and changes with a restart of that node only. No NATS record is deleted, the cluster is not re-initialized, and the audit journal is kept.
+
+```yaml
+read_workers:
+  max_workers: 4      # required, 1-64, no larger than resources.max_concurrent
+  max_in_flight: 16   # reads per worker, 1-256, default 16
+  pool_size: 4        # source connections per worker, 1-64, default 4
+  idle_ttl: 30m       # 10ms-24h, default 30m
+  queue_wait: 2s      # bounded admission wait, 10ms-1m, default 2s
+```
+
+`operations.max_concurrent` is bounded by `resources.max_concurrent` and no longer by `policy.workers`. `policy.workers` still names the worker identities and sizes the legacy NATS job queue (consumer `max_ack_pending`, job store); those stay pinned in the metadata check.
+
+The settings are validated by `kelvo node --check-config`. They are not yet read by the warm pool: wiring them into `internal/worker/warm_pool.go` is a follow-up owned by the read-path work.
+
+The audit journal header no longer binds `audit.max_pending`. Journals written by earlier versions carry a value that is ignored on open; all other limits (`max_entries`, `retention`, `write_timeout`) and the scope remain bound.
