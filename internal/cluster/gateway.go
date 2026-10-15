@@ -723,7 +723,7 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 				wait = g.tracing.Start(jobTrace(s.Job.Trace), tracing.ClusterResultWait)
 				waitStarted = true
 			}
-			if !admission.park() {
+			if !parkWithin(r.Context(), admission, slotWait) {
 				w.Header().Set("Retry-After", "1")
 				g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Queued result wait capacity unavailable")
 				return
@@ -962,8 +962,10 @@ const (
 	defaultStreamWait = 5 * time.Second
 )
 
+// isStreamQuery matches what the router matches: the path is trimmed of
+// slashes there, so /v1/queries/stream/ reaches the stream handler too.
 func isStreamQuery(r *http.Request) bool {
-	return r.Method == http.MethodPost && r.URL.Path == streamQueryPath
+	return r.Method == http.MethodPost && strings.Trim(r.URL.Path, "/") == strings.Trim(streamQueryPath, "/")
 }
 
 func (g *Gateway) streamWaitFor() time.Duration {
@@ -990,6 +992,32 @@ func (g *Gateway) waitForPermit(ctx context.Context) bool {
 func (g *Gateway) retryableBusy(w http.ResponseWriter, message string) {
 	w.Header().Set("Retry-After", "1")
 	g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", message)
+}
+
+// parkWithin retries a waiter slot for up to wait, like activateWithin.
+func parkWithin(ctx context.Context, a *requestAdmission, wait time.Duration) bool {
+	if a.park() {
+		return true
+	}
+	if wait <= 0 {
+		return false
+	}
+	deadline := time.NewTimer(wait)
+	defer deadline.Stop()
+	poll := time.NewTicker(25 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-deadline.C:
+			return false
+		case <-poll.C:
+			if a.park() {
+				return true
+			}
+		}
+	}
 }
 
 // activateWithin retries a result slot for up to wait. The slot is never held
