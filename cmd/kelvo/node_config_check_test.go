@@ -185,7 +185,7 @@ func TestNodeCheckConfigReadWorkersAreNodeSettings(t *testing.T) {
 	raised := strings.Replace(config, "resources: {max_concurrent: 1, memory_mb: 512,", "resources: {max_concurrent: 4, memory_mb: 4096,", 1)
 	raised = strings.Replace(raised, "max_concurrent: 1\n  max_downloads", "max_concurrent: 4\n  max_downloads", 1)
 	pool := func(fields string) string {
-		return strings.Replace(raised, "  poll_interval: 100ms\n", "  poll_interval: 100ms\n  warm_pool: {enabled: true, max_per_key: 1, queue_depth: 64, worker_memory_mb: 64"+fields+"}\n", 1)
+		return strings.Replace(raised, "  poll_interval: 100ms\n", "  poll_interval: 100ms\n  warm_pool: {enabled: true, queue_depth: 64, worker_memory_mb: 64"+fields+"}\n", 1)
 	}
 	for name, tc := range map[string]struct {
 		body  string
@@ -202,8 +202,11 @@ func TestNodeCheckConfigReadWorkersAreNodeSettings(t *testing.T) {
 		"read workers without a warm pool":      {raised + "read_workers: {max_workers: 2}\n", false},
 		"read workers with a disabled pool":     {strings.Replace(pool(""), "enabled: true", "enabled: false", 1) + "read_workers: {max_workers: 2}\n", false},
 		"capacity set in both places":           {pool(", max_workers: 2") + "read_workers: {max_workers: 2}\n", false},
+		"max_per_key set in both places":        {pool(", max_per_key: 1") + "read_workers: {max_workers: 2}\n", false},
+		"read workers max_per_key":              {pool("") + "read_workers: {max_workers: 2, max_per_key: 1}\n", true},
+		"read workers max_per_key too large":    {pool("") + "read_workers: {max_workers: 2, max_per_key: 3}\n", false},
 		"stream buffer set in both places":      {pool(", stream_buffer_mb: 8") + "read_workers: {max_workers: 2}\n", false},
-		"legacy warm pool capacity still works": {pool(", idle_ttl: 30m, max_workers: 2, max_in_flight: 16, queue_timeout: 5s"), true},
+		"legacy warm pool capacity still works": {pool(", max_per_key: 1, idle_ttl: 30m, max_workers: 2, max_in_flight: 16, queue_timeout: 5s"), true},
 		"operations above audit max_pending":    {strings.Replace(raised, "max_pending: 8", "max_pending: 2", 1), false},
 	} {
 		if err := os.WriteFile(path, []byte(tc.body), 0600); err != nil {

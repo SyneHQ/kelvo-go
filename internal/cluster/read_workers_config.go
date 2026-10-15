@@ -20,6 +20,7 @@ import (
 // capacity fields.
 type ReadWorkersConfig struct {
 	MaxWorkers     int           `yaml:"max_workers"`      // workers this node admits; one admission reservation each
+	MaxPerKey      int           `yaml:"max_per_key"`      // workers one connection may scale out to when its workers are full, default 2 (at most max_workers)
 	MaxInFlight    int           `yaml:"max_in_flight"`    // concurrent reads per worker, default 16, at most 64
 	PoolSize       int           `yaml:"pool_size"`        // source connections per worker, 1-32; unset leaves the adapter's own 4 and sends no flag
 	IdleTTL        time.Duration `yaml:"idle_ttl"`         // idle worker lifetime, default 30m
@@ -29,6 +30,7 @@ type ReadWorkersConfig struct {
 
 const (
 	defaultReadMaxInFlight = 16
+	defaultReadMaxPerKey   = 2
 	defaultReadPoolSize    = 4
 	defaultReadIdleTTL     = 30 * time.Minute
 	defaultReadQueueWait   = 2 * time.Second
@@ -50,6 +52,9 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 	if c.MaxInFlight == 0 {
 		c.MaxInFlight = defaultReadMaxInFlight
 	}
+	if c.MaxPerKey == 0 {
+		c.MaxPerKey = min(defaultReadMaxPerKey, c.MaxWorkers)
+	}
 	if c.IdleTTL == 0 {
 		c.IdleTTL = defaultReadIdleTTL
 	}
@@ -63,7 +68,7 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 }
 
 func (c ReadWorkersConfig) validate(resources *ResourceConfig) error {
-	if c.MaxWorkers < 1 || c.MaxWorkers > 64 || c.MaxInFlight < 1 || c.MaxInFlight > 64 || c.PoolSize < 0 || c.PoolSize > 32 || c.StreamBufferMB < 1 || c.StreamBufferMB > 256 ||
+	if c.MaxWorkers < 1 || c.MaxWorkers > 64 || c.MaxInFlight < 1 || c.MaxInFlight > 64 || c.MaxPerKey < 1 || c.MaxPerKey > c.MaxWorkers || c.PoolSize < 0 || c.PoolSize > 32 || c.StreamBufferMB < 1 || c.StreamBufferMB > 256 ||
 		c.IdleTTL < 10*time.Millisecond || c.IdleTTL > 24*time.Hour || c.QueueWait < 10*time.Millisecond || c.QueueWait > time.Minute {
 		return errReadWorkersConfig
 	}
@@ -96,7 +101,7 @@ func validateNodeReadWorkers(c NodeConfig) error {
 // warmPoolCapacitySet reports whether operations.warm_pool sets a field that
 // read_workers owns. A zero value is unset: yaml applies no defaults.
 func warmPoolCapacitySet(w worker.WarmPoolConfig) bool {
-	return w.IdleTTL != 0 || w.MaxWorkers != 0 || w.MaxInFlight != 0 || w.StreamBufferMB != 0 || w.QueueTimeout != 0
+	return w.IdleTTL != 0 || w.MaxWorkers != 0 || w.MaxPerKey != 0 || w.MaxInFlight != 0 || w.StreamBufferMB != 0 || w.QueueTimeout != 0
 }
 
 // effectiveWarmPool is the warm pool configuration the node runs: the
@@ -108,7 +113,7 @@ func (c NodeConfig) effectiveWarmPool() *worker.WarmPoolConfig {
 	}
 	w := *c.Operations.WarmPool
 	if rw := c.ReadWorkers; rw != nil {
-		w.MaxWorkers, w.MaxInFlight, w.IdleTTL, w.QueueTimeout, w.StreamBufferMB = rw.MaxWorkers, rw.MaxInFlight, rw.IdleTTL, rw.QueueWait, rw.StreamBufferMB
+		w.MaxWorkers, w.MaxPerKey, w.MaxInFlight, w.IdleTTL, w.QueueTimeout, w.StreamBufferMB = rw.MaxWorkers, rw.MaxPerKey, rw.MaxInFlight, rw.IdleTTL, rw.QueueWait, rw.StreamBufferMB
 	}
 	return &w
 }

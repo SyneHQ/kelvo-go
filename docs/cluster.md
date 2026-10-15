@@ -87,9 +87,10 @@ Read capacity is a node setting, not cluster state. It is not part of `policy`, 
 
 ```yaml
 operations:
-  warm_pool: {enabled: true, max_per_key: 1, queue_depth: 64, worker_memory_mb: 64}
+  warm_pool: {enabled: true, queue_depth: 64, worker_memory_mb: 64}
 read_workers:
   max_workers: 4        # required, 1-64; one admission reservation each
+  max_per_key: 2        # workers one connection may scale out to when its workers are full, 1-max_workers, default 2
   max_in_flight: 16     # reads per worker, 1-64, default 16
   pool_size: 4          # source connections per worker, 1-32; leave unset for the adapter's own 4
   idle_ttl: 30m         # 10ms-24h, default 30m
@@ -97,11 +98,11 @@ read_workers:
   stream_buffer_mb: 8   # unread result bytes per stream, 1-256, default 8
 ```
 
-`read_workers` is the single source of read-worker capacity. It sizes the warm pool (`max_workers`, `max_in_flight`, `idle_ttl`, `queue_wait` as the pool's queue timeout, `stream_buffer_mb`) and, when `pool_size` is set, the adapter's source connection pool: the launcher then starts each adapter with `serve --pool-size N`. With `pool_size` unset no flag is sent and the adapter keeps its own pool of 4. `max_workers × pool_size` (4 when unset) may not exceed 256 source connections.
+`read_workers` is the single source of read-worker capacity. It sizes the warm pool (`max_workers`, `max_per_key`, `max_in_flight`, `idle_ttl`, `queue_wait` as the pool's queue timeout, `stream_buffer_mb`) and, when `pool_size` is set, the adapter's source connection pool: the launcher then starts each adapter with `serve --pool-size N`. With `pool_size` unset no flag is sent and the adapter keeps its own pool of 4. `max_workers × pool_size` (4 when unset) may not exceed 256 source connections.
 
-`operations.warm_pool` keeps `enabled` and the non-capacity fields (`max_per_key`, `queue_depth`, `worker_memory_mb`, caps, cache, `reauthorize_every`). It must be enabled when `read_workers` is set, and setting `idle_ttl`, `max_workers`, `max_in_flight`, `queue_timeout` or `stream_buffer_mb` there as well is a configuration error. The check fails with a static message and prints no values.
+`operations.warm_pool` keeps `enabled` and the non-capacity fields (`queue_depth`, `worker_memory_mb`, caps, cache, `reauthorize_every`). It must be enabled when `read_workers` is set, and setting `idle_ttl`, `max_workers`, `max_per_key`, `max_in_flight`, `queue_timeout` or `stream_buffer_mb` there as well is a configuration error. The check fails with a static message and prints no values.
 
-**Migration.** A node without `read_workers` keeps working: its pool is sized from the same fields in `operations.warm_pool` and the adapter keeps its default pool of 4. To migrate, move those five fields into `read_workers` (`queue_timeout` becomes `queue_wait`), add `pool_size` once the new adapter and launcher are deployed, and delete them from `warm_pool`. Run `kelvo node --check-config` before restarting.
+**Migration.** A node without `read_workers` keeps working: its pool is sized from the same fields in `operations.warm_pool` and the adapter keeps its default pool of 4. To migrate, move those six fields into `read_workers` (`queue_timeout` becomes `queue_wait`), add `pool_size` once the new adapter and launcher are deployed, and delete them from `warm_pool`. Run `kelvo node --check-config` before restarting.
 
 **Mixed versions.** Set `pool_size` only after the adapter and sandbox launcher that understand `--pool-size` are deployed; the node cannot tell cheaply whether they do, so it does not check. An adapter built before `--pool-size` exits on the unknown argument and a sandbox launcher built before it refuses the argument. Either way the worker never answers the hello, the launch fails, and reads run on the one-shot path. With `pool_size` set against older ones every warm launch fails and reads run one-shot: watch the warm pool's fallback counter after setting it. Roll the adapter and launcher out with the node.
 
