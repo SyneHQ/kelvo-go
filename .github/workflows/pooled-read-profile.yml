@@ -85,7 +85,7 @@ jobs:
         run: |
           mkdir -p artifacts/pooled-read-profile
           cd artifacts/load-private/run
-          cp report.json plain-*.json window-*.json window-*.pprof adapter-*.json adapter-*.pprof adapter-*.log latproxy.stats.json ../../pooled-read-profile/ 2>/dev/null || true
+          cp report.json node-report.json plain-*.json window-*.json window-*.pprof adapter-*.json adapter-*.pprof adapter-*.log latproxy.stats.json ../../pooled-read-profile/ 2>/dev/null || true
           cp ../adapter-size.txt ../../pooled-read-profile/ 2>/dev/null || true
           grep -av 'kelvo read failed' node.test.log | tail -c 100000 > ../../pooled-read-profile/node.test.log 2>/dev/null || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
