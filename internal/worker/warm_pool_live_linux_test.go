@@ -363,4 +363,9 @@ func TestContainedWarmPoolCapacityContract(t *testing.T) {
 	if err != nil || oneShot.Outcome != operations.Completed || failing.Metrics().Fallbacks.Load() != 1 || failing.Metrics().Spawns.Load() != 0 {
 		t.Fatal("a failed launch did not fall back to one-shot", oneShot, err, failing.Metrics().Fallbacks.Load(), failing.Metrics().Spawns.Load())
 	}
+	// Within the failure's backoff window the next read skips the launch.
+	again, err := read(context.Background(), "team-c", "fixture")
+	if err != nil || again.Outcome != operations.Completed || failing.Metrics().Fallbacks.Load() != 2 || failing.Metrics().LaunchFailures.Load() != 1 {
+		t.Fatal("a read inside the backoff window relaunched", again, err, failing.Metrics().Fallbacks.Load(), failing.Metrics().LaunchFailures.Load())
+	}
 }
