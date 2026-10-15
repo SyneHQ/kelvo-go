@@ -280,10 +280,13 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 			if ctx.Err() != nil {
 				return stats, ctx.Err()
 			}
+			if errors.Is(err, admission.ErrQueueFull) {
+				return stats, queueFullError("Read capacity for this tenant or connection is in use", e.WarmPool.Config().QueueTimeout)
+			}
 			return stats, busyError("Read capacity for this tenant or connection is in use", time.Since(started))
 		}
 		defer releaseCaps()
-		ctx = withQueueDeadline(ctx, deadline)
+		ctx = withQueueWait(ctx, started, deadline)
 	}
 	// An inspection never reaches the query child: under custody it may still
 	// use a read worker, and its one-shot fallback refuses custody explicitly.

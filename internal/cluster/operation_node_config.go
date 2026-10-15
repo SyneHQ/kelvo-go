@@ -70,6 +70,12 @@ func validateNodeOperations(c NodeConfig) error {
 		if o.WarmPool.Enabled && c.Resources.InteractiveSlots() < o.WarmPool.MaxWorkers+1 {
 			return errInteractiveSlots
 		}
+		// Every read worker's reservation, its stream buffers and a result
+		// download must fit the interactive memory at once.
+		perWorker := int64(o.WarmPool.WorkerMemoryMB)<<20 + c.Resources.OverheadMB<<20 + o.WarmPool.StreamBuffers()
+		if o.WarmPool.Enabled && !c.Resources.FitsInteractive(int64(o.WarmPool.MaxWorkers)*perWorker+operationDownloadMemory(o)) {
+			return errInteractiveMemory
+		}
 	}
 	if !c.Resources.FitsInteractive(operationDownloadMemory(o)) {
 		return errInteractiveDownload

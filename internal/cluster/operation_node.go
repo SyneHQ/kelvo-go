@@ -56,7 +56,9 @@ func (n *Node) initOperations(ctx context.Context) (resultErr error) {
 	}()
 	var err error
 	native.OperationAdapter = c.Adapter
-	state.caps = &admission.Caps{MaxPerTenant: c.MaxPerTenant, MaxPerConnection: c.MaxPerConnection}
+	// The runtime runs at most max_concurrent operations at once, so at most
+	// that many can wait for caps.
+	state.caps = &admission.Caps{MaxPerTenant: c.MaxPerTenant, MaxPerConnection: c.MaxPerConnection, MaxWaiting: c.MaxConcurrent}
 	queueWait := c.QueueWait
 	if queueWait == 0 {
 		queueWait = 10 * time.Second

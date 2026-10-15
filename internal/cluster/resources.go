@@ -49,6 +49,7 @@ func (c ResourceConfig) NewPool() (*admission.Pool, error) {
 var (
 	errInteractiveSlots    = errors.New("resources: the interactive share must hold warm_pool.max_workers plus one slot for fallbacks and result downloads")
 	errInteractiveDownload = errors.New("resources: the interactive reserve must fit one operation result download (3 x max_result_bytes + 2 MiB)")
+	errInteractiveMemory   = errors.New("resources: the interactive reserve must fit warm_pool.max_workers x (worker_memory_mb + overhead_mb + stream buffers) plus one result download")
 )
 
 // InteractiveSlots is the slot count interactive work may use.
