@@ -2,13 +2,17 @@
 package cluster
 
 import (
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
 
 func TestResourceQueryReservesValidateAgainstUsableCapacity(t *testing.T) {
@@ -139,5 +143,52 @@ func TestLoadNodeQueryReservesYAMLAndInvalidBoundaries(t *testing.T) {
 				t.Fatal("YAML reserves lost")
 			}
 		})
+	}
+}
+
+// With separate classes an interactive query fits the query reserve alone,
+// not the smaller of the reserve and the background share.
+func TestResourceFitsSeparateClassesUsesReserveForQueries(t *testing.T) {
+	c := ResourceConfig{MaxConcurrent: 4, MemoryMB: 1024, BaselineMB: 128, OverheadMB: 64, ScratchMB: 512,
+		QueryReserveSlots: 2, QueryReserveMemoryMB: 600, QueryReserveScratchMB: 256, SeparateClasses: true}
+	limits := query.DefaultLimits()
+	limits.MemoryMB, limits.MaxTempMB = 500, 200 // 564 MB with overhead: over the 296 MB background share
+	if !c.Fits(limits, false) {
+		t.Fatal("an interactive query that fits the reserve was refused")
+	}
+	limits.MemoryMB = 600
+	if c.Fits(limits, false) {
+		t.Fatal("an interactive query larger than the reserve was admitted")
+	}
+}
+
+// The interactive share must hold the read workers plus one slot, and its
+// memory one operation result download.
+func TestValidateNodeOperationsProtectsInteractiveShare(t *testing.T) {
+	policy := Policy{Operations: &OperationPolicy{}, Limits: query.DefaultLimits(), Workers: map[string]int{"worker-a": 4}}
+	warm := worker.DefaultWarmPoolConfig()
+	warm.Enabled = true
+	base := func() NodeConfig {
+		return NodeConfig{Policy: policy, WorkerID: "worker-a", Audit: &ServiceAuditConfig{Config: audit.Config{Directory: "/var/lib/kelvo/audit"}}, ScratchDirectory: "/var/lib/kelvo/scratch", SandboxPath: "/usr/lib/kelvo/landlock",
+			Containment: &ContainmentConfig{},
+			Resources: &ResourceConfig{MaxConcurrent: 6, MemoryMB: 4096, BaselineMB: 256, OverheadMB: 160, ScratchMB: 1024,
+				QueryReserveSlots: 5, QueryReserveMemoryMB: 2048, QueryReserveScratchMB: 256, SeparateClasses: true},
+			Operations: &OperationNodeConfig{InputURL: "https://gateway.internal", TLS: TLSConfig{CAFile: "ca.pem", CertFile: "c.pem", KeyFile: "k.pem"},
+				Results: OperationInputConfig{Directory: "/var/lib/kelvo/results", MaxEntries: 16, MaxStoredBytes: 64 << 20}, MaxResultBytes: 4 << 20,
+				MaxConcurrent: 1, MaxDownloads: 1, PollInterval: 100 * time.Millisecond, WarmPool: &warm}}
+	}
+	ok := base()
+	if err := validateNodeOperations(ok); errors.Is(err, errInteractiveSlots) || errors.Is(err, errInteractiveDownload) {
+		t.Fatal("a sufficient interactive share was refused", err)
+	}
+	slots := base()
+	slots.Resources.QueryReserveSlots = 4 // four read workers and no spare slot
+	if err := validateNodeOperations(slots); !errors.Is(err, errInteractiveSlots) {
+		t.Fatal("interactive share without a spare slot accepted", err)
+	}
+	memory := base()
+	memory.Resources.QueryReserveMemoryMB = 12 // < 3 x 4 MiB + 2 MiB
+	if err := validateNodeOperations(memory); !errors.Is(err, errInteractiveDownload) {
+		t.Fatal("interactive reserve smaller than a result download accepted", err)
 	}
 }

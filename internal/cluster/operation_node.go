@@ -30,6 +30,7 @@ type nodeOperations struct {
 	results   *operationinput.Store
 	custody   *exports.Custody
 	executor  *worker.Executor
+	caps      *admission.Caps // tenant and connection caps for durable operations
 	downloads chan struct{}
 	failed    atomic.Bool
 }
@@ -55,8 +56,10 @@ func (n *Node) initOperations(ctx context.Context) (resultErr error) {
 	}()
 	var err error
 	native.OperationAdapter = c.Adapter
-	if c.MaxPerTenant > 0 || c.MaxPerConnection > 0 {
-		native.OperationCaps = &admission.Caps{MaxPerTenant: c.MaxPerTenant, MaxPerConnection: c.MaxPerConnection}
+	state.caps = &admission.Caps{MaxPerTenant: c.MaxPerTenant, MaxPerConnection: c.MaxPerConnection}
+	queueWait := c.QueueWait
+	if queueWait == 0 {
+		queueWait = 10 * time.Second
 	}
 	if c.WarmPool != nil && c.WarmPool.Enabled {
 		native.WarmPool, err = worker.NewWarmPoolManager(*c.WarmPool, nil)
@@ -100,7 +103,19 @@ func (n *Node) initOperations(ctx context.Context) (resultErr error) {
 			if state.failed.Load() || ctx.Err() != nil {
 				return nil, operationstore.ErrUnavailable
 			}
-			return &preparedNodeOperation{node: n, state: state, record: record, request: request}, nil
+			// Tenant and connection caps are taken before Start, waiting at most
+			// queue_wait: a refused operation is rejected before it starts, with
+			// a retryable RESOURCE_EXHAUSTED, and never holds a slot meanwhile.
+			capCtx, cancel := context.WithTimeout(ctx, queueWait)
+			releaseCaps, err := state.caps.Acquire(capCtx, operationCapTenant(record.Scope), record.Scope.ConnectionID)
+			cancel()
+			if err != nil {
+				if ctx.Err() != nil {
+					return nil, operationstore.ErrUnavailable
+				}
+				return nil, admission.ErrBusy
+			}
+			return &preparedNodeOperation{node: n, state: state, record: record, request: request, releaseCaps: releaseCaps}, nil
 		})
 	if err != nil {
 		return err
@@ -169,9 +184,14 @@ type preparedNodeOperation struct {
 	request    operations.Request
 	completion containment.Completion
 	sink       *operationResultSink
+	// releaseCaps returns the operation's tenant and connection caps.
+	releaseCaps func()
 }
 
 func (p *preparedNodeOperation) Close() error {
+	if p.releaseCaps != nil {
+		defer p.releaseCaps()
+	}
 	if p.sink != nil {
 		if err := p.sink.abort(); err != nil {
 			if errors.Is(err, operationinput.ErrCleanup) || errors.Is(err, operationrun.ErrCleanup) {
@@ -190,7 +210,6 @@ func (p *preparedNodeOperation) Close() error {
 
 func (p *preparedNodeOperation) Execute(ctx context.Context) (operations.Receipt, error) {
 	ctx = containment.WithCompletion(ctx, &p.completion)
-	ctx = worker.WithOperationScope(ctx, operationCapTenant(p.record.Scope), p.record.Scope.ConnectionID)
 	ctx = worker.WithOperationFilePublisher(ctx, func(admitted context.Context, input adapter.ProcessRequest, candidate filesnapshot.Descriptor, source io.Reader) (bool, error) {
 		if input.SourceFile == nil {
 			return false, operationstore.ErrConflict

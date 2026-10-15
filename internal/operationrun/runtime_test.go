@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/admission"
 	ledger "github.com/SYNEHQ/kelvo-go/internal/operations"
 	api "github.com/SYNEHQ/kelvo-go/operations"
 )
@@ -526,5 +527,22 @@ func TestConcurrencyRemainsBounded(t *testing.T) {
 	}
 	if peak.Load() > 2 || f.calls.Load() != 5 {
 		t.Fatal("concurrency exceeded", peak.Load(), f.calls.Load())
+	}
+}
+
+// A Prepare refused for capacity is rejected before start with a retryable
+// RESOURCE_EXHAUSTED, not a generic UNAVAILABLE, and never reaches the source.
+func TestCapacityRefusalIsRetryableRejection(t *testing.T) {
+	f := newFixture(t, 5*time.Second)
+	s := f.submit()
+	hooks := f.hooks()
+	hooks.Prepare = func(context.Context, ledger.Record, api.Request, ledger.Binding) (Prepared, error) {
+		return nil, admission.ErrBusy
+	}
+	r := f.runtime("worker-a", 1, hooks)
+	start(t, r)
+	got := terminal(t, f, s.Record.ID)
+	if got.Receipt.Outcome != api.Rejected || got.Receipt.Effect != api.EffectNone || got.Receipt.ErrorCode != "RESOURCE_EXHAUSTED" || f.calls.Load() != 0 {
+		t.Fatal("capacity refusal was not a retryable rejection before start", got.Receipt)
 	}
 }
