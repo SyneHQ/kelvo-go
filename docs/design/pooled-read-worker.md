@@ -314,19 +314,26 @@ gain. Phase 3 is the security-sensitive one.
 ## Phase 2c as built
 
 - Native reads on read workers go through a result cache. The key hashes
-  (tenant, app team, connection, source revision, SQL, parameters, result
-  limits); the revision binds the source definition and its credentials, and
-  the tenant is in every key, so a key never crosses tenants.
-- Concurrent identical reads share one execution; its Arrow IPC result is
-  kept for `warm_pool.cache_ttl` (default 10s) and replayed to each caller.
-- Only complete, receipt-verified results are kept: at most
-  `cache_max_entry_bytes` (default 4 MiB) each, `cache_max_total_bytes`
-  (default 64 MiB) in all, oldest first out. Larger results are served but not
-  kept; failures are never kept.
-- `query.Request.refresh: true` skips the cache and any running identical
-  read, and replaces the kept result. It is not part of the signed digest: it
-  can only cause another source query, never widen access.
-- Metadata inspections are not cached. `cache_disabled: true` turns it off.
+  tenant (cluster tenant and app team), connection, database, schema, source
+  revision (definition and credentials), SQL, parameters and result limits.
+  It deliberately leaves out the principal: a result depends only on its
+  source, every read is authorized before the cache is consulted, and
+  restricted principals never reach the cache.
+- Concurrent identical reads share one execution. It runs detached from any
+  one caller and stops only when every interested caller has gone; the leader
+  streams to its own client while it waits. Waiters replay the result, get
+  the execution's error if it failed, or run their own read if the result was
+  too large to keep. A panicking execution still releases its waiters.
+- Kept results live `warm_pool.cache_ttl` (default 10s) in an LRU bounded by
+  `cache_max_total_bytes` (default 64 MiB, in-flight buffers included), 4096
+  entries, a quarter of the total per tenant, and `cache_max_entry_bytes`
+  (default 4 MiB) per entry. A result never replaces one from an execution
+  that started later.
+- `query.Request.refresh: true` skips kept results and joins only an
+  execution that started at or after it arrived. It is not part of the signed
+  digest: it can only cause another source query, never widen access.
+- Hits report `cached: true` with their own replay time. Inspections are not
+  cached. `cache_disabled: true` turns the cache off.
 
 ## Targets
 
