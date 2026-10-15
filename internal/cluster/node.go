@@ -33,6 +33,7 @@ type reservation struct {
 	once          sync.Once
 	started       bool          // guarded by Node.mu; a permit remains held until Execute exits
 	leaseMutation chan struct{} // initialized under Node.mu; renewal and ResultReady only
+	last          *Snapshot     // guarded by Node.mu; this node's latest write of the job, tried before a read
 }
 
 type Node struct {
@@ -532,10 +533,29 @@ func (n *Node) LeaseFailureCause() CoordinationFailure {
 }
 
 func (n *Node) mutate(ctx context.Context, id string, fn func(*Job) error) error {
+	return n.mutateFrom(ctx, id, fn, false)
+}
+
+// mutateFrom is mutate; with fromLastWrite the first attempt starts from this
+// node's own latest write of the job, if it has one. When nobody has written
+// since, the update succeeds without reading the job first. A newer revision (a
+// cancellation, the gateway's claim) fails that update with a conflict and the
+// attempt repeats from a fresh read, exactly as before. Only the result
+// publication asks for it: everything else keeps reading first.
+func (n *Node) mutateFrom(ctx context.Context, id string, fn func(*Job) error, fromLastWrite bool) error {
+	var hint *Snapshot
+	if fromLastWrite {
+		hint = n.lastWrite(id)
+	}
 	for range 8 {
-		s, err := n.store.Get(ctx, id)
-		if err != nil {
-			return err
+		var s Snapshot
+		if hint != nil {
+			s, hint = *hint, nil
+		} else {
+			var err error
+			if s, err = n.store.Get(ctx, id); err != nil {
+				return err
+			}
 		}
 		if s.Job.WorkerID != n.cfg.WorkerID || s.Job.Owner != n.owner {
 			return ErrConflict
@@ -544,12 +564,34 @@ func (n *Node) mutate(ctx context.Context, id string, fn func(*Job) error) error
 		if err := fn(&j); err != nil {
 			return err
 		}
-		_, err = n.store.CompareAndSwap(ctx, s, j)
+		written, err := n.store.CompareAndSwap(ctx, s, j)
+		if err == nil {
+			n.rememberWrite(id, written)
+		}
 		if !errors.Is(err, ErrConflict) {
 			return err
 		}
 	}
 	return ErrConflict
+}
+
+func (n *Node) lastWrite(id string) *Snapshot {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if r := n.jobs[id]; r != nil && r.last != nil {
+		s := *r.last
+		r.last = nil
+		return &s
+	}
+	return nil
+}
+
+func (n *Node) rememberWrite(id string, s Snapshot) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if r := n.jobs[id]; r != nil && !s.Job.Terminal() {
+		r.last = &s
+	}
 }
 
 func (n *Node) finish(id, state string, stats query.Stats, result error) error {
@@ -562,7 +604,7 @@ func (n *Node) finish(id, state string, stats query.Stats, result error) error {
 		}
 		defer unlock()
 	}
-	return n.mutate(ctx, id, func(j *Job) error {
+	return n.mutateFrom(ctx, id, func(j *Job) error {
 		if j.Terminal() {
 			return ErrConflict
 		}
@@ -572,7 +614,7 @@ func (n *Node) finish(id, state string, stats query.Stats, result error) error {
 			j.Error = query.PublicError(result)
 		}
 		return nil
-	})
+	}, state == ResultReady)
 }
 
 // BeginDrain stops new reservations while existing jobs retain their leases and
