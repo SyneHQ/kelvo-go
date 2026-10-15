@@ -152,30 +152,44 @@ func (m *WarmPoolManager) retireAuthorization(key string, observed *readAuthoriz
 	}
 }
 
-// revokeAuthorization ends observed, and only observed, after a definitive
-// denial, killing its workers unless another principal's authorization still
-// uses them. It waits for the kills up to ctx.
-func (m *WarmPoolManager) revokeAuthorization(ctx context.Context, key string, observed *readAuthorization) error {
+// revokeAuthorization ends observed after a definitive denial. A source or
+// connection that is gone (NOT_FOUND) is gone for every principal: its
+// workers are killed, whoever else's authorization used them, and those
+// authorizations end too. A principal no longer permitted (PERMISSION_DENIED)
+// loses only its own authorization; the workers stay for the others. It waits
+// for kills up to ctx.
+func (m *WarmPoolManager) revokeAuthorization(ctx context.Context, key string, observed *readAuthorization, denial error) error {
 	if observed == nil {
 		return nil
 	}
+	gone := sourceGone(denial)
 	m.authMu.Lock()
 	if m.auths[key] != observed {
 		m.authMu.Unlock() // another caller already re-authorized or revoked it
 		return nil
 	}
 	delete(m.auths, key)
-	kill := !m.referencedLocked(observed.workerKey)
+	if gone {
+		for other, a := range m.auths {
+			if a.workerKey == observed.workerKey {
+				delete(m.auths, other)
+			}
+		}
+	}
 	m.authMu.Unlock()
-	if kill {
+	if gone {
 		return m.killKey(ctx, observed.workerKey)
 	}
 	return nil
 }
 
+// referencedLocked reports a fresh authorization that still relies on
+// workerKey's workers. An expired one holds nothing: its principal must
+// authorize again before it reads.
 func (m *WarmPoolManager) referencedLocked(workerKey string) bool {
+	now, every := time.Now(), m.cfg.reauthorizeEvery()
 	for _, a := range m.auths {
-		if a.workerKey == workerKey {
+		if a.workerKey == workerKey && a.fresh(now, every) {
 			return true
 		}
 	}
@@ -313,4 +327,11 @@ func (m *WarmPoolManager) authorizeOnce(ctx context.Context, key string, reuse b
 func definitiveDenial(err error) bool {
 	var public *query.Error
 	return errors.As(err, &public) && (public.Code == "PERMISSION_DENIED" || public.Code == "NOT_FOUND")
+}
+
+// sourceGone reports a definitive denial that holds for every principal: the
+// saved connection or its credential no longer exists.
+func sourceGone(err error) bool {
+	var public *query.Error
+	return errors.As(err, &public) && public.Code == "NOT_FOUND"
 }

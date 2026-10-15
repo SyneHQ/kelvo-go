@@ -92,7 +92,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 				// this read observed: never on a cancel, deadline or outage.
 				if definitiveDenial(err) {
 					revokeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-					_ = pool.revokeAuthorization(revokeCtx, authKey, observed)
+					_ = pool.revokeAuthorization(revokeCtx, authKey, observed, err)
 					cancel()
 				}
 			case a == nil:

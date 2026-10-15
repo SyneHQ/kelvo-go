@@ -162,7 +162,7 @@ func TestReadAuthorizationRevokesOnlyOnDefinitiveDenial(t *testing.T) {
 	stale := &readAuthorization{workerKey: "w1"}
 	current := &readAuthorization{workerKey: "w2"}
 	mgr.storeAuthorization("cas", current)
-	_ = mgr.revokeAuthorization(context.Background(), "cas", stale)
+	_ = mgr.revokeAuthorization(context.Background(), "cas", stale, query.NewError("NOT_FOUND", "gone"))
 	if mgr.currentAuthorization("cas") != current {
 		t.Fatal("revocation removed an authorization it did not observe")
 	}
@@ -276,7 +276,8 @@ type dynamicReads struct {
 	validFor atomic.Int64
 	grantTTL atomic.Int64 // how long each read's delegation lasts
 	hold     atomic.Pointer[chan struct{}]
-	deny     sync.Map // grant -> true
+	deny     sync.Map // grant -> true: 403, this principal not permitted
+	gone     sync.Map // grant -> true: 404, the saved connection is gone
 }
 
 func newDynamicReads(t *testing.T) *dynamicReads {
@@ -295,6 +296,10 @@ func newDynamicReads(t *testing.T) *dynamicReads {
 		}
 		if _, denied := d.deny.Load(body.Delegation); denied {
 			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		if _, gone := d.gone.Load(body.Delegation); gone {
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 		writeConnectionResponse(t, w, connectionResolution{Version: 1, DelegationSHA256: delegation.Digest(body.Delegation),
@@ -582,5 +587,70 @@ func TestReadOutwaitingItsAuthorizationIsReauthorized(t *testing.T) {
 	}
 	if err := <-queued; err != nil || mgr.metrics.Fallbacks.Load() != 0 || mgr.metrics.Authorizations.Load() <= authorized {
 		t.Fatal("a read that outwaited its authorization was not re-authorized:", err, mgr.metrics.Fallbacks.Load(), mgr.metrics.Authorizations.Load())
+	}
+}
+
+// A principal no longer permitted loses its own authorization only: even with
+// no other principal on them, the workers are not killed for it.
+func TestReadAuthorizationPrincipalDenialExpiresOnlyItself(t *testing.T) {
+	d := newDynamicReads(t)
+	d.mgr.cfg.ReauthorizeEvery = 150 * time.Millisecond
+	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	d.deny.Store("grant-p1-saved-a", true)
+	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err == nil {
+		t.Fatal("denied principal served")
+	}
+	d.mgr.authMu.Lock()
+	left := len(d.mgr.auths)
+	d.mgr.authMu.Unlock()
+	if left != 0 || d.fs.procs[0].killed.Load() || d.mgr.metrics.EvictionsAuth.Load() != 0 {
+		t.Fatal("a principal's denial did more than expire its authorization:", left, d.fs.procs[0].killed.Load())
+	}
+}
+
+// A saved connection that is gone is gone for everyone: its workers are
+// killed although another principal's authorization is still fresh, and that
+// authorization ends too.
+func TestReadAuthorizationSourceGoneKillsForEveryone(t *testing.T) {
+	d := newDynamicReads(t)
+	d.mgr.cfg.ReauthorizeEvery = 150 * time.Millisecond
+	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if err := d.read(context.Background(), "p2", "saved-a", "SELECT 1"); err != nil { // p2 fresh on the same worker
+		t.Fatal(err)
+	}
+	d.gone.Store("grant-p1-saved-a", true)
+	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err == nil {
+		t.Fatal("read served for a connection that is gone")
+	}
+	waitFor(t, func() bool { return d.fs.procs[0].killed.Load() })
+	d.mgr.authMu.Lock()
+	left := len(d.mgr.auths)
+	d.mgr.authMu.Unlock()
+	if left != 0 || d.mgr.metrics.EvictionsAuth.Load() != 1 {
+		t.Fatal("a gone connection kept workers or authorizations:", left, d.mgr.metrics.EvictionsAuth.Load())
+	}
+}
+
+// An expired authorization holds no workers: a rotation retires the old
+// revision's idle worker though an expired authorization still names it.
+func TestReadAuthorizationExpiredDoesNotHoldWorkers(t *testing.T) {
+	mgr, _ := newTestPool(t, &mockLauncher{})
+	every := mgr.cfg.reauthorizeEvery()
+	old := &warmWorkerEntry{id: "old", key: "rev-old", ready: make(chan struct{}), dead: make(chan struct{})}
+	close(old.ready)
+	mgr.mu.Lock()
+	mgr.workers[old.id] = old
+	mgr.mu.Unlock()
+	mgr.storeAuthorization("p2", &readAuthorization{workerKey: "rev-old", at: time.Now().Add(-2 * every)})
+	mgr.storeAuthorization("p1", &readAuthorization{workerKey: "rev-old", at: time.Now()})
+	mgr.storeAuthorization("p1", &readAuthorization{workerKey: "rev-new", at: time.Now()})
+	if mgr.metrics.Rotations.Load() != 1 {
+		t.Fatal("an expired authorization kept the rotated revision's worker:", mgr.metrics.Rotations.Load())
 	}
 }
