@@ -83,3 +83,15 @@ func TestResolveStageHistogramIsExported(t *testing.T) {
 		t.Fatal("resolve histogram missing from metrics")
 	}
 }
+
+// The CLI's stderr is parsed by scripts, so only a node logs failed reads.
+func TestOnlyNodeExecutorsLogFailedReads(t *testing.T) {
+	for _, node := range []bool{false, true} {
+		buf := captureLog(t)
+		e := &Executor{Limits: query.DefaultLimits(), LogFailedReads: node}
+		_, _ = e.Execute(context.Background(), query.Request{SQL: "select 1", Mode: "native", ConnectionID: "x"}, nil)
+		if logged := strings.Contains(buf.String(), "kelvo read failed:"); logged != node {
+			t.Fatalf("node=%v logged=%v: %q", node, logged, buf.String())
+		}
+	}
+}

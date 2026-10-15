@@ -30,7 +30,6 @@ func recordExecution(metrics *telemetry.Registry, ctx context.Context, start tim
 }
 
 func recordExecutionPhases(metrics *telemetry.Registry, ctx context.Context, start time.Time, admissionWait *time.Duration, resultErr *error, phases *executionPhases, recorders ...*tracing.Recorder) {
-	logFailedRead(ctx, start, *resultErr, phases)
 	if metrics == nil && (len(recorders) == 0 || recorders[0] == nil) {
 		return
 	}

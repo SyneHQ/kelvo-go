@@ -237,6 +237,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	}
 	cfg.RuntimeMetrics = cfg.Metrics.NewRegistry()
 	executor.Metrics = cfg.RuntimeMetrics
+	executor.LogFailedReads = true
 	var pool *admission.Pool
 	var overhead int64
 	if cfg.Resources != nil {
