@@ -34,22 +34,17 @@ func TestServeLoop_QueryFailureKeepsBoundedPublicCode(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			pipeInR, pipeInW := io.Pipe()
-			pipeOutR, pipeOutW := io.Pipe()
 			runner := Runner{Open: func(context.Context, adapter.ConnectionSpec, operations.Request) (adapter.Session, error) {
 				return &fakeQuerySession{err: tc.err}, nil
 			}}
-			done := make(chan error, 1)
-			go func() { done <- runner.Serve(context.Background(), pipeInR, pipeOutW) }()
+			h := startServe(t, runner, true)
+			h.request(1, validTestProcessRequest("op-code", "tenant-1", "team-1", "conn-1", strings.Repeat("a", 64), operations.QueryRead))
 
-			req := validTestProcessRequest("op-code", "tenant-1", "team-1", "conn-1", strings.Repeat("a", 64), operations.QueryRead)
-			reqBytes, _ := adapter.EncodeProcessRequest(req)
-			_ = frame.WriteRequest(pipeInW, reqBytes)
-
-			typ, payload, err := frame.Read(pipeOutR)
-			if err != nil || typ != frame.Receipt {
-				t.Fatalf("frame = %v, %v", typ, err)
+			f := h.next()
+			if f.Type != frame.Receipt || f.Stream != 1 {
+				t.Fatalf("frame = %v on stream %d, want a receipt on stream 1", f.Type, f.Stream)
 			}
+			payload := f.Payload
 			if strings.Contains(string(payload), "pgx") || strings.Contains(string(payload), "numeric") {
 				t.Fatalf("receipt leaked driver text: %s", payload)
 			}
@@ -60,8 +55,12 @@ func TestServeLoop_QueryFailureKeepsBoundedPublicCode(t *testing.T) {
 			if receipt.Outcome != operations.Failed || receipt.ErrorCode != tc.want {
 				t.Fatalf("receipt = %s/%s, want failed/%s", receipt.Outcome, receipt.ErrorCode, tc.want)
 			}
-			if err := <-done; err == nil {
-				t.Fatal("failed request must terminate the serve loop")
+			// A failed request ends with its receipt; the worker stays up.
+			if err := frame.WriteClose(h.in); err != nil {
+				t.Fatal(err)
+			}
+			if err := <-h.done; err != nil {
+				t.Fatalf("serve after a failed request: %v", err)
 			}
 		})
 	}
