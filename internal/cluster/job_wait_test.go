@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
-	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
 // waitStore serves one job and counts reads.
@@ -29,19 +28,17 @@ func (s *waitStore) Get(_ context.Context, id string) (Snapshot, error) {
 	return s.job, nil
 }
 
-func countVerifications(t *testing.T) (*atomic.Int32, func()) {
+// countVerifications disables the grant cache and counts what the code under
+// test verifies on its own; the cache would hide it.
+func countVerifications(t *testing.T) (func() int64, func()) {
 	t.Helper()
-	var n atomic.Int32
-	original := verifyDelegation
-	verifyDelegation = func(token string, trust delegation.Trust, r query.Request, now time.Time) (delegation.Claims, error) {
-		n.Add(1)
-		return original(token, trust, r, now)
-	}
-	return &n, func() { verifyDelegation = original }
+	restore := delegation.SwapCacheForTest(nil)
+	before := delegation.RawVerifications()
+	return func() int64 { return delegation.RawVerifications() - before }, restore
 }
 
 // delegatedWait runs a result wait on a delegated, queued job until it expires.
-func delegatedWait(t *testing.T, jobLives, grantLives time.Duration) (int, *waitStore, *atomic.Int32) {
+func delegatedWait(t *testing.T, jobLives, grantLives time.Duration) (int, *waitStore, int64) {
 	t.Helper()
 	p, key, c, r, a := delegatedTestGrant(t)
 	c.IssuedAt = time.Now().Unix() - 1
@@ -60,7 +57,7 @@ func delegatedWait(t *testing.T, jobLives, grantLives time.Duration) (int, *wait
 	req := httptest.NewRequest(http.MethodGet, "/v1/queries/owned/results", nil).WithContext(delegatedRequestContext(a, r.Delegation))
 	w := httptest.NewRecorder()
 	(&Gateway{}).results(w, req, gatewayTenant{store: store}, "owned", nil)
-	return w.Code, store, verifications
+	return w.Code, store, verifications()
 }
 
 // The signature check is per request, not per poll: the count must not grow
@@ -71,10 +68,10 @@ func TestResultWaitVerifiesTheGrantOncePerRequestWhateverTheWait(t *testing.T) {
 	if code != http.StatusNotFound {
 		t.Fatalf("status=%d", code)
 	}
-	if short.Load() != long.Load() || long.Load() > 2 {
-		t.Fatalf("verifications: 200ms wait=%d, 1500ms wait=%d (want equal and at most 2)", short.Load(), long.Load())
+	if short != long || long > 2 {
+		t.Fatalf("verifications: 200ms wait=%d, 1500ms wait=%d (want equal and at most 2)", short, long)
 	}
-	t.Logf("verifications for a 200 ms wait=%d and a 1500 ms wait=%d; store reads over 1500 ms=%d", short.Load(), long.Load(), store.gets.Load())
+	t.Logf("verifications for a 200 ms wait=%d and a 1500 ms wait=%d; store reads over 1500 ms=%d", short, long, store.gets.Load())
 }
 
 // A cached authorization must still end when the delegation expires.
