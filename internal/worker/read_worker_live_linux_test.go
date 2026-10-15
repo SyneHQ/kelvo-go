@@ -257,8 +257,9 @@ func TestContainedExplorerUnaffectedByFullBackgroundClass(t *testing.T) {
 	const workerReservation = (64 + 160) << 20 // worker_memory_mb + the executor's overhead
 	g := newExplorerGate(t, admission.Limits{MaxConcurrent: 3, MemoryBytes: 3 * workerReservation, ScratchBytes: 96 << 20,
 		ReservedSlots: 1, ReservedMemoryBytes: workerReservation, ReservedScratchBytes: 32 << 20, SeparateClasses: true})
-	background := *g.executor
-	background.WarmPool = nil // durable operations run one-shot in the background class
+	// Durable operations run on the same executor, warm pool enabled: they
+	// must take the background class and never a read worker.
+	background := g.executor
 	var analysisIDs atomic.Int64
 	analysis := func(ctx context.Context) error {
 		request := operations.Request{Version: operations.Version, Kind: operations.QueryRead,
