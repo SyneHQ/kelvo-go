@@ -78,3 +78,33 @@ func TestReadWorkersValidation(t *testing.T) {
 		}
 	}
 }
+
+// pool_size is sent to the adapter only when the operator sets it: a node whose
+// adapter or sandbox launcher predates --pool-size must keep its warm reads
+// when read_workers sets only capacity.
+func TestPoolSizeFlagIsSentOnlyWhenSet(t *testing.T) {
+	base := worker.WarmPoolConfig{Enabled: true, MaxPerKey: 1, QueueDepth: 64, WorkerMemoryMB: 64}
+	unset := ReadWorkersConfig{MaxWorkers: 2}.withDefaults()
+	if n := readWorkersNode(&unset, base).readPoolSize(); n != 0 {
+		t.Fatalf("pool_size unset requests %d", n)
+	}
+	if err := validateNodeReadWorkers(readWorkersNode(&unset, base)); err != nil {
+		t.Fatal(err)
+	}
+	set := ReadWorkersConfig{MaxWorkers: 2, PoolSize: 6}.withDefaults()
+	if n := readWorkersNode(&set, base).readPoolSize(); n != 6 {
+		t.Fatalf("pool_size 6 requests %d", n)
+	}
+	if n := readWorkersNode(nil, base).readPoolSize(); n != 0 {
+		t.Fatalf("no read_workers requests %d", n)
+	}
+	// The connection budget still counts the adapter's default of 4.
+	big := ReadWorkersConfig{MaxWorkers: 65}.withDefaults()
+	if err := validateNodeReadWorkers(readWorkersNode(&big, base)); err == nil {
+		t.Fatal("65 workers accepted")
+	}
+	negative := ReadWorkersConfig{MaxWorkers: 1, PoolSize: -1}.withDefaults()
+	if validateNodeReadWorkers(readWorkersNode(&negative, base)) == nil {
+		t.Fatal("negative pool_size accepted")
+	}
+}
