@@ -377,6 +377,13 @@ jobs:
             --adapter artifacts/warm-private/kelvo-adapter-go \
             --postgres-dsn-file artifacts/warm-private/postgres.dsn \
             --output artifacts/warm-private/run-client
+      - name: Verify the warm pool's capacity contract on the real launcher
+        run: |
+          python3 scripts/warm_adapter_acceptance.py --go go \
+            --gate TestContainedWarmPoolCapacityContract \
+            --adapter artifacts/warm-private/kelvo-adapter-go \
+            --postgres-dsn-file artifacts/warm-private/postgres.dsn \
+            --output artifacts/warm-private/run-capacity
       - name: Verify 50 concurrent reads share one bounded PostgreSQL pool
         run: |
           work=$(mktemp -d)

@@ -1497,3 +1497,58 @@ func TestWarmPool_LaunchRefusalEvictsIdleWorker(t *testing.T) {
 		t.Fatal("lru", mgr.metrics.EvictionsLRU.Load(), "fallbacks", mgr.metrics.Fallbacks.Load())
 	}
 }
+
+// A launch the node refuses for want of a reservation, with every worker
+// busy, is capacity, not a failure: the read waits queue_timeout and is
+// refused with a retry hint; it never falls back to one-shot. Once a worker
+// is idle again, the next read evicts it and launches.
+func TestWarmPool_CapacityRefusalWaitsNeverFallsBack(t *testing.T) {
+	release := make(chan struct{})
+	var live atomic.Int32
+	launcher := &mockLauncher{onLaunch: func(context.Context) (WorkerProcess, func() error, error) {
+		if live.Load() >= 1 { // the node has room for one worker
+			return nil, nil, errWarmUnavailable
+		}
+		live.Add(1)
+		proc := newFakeWorkerProcess()
+		go serveFake(proc, func(f frame.Frame) {
+			if f.Type != frame.Request {
+				return
+			}
+			var r adapter.ProcessRequest
+			_ = json.Unmarshal(f.Payload, &r)
+			if r.OperationID == "op-busy" {
+				go func() { <-release; replyOK(proc.stdoutW, f.Stream, f.Payload) }()
+				return
+			}
+			replyOK(proc.stdoutW, f.Stream, f.Payload)
+		})
+		return proc, func() error { live.Add(-1); return proc.Kill() }, nil
+	}}
+	mgr, exec := newTestPool(t, launcher)
+	mgr.cfg.QueueTimeout = 150 * time.Millisecond
+	busy := make(chan error, 1)
+	go func() {
+		_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-busy"), &workerTestSink{})
+		busy <- err
+	}()
+	waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 1 })
+	other := testProcessRequest("op-other", "tenant-a", "team-a", "conn-2", strings.Repeat("1", 64))
+	other.CredentialsValidUntil = time.Now().Unix() + 4
+	start := time.Now()
+	rec, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, other, &workerTestSink{})
+	var public *query.Error
+	if !errors.As(err, &public) || public.Code != "RESOURCE_EXHAUSTED" || !strings.Contains(public.Message, "retry after") || rec.ErrorCode != "RESOURCE_EXHAUSTED" || time.Since(start) < mgr.cfg.QueueTimeout {
+		t.Fatal("capacity refusal did not wait and refuse:", rec, err)
+	}
+	if mgr.metrics.Fallbacks.Load() != 0 {
+		t.Fatal("capacity refusal fell back to one-shot")
+	}
+	close(release)
+	if err := <-busy; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, other, &workerTestSink{}); err != nil || mgr.metrics.EvictionsLRU.Load() != 1 || mgr.metrics.Spawns.Load() != 2 {
+		t.Fatal("idle worker not replaced", err, mgr.metrics.EvictionsLRU.Load(), mgr.metrics.Spawns.Load())
+	}
+}
