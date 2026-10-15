@@ -48,7 +48,7 @@ requests in flight (client-admission refusals), listed separately below.
 | node CPU, mean cores / of limit | 1.91 / 95% | 1.56 / 78% | 2.58 / 65% | 1.52 / 38% | 1.50 / 38% |
 | CPU-throttled periods | 2962 | 1956 | 0 | 0 | 0 |
 | cgroup memory peak | 451 MiB | 660 MiB | 969 MiB | 1057 MiB | 897 MiB |
-| RSS: gateway+node / all workers, peak | 338 / 257 MiB | 340 / 773 MiB | 342 / 1762 MiB | 348 / 1806 MiB | 344 / 1316 MiB |
+| RSS: gateway+node / all workers, peak (shared binary pages counted once per worker) | 338 / 257 MiB | 340 / 773 MiB | 342 / 1762 MiB | 348 / 1806 MiB | 344 / 1316 MiB |
 | workers spawned / one-shot fallbacks | 4 / 1891 | 12 / 248 | 4 / 6535 | 20 / 129 | 20 / 0 |
 | resolver calls | 849 | 697 | 4544 | 622 | 576 |
 | dashboard: source queries per viewer refresh | 0.61 | 1.84 | 6.02 | 2.41 | 2.52 |
@@ -127,7 +127,7 @@ operations:
     queue_depth: 64          # default; reads waiting for a full worker
     queue_timeout: 10s       # default; then RESOURCE_EXHAUSTED, retry after 1 s
     idle_ttl: 10m            # default is 30m; shorter bounds memory until idle workers are evicted for new keys
-    worker_memory_mb: 64     # default; measured RSS is ~65 MiB per worker
+    worker_memory_mb: 64     # default; a cap. Measured cgroup memory per worker is 21-27 MiB (profile-plain-read.md)
     reauthorize_every: 60s   # signed off by the owner: a revoked source is refused within 60 s
     cache_disabled: false
     cache_ttl: 10s           # signed off; refresh bypass via X-Refresh only (defect 2)
@@ -171,12 +171,11 @@ per second):
 | Resource | Measured | Rule |
 | --- | --- | --- |
 | CPU | 1.52 cores mean, 52 ms of node CPU per request (CPU of the NATS broker and PostgreSQL excluded) | cores >= 2 x (requests per second x 0.05); about 3 cores at 30 requests per second. Plan **4 vCPU**. 2 vCPU ran at 78-95% of its limit and collapsed |
-| Memory | gateway + node 340 MiB; 64 MiB per read worker (773 MiB over 12 workers); cgroup peak 1.06 GiB with 20 workers | 0.5 GiB + 65 MiB x (hot connections within `idle_ttl`). 20 workers: 1.8 GiB; 100 workers: 7 GiB. 1 GiB holds at most 8-10 workers |
+| Memory | gateway + node 340 MiB; each read worker 21-27 MiB of its own (anonymous: Go heap, stacks) plus a 42 MiB mapping of the 154 MB adapter binary that all workers share ([profile-plain-read.md](profile-plain-read.md)); cgroup peak 1.06 GiB with 20 workers, which also holds the page cache of the audit journals | 0.4 GiB + 22 MiB x (hot connections within `idle_ttl`) + 42 MiB. 20 workers: about 0.9 GiB; 100 workers: about 2.7 GiB |
 | Source connections | 4 per worker, 77 at 20 workers | check the customer databases' `max_connections`; 16 per worker is 290 |
 | Disk (audit) | 2 KiB per audit slot, preallocated | see below |
 
-**Recommended node: 4 vCPU / 8 GB.** 4 GB covers 20-40 hot connections; 8 GB covers about 100 workers and keeps room for
-fallback children. Take `max_workers` from the number of distinct connections active within `idle_ttl`, not from
+**Recommended node: 4 vCPU / 8 GB.** Memory is not what limits a node: 20 workers fit in 1 GiB and 100 in about 3 GiB; CPU is (see above). 4 GB is enough for the memory; 8 GB leaves room for fallback children, journals and growth. Take `max_workers` from the number of distinct connections active within `idle_ttl`, not from
 users: idle workers are not evicted for new keys (defect 4), so a pool smaller than the hot set collapses.
 
 ### Audit journal sizing
