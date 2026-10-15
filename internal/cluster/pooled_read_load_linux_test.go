@@ -525,6 +525,7 @@ sampling:
 		"memory_events_oom":  readUint(filepath.Join(unitCgroup, "memory.events"), "oom_kill"),
 		"peak_job_cgroups":   peakGroups,
 		"samples":            samples,
+		"gateway_refusals":   gwCountCopy(&gwMu, gwCount),
 		"resolver_calls":     resolveTotal.Load(),
 		"resolver_authorize": authCalls.Load(),
 		"resolver_per_conn":  perConnection,
