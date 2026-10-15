@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -36,7 +37,21 @@ type NATSStore struct {
 	js       jetstream.JetStream
 	kv       jetstream.KeyValue
 	consumer jetstream.Consumer
+
+	// cursor rotates where Submit starts probing, so concurrent submissions do
+	// not all walk the same occupied slots. freed holds slots this process saw
+	// a transient job finish in, with the revision to replace them at.
+	cursor  atomic.Uint64
+	freedMu sync.Mutex
+	freed   []freedSlot
 }
+
+type freedSlot struct {
+	n   int
+	rev uint64
+}
+
+const maxFreedSlots = 256
 
 // A terminal job's slot is handed out again only when nothing else is free
 // until the policy's lease duration has passed since its last transition. The
@@ -48,6 +63,9 @@ type NATSStore struct {
 func (s *NATSStore) slotReusable(j Job, now time.Time, strict bool) bool {
 	if now.After(j.ExpiresAt) || !j.Terminal() {
 		return now.After(j.ExpiresAt)
+	}
+	if j.Transient {
+		return true // its caller read the outcome from the response itself
 	}
 	return !strict || now.Sub(j.HeartbeatAt) >= s.policy.LeaseDuration
 }
@@ -336,6 +354,17 @@ func encodePersistedJob(j *Job) ([]byte, error) {
 	return b, nil
 }
 func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, error) {
+	return s.submit(ctx, r, false)
+}
+
+// SubmitTransient stores a single-call read. It differs from Submit only in
+// the slot's lifetime: the job is marked Transient, so its slot is reused as
+// soon as it is terminal instead of after the lease window.
+func (s *NATSStore) SubmitTransient(ctx context.Context, r query.Request) (Snapshot, error) {
+	return s.submit(ctx, r, true)
+}
+
+func (s *NATSStore) submit(ctx context.Context, r query.Request, transient bool) (Snapshot, error) {
 	if err := query.ValidateRequest(r); err != nil {
 		return Snapshot{}, err
 	}
@@ -344,21 +373,48 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 		return Snapshot{}, err
 	}
 	now := time.Now().UTC()
+	newJob := func(n int) (Job, []byte, error) {
+		id, err := newID(n)
+		if err != nil {
+			return Job{}, nil, errors.New("query ID generation failed")
+		}
+		j := Job{Trace: copyJobTraceValue(tracing.CarrierFromContext(ctx)), Authority: authority, ID: id, TenantID: s.policy.TenantID, State: Queued, Request: r, CreatedAt: now, ExpiresAt: now.Add(s.policy.JobTTL), HeartbeatAt: now, Transient: transient}
+		b, err := encodePersistedJob(&j)
+		return j, b, err
+	}
+	// A slot this process just saw a transient job finish in is replaced at the
+	// revision it was seen at: one round trip, no scan. A changed slot fails
+	// the revision check and falls through to the scan.
+	for {
+		hint, ok := s.popFreed()
+		if !ok {
+			break
+		}
+		j, b, err := newJob(hint.n)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		rev, e := s.kv.Update(ctx, fmt.Sprintf("slot.%x", hint.n), b, hint.rev)
+		if e == nil {
+			return Snapshot{Job: j, Revision: rev, raw: b}, nil
+		}
+		if !errors.Is(e, jetstream.ErrKeyRevisionMismatch) && !errors.Is(e, jetstream.ErrKeyNotFound) {
+			return Snapshot{}, errors.New("job store unavailable")
+		}
+	}
+	slots := s.policy.MaxQueries
+	start := int(s.cursor.Add(1) % uint64(slots))
 	for _, strict := range []bool{true, false} {
-		for n := 0; n < s.policy.MaxQueries; n++ {
+		for i := 0; i < slots; i++ {
+			n := (start + i) % slots
 			key := fmt.Sprintf("slot.%x", n)
-			id, err := newID(n)
-			if err != nil {
-				return Snapshot{}, errors.New("query ID generation failed")
-			}
-			j := Job{Trace: copyJobTraceValue(tracing.CarrierFromContext(ctx)), Authority: authority, ID: id, TenantID: s.policy.TenantID, State: Queued, Request: r, CreatedAt: now, ExpiresAt: now.Add(s.policy.JobTTL), HeartbeatAt: now}
-			b, err := encodePersistedJob(&j)
+			j, b, err := newJob(n)
 			if err != nil {
 				return Snapshot{}, err
 			}
 			rev, e := s.kv.Create(ctx, key, b)
 			if e == nil {
-				return Snapshot{j, rev}, nil
+				return Snapshot{Job: j, Revision: rev, raw: b}, nil
 			}
 			old, getErr := s.kv.Get(ctx, key)
 			if getErr != nil {
@@ -376,7 +432,7 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 			}
 			rev, e = s.kv.Update(ctx, key, b, old.Revision())
 			if e == nil {
-				return Snapshot{j, rev}, nil
+				return Snapshot{Job: j, Revision: rev, raw: b}, nil
 			}
 			if !errors.Is(e, jetstream.ErrKeyRevisionMismatch) {
 				return Snapshot{}, errors.New("job store unavailable")
@@ -384,6 +440,25 @@ func (s *NATSStore) Submit(ctx context.Context, r query.Request) (Snapshot, erro
 		}
 	}
 	return Snapshot{}, ErrCapacity
+}
+
+func (s *NATSStore) pushFreed(n int, rev uint64) {
+	s.freedMu.Lock()
+	defer s.freedMu.Unlock()
+	if len(s.freed) < maxFreedSlots {
+		s.freed = append(s.freed, freedSlot{n, rev})
+	}
+}
+
+func (s *NATSStore) popFreed() (freedSlot, bool) {
+	s.freedMu.Lock()
+	defer s.freedMu.Unlock()
+	if len(s.freed) == 0 {
+		return freedSlot{}, false
+	}
+	h := s.freed[len(s.freed)-1]
+	s.freed = s.freed[:len(s.freed)-1]
+	return h, true
 }
 func (s *NATSStore) Get(ctx context.Context, id string) (Snapshot, error) {
 	n, ok := slot(id)
@@ -404,7 +479,7 @@ func (s *NATSStore) Get(ctx context.Context, id string) (Snapshot, error) {
 	if j.ID != id || j.TenantID != s.policy.TenantID {
 		return Snapshot{}, ErrNotFound
 	}
-	return Snapshot{j, e.Revision()}, nil
+	return Snapshot{Job: j, Revision: e.Revision(), raw: e.Value()}, nil
 }
 func validTransition(a, b string) bool {
 	if a == b {
@@ -440,12 +515,28 @@ func sameResult(a, b Job) bool {
 }
 
 func (s *NATSStore) CompareAndSwap(ctx context.Context, old Snapshot, next Job) (Snapshot, error) {
-	cur, err := s.Get(ctx, old.Job.ID)
-	if err != nil {
+	// A snapshot the store produced carries the record it read at old.Revision,
+	// and the update below succeeds only if the slot is still at that revision,
+	// so the record it replaces is exactly that one. Reading it again first, as
+	// this used to, cost a round trip per transition for nothing.
+	n, ok := slot(old.Job.ID)
+	if !ok || n < 0 || n >= s.policy.MaxQueries || old.Job.TenantID != s.policy.TenantID {
+		return Snapshot{}, ErrNotFound
+	}
+	cur := old
+	if old.raw != nil {
+		j, err := dec(old.raw)
+		if err != nil {
+			return Snapshot{}, errors.New("job store unavailable")
+		}
+		cur.Job = j
+	} else if fresh, err := s.Get(ctx, old.Job.ID); err != nil {
 		return Snapshot{}, err
+	} else {
+		cur = fresh
 	}
 	if cur.Revision != old.Revision || cur.Job.Terminal() || !validTransition(cur.Job.State, next.State) ||
-		next.ID != cur.Job.ID || next.TenantID != cur.Job.TenantID ||
+		next.ID != cur.Job.ID || next.TenantID != cur.Job.TenantID || next.Transient != cur.Job.Transient ||
 		!next.CreatedAt.Equal(cur.Job.CreatedAt) || !next.ExpiresAt.Equal(cur.Job.ExpiresAt) ||
 		!reflect.DeepEqual(next.Request, cur.Job.Request) || !sameAuthority(next.Authority, cur.Job.Authority) {
 		return Snapshot{}, ErrConflict
@@ -489,15 +580,20 @@ func (s *NATSStore) CompareAndSwap(ctx context.Context, old Snapshot, next Job) 
 	if err != nil {
 		return Snapshot{}, ErrConflict
 	}
-	n, _ := slot(next.ID)
 	rev, err := s.kv.Update(ctx, fmt.Sprintf("slot.%x", n), b, old.Revision)
 	if err != nil {
 		if errors.Is(err, jetstream.ErrKeyRevisionMismatch) {
 			return Snapshot{}, ErrConflict
 		}
+		if errors.Is(err, jetstream.ErrKeyNotFound) {
+			return Snapshot{}, ErrNotFound
+		}
 		return Snapshot{}, errors.New("job store unavailable")
 	}
-	return Snapshot{Job: next, Revision: rev}, nil
+	if next.Transient && next.Terminal() {
+		s.pushFreed(n, rev)
+	}
+	return Snapshot{Job: next, Revision: rev, raw: b}, nil
 }
 func (s *NATSStore) Enqueue(ctx context.Context, id string) error {
 	j, err := s.Get(ctx, id)
@@ -507,7 +603,20 @@ func (s *NATSStore) Enqueue(ctx context.Context, id string) error {
 	if j.Job.State != Queued {
 		return ErrConflict
 	}
-	if _, err = s.js.Publish(ctx, queueSubject, []byte(id), jetstream.WithMsgID(id)); err != nil {
+	return s.publishReady(ctx, id)
+}
+
+// EnqueueSubmitted queues a job Submit just returned, without reading it back:
+// it is Queued, and the message ID makes a repeat harmless.
+func (s *NATSStore) EnqueueSubmitted(ctx context.Context, snap Snapshot) error {
+	if snap.Job.State != Queued {
+		return ErrConflict
+	}
+	return s.publishReady(ctx, snap.Job.ID)
+}
+
+func (s *NATSStore) publishReady(ctx context.Context, id string) error {
+	if _, err := s.js.Publish(ctx, queueSubject, []byte(id), jetstream.WithMsgID(id)); err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -572,7 +681,7 @@ func (s *NATSStore) Reconcile(ctx context.Context) error {
 		if !j.Terminal() && (now.After(j.ExpiresAt) || (j.State != Queued && now.Sub(j.HeartbeatAt) > s.policy.LeaseDuration)) {
 			j.State = Failed
 			j.Error = query.PublicError(query.NewError("UNAVAILABLE", "Worker lost"))
-			if _, er = s.CompareAndSwap(ctx, Snapshot{Job: eJob(e), Revision: e.Revision()}, j); er != nil && !errors.Is(er, ErrConflict) {
+			if _, er = s.CompareAndSwap(ctx, Snapshot{Job: eJob(e), Revision: e.Revision(), raw: e.Value()}, j); er != nil && !errors.Is(er, ErrConflict) {
 				return er
 			}
 			continue

@@ -294,7 +294,7 @@ func TestNATSSourceQuotaSharedAdmissionAndBrokerExpiry(t *testing.T) {
 	store := openFixture(t)
 	// Isolate quota resource provisioning from the shared job-policy fixture;
 	// production policy binding is performed by OpenStore before this API call.
-	quotaStore := *store
+	quotaStore := NATSStore{policy: store.policy, nc: store.nc, js: store.js, kv: store.kv, consumer: store.consumer}
 	quotaStore.policy.SourceQuotas = map[string]int{"quota_live_source": 1}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
