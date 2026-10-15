@@ -634,31 +634,3 @@ func (s *NATSStore) worker(ctx context.Context, id, owner string, claim bool) er
 	}
 	return nil
 }
-
-// WatchJob signals each update of the job's slot record, so a result wait can
-// sleep instead of polling. The signal carries no data: the waiter re-reads.
-func (s *NATSStore) WatchJob(ctx context.Context, id string) (<-chan struct{}, func(), error) {
-	n, ok := slot(id)
-	if !ok || n < 0 || n >= s.policy.MaxQueries {
-		return nil, nil, ErrNotFound
-	}
-	watcher, err := s.kv.Watch(ctx, fmt.Sprintf("slot.%x", n), jetstream.UpdatesOnly())
-	if err != nil {
-		return nil, nil, errors.New("job store unavailable")
-	}
-	changed := make(chan struct{}, 1)
-	go func() {
-		for entry := range watcher.Updates() {
-			if entry == nil {
-				continue // the end-of-initial-values marker is not an update
-			}
-			select {
-			case changed <- struct{}{}:
-			default: // one pending signal is enough
-			}
-		}
-	}()
-	return changed, func() { _ = watcher.Stop() }, nil
-}
-
-var _ jobWatcher = (*NATSStore)(nil)

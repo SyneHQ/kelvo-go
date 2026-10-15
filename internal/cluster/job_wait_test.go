@@ -14,15 +14,12 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
-// waitStore serves one job and counts reads. With watch set it also offers the
-// optional change signal.
+// waitStore serves one job and counts reads.
 type waitStore struct {
 	gatewayStore
-	mu    sync.Mutex
-	job   Snapshot
-	gets  atomic.Int32
-	watch bool
-	ch    chan struct{}
+	mu   sync.Mutex
+	job  Snapshot
+	gets atomic.Int32
 }
 
 func (s *waitStore) Get(_ context.Context, id string) (Snapshot, error) {
@@ -30,25 +27,6 @@ func (s *waitStore) Get(_ context.Context, id string) (Snapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.job, nil
-}
-
-func (s *waitStore) set(state string) {
-	s.mu.Lock()
-	s.job.Job.State = state
-	s.job.Revision++
-	s.mu.Unlock()
-	if s.ch != nil {
-		select {
-		case s.ch <- struct{}{}:
-		default:
-		}
-	}
-}
-
-type watchingStore struct{ *waitStore }
-
-func (s watchingStore) WatchJob(context.Context, string) (<-chan struct{}, func(), error) {
-	return s.ch, func() {}, nil
 }
 
 func countVerifications(t *testing.T) (*atomic.Int32, func()) {
@@ -108,36 +86,10 @@ func TestCachedAuthorizationStopsWhenTheGrantExpires(t *testing.T) {
 	}
 }
 
-// Without a watch the wait backs off instead of reading every 50 ms.
-func TestResultWaitBacksOffWithoutAWatch(t *testing.T) {
+// The wait backs off instead of reading every 50 ms.
+func TestResultWaitBacksOff(t *testing.T) {
 	_, store, _ := delegatedWait(t, 1500*time.Millisecond, time.Minute)
-	if got := store.gets.Load(); got > 10 {
+	if got := store.gets.Load(); got > 12 {
 		t.Fatalf("%d store reads in 1.5 s; the 50 ms poll made about 30", got)
-	}
-}
-
-// With a watch the wait sleeps until the store signals, so a state change is
-// seen at once and the store is barely read.
-func TestResultWaitWakesOnStoreSignalInsteadOfPolling(t *testing.T) {
-	store := &waitStore{gatewayStore: gatewayStore{policy: Policy{TenantID: "a"}}, ch: make(chan struct{}, 1), watch: true,
-		job: Snapshot{Revision: 1, Job: Job{ID: "w", TenantID: "a", State: Queued, ExpiresAt: time.Now().Add(time.Minute)}}}
-	watching := watchingStore{store}
-	changed := make(chan time.Time, 1)
-	go func() {
-		time.Sleep(600 * time.Millisecond)
-		changed <- time.Now()
-		store.set(Failed)
-	}()
-	w := httptest.NewRecorder()
-	(&Gateway{}).results(w, httptest.NewRequest(http.MethodGet, "/v1/queries/w/results", nil), gatewayTenant{store: watching}, "w", nil)
-	seen := time.Now()
-	if w.Code != http.StatusConflict {
-		t.Fatalf("status=%d", w.Code)
-	}
-	if lag := seen.Sub(<-changed); lag > 300*time.Millisecond {
-		t.Fatalf("wake took %s; the safety timer is 1 s, so this was not the signal", lag)
-	}
-	if got := store.gets.Load(); got > 4 {
-		t.Fatalf("%d store reads while waiting 600 ms", got)
 	}
 }

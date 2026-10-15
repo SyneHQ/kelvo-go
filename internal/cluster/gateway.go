@@ -692,11 +692,10 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 	waitOutcome := telemetry.OutcomeError
 	defer func() { finishClusterTrace(wait, r.Context(), &waitOutcome) }()
 	// Verify the job's authority once; a re-read costs one store get. The wait
-	// then sleeps until the store says the job changed (or the job expires),
-	// not on a fixed 50 ms tick that re-verified two signatures each time.
+	// then backs off from 50 ms to 200 ms between reads instead of re-verifying
+	// two signatures every 50 ms.
 	var authorized authorizedJob
-	waiter := newJobWaiter(r.Context(), t.store, id)
-	defer waiter.stop()
+	waiter := newJobWaiter()
 	for {
 		s, e = authorized.snapshot(r.Context(), t, id)
 		if e != nil {
