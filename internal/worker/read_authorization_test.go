@@ -329,8 +329,8 @@ func (d *dynamicReads) resolves(subject, saved string) int32 {
 }
 
 // Two principals with the same alias but different saved connections, or
-// different subjects, never share an authorization; workers are shared by
-// revision.
+// different subjects, never share an authorization; principals of one saved
+// connection share its worker.
 func TestReadAuthorizationKeyedByPrincipalAndSavedConnection(t *testing.T) {
 	d := newDynamicReads(t)
 	for i := 0; i < 2; i++ {
@@ -343,9 +343,10 @@ func TestReadAuthorizationKeyedByPrincipalAndSavedConnection(t *testing.T) {
 	if d.resolves("p1", "saved-a") != 1 || d.resolves("p2", "saved-b") != 1 || d.resolves("p3", "saved-a") != 1 {
 		t.Fatal("principals shared an authorization", d.resolves("p1", "saved-a"), d.resolves("p2", "saved-b"), d.resolves("p3", "saved-a"))
 	}
-	// One revision (same definition and credentials): one shared worker.
-	if len(d.fs.procs) != 1 {
-		t.Fatal("workers not shared by revision", len(d.fs.procs))
+	// Workers are keyed by saved connection: p1 and p3 share saved-a's worker,
+	// p2 has saved-b's.
+	if len(d.fs.procs) != 2 {
+		t.Fatal("workers not keyed by saved connection", len(d.fs.procs))
 	}
 }
 
