@@ -316,7 +316,7 @@ func TestKeepOpenPoolRunsFourConcurrentReadsAndFifthWaits(t *testing.T) {
 		t.Fatal("fifth read ran beyond PoolSize")
 	case <-time.After(50 * time.Millisecond):
 	}
-	if state.opens.Load() != PoolSize {
+	if int(state.opens.Load()) != PoolSize {
 		t.Fatalf("opens=%d", state.opens.Load())
 	}
 	close(release)
@@ -325,7 +325,7 @@ func TestKeepOpenPoolRunsFourConcurrentReadsAndFifthWaits(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if state.opens.Load() != PoolSize || state.closes.Load() != 0 {
+	if int(state.opens.Load()) != PoolSize || state.closes.Load() != 0 {
 		t.Fatalf("healthy connections not reused: opens=%d closes=%d", state.opens.Load(), state.closes.Load())
 	}
 }

@@ -58,22 +58,22 @@ func validateNodeOperations(c NodeConfig) error {
 	if c.Resources.OverheadMB < 8 || operationDownloadMemory(o) > (c.Resources.MemoryMB-c.Resources.BaselineMB)<<20 {
 		return errOperationConfig
 	}
-	if o.WarmPool != nil {
-		if err := o.WarmPool.Validate(); err != nil {
+	if wp := c.effectiveWarmPool(); wp != nil {
+		if err := wp.Validate(); err != nil {
 			return errOperationConfig
 		}
-		if o.WarmPool.Enabled && o.WarmPool.FitsOverhead(c.Resources.OverheadMB<<20) != nil {
+		if wp.Enabled && wp.FitsOverhead(c.Resources.OverheadMB<<20) != nil {
 			return errOperationConfig
 		}
 		// Read workers hold their slots while idle; fallbacks and result
 		// downloads still need one.
-		if o.WarmPool.Enabled && c.Resources.InteractiveSlots() < o.WarmPool.MaxWorkers+1 {
+		if wp.Enabled && c.Resources.InteractiveSlots() < wp.MaxWorkers+1 {
 			return errInteractiveSlots
 		}
 		// Every read worker's reservation, its stream buffers and a result
 		// download must fit the interactive memory at once.
-		perWorker := int64(o.WarmPool.WorkerMemoryMB)<<20 + c.Resources.OverheadMB<<20 + o.WarmPool.StreamBuffers()
-		if o.WarmPool.Enabled && !c.Resources.FitsInteractive(int64(o.WarmPool.MaxWorkers)*perWorker+operationDownloadMemory(o)) {
+		perWorker := int64(wp.WorkerMemoryMB)<<20 + c.Resources.OverheadMB<<20 + wp.StreamBuffers()
+		if wp.Enabled && !c.Resources.FitsInteractive(int64(wp.MaxWorkers)*perWorker+operationDownloadMemory(o)) {
 			return errInteractiveMemory
 		}
 	}

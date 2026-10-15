@@ -63,8 +63,12 @@ func (n *Node) initOperations(ctx context.Context) (resultErr error) {
 	if queueWait == 0 {
 		queueWait = 10 * time.Second
 	}
-	if c.WarmPool != nil && c.WarmPool.Enabled {
-		native.WarmPool, err = worker.NewWarmPoolManager(*c.WarmPool, nil)
+	if wp := n.cfg.effectiveWarmPool(); wp != nil && wp.Enabled {
+		var launcher worker.WorkerLauncher // nil: the default launcher and adapter pool size
+		if size := n.cfg.readPoolSize(); size > 0 {
+			launcher = worker.NewServeLauncher(size)
+		}
+		native.WarmPool, err = worker.NewWarmPoolManager(*wp, launcher)
 		if err != nil {
 			return err
 		}

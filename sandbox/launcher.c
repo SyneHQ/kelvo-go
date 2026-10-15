@@ -514,8 +514,19 @@ int main(int argc, char **argv) {
 	// like a one-shot native operation and never combines with a source file,
 	// a JDBC runtime or a private channel.
 	int serve = strcmp(argv[i + 2], "serve") == 0;
-	if ((strcmp(argv[i + 2], "worker") != 0 && !serve) || i + 3 != argc)
+	if (strcmp(argv[i + 2], "worker") != 0 && !serve)
 		die("launcher may only exec the kelvo worker entrypoint");
+	// serve alone, or serve --pool-size N (1-32) for the adapter's source
+	// connection pool. The value is checked here so nothing else passes through.
+	if (serve && i + 5 == argc) {
+		char *end;
+		long size = strtol(argv[i + 4], &end, 10);
+		if (strcmp(argv[i + 3], "--pool-size") != 0 || argv[i + 4][0] < '1' || argv[i + 4][0] > '9' ||
+		    *end != '\0' || size < 1 || size > 32)
+			die("invalid serve pool size argument");
+	} else if (i + 3 != argc) {
+		die("launcher may only exec the kelvo worker entrypoint");
+	}
 	if (serve && (jdbc_jars || private_channel || has_operation_source || has_fd7 ||
 		      strcmp(argv[i + 1], "/proc/self/fd/5") != 0))
 		die("serve requires a plain pinned native operation");
