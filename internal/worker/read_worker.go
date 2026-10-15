@@ -2,12 +2,14 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/url"
 	"strings"
 	"sync/atomic"
@@ -138,25 +140,48 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		return unavailable()
 	}
 
-	quotaCtx, releaseQuota, err := source.acquireSourceQuota(ctx, r)
-	if err != nil {
-		return stats, err, true
-	}
-	defer releaseQuota()
-	var receipt operations.Receipt
 	if r.Inspect != nil {
+		quotaCtx, releaseQuota, err := source.acquireSourceQuota(ctx, r)
+		if err != nil {
+			return stats, err, true
+		}
+		defer releaseQuota()
 		// Inspection has no one-shot query child; the operation path falls back
 		// to a one-shot adapter itself.
-		receipt, err = e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), pool.Adapter, input, sink)
-	} else {
-		receipt, err = pool.Execute(withCredentialBound(quotaCtx, min(validUntil, expires)), e, pool.Adapter, input, sink)
-		// A read that outwaited its credentials takes the regular path, which
-		// resolves them again; nothing reached a worker.
-		if errors.Is(err, errWarmUnavailable) || errors.Is(err, errCredentialsExpired) {
-			return stats, nil, false
-		}
+		receipt, err := e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), pool.Adapter, input, sink)
+		return receiptStats(receipt, err), receiptError(receipt, err), true
 	}
-	return receiptStats(receipt, err), receiptError(receipt, err), true
+
+	// run executes the read on a worker, copying its result to buffer if any.
+	run := func(buffer *cappedBuffer) (query.Stats, error, bool) {
+		quotaCtx, releaseQuota, err := source.acquireSourceQuota(ctx, r)
+		if err != nil {
+			return query.Stats{}, err, false
+		}
+		defer releaseQuota()
+		var tee io.Writer
+		if buffer != nil {
+			tee = buffer
+		}
+		receipt, err := pool.execute(withCredentialBound(quotaCtx, min(validUntil, expires)), e, pool.Adapter, input, sink, tee)
+		err = receiptError(receipt, err)
+		return receiptStats(receipt, err), err, err == nil
+	}
+	if pool.cache == nil {
+		stats, err, _ = run(nil)
+	} else {
+		key := resultCacheKey(tenant, team, r.ConnectionID, input.Source.Revision, r, e.Limits)
+		stats, err = pool.cache.do(ctx, key, r.Refresh, run, func(entry *cacheEntry) (query.Stats, error) {
+			observed, err := e.readIPC(ctx, bytes.NewReader(entry.data), e.Limits, sink)
+			stats := entry.stats
+			stats.Rows, stats.WireBytes = observed.Rows, observed.WireBytes
+			return stats, err
+		})
+	}
+	if errors.Is(err, errWarmUnavailable) || errors.Is(err, errCredentialsExpired) {
+		return stats, nil, false
+	}
+	return stats, err, true
 }
 
 // readIdentity names whose read this is: tenant, app team, the saved
