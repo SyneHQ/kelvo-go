@@ -55,6 +55,11 @@ func (fw *frameResultWriter) Write(p []byte) (int, error) {
 	return total, nil
 }
 
+// secretless reports a request that relies on the worker's bound credentials.
+func secretless(s adapter.ConnectionSpec) bool {
+	return s.DSN == "" && s.URL == "" && s.Username == "" && s.Password == "" && s.Token == ""
+}
+
 // maxServeStreams bounds concurrent in-flight streams on one worker.
 const maxServeStreams = 64
 
@@ -117,6 +122,7 @@ func (r Runner) Serve(parent context.Context, input io.Reader, output io.Writer)
 	}
 
 	var boundKey string
+	var bound *adapter.ConnectionSpec // credentials this worker serves with
 	for {
 		if err := parent.Err(); err != nil {
 			return err
@@ -178,6 +184,19 @@ func (r Runner) Serve(parent context.Context, input io.Reader, output io.Writer)
 			} else if boundKey != key {
 				// Security invariant: One worker never serves more than one tenant, team, connection or revision
 				return fatal(stream, "cross-tenant or cross-connection request rejected", errors.New("serve: security invariant violation: cross-connection request rejected"))
+			}
+
+			// A worker keeps the credentials of the first request that carried
+			// them; the node sends later reads without secrets. A secretless
+			// request must name the same source as those credentials.
+			if secretless(request.Source) {
+				if bound == nil || request.Source.Engine != bound.Engine || request.Source.Database != bound.Database || request.Source.Schema != bound.Schema || len(request.Source.Options) != 0 {
+					return fatal(stream, "secretless request without matching credentials", errors.New("serve: secretless request without matching credentials"))
+				}
+				request.Source = *bound
+			} else {
+				credentials := request.Source
+				bound = &credentials
 			}
 
 			now := time.Now()
