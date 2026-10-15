@@ -229,7 +229,7 @@ func (d *driver) explorerPage(c int, user string) {
 }
 
 func panelSQL(p int) string {
-	return fmt.Sprintf("SELECT region, count(*)::bigint AS n, sum(amount) AS total FROM public.dash_p%d GROUP BY region ORDER BY region", p)
+	return fmt.Sprintf("SELECT region, count(*)::bigint AS n, sum(amount)::numeric(18,2) AS total FROM public.dash_p%d GROUP BY region ORDER BY region", p)
 }
 
 // refresh loads all ten panels of one dashboard in parallel. explicit marks the
