@@ -51,9 +51,6 @@ func baseJobAuthority(a JobAuthority) JobAuthority {
 	return JobAuthority{PrincipalID: a.PrincipalID, PrincipalKind: a.PrincipalKind, PolicyVersion: a.PolicyVersion}
 }
 
-// verifyDelegation is a variable so tests can count signature verifications.
-var verifyDelegation = delegation.Verify
-
 func delegatedAuthority(p Policy, a JobAuthority, r query.Request, now time.Time) (JobAuthority, delegation.Claims, error) {
 	denied := query.NewError("PERMISSION_DENIED", "Query access denied")
 	current, ok := authorityForPrincipal(p, a.PrincipalID)
@@ -64,7 +61,7 @@ func delegatedAuthority(p Policy, a JobAuthority, r query.Request, now time.Time
 	if err != nil {
 		return JobAuthority{}, delegation.Claims{}, denied
 	}
-	c, err := verifyDelegation(r.Delegation, trust, r, now)
+	c, err := delegation.VerifyCached(r.Delegation, trust, r, now)
 	if err != nil {
 		return JobAuthority{}, delegation.Claims{}, denied
 	}
@@ -104,7 +101,7 @@ func delegatedHTTPContext(r *http.Request, p Policy) (context.Context, context.C
 	if cleanup {
 		grace = 5 * time.Second
 	}
-	c, err := delegation.VerifyClaims(values[0], trust, now.Add(-grace))
+	c, err := delegation.VerifyClaimsCached(values[0], trust, now.Add(-grace))
 	if err != nil {
 		return nil, noop, err
 	}
