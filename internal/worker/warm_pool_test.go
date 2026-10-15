@@ -1693,3 +1693,23 @@ func TestWarmPoolQueueTimeoutBelowLaunchTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// One user's explorer page open (about 42 reads) fits the default tenant cap,
+// which never exceeds the pool's interactive capacity.
+func TestWarmPoolTenantCapDefault(t *testing.T) {
+	cfg := DefaultWarmPoolConfig()
+	cfg.Enabled = true
+	if err := cfg.Validate(); err != nil || cfg.caps().MaxPerTenant != 64 {
+		t.Fatal("default tenant cap:", cfg.caps().MaxPerTenant, err)
+	}
+	small := DefaultWarmPoolConfig()
+	small.Enabled, small.MaxWorkers, small.MaxPerKey = true, 2, 2
+	if err := small.Validate(); err != nil || small.caps().MaxPerTenant != 32 {
+		t.Fatal("default tenant cap above capacity:", small.caps().MaxPerTenant, err)
+	}
+	over := DefaultWarmPoolConfig()
+	over.Enabled, over.MaxPerTenant = true, 65
+	if over.Validate() == nil {
+		t.Fatal("a tenant cap above max_workers x max_in_flight was accepted")
+	}
+}

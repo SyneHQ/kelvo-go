@@ -295,7 +295,9 @@ gain. Phase 3 is the security-sensitive one.
   first waiter, and at most `queue_depth` reads wait (interactive) or
   `max_concurrent` operations (background). A federated read has no single
   connection and is bounded by its tenant cap only. Interactive:
-  `warm_pool.max_per_tenant` (default 32 reads in flight) and
+  `warm_pool.max_per_tenant` (default 64 reads in flight, at most
+  max_workers x max_in_flight; it must exceed the largest burst of one user,
+  about 42 reads for an explorer page open) and
   `max_per_connection` (default max_per_key x max_in_flight) apply to every
   interactive read, held until it ends, one-shot fallback included. The cap
   wait and a full-worker wait share one `queue_timeout`; a refusal after
