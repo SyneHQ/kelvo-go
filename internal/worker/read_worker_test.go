@@ -5,11 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/adapter/frame"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/operations"
 )
@@ -118,5 +121,70 @@ func TestReadWorkerEligibility(t *testing.T) {
 	if readWorkerSourceShape(catalog.Source{Type: "postgres", DSNEnv: "X", Options: map[string]string{"search_path": "x"}}) ||
 		readWorkerSourceShape(catalog.Source{Type: "mysql", DSNEnv: "X"}) || !readWorkerSourceShape(catalog.Source{Type: "postgres", DSNEnv: "X"}) {
 		t.Fatal("source shape gate")
+	}
+}
+
+// A deadline under a second is sent to the worker with millisecond precision
+// instead of being refused or sent to the one-shot path.
+func TestReadWorkerSubSecondDeadline(t *testing.T) {
+	fs := &fakeSet{}
+	var seen []adapter.ProcessRequest
+	fs.serve = func(p *fakeWorkerProcess) {
+		serveFake(p, func(f frame.Frame) {
+			if f.Type == frame.Request {
+				var r adapter.ProcessRequest
+				_ = json.Unmarshal(f.Payload, &r)
+				fs.mu.Lock()
+				seen = append(seen, r)
+				fs.mu.Unlock()
+				replyOK(p.stdoutW, f.Stream, f.Payload)
+			}
+		})
+	}
+	e, _ := readWorkerExecutor(t, fs)
+	// End the deadline inside the current whole second, at least 500ms away:
+	// rounded down to seconds it would already have passed.
+	for time.Now().Nanosecond() > 400_000_000 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	now := time.Now()
+	ctx, cancel := context.WithDeadline(context.Background(), time.Unix(now.Unix(), 950_000_000))
+	defer cancel()
+	if _, err := e.Execute(ctx, query.Request{Mode: "native", ConnectionID: "app", SQL: "SELECT 1"}, &workerTestSink{}); err != nil {
+		t.Fatal(err)
+	}
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	if len(seen) != 1 || seen[0].Limits.TimeoutMS < 1 || seen[0].Limits.TimeoutMS > 950 || seen[0].ExpiresAt != now.Unix()+1 {
+		t.Fatalf("sub-second deadline not sent to the worker: %+v", seen)
+	}
+}
+
+// Inspections a read worker cannot take go to the previous path, a one-shot
+// adapter operation, never UNAVAILABLE or the native query child.
+func TestInspectionFallsBackWhenReadWorkerCannotTakeIt(t *testing.T) {
+	fs := &fakeSet{serve: func(p *fakeWorkerProcess) { serveFake(p, nil) }}
+	e, mgr := readWorkerExecutor(t, fs)
+	e.OperationAdapter = mgr.Adapter
+	inspect := query.Request{Mode: "native", ConnectionID: "app", Inspect: &operations.MetadataSpec{Object: "schemas", Limit: 10}}
+
+	// Node limits above the adapter's keep reads off read workers; the
+	// inspection still runs, on the operation path.
+	big := *e
+	big.Limits.MaxBytes = 256 << 20
+	if _, err := big.Execute(context.Background(), inspect, &workerTestSink{}); err != nil {
+		t.Fatal("inspection refused when the read worker could not take it:", err)
+	}
+	// Under a caller's custody it must not fall into the native child with empty SQL.
+	custody, _ := containment.NewCustody(func() {})
+	ctx := containment.WithCustody(context.Background(), custody)
+	if _, err := e.Execute(ctx, inspect, &workerTestSink{}); err != nil {
+		t.Fatal("inspection under custody:", err)
+	}
+	// Without any adapter there is nothing to fall back to.
+	none := *e
+	none.WarmPool, none.OperationAdapter = nil, OperationProcessConfig{}
+	if _, err := none.Execute(context.Background(), inspect, &workerTestSink{}); err == nil || !strings.Contains(err.Error(), "operation adapter") {
+		t.Fatal("inspection without an adapter:", err)
 	}
 }
