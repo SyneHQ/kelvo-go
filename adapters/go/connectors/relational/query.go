@@ -5,7 +5,11 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"io"
+	"net"
 	"strconv"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -14,9 +18,64 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/sources/sqlguard"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/sqlnative"
 	"github.com/apache/arrow-go/v18/arrow"
+	mysqldriver "github.com/go-sql-driver/mysql"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var _ adapter.QuerySession = (*Session)(nil)
+
+// rollbackPools tracks, per pool, connections held by a background rollback. A
+// read that finds no idle connection waits for one of them (about one round
+// trip) instead of dialing a new connection (several round trips).
+var rollbackPools = struct {
+	sync.Mutex
+	m map[*sql.DB]*rollbackState
+}{m: map[*sql.DB]*rollbackState{}}
+
+type rollbackState struct {
+	pending int
+	wake    chan struct{}
+}
+
+func beginRollback(db *sql.DB) {
+	rollbackPools.Lock()
+	defer rollbackPools.Unlock()
+	st := rollbackPools.m[db]
+	if st == nil {
+		st = &rollbackState{wake: make(chan struct{})}
+		rollbackPools.m[db] = st
+	}
+	st.pending++
+}
+
+func endRollback(db *sql.DB) {
+	rollbackPools.Lock()
+	defer rollbackPools.Unlock()
+	st := rollbackPools.m[db]
+	close(st.wake)
+	st.wake = make(chan struct{})
+	if st.pending--; st.pending == 0 {
+		delete(rollbackPools.m, db)
+	}
+}
+
+func waitForRollback(ctx context.Context, db *sql.DB) {
+	for {
+		rollbackPools.Lock()
+		st := rollbackPools.m[db]
+		if st == nil || db.Stats().Idle > 0 {
+			rollbackPools.Unlock()
+			return
+		}
+		wake := st.wake
+		rollbackPools.Unlock()
+		select {
+		case <-wake:
+		case <-ctx.Done():
+			return
+		}
+	}
+}
 
 // asyncRollbacks counts background rollbacks that still own a connection.
 var asyncRollbacks atomic.Int64
@@ -44,7 +103,52 @@ func (s *Session) Query(ctx context.Context, request adapter.Query, sink adapter
 	return s.read(ctx, statement, parameters, adapter.Limits{MaxRows: request.MaxRows, MaxBytes: request.MaxBytes, BatchRows: request.BatchRows}, sink)
 }
 
-func (s *Session) read(ctx context.Context, statement string, parameters []any, limits adapter.Limits, sink adapter.Sink) (result adapter.QueryStats, resultErr error) {
+// read runs one read. A warm connection that died while idle (PgBouncer or NAT
+// timeout, failover, restart) shows up as a connection-level failure of the
+// first, server-built statement, before any user SQL was sent. That case is
+// retried on another connection, each failure discarding one dead connection,
+// so after PoolSize+1 attempts the read has had a freshly dialed one. A failure
+// of the user query is never retried.
+func (s *Session) read(ctx context.Context, statement string, parameters []any, limits adapter.Limits, sink adapter.Sink) (stats adapter.QueryStats, err error) {
+	for range PoolSize + 1 {
+		stats, err = s.readOnce(ctx, statement, parameters, limits, sink)
+		var stale *staleConn
+		if !errors.As(err, &stale) {
+			return stats, err
+		}
+		err = stale.err
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return stats, err
+}
+
+// staleConn marks a failure of the first statement on a pooled connection,
+// proving nothing of the caller's ran on the server.
+type staleConn struct{ err error }
+
+func (e *staleConn) Error() string { return e.err.Error() }
+func (e *staleConn) Unwrap() error { return e.err }
+
+func (s *Session) firstStatementErr(ctx context.Context, err error) error {
+	if err != nil && s.reusable && ctx.Err() == nil && connectionLost(err) {
+		return &staleConn{err}
+	}
+	return err
+}
+
+func connectionLost(err error) bool {
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) {
+		return pg.Severity == "FATAL" && (strings.HasPrefix(pg.Code, "57P") || strings.HasPrefix(pg.Code, "08"))
+	}
+	var network net.Error
+	return errors.Is(err, driver.ErrBadConn) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) ||
+		errors.Is(err, mysqldriver.ErrInvalidConn) || errors.As(err, &network) || pgconn.SafeToRetry(err)
+}
+
+func (s *Session) readOnce(ctx context.Context, statement string, parameters []any, limits adapter.Limits, sink adapter.Sink) (result adapter.QueryStats, resultErr error) {
 	started := time.Now()
 	if ctx == nil || sink == nil || s == nil || s.Session == nil || s.Pool == nil || limits.MaxBytes < 1024 || (adapter.Query{Statement: statement, MaxRows: limits.MaxRows, MaxBytes: limits.MaxBytes, BatchRows: limits.BatchRows}).Validate() != nil {
 		return adapter.QueryStats{}, adapter.ErrInvalid
@@ -58,6 +162,9 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if s.reusable {
+		waitForRollback(ctx, s.Pool)
+	}
 	conn, err := s.Pool.Conn(ctx)
 	if err != nil {
 		return adapter.QueryStats{}, err
@@ -106,7 +213,7 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 		_, err = conn.ExecContext(ctx, "SET SESSION max_statement_time = "+strconv.FormatFloat(timeout.Seconds(), 'f', -1, 64))
 	}
 	if err != nil {
-		return adapter.QueryStats{}, err
+		return adapter.QueryStats{}, s.firstStatementErr(ctx, err)
 	}
 	// SQL Server has no read-only transaction flag; its source principal must
 	// have only the permissions the caller is allowed to exercise.
@@ -134,6 +241,7 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 		if s.reusable && resultErr == nil {
 			handed = true
 			asyncRollbacks.Add(1)
+			beginRollback(s.Pool)
 			go func() {
 				defer asyncRollbacks.Add(-1)
 				err := rollback()
@@ -141,6 +249,7 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 					_ = conn.Raw(func(any) error { return driver.ErrBadConn })
 				}
 				_ = conn.Close()
+				endRollback(s.Pool) // after Close, so a waiter finds the connection idle
 			}()
 			return
 		}
@@ -160,7 +269,7 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 			return adapter.QueryStats{}, err
 		}
 		if _, err := conn.ExecContext(cancellation.context, prelude); err != nil {
-			return adapter.QueryStats{}, err
+			return adapter.QueryStats{}, s.firstStatementErr(ctx, err)
 		}
 		rollback = func() error {
 			c, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -172,6 +281,9 @@ func (s *Session) read(ctx context.Context, statement string, parameters []any, 
 	} else {
 		tx, err := conn.BeginTx(context.WithoutCancel(cancellation.context), &sql.TxOptions{ReadOnly: s.Engine != "sqlserver"})
 		if err != nil {
+			if s.Engine == "sqlserver" { // MySQL's first statement is the SET above
+				err = s.firstStatementErr(ctx, err)
+			}
 			return adapter.QueryStats{}, err
 		}
 		rollback = tx.Rollback
