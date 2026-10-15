@@ -387,6 +387,42 @@ func TestRetryHintCoversWholeWait(t *testing.T) {
 	}
 }
 
+// Per-connection caps count the saved connection, not the alias: two
+// connections behind one alias do not share a cap.
+func TestInteractiveCapsKeyedBySavedConnection(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	fs := &fakeSet{serve: holdingServe(release)}
+	e, mgr := readWorkerExecutor(t, fs)
+	mgr.caps = &admission.Caps{MaxPerConnection: 1, MaxWaiting: 8}
+	mgr.cfg.QueueTimeout = 300 * time.Millisecond
+	resolverClient := fixtureConnectionResolver(t, func(w http.ResponseWriter, r *http.Request) {
+		var body resolver.QueryRequest
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		writeConnectionResponse(t, w, connectionResolution{Version: 1, DelegationSHA256: delegation.Digest(body.Delegation), ValidUntil: time.Now().Add(30 * time.Second).Unix(),
+			Sources: []catalog.Source{{ID: "selected", Type: "postgres", DSNEnv: "KELVO_SOURCE_REQUEST_0_DSN"}},
+			Secrets: map[string]string{"KELVO_SOURCE_REQUEST_0_DSN": connectionFixtureDSN}})
+	})
+	e, err := e.WithConnectionResolvers(map[string]*ConnectionResolver{"gateway": resolverClient})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func(saved, sql string) error {
+		r := query.Request{Mode: "native", ConnectionID: "selected", SQL: sql, Delegation: "grant-" + saved + sql}
+		digest, _ := delegation.QueryDigest(r)
+		claims := delegation.Claims{Issuer: "gateway", ClusterTenant: "tenant", AppTeam: "team-a", QuerySHA256: digest, ExpiresAt: time.Now().Add(time.Minute).Unix(),
+			Sources: []delegation.Source{{Alias: "selected", ConnectionID: saved, Database: "analytics"}}}
+		ctx := delegation.WithExecution(context.Background(), claims, r.Delegation, delegation.ExecutionBinding{JobID: "job", WorkerID: "worker", Owner: "owner", Claim: "claim"})
+		_, err := e.Execute(ctx, r, &workerTestSink{})
+		return err
+	}
+	go func() { _ = read("saved-a", "SELECT 'hold'") }()
+	waitFor(t, func() bool { return mgr.metrics.Spawns.Load() == 1 })
+	if err := read("saved-b", "SELECT 2"); err != nil {
+		t.Fatal("a different saved connection behind the same alias shared a cap:", err)
+	}
+}
+
 // A burst on one connection queues or scales out; no read fails. Each worker
 // serves four reads at a time (the adapter's source pool), so most of the
 // fifty wait for a slot, some longer than a credential window: the window is

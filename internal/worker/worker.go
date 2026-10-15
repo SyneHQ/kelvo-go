@@ -274,7 +274,13 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		started := time.Now()
 		deadline := started.Add(e.WarmPool.Config().QueueTimeout)
 		capCtx, cancelCap := context.WithDeadline(ctx, deadline)
-		releaseCaps, err := e.WarmPool.InteractiveCaps().Acquire(capCtx, tenant, r.ConnectionID)
+		// A delegated native read is capped by its saved connection: apps send
+		// one alias for every connection. Federated reads have none.
+		connection := r.ConnectionID
+		if dynamic && r.Mode == "native" {
+			connection = execution.Claims.Sources[0].ConnectionID
+		}
+		releaseCaps, err := e.WarmPool.InteractiveCaps().Acquire(capCtx, tenant, connection)
 		cancelCap()
 		if err != nil {
 			if ctx.Err() != nil {
