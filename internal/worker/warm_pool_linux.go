@@ -25,7 +25,7 @@ type linuxWorkerProcess struct {
 	job    containment.Process
 }
 
-func (p *linuxWorkerProcess) Stdin() io.Writer { return p.stdin }
+func (p *linuxWorkerProcess) Stdin() io.Writer  { return p.stdin }
 func (p *linuxWorkerProcess) Stdout() io.Reader { return p.stdout }
 func (p *linuxWorkerProcess) Kill() error {
 	if p.cancel != nil {
