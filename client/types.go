@@ -67,6 +67,9 @@ type Sink = query.Sink
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// RetryAfter is the node's retry hint for a capacity refusal; zero when the
+	// node gave none. Only the single-call read sets it.
+	RetryAfter time.Duration `json:"retry_after_ns,omitempty"`
 }
 
 func (e *Error) Error() string { return e.Message }
