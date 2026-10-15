@@ -182,3 +182,21 @@ func TestReadWorkersAdapterSetting(t *testing.T) {
 		t.Fatal("default adapter is not relational")
 	}
 }
+
+func TestReadAdapterMetrics(t *testing.T) {
+	var none strings.Builder
+	(&Node{}).writeReadAdapterMetrics(&none)
+	if none.Len() != 0 {
+		t.Fatalf("metrics without a slim adapter: %q", none.String())
+	}
+	slim := worker.OperationProcessConfig{Binary: "/opt/kelvo/kelvo-adapter-relational", SHA256: strings.Repeat("b", 64)}
+	full := worker.OperationProcessConfig{Binary: "/opt/kelvo/kelvo-adapter-go", SHA256: strings.Repeat("a", 64)}
+	n := &Node{operations: &nodeOperations{slimLauncher: worker.NewSlimFallbackLauncher(nil, slim, full)}}
+	var out strings.Builder
+	n.writeReadAdapterMetrics(&out)
+	for _, want := range []string{"kelvo_read_adapter_slim_active 1\n", "kelvo_read_adapter_slim_fallbacks_total 0\n"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing %q in %q", want, out.String())
+		}
+	}
+}

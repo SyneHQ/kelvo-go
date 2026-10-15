@@ -713,6 +713,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/metrics" && n.cfg.RuntimeMetrics != nil {
 		n.cfg.RuntimeMetrics.ServeHTTP(w, r)
+		if r.Method == http.MethodGet {
+			n.writeReadAdapterMetrics(w)
+		}
 		return
 	}
 	if r.URL.Path == "/resources" && n.cfg.RuntimeResources != nil {
