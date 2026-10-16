@@ -31,7 +31,7 @@ type WarmPoolConfig struct {
 	MaxPerKey   int           `yaml:"max_per_key"`   // default 2: a key at max_in_flight scales out
 	MaxInFlight int           `yaml:"max_in_flight"` // default 16, reads in flight per worker
 	// EvictMinIdle is how long a worker must have been idle before another
-	// connection may evict it to make room (default 2s). A worker is never
+	// connection may evict it to make room (default 1s, and below queue_timeout). A worker is never
 	// evicted the moment it frees, so connections cannot swap workers faster
 	// than this and a read is not refused while long-idle workers exist.
 	EvictMinIdle time.Duration `yaml:"evict_min_idle"`
@@ -120,6 +120,10 @@ func (c WarmPoolConfig) Validate() error {
 	if c.QueueDepth < 1 || c.QueueDepth > 1024 {
 		return errors.New("warm_pool: queue_depth must be between 1 and 1024")
 	}
+	// An arriving read must be able to see a worker become evictable within its wait.
+	if c.evictMinIdle() >= c.QueueTimeout {
+		return errors.New("warm_pool: evict_min_idle must be below queue_timeout")
+	}
 	if c.QueueTimeout < 10*time.Millisecond || c.QueueTimeout > time.Minute {
 		return errors.New("warm_pool: queue_timeout must be between 10ms and 1m")
 	}
@@ -136,7 +140,7 @@ func (c WarmPoolConfig) Validate() error {
 // evictMinIdle treats an unset evict_min_idle as the default.
 func (c WarmPoolConfig) evictMinIdle() time.Duration {
 	if c.EvictMinIdle == 0 {
-		return 2 * time.Second
+		return time.Second
 	}
 	return c.EvictMinIdle
 }
@@ -284,6 +288,8 @@ type WarmPoolManager struct {
 	waiters []*slotWaiter               // FIFO of reads waiting for a slot
 	closed  bool
 	stopRpr chan struct{}
+	// recheck wakes a waiter when the soonest idle worker becomes evictable.
+	recheck *time.Timer
 	killing int           // background kills of evicted workers still running
 	killed  chan struct{} // closed and replaced as each background kill ends
 	// backoff holds, per key, the window after a failed launch during which
@@ -1168,6 +1174,45 @@ func (m *WarmPoolManager) releaseWorker(w *warmWorkerEntry, err error) {
 	if !m.wakeLocked(w.key) && w.inFlight == 0 {
 		m.wakeLocked("")
 	}
+	if w.inFlight == 0 {
+		m.armRecheckLocked() // waiters may be waiting for this worker to have been idle long enough
+	}
+}
+
+// armRecheckLocked schedules a wake for when the soonest idle worker has been
+// idle for evict_min_idle, if anyone is waiting: a worker that frees is not
+// evictable yet, and without this no event would tell a waiter when it is. One
+// timer per pool, re-armed for the earliest candidate.
+func (m *WarmPoolManager) armRecheckLocked() {
+	if m.closed || len(m.waiters) == 0 {
+		return
+	}
+	now, minIdle := time.Now(), m.cfg.evictMinIdle()
+	var next time.Duration
+	for _, w := range m.workers {
+		if w.inFlight != 0 {
+			continue
+		}
+		if wait := minIdle - now.Sub(w.lastActive); wait > 0 && (next == 0 || wait < next) {
+			next = wait
+		}
+	}
+	if next == 0 {
+		return
+	}
+	if m.recheck != nil {
+		m.recheck.Stop()
+	}
+	m.recheck = time.AfterFunc(next, func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		m.recheck = nil
+		if m.closed {
+			return
+		}
+		m.wakeLocked("")
+		m.armRecheckLocked()
+	})
 }
 
 // Execute runs an operation on a warm worker, streaming results to sink.
@@ -1409,6 +1454,9 @@ func (m *WarmPoolManager) Drain(ctx context.Context) error {
 	}
 	m.closed = true
 	close(m.stopRpr)
+	if m.recheck != nil {
+		m.recheck.Stop()
+	}
 	for _, w := range m.waiters {
 		select {
 		case w.ready <- struct{}{}:
