@@ -59,32 +59,34 @@ func TestReadWorkersValidation(t *testing.T) {
 	}{
 		"valid": {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32}, base, nil},
 		// The budget is per source: pool_size x max_per_key against max_source_connections.
-		"per-source budget exceeded":       {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32, MaxPerKey: 3}, base, errReadWorkersConnections},
-		"per-source budget boundary":       {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32, MaxPerKey: 2}, base, nil},
-		"raised budget":                    {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32, MaxPerKey: 3, MaxSourceConnections: 96}, base, nil},
-		"budget above its maximum":         {ReadWorkersConfig{MaxWorkers: 4, MaxSourceConnections: 1025}, base, errReadWorkersConfig},
-		"unset pool counts the default 8":  {ReadWorkersConfig{MaxWorkers: 9, MaxPerKey: 9}, base, errReadWorkersConnections},
-		"many workers, one source each":    {ReadWorkersConfig{MaxWorkers: 20, PoolSize: 16}, base, nil}, // 20 x 16 is not what one database sees
-		"queue wait at the launch timeout": {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 30 * time.Second}, base, errReadWorkersConfig},
-		"queue wait just below it":         {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 29 * time.Second}, base, nil},
-		"no capacity":                      {ReadWorkersConfig{}, base, errReadWorkersConfig},
-		"pool size":                        {ReadWorkersConfig{MaxWorkers: 1, PoolSize: 33}, base, errReadWorkersConfig},
-		"in flight":                        {ReadWorkersConfig{MaxWorkers: 1, MaxInFlight: 65}, base, errReadWorkersConfig},
-		"above admission":                  {ReadWorkersConfig{MaxWorkers: 33}, base, errReadWorkersConfig},
-		"warm pool disabled":               {ReadWorkersConfig{MaxWorkers: 1}, worker.WarmPoolConfig{}, errReadWorkersWarmPool},
-		"max_workers in both":              {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.MaxWorkers = 1; return w }(), errReadWorkersWarmPool},
-		"idle_ttl in both":                 {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.IdleTTL = time.Minute; return w }(), errReadWorkersWarmPool},
-		"max_in_flight in both":            {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.MaxInFlight = 4; return w }(), errReadWorkersWarmPool},
-		"max_per_key in both":              {ReadWorkersConfig{MaxWorkers: 2}, func() worker.WarmPoolConfig { w := base; w.MaxPerKey = 1; return w }(), errReadWorkersWarmPool},
-		"max_per_key above workers":        {ReadWorkersConfig{MaxWorkers: 2, MaxPerKey: 3}, base, errReadWorkersConfig},
-		"evict_min_idle in both":           {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.EvictMinIdle = time.Second; return w }(), errReadWorkersWarmPool},
-		"evict_min_idle too large":         {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 11 * time.Minute}, base, errReadWorkersConfig},
-		"evict_min_idle at queue_wait":     {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 2 * time.Second, QueueWait: 2 * time.Second}, base, errReadWorkersConfig},
-		"evict_min_idle above queue_wait":  {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 3 * time.Second}, base, errReadWorkersConfig},
-		"evict_min_idle just below":        {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 1999 * time.Millisecond}, base, nil},
-		"evict_min_idle negative":          {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: -time.Second}, base, errReadWorkersConfig},
-		"stream_buffer_mb in both":         {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.StreamBufferMB = 4; return w }(), errReadWorkersWarmPool},
-		"queue wait and timeout both":      {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.QueueTimeout = time.Second; return w }(), errReadWorkersWarmPool},
+		"per-source budget exceeded":                       {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32, MaxPerKey: 3}, base, errReadWorkersConnections},
+		"per-source budget boundary":                       {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32, MaxPerKey: 2}, base, nil},
+		"raised budget":                                    {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32, MaxPerKey: 3, MaxSourceConnections: 96}, base, nil},
+		"budget above its maximum":                         {ReadWorkersConfig{MaxWorkers: 4, MaxSourceConnections: 1025}, base, errReadWorkersConfig},
+		"unset pool counts the default 8":                  {ReadWorkersConfig{MaxWorkers: 9, MaxPerKey: 9}, base, errReadWorkersConnections},
+		"many workers, one source each":                    {ReadWorkersConfig{MaxWorkers: 20, PoolSize: 16}, base, nil}, // 20 x 16 is not what one database sees
+		"queue wait at the launch timeout":                 {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 30 * time.Second}, base, errReadWorkersConfig},
+		"queue wait just below it":                         {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 29 * time.Second}, base, nil},
+		"no capacity":                                      {ReadWorkersConfig{}, base, errReadWorkersConfig},
+		"pool size":                                        {ReadWorkersConfig{MaxWorkers: 1, PoolSize: 33}, base, errReadWorkersConfig},
+		"in flight":                                        {ReadWorkersConfig{MaxWorkers: 1, MaxInFlight: 65}, base, errReadWorkersConfig},
+		"above admission":                                  {ReadWorkersConfig{MaxWorkers: 33}, base, errReadWorkersConfig},
+		"warm pool disabled":                               {ReadWorkersConfig{MaxWorkers: 1}, worker.WarmPoolConfig{}, errReadWorkersWarmPool},
+		"max_workers in both":                              {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.MaxWorkers = 1; return w }(), errReadWorkersWarmPool},
+		"idle_ttl in both":                                 {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.IdleTTL = time.Minute; return w }(), errReadWorkersWarmPool},
+		"max_in_flight in both":                            {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.MaxInFlight = 4; return w }(), errReadWorkersWarmPool},
+		"max_per_key in both":                              {ReadWorkersConfig{MaxWorkers: 2}, func() worker.WarmPoolConfig { w := base; w.MaxPerKey = 1; return w }(), errReadWorkersWarmPool},
+		"max_per_key above workers":                        {ReadWorkersConfig{MaxWorkers: 2, MaxPerKey: 3}, base, errReadWorkersConfig},
+		"evict_min_idle in both":                           {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.EvictMinIdle = time.Second; return w }(), errReadWorkersWarmPool},
+		"evict_min_idle too large":                         {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 11 * time.Minute}, base, errReadWorkersConfig},
+		"evict_min_idle at queue_wait":                     {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 2 * time.Second, QueueWait: 2 * time.Second}, base, errReadWorkersEvictIdle},
+		"evict_min_idle above queue_wait":                  {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 3 * time.Second}, base, errReadWorkersEvictIdle},
+		"short queue_wait alone loads":                     {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 500 * time.Millisecond}, base, nil},
+		"explicit evict_min_idle above a short queue_wait": {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 500 * time.Millisecond, EvictMinIdle: 600 * time.Millisecond}, base, errReadWorkersEvictIdle},
+		"evict_min_idle just below":                        {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 1999 * time.Millisecond}, base, nil},
+		"evict_min_idle negative":                          {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: -time.Second}, base, errReadWorkersConfig},
+		"stream_buffer_mb in both":                         {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.StreamBufferMB = 4; return w }(), errReadWorkersWarmPool},
+		"queue wait and timeout both":                      {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.QueueTimeout = time.Second; return w }(), errReadWorkersWarmPool},
 	} {
 		rw := tc.rw.withDefaults()
 		err := validateNodeReadWorkers(readWorkersNode(&rw, tc.warm))
@@ -242,5 +244,26 @@ func TestReadAdapterMetricsAfterFallback(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in %q", want, out.String())
 		}
+	}
+}
+
+// evict_min_idle defaults to min(1s, queue_wait/2): a config that sets only
+// queue_wait loads, and the error for an explicit value names evict_min_idle.
+func TestEvictMinIdleDefaultFollowsQueueWait(t *testing.T) {
+	for queueWait, want := range map[time.Duration]time.Duration{
+		10 * time.Millisecond:  5 * time.Millisecond,
+		500 * time.Millisecond: 250 * time.Millisecond,
+		2 * time.Second:        time.Second,
+		20 * time.Second:       time.Second,
+	} {
+		if got := (ReadWorkersConfig{MaxWorkers: 1, QueueWait: queueWait}).withDefaults().EvictMinIdle; got != want {
+			t.Errorf("queue_wait %s: evict_min_idle defaults to %s, want %s", queueWait, got, want)
+		}
+	}
+	base := worker.WarmPoolConfig{Enabled: true, QueueDepth: 64, WorkerMemoryMB: 64}
+	rw := ReadWorkersConfig{MaxWorkers: 1, QueueWait: 500 * time.Millisecond, EvictMinIdle: 600 * time.Millisecond}.withDefaults()
+	err := validateNodeReadWorkers(readWorkersNode(&rw, base))
+	if err == nil || !strings.Contains(err.Error(), "evict_min_idle") {
+		t.Fatalf("explicit evict_min_idle above queue_wait: %v", err)
 	}
 }

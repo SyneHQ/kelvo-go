@@ -1955,3 +1955,31 @@ func TestWarmPool_VictimMustHaveBeenIdleLongEnough(t *testing.T) {
 		t.Fatalf("a key evicted its own worker or skipped the next: %v", victim)
 	}
 }
+
+// evict_min_idle defaults to min(1s, queue_timeout/2), so a config that never set
+// it validates whatever its queue_timeout; an explicit value at or above the wait
+// is refused, and a queue_timeout out of range is reported first.
+func TestWarmPoolConfigEvictMinIdleValidation(t *testing.T) {
+	base := DefaultWarmPoolConfig()
+	base.Enabled = true
+	with := func(queue, minIdle time.Duration) error {
+		c := base
+		c.QueueTimeout, c.EvictMinIdle = queue, minIdle
+		return c.Validate()
+	}
+	if err := with(500*time.Millisecond, 0); err != nil {
+		t.Fatalf("legacy queue_timeout 500ms without evict_min_idle: %v", err)
+	}
+	if got := (WarmPoolConfig{QueueTimeout: 500 * time.Millisecond}).evictMinIdle(); got != 250*time.Millisecond {
+		t.Fatalf("default for a 500ms queue_timeout: %s", got)
+	}
+	if got := (WarmPoolConfig{QueueTimeout: 10 * time.Second}).evictMinIdle(); got != time.Second {
+		t.Fatalf("default for a 10s queue_timeout: %s", got)
+	}
+	if err := with(500*time.Millisecond, 600*time.Millisecond); err == nil || !strings.Contains(err.Error(), "evict_min_idle") {
+		t.Fatalf("explicit evict_min_idle above queue_timeout: %v", err)
+	}
+	if err := with(5*time.Millisecond, 0); err == nil || !strings.Contains(err.Error(), "queue_timeout must be between") {
+		t.Fatalf("queue_timeout out of range was not reported first: %v", err)
+	}
+}

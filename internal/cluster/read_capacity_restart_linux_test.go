@@ -36,7 +36,7 @@ func TestReadCapacityChangesByRestartOnly(t *testing.T) {
 	}
 	starts := []start{
 		{ReadWorkersConfig{MaxWorkers: 1}.withDefaults(), 8},
-		{ReadWorkersConfig{MaxWorkers: 4, MaxInFlight: 32, PoolSize: 8, IdleTTL: time.Minute, QueueWait: 2 * time.Second}.withDefaults(), 2}, // below the receipts held across this restart
+		{ReadWorkersConfig{MaxWorkers: 4, MaxInFlight: 32, PoolSize: 8, IdleTTL: time.Minute, QueueWait: time.Second}.withDefaults(), 2}, // below the receipts held across this restart
 		{ReadWorkersConfig{MaxWorkers: 2, MaxInFlight: 8}.withDefaults(), 64},
 	}
 	var record string

@@ -31,7 +31,8 @@ type WarmPoolConfig struct {
 	MaxPerKey   int           `yaml:"max_per_key"`   // default 2: a key at max_in_flight scales out
 	MaxInFlight int           `yaml:"max_in_flight"` // default 16, reads in flight per worker
 	// EvictMinIdle is how long a worker must have been idle before another
-	// connection may evict it to make room (default 1s, and below queue_timeout). A worker is never
+	// connection may evict it to make room (default min(1s, queue_timeout/2); an
+	// explicit value must be below queue_timeout). A worker is never
 	// evicted the moment it frees, so connections cannot swap workers faster
 	// than this and a read is not refused while long-idle workers exist.
 	EvictMinIdle time.Duration `yaml:"evict_min_idle"`
@@ -120,10 +121,6 @@ func (c WarmPoolConfig) Validate() error {
 	if c.QueueDepth < 1 || c.QueueDepth > 1024 {
 		return errors.New("warm_pool: queue_depth must be between 1 and 1024")
 	}
-	// An arriving read must be able to see a worker become evictable within its wait.
-	if c.evictMinIdle() >= c.QueueTimeout {
-		return errors.New("warm_pool: evict_min_idle must be below queue_timeout")
-	}
 	if c.QueueTimeout < 10*time.Millisecond || c.QueueTimeout > time.Minute {
 		return errors.New("warm_pool: queue_timeout must be between 10ms and 1m")
 	}
@@ -131,16 +128,21 @@ func (c WarmPoolConfig) Validate() error {
 	if c.QueueTimeout >= launchTimeout {
 		return errors.New("warm_pool: queue_timeout must be shorter than the 30s worker launch timeout")
 	}
+	// An arriving read must be able to see a worker become evictable within its wait.
+	if c.evictMinIdle() >= c.QueueTimeout {
+		return errors.New("warm_pool: evict_min_idle must be below queue_timeout")
+	}
 	if c.WorkerMemoryMB < 16 || c.WorkerMemoryMB > 1024 {
 		return errors.New("warm_pool: worker_memory_mb must be between 16 and 1024")
 	}
 	return nil
 }
 
-// evictMinIdle treats an unset evict_min_idle as the default.
+// evictMinIdle treats an unset evict_min_idle as min(1s, queue_timeout/2), so a
+// configuration that never set it keeps validating whatever its queue_timeout.
 func (c WarmPoolConfig) evictMinIdle() time.Duration {
 	if c.EvictMinIdle == 0 {
-		return time.Second
+		return min(time.Second, c.QueueTimeout/2)
 	}
 	return c.EvictMinIdle
 }

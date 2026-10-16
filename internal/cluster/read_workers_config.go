@@ -36,7 +36,7 @@ type ReadWorkersConfig struct {
 	IdleTTL              time.Duration `yaml:"idle_ttl"`               // idle worker lifetime, default 30m
 	QueueWait            time.Duration `yaml:"queue_wait"`             // bounded admission wait before a retryable refusal, default 2s
 	StreamBufferMB       int           `yaml:"stream_buffer_mb"`       // unread result bytes buffered per stream, default 8
-	EvictMinIdle         time.Duration `yaml:"evict_min_idle"`         // a worker must be idle this long before another connection may evict it, default 1s, below queue_wait
+	EvictMinIdle         time.Duration `yaml:"evict_min_idle"`         // a worker must be idle this long before another connection may evict it, default min(1s, queue_wait/2); an explicit value must be below queue_wait
 
 	// Adapter names the binary native reads run on: "relational" (default), a
 	// slim build with only the relational engines read workers serve, or "full".
@@ -55,7 +55,7 @@ const (
 	maxMaxSourceConns      = 1024
 	defaultReadIdleTTL     = 30 * time.Minute
 	defaultReadQueueWait   = 2 * time.Second
-	defaultReadEvictIdle   = time.Second
+	maxDefaultEvictIdle    = time.Second // the default is min(this, queue_wait/2)
 	defaultReadStreamMB    = 8
 	// maxReadQueueWait is the warm pool's worker launch timeout: a queue wait must stay below it.
 	maxReadQueueWait  = 30 * time.Second
@@ -65,6 +65,7 @@ const (
 
 var (
 	errReadWorkersConfig      = errors.New("invalid read_workers configuration")
+	errReadWorkersEvictIdle   = errors.New("read_workers evict_min_idle must be below queue_wait")
 	errReadWorkersWarmPool    = errors.New("read_workers requires operations.warm_pool enabled, and capacity set only in read_workers")
 	errReadWorkersConnections = errors.New("read_workers pool_size × max_per_key exceeds max_source_connections")
 )
@@ -87,8 +88,8 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 	if c.StreamBufferMB == 0 {
 		c.StreamBufferMB = defaultReadStreamMB
 	}
-	if c.EvictMinIdle == 0 {
-		c.EvictMinIdle = defaultReadEvictIdle
+	if c.EvictMinIdle == 0 { // after queue_wait: the default must stay below it
+		c.EvictMinIdle = min(maxDefaultEvictIdle, c.QueueWait/2)
 	}
 	if c.MaxSourceConnections == 0 {
 		c.MaxSourceConnections = defaultMaxSourceConns
@@ -101,8 +102,11 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 
 func (c ReadWorkersConfig) validate(resources *ResourceConfig) error {
 	if c.MaxWorkers < 1 || c.MaxWorkers > 64 || c.MaxInFlight < 1 || c.MaxInFlight > 64 || c.MaxPerKey < 1 || c.MaxPerKey > c.MaxWorkers || c.PoolSize < 0 || c.PoolSize > 32 || c.MaxSourceConnections < 1 || c.MaxSourceConnections > maxMaxSourceConns || c.StreamBufferMB < 1 || c.StreamBufferMB > 256 ||
-		c.EvictMinIdle < time.Millisecond || c.EvictMinIdle >= c.QueueWait || c.IdleTTL < 10*time.Millisecond || c.IdleTTL > 24*time.Hour || c.QueueWait < 10*time.Millisecond || c.QueueWait >= maxReadQueueWait {
+		c.EvictMinIdle < time.Millisecond || c.EvictMinIdle > 10*time.Minute || c.IdleTTL < 10*time.Millisecond || c.IdleTTL > 24*time.Hour || c.QueueWait < 10*time.Millisecond || c.QueueWait >= maxReadQueueWait {
 		return errReadWorkersConfig
+	}
+	if c.EvictMinIdle >= c.QueueWait {
+		return errReadWorkersEvictIdle
 	}
 	pool := c.PoolSize
 	if pool == 0 {
