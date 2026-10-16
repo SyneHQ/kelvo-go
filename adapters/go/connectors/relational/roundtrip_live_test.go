@@ -491,7 +491,7 @@ func TestPostgresStatementCountsSettleAfterBackgroundRollbackLive(t *testing.T) 
 		t.Skip("pg_stat_statements not preloaded:", err)
 	}
 	count := func() (n int64) {
-		_ = admin.QueryRow("SELECT coalesce(sum(calls), 0)::bigint FROM pg_stat_statements WHERE query LIKE 'SELECT 4242 AS marker%'").Scan(&n)
+		_ = admin.QueryRow("SELECT coalesce(sum(calls), 0)::bigint FROM pg_stat_statements WHERE query LIKE '%AS probe_marker_4242%'").Scan(&n)
 		return n
 	}
 	settle := func() {
@@ -507,7 +507,7 @@ func TestPostgresStatementCountsSettleAfterBackgroundRollbackLive(t *testing.T) 
 	const reads = 200
 	early := 0
 	for i := int64(1); i <= reads; i++ {
-		if _, err := s.Query(context.Background(), adapter.Query{Statement: "SELECT 4242 AS marker", MaxRows: 10, MaxBytes: 1 << 20, BatchRows: 10}, nopSink{}); err != nil {
+		if _, err := s.Query(context.Background(), adapter.Query{Statement: "SELECT 1 AS probe_marker_4242", MaxRows: 10, MaxBytes: 1 << 20, BatchRows: 10}, nopSink{}); err != nil {
 			t.Fatal(err)
 		}
 		if count() != i {
