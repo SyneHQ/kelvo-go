@@ -331,11 +331,9 @@ gain. Phase 3 is the security-sensitive one.
   entries, a quarter of the total per tenant, and `cache_max_entry_bytes`
   (default 4 MiB) per entry. A result never replaces one from an execution
   that started later.
-- `query.Request.bypass_cache: true` (the gateway sets it on an explicit refresh) skips the kept result and joins a running
-  *refresh* execution only if it started after that result was stored (or when
-  nothing is kept); it never joins a plain read that began before it arrived, so an
-  explicit refresh always runs its own fresh execution unless a refresh is already
-  running. A burst of refreshes therefore shares one execution. It is not part of the signed
+- `query.Request.bypass_cache: true` (the gateway sets it on an explicit refresh) skips the kept result and never joins a
+  running execution: every running read started before the refresh arrived and may predate the change being refreshed. Each
+  refresh runs its own execution, which later plain reads may share. It is not part of the signed
   digest: it can only cause another source query, never widen access.
 - Hits report `cached: true` with their own replay time. Inspections are not
   cached. `cache_disabled: true` turns the cache off.
