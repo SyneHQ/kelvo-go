@@ -35,6 +35,8 @@ const (
 	defaultReadIdleTTL     = 30 * time.Minute
 	defaultReadQueueWait   = 2 * time.Second
 	defaultReadStreamMB    = 8
+	// maxReadQueueWait is the warm pool's worker launch timeout: a queue wait must stay below it.
+	maxReadQueueWait = 30 * time.Second
 	// maxSourceConnections bounds max_workers × pool_size: what one node may
 	// hold open against its sources.
 	maxSourceConnections = 256
@@ -69,7 +71,7 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 
 func (c ReadWorkersConfig) validate(resources *ResourceConfig) error {
 	if c.MaxWorkers < 1 || c.MaxWorkers > 64 || c.MaxInFlight < 1 || c.MaxInFlight > 64 || c.MaxPerKey < 1 || c.MaxPerKey > c.MaxWorkers || c.PoolSize < 0 || c.PoolSize > 32 || c.StreamBufferMB < 1 || c.StreamBufferMB > 256 ||
-		c.IdleTTL < 10*time.Millisecond || c.IdleTTL > 24*time.Hour || c.QueueWait < 10*time.Millisecond || c.QueueWait > time.Minute {
+		c.IdleTTL < 10*time.Millisecond || c.IdleTTL > 24*time.Hour || c.QueueWait < 10*time.Millisecond || c.QueueWait >= maxReadQueueWait {
 		return errReadWorkersConfig
 	}
 	pool := c.PoolSize
