@@ -30,6 +30,11 @@ type WarmPoolConfig struct {
 	MaxWorkers  int           `yaml:"max_workers"`   // default 4
 	MaxPerKey   int           `yaml:"max_per_key"`   // default 2: a key at max_in_flight scales out
 	MaxInFlight int           `yaml:"max_in_flight"` // default 16, reads in flight per worker
+	// EvictMinIdle is how long a worker must have been idle before another
+	// connection may evict it to make room (default 2s). A worker is never
+	// evicted the moment it frees, so connections cannot swap workers faster
+	// than this and a read is not refused while long-idle workers exist.
+	EvictMinIdle time.Duration `yaml:"evict_min_idle"`
 	// StreamBufferMB caps the unread result bytes the node buffers per stream
 	// (default 8). A slow client reading a large result then fails fast with
 	// RESOURCE_EXHAUSTED instead of holding node memory for it.
@@ -94,6 +99,9 @@ func (c WarmPoolConfig) Validate() error {
 	if c.StreamBufferMB < 0 || c.StreamBufferMB > 256 {
 		return errors.New("warm_pool: stream_buffer_mb must be between 0 and 256")
 	}
+	if c.EvictMinIdle < 0 || c.EvictMinIdle > 10*time.Minute {
+		return errors.New("warm_pool: evict_min_idle must be between 0 and 10m")
+	}
 	if c.MaxInFlight < 0 || c.MaxInFlight > 64 {
 		return errors.New("warm_pool: max_in_flight must be between 1 and 64")
 	}
@@ -123,6 +131,14 @@ func (c WarmPoolConfig) Validate() error {
 		return errors.New("warm_pool: worker_memory_mb must be between 16 and 1024")
 	}
 	return nil
+}
+
+// evictMinIdle treats an unset evict_min_idle as the default.
+func (c WarmPoolConfig) evictMinIdle() time.Duration {
+	if c.EvictMinIdle == 0 {
+		return 2 * time.Second
+	}
+	return c.EvictMinIdle
 }
 
 // maxInFlight treats an unset max_in_flight as the default, so configs written
@@ -273,9 +289,6 @@ type WarmPoolManager struct {
 	// backoff holds, per key, the window after a failed launch during which
 	// reads go straight to the one-shot path instead of relaunching.
 	backoff map[string]launchBackoff
-	// evictedAt is when a key's worker was last evicted to make room for another
-	// key: the thrash guard keeps that key from evicting in turn for a while.
-	evictedAt map[string]time.Time
 }
 
 type launchBackoff struct {
@@ -292,15 +305,14 @@ func NewWarmPoolManager(cfg WarmPoolConfig, launcher WorkerLauncher) (*WarmPoolM
 		launcher = &defaultWorkerLauncher{}
 	}
 	mgr := &WarmPoolManager{
-		cfg:       cfg,
-		launcher:  launcher,
-		caps:      cfg.caps(),
-		cache:     cfg.resultCache(),
-		workers:   make(map[string]*warmWorkerEntry),
-		backoff:   make(map[string]launchBackoff),
-		evictedAt: make(map[string]time.Time),
-		killed:    make(chan struct{}),
-		stopRpr:   make(chan struct{}),
+		cfg:      cfg,
+		launcher: launcher,
+		caps:     cfg.caps(),
+		cache:    cfg.resultCache(),
+		workers:  make(map[string]*warmWorkerEntry),
+		backoff:  make(map[string]launchBackoff),
+		killed:   make(chan struct{}),
+		stopRpr:  make(chan struct{}),
 	}
 	if cfg.Enabled {
 		go mgr.reapLoop()
@@ -444,7 +456,7 @@ func (m *WarmPoolManager) wakeLocked(key string) bool {
 		if key != "" && w.key != key {
 			continue
 		}
-		if key == "" && m.keyWorkersLocked(w.key) >= m.cfg.MaxPerKey {
+		if key == "" && !m.canActLocked(w) {
 			continue
 		}
 		select {
@@ -454,6 +466,21 @@ func (m *WarmPoolManager) wakeLocked(key string) bool {
 		}
 	}
 	return false
+}
+
+// canActLocked reports whether a waiter woken by an idle worker could use it:
+// its key may still add a worker, and either the pool has room or an idle worker
+// of another key has been idle long enough to evict. A waiter that cannot is not
+// woken in vain; the wake goes to the next one.
+func (m *WarmPoolManager) canActLocked(w *slotWaiter) bool {
+	if m.keyWorkersLocked(w.key) >= m.cfg.MaxPerKey {
+		return false
+	}
+	if len(m.workers) < m.cfg.MaxWorkers {
+		return true
+	}
+	victim, _ := m.victimLocked(w.key, time.Now())
+	return victim != nil
 }
 
 // ponytail: a scan of workers per waiter; index workers by key if the pool grows large.
@@ -495,13 +522,13 @@ func (m *WarmPoolManager) removeWaiterLocked(w *slotWaiter) {
 // within that, so retrying sooner is unlikely to help. A full worker is not a
 // fallback: fifty one-shot children is the collapse the pool exists to avoid.
 func busyError(what string, waited time.Duration) error {
-	return query.NewError("RESOURCE_EXHAUSTED", fmt.Sprintf("%s; retry after %ds", what, ceilSeconds(waited)))
+	return NewCapacityError(fmt.Sprintf("%s; retry after %ds", what, ceilSeconds(waited)), time.Duration(ceilSeconds(waited))*time.Second)
 }
 
 // queueFullError refuses a read without waiting: the wait queue is full. Its
 // hint is queue_timeout, the wait it would have faced; it claims no wait.
 func queueFullError(what string, queueTimeout time.Duration) error {
-	return query.NewError("RESOURCE_EXHAUSTED", fmt.Sprintf("%s; the wait queue is full, retry after %ds", what, ceilSeconds(queueTimeout)))
+	return NewCapacityError(fmt.Sprintf("%s; the wait queue is full, retry after %ds", what, ceilSeconds(queueTimeout)), time.Duration(ceilSeconds(queueTimeout))*time.Second)
 }
 
 func ceilSeconds(d time.Duration) int64 { return max(1, int64((d+time.Second-1)/time.Second)) }
@@ -564,6 +591,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 	}()
 
 	for {
+		var retryIn time.Duration // when an idle worker of another key becomes evictable
 		m.mu.Lock()
 		if m.closed {
 			m.mu.Unlock()
@@ -682,9 +710,21 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 				scaleOutRefused = true
 				continue
 			}
-			if !(m.mayEvictFor(key) && m.evictIdleOther(ctx, key, queueBy)) {
+			if evicted, retry := m.evictIdleOther(ctx, key, queueBy); !evicted {
 				if ctx.Err() != nil {
 					return nil, nil, ctx.Err()
+				}
+				if retry > 0 {
+					// An idle worker of another key is not idle long enough yet:
+					// try again when it is, within this read's deadline.
+					timer := time.NewTimer(min(retry, time.Until(queueBy)))
+					select {
+					case <-timer.C:
+					case <-ctx.Done():
+						timer.Stop()
+						return nil, nil, ctx.Err()
+					}
+					continue
 				}
 				waitCapacity = true
 			}
@@ -700,12 +740,14 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 				return nil, nil, busy()
 			}
 			m.mu.Unlock()
-			if m.mayEvictFor(key) && m.evictIdleOther(ctx, key, queueBy) {
+			evicted, retry := m.evictIdleOther(ctx, key, queueBy)
+			if evicted {
 				continue
 			}
 			if ctx.Err() != nil {
 				return nil, nil, ctx.Err()
 			}
+			retryIn = retry
 			m.mu.Lock()
 		}
 
@@ -721,75 +763,81 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 		}
 		m.mu.Unlock()
 		timer := time.NewTimer(time.Until(queueBy))
+		var recheck <-chan time.Time // an idle worker of another key becomes evictable
+		var recheckTimer *time.Timer
+		if retryIn > 0 && retryIn < time.Until(queueBy) {
+			recheckTimer = time.NewTimer(retryIn)
+			recheck = recheckTimer.C
+		}
 		select {
 		case <-waiter.ready:
 			timer.Stop()
+		case <-recheck:
+			timer.Stop()
 		case <-timer.C:
+			if recheckTimer != nil {
+				recheckTimer.Stop()
+			}
 			return nil, nil, busy()
 		case <-ctx.Done():
 			timer.Stop()
+			if recheckTimer != nil {
+				recheckTimer.Stop()
+			}
 			return nil, nil, ctx.Err()
 		}
-	}
-}
-
-// evictGuard is how long a key whose worker was evicted for another key may
-// not evict one in return: idle_ttl/60, at least 5s. Without it keys with more
-// active connections than workers evict each other's workers in turn, each read
-// paying a launch and none finding a warm worker.
-func (m *WarmPoolManager) evictGuard() time.Duration {
-	return max(m.cfg.IdleTTL/60, 5*time.Second)
-}
-
-// mayEvictFor reports whether key may evict another key's idle worker now. A
-// key refused waits for capacity and, when its wait ends, gets a retryable
-// RESOURCE_EXHAUSTED.
-func (m *WarmPoolManager) mayEvictFor(key string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	at, evicted := m.evictedAt[key]
-	return !evicted || time.Since(at) >= m.evictGuard()
-}
-
-// recordEvictionLocked notes that key's worker was evicted for another key.
-func (m *WarmPoolManager) recordEvictionLocked(key string) {
-	now := time.Now()
-	for k, at := range m.evictedAt {
-		if now.Sub(at) >= m.evictGuard() {
-			delete(m.evictedAt, k)
+		if recheckTimer != nil {
+			recheckTimer.Stop()
 		}
 	}
-	m.evictedAt[key] = now
 }
 
-// evictIdleOther evicts the least recently used idle worker of another key
-// and waits, until queueBy, for it to end so its reservation is free for a
-// new worker. It reports false when every other worker is busy, the worker
-// did not end in time, or ctx ended.
-func (m *WarmPoolManager) evictIdleOther(ctx context.Context, key string, queueBy time.Time) bool {
-	m.mu.Lock()
-	var victim *warmWorkerEntry
+// victimLocked picks the least recently used worker of another key that has
+// been idle for at least evict_min_idle. When none qualifies it reports how
+// long until the soonest idle one does (zero when every other worker is busy).
+func (m *WarmPoolManager) victimLocked(key string, now time.Time) (victim *warmWorkerEntry, retryIn time.Duration) {
+	minIdle := m.cfg.evictMinIdle()
 	for _, w := range m.workers {
-		if w.key != key && w.inFlight == 0 && (victim == nil || w.lastActive.Before(victim.lastActive)) {
+		if w.key == key || w.inFlight != 0 {
+			continue
+		}
+		if wait := minIdle - now.Sub(w.lastActive); wait > 0 {
+			if retryIn == 0 || wait < retryIn {
+				retryIn = wait
+			}
+			continue
+		}
+		if victim == nil || w.lastActive.Before(victim.lastActive) {
 			victim = w
 		}
 	}
+	return victim, retryIn
+}
+
+// evictIdleOther evicts the least recently used worker of another key that has
+// been idle long enough and waits, until queueBy, for it to end so its
+// reservation is free for a new worker. It reports false when no worker
+// qualifies (every other worker is busy or was active a moment ago, and
+// retryIn says when the soonest becomes evictable), the worker did not end in
+// time, or ctx ended.
+func (m *WarmPoolManager) evictIdleOther(ctx context.Context, key string, queueBy time.Time) (evicted bool, retryIn time.Duration) {
+	m.mu.Lock()
+	victim, retryIn := m.victimLocked(key, time.Now())
 	if victim == nil {
 		m.mu.Unlock()
-		return false
+		return false, retryIn
 	}
 	m.evictLocked(victim, &m.metrics.EvictionsLRU)
-	m.recordEvictionLocked(victim.key)
 	m.mu.Unlock()
 	timer := time.NewTimer(time.Until(queueBy))
 	defer timer.Stop()
 	select {
 	case <-victim.dead:
-		return true
+		return true, 0
 	case <-timer.C:
-		return false
+		return false, 0
 	case <-ctx.Done():
-		return false
+		return false, 0
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -973,6 +974,11 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			panic(http.ErrAbortHandler)
 		}
 		w.Header().Set("Content-Type", "application/json")
+		// Only a refusal for capacity is retryable: it carries Retry-After. A limit
+		// the read hit (rows, bytes, memory) never does.
+		if after, capacity := worker.CapacityRetryAfter(err); capacity {
+			w.Header().Set("Retry-After", strconv.Itoa(max(1, int((after+time.Second-1)/time.Second))))
+		}
 		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(map[string]any{"error": query.PublicError(err)})
 	}

@@ -11,10 +11,12 @@ import (
 	"net/url"
 	"sync"
 	"sync/atomic"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
 
 type nodeTestStore struct {
@@ -223,5 +225,59 @@ func TestNodeRequiresMatchingPolicyAndGatewayIdentity(t *testing.T) {
 	}
 	if _, err := NewNode(NodeConfig{}, s, nil); err == nil || errors.Is(err, ErrNoJob) {
 		t.Fatal("nil executor accepted")
+	}
+}
+
+type refusingExecutor struct{ err error }
+
+func (e refusingExecutor) Execute(_ context.Context, r query.Request, _ query.Sink) (query.Stats, error) {
+	if r.SQL == "SELECT 1" { // the node's startup probe
+		return query.Stats{}, nil
+	}
+	return query.Stats{}, e.err
+}
+
+// A read the node refused for capacity answers 409 with Retry-After; a limit the
+// read hit (rows, bytes, memory) answers 409 without it, so the gateway never
+// tells a client to retry a read that can never succeed.
+func TestNodeMarksOnlyCapacityRefusalsRetryable(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err        error
+		retryAfter string
+	}{
+		"capacity":       {worker.NewCapacityError("Read worker is busy; retry after 3s", 3*time.Second), "3"},
+		"capacity under": {worker.NewCapacityError("Read worker is busy; retry after 1s", 200*time.Millisecond), "1"},
+		"row limit":      {query.NewError("RESOURCE_EXHAUSTED", "Worker result exceeds row limit"), ""},
+		"byte limit":     {query.NewError("RESOURCE_EXHAUSTED", "Worker result exceeds byte limit"), ""},
+		"slow consumer":  {query.NewError("RESOURCE_EXHAUSTED", "Read result consumer is too slow (slow consumer)"), ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := &nodeTestStore{p: testPolicy(), jobs: map[string]Snapshot{}, queue: make(chan Delivery, 8)}
+			n, err := newNode(NodeConfig{Policy: s.p, WorkerID: "a1"}, s, refusingExecutor{tc.err})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer n.Close()
+			id := "0-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+			s.add(id)
+			waitFor(t, func() bool { v, _ := s.Get(context.Background(), id); return v.Job.State == Assigned })
+			v, _ := s.Get(context.Background(), id)
+			next := v.Job
+			next.State = Claimed
+			next.Claim = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+			if _, err = s.CompareAndSwap(context.Background(), v, next); err != nil {
+				t.Fatal(err)
+			}
+			uri, _ := url.Parse(GatewayIdentity)
+			cert := &x509.Certificate{URIs: []*url.URL{uri}}
+			r := httptest.NewRequest(http.MethodGet, "/internal/queries/"+id+"/results", nil)
+			r.TLS = &tls.ConnectionState{VerifiedChains: [][]*x509.Certificate{{cert}}, PeerCertificates: []*x509.Certificate{cert}}
+			r.Header.Set("X-Kelvo-Claim", next.Claim)
+			out := httptest.NewRecorder()
+			n.ServeHTTP(out, r)
+			if out.Code != http.StatusConflict || out.Header().Get("Retry-After") != tc.retryAfter || !strings.Contains(out.Body.String(), "RESOURCE_EXHAUSTED") {
+				t.Fatalf("status=%d retry-after=%q body=%q", out.Code, out.Header().Get("Retry-After"), out.Body.String())
+			}
+		})
 	}
 }

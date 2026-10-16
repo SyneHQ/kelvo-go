@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -1131,13 +1132,13 @@ func (g *Gateway) cancelUnfinished(t gatewayTenant, id string) {
 var relayBuffers = sync.Pool{New: func() any { b := make([]byte, 32<<10); return &b }}
 
 var (
-	capacityRetryAfter = regexp.MustCompile(`retry after ([0-9]{1,4})s`)
-	capacityMessage    = regexp.MustCompile(`^[A-Za-z0-9 ;,.'-]{1,200}$`)
+	capacityMessage = regexp.MustCompile(`^[A-Za-z0-9 ;,.'-]{1,200}$`)
 )
 
 // nodeCapacityRefusal reads a node's error reply (409 with {"error": {...}}) and
-// reports a RESOURCE_EXHAUSTED refusal with its retry hint in seconds and its
-// public message. Any other reply, or one that does not parse, is not one.
+// reports a capacity refusal: RESOURCE_EXHAUSTED with the node's Retry-After
+// header, the retry hint in seconds and the node's public message. Any other
+// reply, including a RESOURCE_EXHAUSTED limit without that header, is not one.
 func nodeCapacityRefusal(resp *http.Response) (retry int, message string, ok bool) {
 	if resp.StatusCode != http.StatusConflict || !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
 		return 0, "", false
@@ -1148,15 +1149,16 @@ func nodeCapacityRefusal(resp *http.Response) (retry int, message string, ok boo
 			Message string `json:"message"`
 		} `json:"error"`
 	}
+	// Only the node's explicit Retry-After marks a capacity refusal; a
+	// RESOURCE_EXHAUSTED without it is a limit the read hit and is not retryable.
+	hint, err := strconv.Atoi(resp.Header.Get("Retry-After"))
+	if err != nil || hint < 1 || hint > 3600 {
+		return 0, "", false
+	}
 	if json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&body) != nil || body.Error.Code != "RESOURCE_EXHAUSTED" {
 		return 0, "", false
 	}
-	retry, message = 1, "Read capacity unavailable; retry after 1s"
-	if m := capacityRetryAfter.FindStringSubmatch(body.Error.Message); m != nil {
-		if n, err := strconv.Atoi(m[1]); err == nil && n >= 1 {
-			retry = n
-		}
-	}
+	retry, message = hint, fmt.Sprintf("Read capacity unavailable; retry after %ds", hint)
 	if capacityMessage.MatchString(body.Error.Message) {
 		message = body.Error.Message
 	}

@@ -25,13 +25,18 @@ type ReadWorkersConfig struct {
 	MaxPerKey   int `yaml:"max_per_key"`   // workers one connection may scale out to when its workers are full, default 2 (at most max_workers)
 	MaxInFlight int `yaml:"max_in_flight"` // concurrent reads per worker, default 16, at most 64
 	PoolSize    int `yaml:"pool_size"`     // source connections per worker, 1-32; unset sends no flag and the adapter keeps its own default of 8 (12 for about 80 ms to the source)
-	// MaxSourceConnections is the most connections one customer database may
-	// get from this node: pool_size x max_per_key. Workers serve different
-	// databases, so the product over all workers is not what any one source sees.
+	// MaxSourceConnections bounds pool_size x max_per_key: the connections one
+	// worker key (tenant, team, saved connection, database, schema, credential
+	// revision) can hold against its source. Workers of different keys serve
+	// different sources, so the product over all workers is not what any one
+	// source sees; keys that differ only in team, schema or revision share a
+	// database, and a credential rotation briefly runs the old and new key's
+	// workers side by side.
 	MaxSourceConnections int           `yaml:"max_source_connections"` // default 64, at most 1024
 	IdleTTL              time.Duration `yaml:"idle_ttl"`               // idle worker lifetime, default 30m
 	QueueWait            time.Duration `yaml:"queue_wait"`             // bounded admission wait before a retryable refusal, default 2s
 	StreamBufferMB       int           `yaml:"stream_buffer_mb"`       // unread result bytes buffered per stream, default 8
+	EvictMinIdle         time.Duration `yaml:"evict_min_idle"`         // a worker must be idle this long before another connection may evict it, default 2s
 
 	// Adapter names the binary native reads run on: "relational" (default), a
 	// slim build with only the relational engines read workers serve, or "full".
@@ -50,6 +55,7 @@ const (
 	maxMaxSourceConns      = 1024
 	defaultReadIdleTTL     = 30 * time.Minute
 	defaultReadQueueWait   = 2 * time.Second
+	defaultReadEvictIdle   = 2 * time.Second
 	defaultReadStreamMB    = 8
 	// maxReadQueueWait is the warm pool's worker launch timeout: a queue wait must stay below it.
 	maxReadQueueWait  = 30 * time.Second
@@ -81,6 +87,9 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 	if c.StreamBufferMB == 0 {
 		c.StreamBufferMB = defaultReadStreamMB
 	}
+	if c.EvictMinIdle == 0 {
+		c.EvictMinIdle = defaultReadEvictIdle
+	}
 	if c.MaxSourceConnections == 0 {
 		c.MaxSourceConnections = defaultMaxSourceConns
 	}
@@ -92,7 +101,7 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 
 func (c ReadWorkersConfig) validate(resources *ResourceConfig) error {
 	if c.MaxWorkers < 1 || c.MaxWorkers > 64 || c.MaxInFlight < 1 || c.MaxInFlight > 64 || c.MaxPerKey < 1 || c.MaxPerKey > c.MaxWorkers || c.PoolSize < 0 || c.PoolSize > 32 || c.MaxSourceConnections < 1 || c.MaxSourceConnections > maxMaxSourceConns || c.StreamBufferMB < 1 || c.StreamBufferMB > 256 ||
-		c.IdleTTL < 10*time.Millisecond || c.IdleTTL > 24*time.Hour || c.QueueWait < 10*time.Millisecond || c.QueueWait >= maxReadQueueWait {
+		c.EvictMinIdle < time.Millisecond || c.EvictMinIdle > 10*time.Minute || c.IdleTTL < 10*time.Millisecond || c.IdleTTL > 24*time.Hour || c.QueueWait < 10*time.Millisecond || c.QueueWait >= maxReadQueueWait {
 		return errReadWorkersConfig
 	}
 	pool := c.PoolSize
@@ -127,7 +136,7 @@ func validateNodeReadWorkers(c NodeConfig) error {
 // warmPoolCapacitySet reports whether operations.warm_pool sets a field that
 // read_workers owns. A zero value is unset: yaml applies no defaults.
 func warmPoolCapacitySet(w worker.WarmPoolConfig) bool {
-	return w.IdleTTL != 0 || w.MaxWorkers != 0 || w.MaxPerKey != 0 || w.MaxInFlight != 0 || w.StreamBufferMB != 0 || w.QueueTimeout != 0
+	return w.IdleTTL != 0 || w.MaxWorkers != 0 || w.MaxPerKey != 0 || w.EvictMinIdle != 0 || w.MaxInFlight != 0 || w.StreamBufferMB != 0 || w.QueueTimeout != 0
 }
 
 // effectiveWarmPool is the warm pool configuration the node runs: the
@@ -139,7 +148,7 @@ func (c NodeConfig) effectiveWarmPool() *worker.WarmPoolConfig {
 	}
 	w := *c.Operations.WarmPool
 	if rw := c.ReadWorkers; rw != nil {
-		w.MaxWorkers, w.MaxPerKey, w.MaxInFlight, w.IdleTTL, w.QueueTimeout, w.StreamBufferMB = rw.MaxWorkers, rw.MaxPerKey, rw.MaxInFlight, rw.IdleTTL, rw.QueueWait, rw.StreamBufferMB
+		w.MaxWorkers, w.MaxPerKey, w.MaxInFlight, w.IdleTTL, w.QueueTimeout, w.StreamBufferMB, w.EvictMinIdle = rw.MaxWorkers, rw.MaxPerKey, rw.MaxInFlight, rw.IdleTTL, rw.QueueWait, rw.StreamBufferMB, rw.EvictMinIdle
 	}
 	return &w
 }

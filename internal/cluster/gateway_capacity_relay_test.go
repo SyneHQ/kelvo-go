@@ -17,17 +17,21 @@ import (
 func TestGatewayRelaysANodeCapacityRefusalAsRetryable(t *testing.T) {
 	for name, tc := range map[string]struct {
 		status   int
+		nodeHint string // the node's Retry-After, its capacity marker
 		body     string
 		wantCode int
 		retry    string
 		errCode  string
 	}{
-		"capacity refusal":        {409, `{"error":{"code":"RESOURCE_EXHAUSTED","message":"Read worker is busy; retry after 3s"}}`, 429, "3", "RESOURCE_EXHAUSTED"},
-		"capacity without a hint": {409, `{"error":{"code":"RESOURCE_EXHAUSTED","message":"Read capacity in use"}}`, 429, "1", "RESOURCE_EXHAUSTED"},
-		"unsafe message replaced": {409, `{"error":{"code":"RESOURCE_EXHAUSTED","message":"<script>x</script> retry after 2s"}}`, 429, "2", "RESOURCE_EXHAUSTED"},
-		"another query failure":   {409, `{"error":{"code":"QUERY_FAILED","message":"Source read failed"}}`, 503, "", "UNAVAILABLE"},
-		"unparseable":             {409, `not json`, 503, "", "UNAVAILABLE"},
-		"worker error":            {500, `{"error":{"code":"RESOURCE_EXHAUSTED","message":"retry after 9s"}}`, 503, "", "UNAVAILABLE"},
+		"capacity refusal":        {409, "3", `{"error":{"code":"RESOURCE_EXHAUSTED","message":"Read worker is busy; retry after 3s"}}`, 429, "3", "RESOURCE_EXHAUSTED"},
+		"unsafe message replaced": {409, "2", `{"error":{"code":"RESOURCE_EXHAUSTED","message":"<script>x</script> retry after 2s"}}`, 429, "2", "RESOURCE_EXHAUSTED"},
+		// A limit the read hit is RESOURCE_EXHAUSTED without the marker: never retryable.
+		"row limit":              {409, "", `{"error":{"code":"RESOURCE_EXHAUSTED","message":"Worker result exceeds row limit"}}`, 503, "", "UNAVAILABLE"},
+		"byte limit":             {409, "", `{"error":{"code":"RESOURCE_EXHAUSTED","message":"Worker result exceeds byte limit"}}`, 503, "", "UNAVAILABLE"},
+		"nonsense marker":        {409, "soon", `{"error":{"code":"RESOURCE_EXHAUSTED","message":"Read worker is busy"}}`, 503, "", "UNAVAILABLE"},
+		"marker on another code": {409, "3", `{"error":{"code":"QUERY_FAILED","message":"Source read failed"}}`, 503, "", "UNAVAILABLE"},
+		"unparseable":            {409, "3", `not json`, 503, "", "UNAVAILABLE"},
+		"worker error":           {500, "9", `{"error":{"code":"RESOURCE_EXHAUSTED","message":"retry after 9s"}}`, 503, "", "UNAVAILABLE"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			store := &compressionRelayStore{
@@ -37,6 +41,9 @@ func TestGatewayRelaysANodeCapacityRefusalAsRetryable(t *testing.T) {
 			}
 			upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if tc.nodeHint != "" {
+					w.Header().Set("Retry-After", tc.nodeHint)
+				}
 				w.WriteHeader(tc.status)
 				_, _ = w.Write([]byte(tc.body))
 			}))

@@ -406,6 +406,7 @@ func TestWarmPool_FreedSlotWakesAWaiterThatCanUseIt(t *testing.T) {
 			fs := &fakeSet{serve: holdServe(holds)}
 			mgr, exec := newTestPool(t, fs.launcher())
 			mgr.cfg.MaxWorkers, mgr.cfg.MaxPerKey, mgr.cfg.MaxInFlight, mgr.cfg.QueueTimeout = 2, tc.maxPerKey, 1, 5*time.Second
+			mgr.cfg.EvictMinIdle = time.Nanosecond // about who is woken, not how long a worker was idle
 			results := map[string]chan error{}
 			run := func(id, conn string) {
 				results[id] = make(chan error, 1)
