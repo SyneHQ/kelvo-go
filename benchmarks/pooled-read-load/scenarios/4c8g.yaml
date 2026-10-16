@@ -40,3 +40,5 @@ audit: {max_entries: 262144, max_pending: 512}
 resolver: {delay: 300ms, max_concurrent: 16}
 source: {host: 127.0.0.1, port: 0, password: "", ca_pem: "", customers: 20}
 sample_interval: 1s
+# Latency ceilings of the gate (ms), from the spread of 10 runs: all requests p95 1.88-2.28 s, explorer read p95 1.89-2.28 s, page open p95 2.8-2.9 s.
+gate: {p95_ms: 3000, class_p95_ms: {explorer_read: 2600, explorer_page: 3500}}

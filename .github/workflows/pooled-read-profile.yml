@@ -3,19 +3,13 @@ name: Pooled read profile
 # single-call path and the Go client, at low load and at 50 concurrent: wall time per
 # stage, CPU and allocation profiles of the node and the adapter, worker memory, source
 # round trips. 80 ms to the source, 300 ms per resolve. See docs/operations/profile-plain-read.md.
+# Manual dispatch only: it is a measurement, not a regression gate.
 on:
   workflow_dispatch:
     inputs:
       duration:
         description: Seconds per window
         default: '60'
-  pull_request:
-    paths:
-      - 'benchmarks/pooled-read-load/**'
-      - 'scripts/pooled_read_load.py'
-      - 'internal/cluster/pooled_read_load*'
-      - 'adapters/go/internal/runtime/serve_profile_test.go'
-      - '.github/workflows/pooled-read-profile.yml'
 permissions:
   contents: read
 jobs:
@@ -34,7 +28,7 @@ jobs:
             go.sum
             adapters/go/go.sum
       - name: Python dependencies
-        run: python3 -c 'import yaml' || pip install --user pyyaml
+        run: pip install --user pyyaml==6.0.2
       - name: Start a disposable PostgreSQL source
         run: |
           umask 077

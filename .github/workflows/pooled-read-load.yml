@@ -22,34 +22,34 @@ on:
 permissions:
   contents: read
 jobs:
+  # The matrix is benchmarks/pooled-read-load/matrix.json. A pull request runs only the gated entries (the target
+  # configuration, the load the first-release config is claimed to carry, and the shared-alias evidence run); a manual
+  # dispatch runs every entry, including the undersized comparisons and the repeats, which are measurements that are
+  # expected to fail their gate ("gated": false): their reports are published and the step does not fail the job.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - id: pick
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          include = json.load(open("benchmarks/pooled-read-load/matrix.json"))["include"]
+          if os.environ["EVENT"] != "workflow_dispatch":
+              include = [e for e in include if e["gated"]]
+          print("matrix=" + json.dumps({"include": include}))
+          PY
   load:
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 50
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # max_workers 4 is the default pool: 20 customers do not fit.
-          # The first four are the measurement matrix; the first-release entry is the config the upgrade plan ships on the current node. No patches: the merged code runs as is.
-          - {name: 2c1g-workers4, informational: true, profile: 2c1g, duration: '', set: ''}
-          - {name: 2c1g-workers20, informational: true, profile: 2c1g, duration: '', set: '--set read_workers.max_workers=20 --set resources.max_concurrent=26 --set resources.query_reserve_slots=22 --set resources.memory_mb=4400 --set resources.query_reserve_memory_mb=4000 --set resources.query_reserve_scratch_mb=200 --set resources.scratch_mb=300'}
-          # The current node with the pool size the 4 vCPU target uses: is the 2 vCPU / 1 GB node still the limit once reads are cheap?
-          - {name: 2c1g-workers20-pool12, informational: true, profile: 2c1g, duration: '', set: '--set read_workers.max_workers=20 --set resources.max_concurrent=26 --set resources.query_reserve_slots=22 --set resources.memory_mb=4400 --set resources.query_reserve_memory_mb=4000 --set resources.query_reserve_scratch_mb=200 --set resources.scratch_mb=300 --set read_workers.pool_size=12'}
-          - {name: 4c8g-workers4, informational: true, profile: 4c8g, duration: '', set: '--set read_workers.max_workers=4 --set read_workers.pool_size=4'}
-          - {name: 4c8g-workers20, informational: true, profile: 4c8g, duration: '', set: '--set read_workers.pool_size=4'}
-          - {name: 2c1g-first-release, informational: true, profile: 2c1g-first-release, duration: '', set: '--loadgen-arg=-explorers=6 --loadgen-arg=-viewers=3 --loadgen-arg=-consoles=2'}
-          # The load the first-release config is claimed to carry: about three active users on 3 connections (see the upgrade plan).
-          - {name: 2c1g-first-release-3users, profile: 2c1g-first-release, duration: '', set: '--loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
-          # Sweeps: half the virtual users on the small node. 4c8g-workers20-pool12 is the target config (4c8g.yaml as shipped); workers4 and workers20 (pool 4) are the undersized comparisons.
-          - {name: 2c1g-workers20-half, informational: true, profile: 2c1g, duration: '', set: '--set read_workers.max_workers=20 --set resources.max_concurrent=26 --set resources.query_reserve_slots=22 --set resources.memory_mb=4400 --set resources.query_reserve_memory_mb=4000 --set resources.query_reserve_scratch_mb=200 --set resources.scratch_mb=300 --loadgen-arg=-explorers=10 --loadgen-arg=-viewers=5 --loadgen-arg=-consoles=5'}
-          - {name: 4c8g-workers20-pool12, informational: true, profile: 4c8g, duration: '', set: ''}
-          # Repeats of the two pool-12 entries: single runs on a shared runner vary (generator cap, deadlines).
-          - {name: 2c1g-workers20-pool12-r2, informational: true, profile: 2c1g, duration: '', set: '--set read_workers.max_workers=20 --set resources.max_concurrent=26 --set resources.query_reserve_slots=22 --set resources.memory_mb=4400 --set resources.query_reserve_memory_mb=4000 --set resources.query_reserve_scratch_mb=200 --set resources.scratch_mb=300 --set read_workers.pool_size=12'}
-          - {name: 4c8g-workers20-pool12-r2, informational: true, profile: 4c8g, duration: '', set: ''}
-          - {name: 2c1g-workers20-pool12-r3, informational: true, profile: 2c1g, duration: '', set: '--set read_workers.max_workers=20 --set resources.max_concurrent=26 --set resources.query_reserve_slots=22 --set resources.memory_mb=4400 --set resources.query_reserve_memory_mb=4000 --set resources.query_reserve_scratch_mb=200 --set resources.scratch_mb=300 --set read_workers.pool_size=12'}
-          - {name: 4c8g-workers20-pool12-r3, informational: true, profile: 4c8g, duration: '', set: ''}
-          # Evidence runs: light load, 60 s.
-          - {name: evidence-shared-alias, profile: 2c1g, duration: '60', set: '--loadgen-arg=-alias=shared --loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       CGO_ENABLED: '1'
       GOTOOLCHAIN: local
@@ -62,7 +62,7 @@ jobs:
             go.sum
             adapters/go/go.sum
       - name: Python dependencies
-        run: python3 -c 'import yaml' || pip install --user pyyaml
+        run: pip install --user pyyaml==6.0.2
       - name: Start a disposable PostgreSQL source
         run: |
           umask 077
@@ -94,10 +94,8 @@ jobs:
           (cd adapters/go && go build -mod=readonly -p 2 -tags duckdb_arrow -trimpath -o "$bin/kelvo-adapter-go" ./cmd/kelvo-adapter-go)
           (cd adapters/go && CGO_ENABLED=0 go build -mod=readonly -p 2 -tags slim -trimpath -ldflags "-s -w" -o "$bin/kelvo-adapter-relational" ./cmd/kelvo-adapter-go)
       - name: Run the load test (${{ matrix.name }})
-        # Informational entries are measurements expected to fail their gate (undersized comparisons, a load past the first-release
-        # config) or that sit at the generator's own 256-request cap on a shared runner: the gate result is in the published report
-        # (report.json, passed), and the step does not fail the job.
-        continue-on-error: ${{ matrix.informational || false }}
+        # Entries that are not gated are measurements; their gate result is in the published report (report.json, passed).
+        continue-on-error: ${{ !matrix.gated }}
         run: |
           bin=$PWD/artifacts/load-private/bin
           python3 scripts/pooled_read_load.py --profile ${{ matrix.profile }} --label ${{ matrix.name }} \
