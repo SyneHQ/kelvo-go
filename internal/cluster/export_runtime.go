@@ -4,6 +4,7 @@ package cluster
 import (
 	"context"
 	"errors"
+	"log"
 	"reflect"
 	"sync"
 	"time"
@@ -237,22 +238,18 @@ func (r *ExportRuntime) storageFailure(err error) {
 
 func (r *ExportRuntime) cleanupExports() {
 	defer r.wg.Done()
-	tick := time.NewTicker(r.cfg.Exports.CleanupInterval)
-	defer tick.Stop()
-	for {
-		select {
-		case <-r.ctx.Done():
-			return
-		case <-tick.C:
-		}
-		ctx, stop := context.WithTimeout(r.ctx, min(r.cfg.Exports.CleanupInterval, 5*time.Second))
+	r.cleanupEvery(func(ctx context.Context) error {
 		_, err := r.storage.Cleanup(ctx, r.cfg.Exports.CleanupMaxRemovals)
-		stop()
-		if err != nil && r.ctx.Err() == nil {
-			r.storageFailure(err)
-			return
-		}
-	}
+		return err
+	})
+}
+
+func (r *ExportRuntime) cleanupEvery(cleanup func(context.Context) error) {
+	interval := r.cfg.Exports.CleanupInterval
+	runCleanupLoop(r.ctx, "export runtime", interval, min(interval, 5*time.Second), cleanup, func(err error) {
+		log.Printf("kelvo: export storage cleanup failed; stopping export runtime: %v", err)
+		r.storageFailure(err)
+	})
 }
 
 func (r *ExportRuntime) releaseExport(id string, reservation *exportReservation) {

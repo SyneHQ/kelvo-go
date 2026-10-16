@@ -177,34 +177,50 @@ func (s *nodeOperations) close(ctx context.Context) error {
 
 func (n *Node) cleanupOperationResults() {
 	defer n.wg.Done()
-	ticker := time.NewTicker(time.Second)
+	n.cleanupResultsEvery(time.Second, func(ctx context.Context) error {
+		_, err := n.operations.results.Cleanup(ctx, 32)
+		return err
+	})
+}
+
+func (n *Node) cleanupResultsEvery(interval time.Duration, cleanup func(context.Context) error) {
+	runCleanupLoop(n.ctx, "node "+n.cfg.WorkerID, interval, 5*time.Second, cleanup, func(err error) {
+		log.Printf("kelvo: operation result cleanup failed; draining node %s: %v", n.cfg.WorkerID, err)
+		n.operations.failed.Store(true)
+		n.BeginDrain()
+	})
+}
+
+// runCleanupLoop runs cleanup every interval. A timeout is contention (a store
+// root lock, a slow scan under load), not corruption: it is counted, logged and
+// retried next tick. Treating it as fatal drained the node's query dispatch
+// while the heartbeat stayed alive, so every queued read waited forever (#240).
+// Any other error is a real fault: fatal runs once and the loop ends.
+func runCleanupLoop(ctx context.Context, name string, interval, timeout time.Duration, cleanup func(context.Context) error, fatal func(error)) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	timeouts := cleanupTimeouts{lastOK: time.Now()}
 	for {
 		select {
-		case <-n.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			ctx, stop := context.WithTimeout(n.ctx, 5*time.Second)
-			_, err := n.operations.results.Cleanup(ctx, 32)
-			stop()
-			if err == nil {
-				timeouts.succeeded(time.Now())
-			} else if n.ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
-				if count, since, logIt := timeouts.timedOut(time.Now()); logIt {
-					log.Printf("kelvo: operation result cleanup timed out %d consecutive times on node %s; last success %s ago", count, n.cfg.WorkerID, since.Round(time.Second))
-				}
+		}
+		cctx, stop := context.WithTimeout(ctx, timeout)
+		err := cleanup(cctx)
+		stop()
+		switch {
+		case err == nil:
+			timeouts.succeeded(time.Now())
+		case ctx.Err() != nil:
+			return
+		case errors.Is(err, context.DeadlineExceeded):
+			if count, since, logIt := timeouts.timedOut(time.Now()); logIt {
+				log.Printf("kelvo: result cleanup timed out %d consecutive times on %s; last success %s ago", count, name, since.Round(time.Second))
 			}
-			// A timeout is contention (the store's root lock, a slow scan under
-			// load), not corruption: retry next tick. Draining here stops query
-			// dispatch while the heartbeat stays alive, so every queued read
-			// waits forever (#240).
-			if err != nil && n.ctx.Err() == nil && !errors.Is(err, context.DeadlineExceeded) {
-				log.Printf("kelvo: operation result cleanup failed; draining node %s: %v", n.cfg.WorkerID, err)
-				n.operations.failed.Store(true)
-				n.BeginDrain()
-				return
-			}
+		default:
+			fatal(err)
+			return
 		}
 	}
 }
