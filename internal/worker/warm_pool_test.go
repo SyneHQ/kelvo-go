@@ -1505,6 +1505,7 @@ func TestWarmPool_IdleLRUEvictionForNewKeys(t *testing.T) {
 	cfg.Enabled = true
 	cfg.MaxWorkers = 2
 	cfg.QueueTimeout = 150 * time.Millisecond
+	cfg.EvictMinIdle = time.Nanosecond // this test is about which worker goes, not how long it was idle
 	mgr, err := NewWarmPoolManager(cfg, fs.launcher())
 	if err != nil {
 		t.Fatal(err)
@@ -1517,11 +1518,6 @@ func TestWarmPool_IdleLRUEvictionForNewKeys(t *testing.T) {
 		return r
 	}
 	for _, conn := range []string{"c1", "c2", "c3", "c1", "c4"} {
-		// This test is about which worker is evicted; the thrash guard that stops a
-		// key evicted a moment ago from evicting in turn has its own test.
-		mgr.mu.Lock()
-		clear(mgr.evictedAt)
-		mgr.mu.Unlock()
 		if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, keyed(conn), &workerTestSink{}); err != nil {
 			t.Fatal(conn, err)
 		}
@@ -1680,6 +1676,7 @@ func TestWarmPool_CapacityRefusalWaitsNeverFallsBack(t *testing.T) {
 	}}
 	mgr, exec := newTestPool(t, launcher)
 	mgr.cfg.QueueTimeout = 150 * time.Millisecond
+	mgr.cfg.EvictMinIdle = time.Nanosecond // this test is about capacity, not about how long a worker was idle
 	busy := make(chan error, 1)
 	go func() {
 		_, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, opReq("op-busy"), &workerTestSink{})
@@ -1740,30 +1737,21 @@ func TestWarmPoolTenantCapDefault(t *testing.T) {
 	}
 }
 
-// More keys than workers must not thrash: a key whose worker was evicted for
-// another key may not evict one in return. Reads that cannot get a worker end
-// as RESOURCE_EXHAUSTED with a retry hint and nothing falls back or fails as
-// unavailable, and the number of launches stays near one per key instead of
-// one per read.
-func TestWarmPool_TwentyKeysOnFourWorkersDoNotThrash(t *testing.T) {
-	fs := &fakeSet{serve: func(p *fakeWorkerProcess) { serveFake(p, nil) }}
-	cfg := DefaultWarmPoolConfig()
-	cfg.Enabled, cfg.MaxWorkers, cfg.MaxPerKey, cfg.QueueTimeout = true, 4, 1, 30*time.Millisecond
-	mgr, err := NewWarmPoolManager(cfg, fs.launcher())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = mgr.Drain(context.Background()) })
+// poolWorkload runs keys goroutines, each acquiring and releasing a worker for
+// its connection rounds times, and classifies every outcome.
+type poolOutcome struct{ served, exhausted, other int64 }
+
+func poolWorkload(t *testing.T, mgr *WarmPoolManager, keyNames []string, rounds int, read, gap time.Duration) poolOutcome {
+	t.Helper()
 	exec := &Executor{Limits: query.Limits{MemoryMB: 64, Timeout: 5 * time.Second}}
-	const keys, rounds = 20, 30
-	var wg sync.WaitGroup
 	var served, exhausted, other atomic.Int64
 	var firstOther atomic.Value
-	for k := 0; k < keys; k++ {
+	var wg sync.WaitGroup
+	for k, name := range keyNames {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			req := testProcessRequest(fmt.Sprintf("op-%d", k), "tenant-a", "team-a", fmt.Sprintf("conn-%d", k), strings.Repeat("1", 64))
+			req := testProcessRequest(fmt.Sprintf("op-%d", k), "tenant-a", "team-a", name, strings.Repeat("1", 64))
 			req.CredentialsValidUntil = time.Now().Unix() + 4
 			for range rounds {
 				_, release, err := mgr.Acquire(context.Background(), exec, OperationProcessConfig{}, req)
@@ -1771,26 +1759,113 @@ func TestWarmPool_TwentyKeysOnFourWorkersDoNotThrash(t *testing.T) {
 				switch {
 				case err == nil:
 					served.Add(1)
-					time.Sleep(time.Millisecond) // a short read
+					time.Sleep(read)
 					release(nil)
-					time.Sleep(time.Duration(2+k%3) * time.Millisecond) // workers sit idle between reads
 				case errors.As(err, &public) && public.Code == "RESOURCE_EXHAUSTED" && strings.Contains(public.Message, "retry after"):
 					exhausted.Add(1)
 				default:
 					other.Add(1)
 					firstOther.CompareAndSwap(nil, err.Error())
 				}
+				time.Sleep(gap)
 			}
 		}()
 	}
 	wg.Wait()
+	if other.Load() != 0 {
+		t.Fatalf("%d reads ended as something other than a result or RESOURCE_EXHAUSTED: %v", other.Load(), firstOther.Load())
+	}
+	return poolOutcome{served.Load(), exhausted.Load(), 0}
+}
+
+func newGuardPool(t *testing.T, workers int, minIdle time.Duration) *WarmPoolManager {
+	t.Helper()
+	fs := &fakeSet{serve: func(p *fakeWorkerProcess) { serveFake(p, nil) }}
+	cfg := DefaultWarmPoolConfig()
+	cfg.Enabled, cfg.MaxWorkers, cfg.MaxPerKey, cfg.QueueTimeout, cfg.EvictMinIdle = true, workers, 1, 30*time.Millisecond, minIdle
+	mgr, err := NewWarmPoolManager(cfg, fs.launcher())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mgr.Drain(context.Background()) })
+	return mgr
+}
+
+// More hot keys than workers must not thrash: a worker is evicted only after
+// it has been idle for evict_min_idle, so workers do not swap faster than that.
+// Reads that find no worker end as RESOURCE_EXHAUSTED with a retry hint; none
+// falls back or fails otherwise, and launches stay far below one per read.
+func TestWarmPool_TwentyKeysOnFourWorkersDoNotThrash(t *testing.T) {
+	mgr := newGuardPool(t, 4, 400*time.Millisecond)
+	keys := make([]string, 20)
+	for i := range keys {
+		keys[i] = fmt.Sprintf("conn-%d", i)
+	}
+	const rounds = 30
+	out := poolWorkload(t, mgr, keys, rounds, time.Millisecond, 3*time.Millisecond)
+	reads := int64(len(keys) * rounds)
 	spawns := mgr.metrics.Spawns.Load()
-	if other.Load() != 0 || mgr.metrics.Fallbacks.Load() != 0 {
-		t.Fatalf("reads ended as something other than a result or RESOURCE_EXHAUSTED: %d (%v), fallbacks %d", other.Load(), firstOther.Load(), mgr.metrics.Fallbacks.Load())
+	if mgr.metrics.Fallbacks.Load() != 0 || spawns > reads/10 {
+		t.Fatalf("%d launches for %d reads (fallbacks %d): workers thrash", spawns, reads, mgr.metrics.Fallbacks.Load())
 	}
-	// One launch per key, plus at most one more per key for its eviction.
-	if spawns > 2*keys {
-		t.Fatalf("%d launches for %d keys and %d reads: workers thrash", spawns, keys, keys*rounds)
+	t.Logf("served=%d exhausted=%d spawns=%d evictions=%d", out.served, out.exhausted, spawns, mgr.metrics.EvictionsLRU.Load())
+}
+
+// The victim rule refuses nothing while long-idle workers exist: when the active
+// keys change, the new ones take the workers that went idle and are served.
+func TestWarmPool_LongIdleWorkersAreEvictedWithoutRefusingReads(t *testing.T) {
+	mgr := newGuardPool(t, 4, 40*time.Millisecond)
+	var served, exhausted int64
+	reads := int64(0)
+	for phase := 0; phase < 6; phase++ {
+		keys := make([]string, 4)
+		for i := range keys {
+			keys[i] = fmt.Sprintf("phase%d-conn-%d", phase, i)
+		}
+		out := poolWorkload(t, mgr, keys, 10, time.Millisecond, time.Millisecond)
+		served, exhausted, reads = served+out.served, exhausted+out.exhausted, reads+int64(len(keys)*10)
+		time.Sleep(80 * time.Millisecond) // the phase's workers sit idle past evict_min_idle
 	}
-	t.Logf("served=%d exhausted=%d spawns=%d evictions=%d", served.Load(), exhausted.Load(), spawns, mgr.metrics.EvictionsLRU.Load())
+	if served*100 < reads*90 {
+		t.Fatalf("served %d of %d reads (%d refused) although idle workers were available", served, reads, exhausted)
+	}
+	if mgr.metrics.Spawns.Load() > 4*6 {
+		t.Fatalf("%d launches for 6 phases of 4 keys", mgr.metrics.Spawns.Load())
+	}
+}
+
+// A waiter that cannot act on an idle worker is not woken in its place: with the
+// pool full and its only evictable worker idle for too short a time, the wake
+// stays with no one; once the worker has been idle long enough it goes to the
+// first waiter that can use it, passing over one at its key's max_per_key.
+func TestWarmPool_WakePassesOverWaitersThatCannotAct(t *testing.T) {
+	mgr := newGuardPool(t, 2, 10*time.Minute)
+	now := time.Now()
+	busy := &warmWorkerEntry{id: "w-busy", key: "k-busy", inFlight: 1, lastActive: now, ready: make(chan struct{}), dead: make(chan struct{})}
+	idle := &warmWorkerEntry{id: "w-idle", key: "k-idle", lastActive: now, ready: make(chan struct{}), dead: make(chan struct{})}
+	head := &slotWaiter{key: "k-busy", ready: make(chan struct{}, 1)} // at its key's max_per_key
+	next := &slotWaiter{key: "k-new", ready: make(chan struct{}, 1)}
+	// These entries have no process: remove them before the pool drains.
+	t.Cleanup(func() {
+		mgr.mu.Lock()
+		clear(mgr.workers)
+		mgr.waiters = nil
+		mgr.mu.Unlock()
+	})
+	mgr.mu.Lock()
+	mgr.workers[busy.id], mgr.workers[idle.id] = busy, idle
+	mgr.waiters = []*slotWaiter{head, next}
+	woke := mgr.wakeLocked("")
+	mgr.mu.Unlock()
+	if woke || len(next.ready) != 0 || len(head.ready) != 0 {
+		t.Fatal("a wake went to a waiter that could not evict the just-idled worker")
+	}
+	mgr.mu.Lock()
+	mgr.cfg.EvictMinIdle = time.Millisecond
+	idle.lastActive = now.Add(-time.Second)
+	woke = mgr.wakeLocked("")
+	mgr.mu.Unlock()
+	if !woke || len(next.ready) != 1 || len(head.ready) != 0 {
+		t.Fatalf("the wake did not reach the waiter that can use it: woke=%v head=%d next=%d", woke, len(head.ready), len(next.ready))
+	}
 }
