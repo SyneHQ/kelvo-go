@@ -1,9 +1,9 @@
 # Pooled read workers: production configuration and rollout
 
-Status: **measured on the merged code** (`cargo` at `2ba73e4`, no patches; the harness's `patches/` directory is gone). The numbers come from
-`scripts/pooled_read_load.py` (workflow `Pooled read load`) and `Pooled read profile`, both in this PR. Product fixes for the defects the first
-runs found are merged (see [Product findings](#product-findings-and-their-status)); five findings are still **fix in progress** in other pull requests. Every number is from CI runners that share
-CPU with the load generator, PostgreSQL and the delay proxy; read them as measurements of this harness, not promises.
+Status: **measured on the merged code** at `cargo` 2ba73e4 and earlier (`ed1820f`), no patches (the harness's `patches/` directory is gone). The numbers come from
+`scripts/pooled_read_load.py` (workflow `Pooled read load`) and `Pooled read profile`, both in this PR. The product fixes for the defects the first runs found are merged
+(see [Product findings](#product-findings-and-their-status)). **Fixes merged after the measurements were not re-measured:** #234, #235, #238, #239 and #241 (and, once merged, #237); see [Known issues](#known-issues).
+Every number is from CI runners that share CPU with the load generator, PostgreSQL and the delay proxy; read them as measurements of this harness, not promises.
 
 ## What was measured
 
@@ -16,7 +16,7 @@ CPU with the load generator, PostgreSQL and the delay proxy; read them as measur
 | Credentials | the real `resolver.Handler` and the real lease checks against the gateway, plus 300 ms per resolve |
 | Node | real gateway, node, contained read workers (the slim relational adapter), audit journals and a single-node TLS JetStream broker; the gateway and node run in one process inside a delegated systemd cgroup (`MemoryMax`, `CPUQuota`) |
 | Node sizes | 2 vCPU / 1 GB (the 2026-10-12 node) and 4 vCPU / 8 GB |
-| Runs | six matrix runs on the merged code: 38874114296, 38878205819, 38881519514, 38883939562, 38887246821, 38900878104 (this PR's workflow, one job per configuration; the last two repeat the pool-12 entries three times each). Profile: 38878205691, 38881519648, 38883939553 (three runs); baseline before the fixes: 38784590203 (matrix v4) and 38793567524 / 38795023128 (profile) |
+| Runs | six matrix runs on the merged code: 38874114296, 38878205819, 38881519514, 38883939562, 38887246821, 38900878104 (this PR's workflow, one job per configuration; the last two repeat the pool-12 entries three times each; run 38900878104 is on head 3cf6e4b, and its workflow conclusion was `failure` only because the entries that fail their gate by design were then job-level failures, which the workflow no longer reports: the numbers are the per-job artifacts). Profile: 38878205691, 38881519648, 38883939553 (three runs); baseline before the fixes: 38784590203 (matrix v4) and 38793567524 / 38795023128 (profile) |
 
 What the harness does **not** model: the tunnel to the source (only added round trip), a
 dedicated node (it shares the CI runner with the generator, PostgreSQL and the proxy), several nodes, customer databases
@@ -145,7 +145,7 @@ operations:
 
 audit:                       # gateway and node, each its own journal directory
   max_entries: 524288        # see "Audit journal sizing"
-  max_pending: 512           # must cover admitted work: >= operations.max_concurrent and about max_http_requests (see below)
+  max_pending: 512           # the node refuses to start below: gateway >= gateway.max_http_requests; node >= policy.workers[node] + operations.max_concurrent (+ exports.max_concurrent + exports.max_downloads). See below
   retention: 1h
   write_timeout: 2s          # at least 52 ms (#230's group commit)
 
@@ -165,6 +165,9 @@ immediately (`RESOURCE_EXHAUSTED`) when its own limit is full, which looks like 
 error and is not one; the harness reports it as `CLIENT_ADMISSION_LIMIT`. A page open of 42 requests plus dashboards reaches 210-290 in flight at the design load, so the cap is in reach in about 1 run of 10 on the 4 vCPU node.
 
 The two states are separate on purpose: `separate_classes` and `query_reserve_*` split the admission pool, `read_workers` shapes the read workers inside the interactive share.
+
+**CPU weights** (cgroup v2 `cpu.weight`, #234): a read worker 100 (the kernel default), a one-shot read child 50, a background operation 20 (`containment.CPUWeightReadWorker`, `CPUWeightOneShot`, `CPUWeightBackground`). Under CPU contention the long analysis operations yield to reads
+without a quota; with spare CPU they use it. The load matrix above ran before this weighting merged, so the CPU numbers for the analysis job are not comparable to a release build.
 
 ## Node sizing for 50 concurrent users
 
@@ -230,9 +233,15 @@ journal 9,980 (1.0 per request)**. Size each journal at `requests per second x r
 | the maximum | 1,048,576 entries (2 GiB), about 146 requests/s for 1 h | |
 
 **A full journal and a full pending queue are different.** A full journal stops all traffic of that service. A full *pending queue* (`audit.max_pending`, admitted work waiting for its receipt) used to answer 503 `Audit storage unavailable`, which looked like an outage;
-**#236 merged: it is now capacity, a 429.** In the first run on the first-release config (`max_pending` 64) 345 requests got the 503 at a peak of 103 in flight; with 256 the 503 did not recur. `max_pending` must cover the admitted work: at least
-`gateway.max_http_requests` plus `operations.max_concurrent`. Further capacity-versus-fault fixes on every audit path are **fix in progress** ([#239](https://github.com/SyneHQ/kelvo-go/pull/239)).
-Alert on usage (see below) because a full journal is a hard stop.
+**it is now capacity, a 429 (#236), on every audit path (#239, #241)**. In the first run on the first-release config (`max_pending` 64, before #236) 345 requests got the 503 at a peak of 103 in flight; with 256 the 503 did not recur.
+**The node enforces the minimum at load** (`audit.max_pending must be at least the work the service admits at once`; `docs/cluster.md`): the same `audit.max_pending` value is used by both services, so it must satisfy both rules:
+
+| Service | Minimum `audit.max_pending` | This runbook's values |
+| --- | --- | --- |
+| Gateway | `gateway.max_http_requests` | 512 (target), 64 (first release) |
+| Node | `policy.workers[<this node>]` + `operations.max_concurrent` (+ `exports.max_concurrent` + `exports.max_downloads` when exports are configured) | 64 + 2 = 66 (target), 16 + 1 = 17 (first release) |
+
+Use at least the larger of the two (512 and 256 here). An existing node with exports and a smaller value must raise it before upgrading. Alert on usage (see below) because a full journal is a hard stop.
 
 ## Deploy order and mixed versions
 
@@ -258,16 +267,18 @@ Verify after each step: `kelvo read failed` log lines (below), `GET /resources`,
 
 1. **db-api first**: stop sending `inspect` requests and fall back to its previous metadata path. A node with the warm pool disabled
    (or an older node) answers inspections `UNAVAILABLE`, because read workers are the only way to run them.
-2. Node: set `operations.warm_pool.enabled: false` and restart (reads return to one-shot children), or deploy the previous node *and* adapter together.
+2. Node, without a binary change: set `operations.warm_pool.enabled: false` **and remove the whole `read_workers` block**, then restart (reads return to one-shot children). `enabled: false` alone makes the new node refuse to start once
+   `read_workers` is present (`read_workers requires operations.warm_pool enabled, and capacity set only in read_workers`). Or deploy the previous node *and* adapter together (the binary rollback of the upgrade plan, which must be done before any migration step that the old binary cannot read).
 3. **Audit journal `max_pending`.** From #222 the journal header no longer binds `max_pending`, but a journal records the
    value in force **when it was created**. An older binary compares the header with its configuration (`reflect.DeepEqual`) and
    treats a difference as corruption, so after you changed `audit.max_pending` on the new version, a rolled-back binary will refuse
    to open the old journal. Record each journal's creation value (`max_pending` in the header, or the config of the first start)
    before you ever change it; on rollback set `audit.max_pending` back to that value, or start the old binary on a new, empty
-   directory and keep the old one for reconciliation. Never delete a journal to get past the error.
-4. `policy.workers` and `policy.limits` are pinned in cluster metadata. Do not change them as part of rollback; if you must,
+   directory and keep the old one for reconciliation. **Keep the old journal directory (both gateway and node) until the rollback window closes**: a rollback needs it, and a journal is never recreated from the new one. Never delete a journal to get past the error.
+4. **Before any apply, back up** the node and gateway configs, every audit journal directory (and its recorded creation `max_pending`), the containment state directory and the NATS state (JetStream store, consumer state and the metadata record), into a location outside the release directory. A rollback or a recovery after a failed worker execution restores from it, not from memory.
+5. `policy.workers` and `policy.limits` are pinned in cluster metadata. Do not change them as part of rollback; if you must,
    the metadata record has to be re-initialised.
-5. Keep the previous security configuration current: rolling back a binary must not restore revoked keys or an older source policy.
+6. Keep the previous security configuration current: rolling back a binary must not restore revoked keys or an older source policy.
 
 ## Metrics and alerts
 
@@ -307,7 +318,8 @@ What it changes (reasoning from the measurements; the tunnel itself was not meas
   and analysis exports dominate. Size the exit node's uplink for the largest simultaneous export, not the mean.
 * Tailscale adds per-packet encryption on both ends; at this rate that is small next to the node's 15 ms of CPU per request, but
   it was not measured.
-* The Oracle node stops running Kelvo, so its 951 MB limit no longer applies to workers; the new node is sized as above.
+* The Oracle node stops running Kelvo, so its 951 MB limit no longer applies to workers; the new node is sized as above. **Never delete the Oracle Kelvo install without a verified backup** (config, journals, containment and NATS state; see Rollback).
+* **Lockout risk of `tailscale set --exit-node`:** routing all traffic through the exit node can cut the SSH or console session that ran the command. Keep console or out-of-band access, use `--exit-node-allow-lan-access=true`, and test the return paths (SSH and the monitoring and deploy paths) from a second session before leaving the change in place.
 
 ## Observations that are not defects of this stack
 
@@ -318,22 +330,30 @@ What it changes (reasoning from the measurements; the tunnel itself was not meas
 
 ## Product findings and their status
 
-Evidence is in the artifacts of the runs above. "Fixed" means verified on the merged code by the runs listed; "fix in progress" means a pull request is open.
+Evidence is in the artifacts of the runs above. "Fixed" means merged and, unless a row says "not re-measured", verified on the merged code by the runs listed; "fix in progress" means a pull request is open.
 
 | # | Finding (from the first runs) | Status |
 | --- | --- | --- |
-| 1 | Every read-worker read failed the client's receipt check (`PROTOCOL_ERROR`, `Stats.Batches` never set) | **Fixed** (the phase 2 and 3 stack). 0 `PROTOCOL_ERROR` on reads in every run; 2-3 on analysis operations in overload runs of the first-release scenario only (not explained: the operation path under 429s) |
-| 2 | `X-Refresh` / `bypass_cache` did not reach the cache | **Fixed** (7447f28: one `BypassCache` field). The probe confirms that an explicit refresh reaches the source in 52 of 63 runs; the 11 misses (in all configurations, no pattern) are an explicit-refresh flake, **fix in progress** ([#234](https://github.com/SyneHQ/kelvo-go/pull/234)) |
+| 1 | Every read-worker read failed the client's receipt check (`PROTOCOL_ERROR`, `Stats.Batches` never set) | **Fixed** (the phase 2 and 3 stack). 0 `PROTOCOL_ERROR` on reads in every run; 2-3 on analysis operations in overload runs of the 6-user first-release entry only (not explained: the operation path under 429s) |
+| 2 | `X-Refresh` / `bypass_cache` did not reach the cache | **Fixed** (7447f28: one `BypassCache` field). The probe confirmed that an explicit refresh reaches the source in 52 of 63 runs; the 11 misses (in all configurations, no pattern) were an explicit-refresh flake. **Fixed in #234** (a refresh never joins a running read), merged after the runs: **not re-measured** |
 | 3 | `read_workers` settings were inert; the adapter pool was fixed at 4 | **Fixed** (#222, #225): `pool_size` reaches the adapter (`serve --pool-size`); measured in the pool-12 runs |
 | 4 | Idle workers were not evicted for a new key | **Fixed**: 0 one-shot fallbacks in every run. A pool smaller than the active connections still thrashes and answers 503 `Worker unavailable`; making that a bounded capacity refusal is **fix in progress** ([#237](https://github.com/SyneHQ/kelvo-go/pull/237)) |
 | 5 | Waiting single-call reads polled every 50 ms and re-verified the grant | **Fixed** (#230): Ed25519 verifications per read 30 -> 4; node CPU per read 40 ms -> 6-9 ms |
 | 6 | Workers keyed by the request's connection alias | **Fixed** (#221, 65bd44c): the shared-alias run has 0 errors and 5 spawns |
 | 7 | Unconstrained `NUMERIC` results failed | **Fixed** (#226 exact decimal text; #227 bounded source codes) |
-| 8 | A pending-queue-full audit journal answered 503 `Audit storage unavailable` | **Fixed** (#236: 429); capacity versus fault on the other audit paths **fix in progress** ([#239](https://github.com/SyneHQ/kelvo-go/pull/239)) |
-| 9 | Adapter allocations per read rose from 89 KB to 152 KB (mallocs unchanged), from the pooled result buffer's new shape | **Fix in progress** ([#235](https://github.com/SyneHQ/kelvo-go/pull/235), pools the 64 KiB result buffer) |
-| 10 | A run on the 2 vCPU node stalled: 758 requests hit the 30 s deadline with the node at 0.5 cores and no server-side capacity error (1 of 7 runs of that configuration; a second run had 53 generator-cap refusals) | **Open, unexplained.** The 4 vCPU node had no stall in 10 runs |
+| 8 | A pending-queue-full audit journal answered 503 `Audit storage unavailable` | **Fixed**: #236 (429), #239 (capacity versus fault on every audit path, the node's `max_pending` minimum), #238 and #241 (their tests). The matrix ran before #239 |
+| 9 | Adapter allocations per read rose from 89 KB to 152 KB (mallocs unchanged) | **Fixed in #235** (pools the 64 KiB result buffer), merged after the runs: the 152 KB figure is pre-#235 and **not re-measured** |
+| 10 | A run on the 2 vCPU node stalled: 758 requests hit the 30 s deadline with the node at 0.5 cores and no server-side capacity error (1 of 7 runs of that configuration; a second run had 53 generator-cap refusals) | **Open, unexplained**: [issue 240](https://github.com/SyneHQ/kelvo-go/issues/240). The 4 vCPU node had no stall in 10 runs. The harness can capture goroutines and worker state when a run stalls (07f2e75 on this branch) |
 
-Before rollout: the five items marked fix in progress either merged or accepted by the owner, the metrics gap above closed, the mixed-version step tested, and the matrix rerun on the release build with 0 server capacity errors.
+Before rollout: #237 merged (or accepted by the owner), the metrics gap above closed, the mixed-version step tested, and the matrix rerun on the release build with 0 server capacity errors.
+
+## Known issues
+
+* **2 vCPU / 1 GB stall** ([issue 240](https://github.com/SyneHQ/kelvo-go/issues/240)): 1 of 7 runs of 20 workers at `pool_size` 12 had every request fail from about t = 225 s with the node at 0.5 cores; cause unknown. Do not size the first release on the 5-of-7 clean runs.
+* **Flaky test** ([issue 242](https://github.com/SyneHQ/kelvo-go/issues/242)): `TestPrivateRuntimeDataOpenUsesOperationContextAndConfiguredBudget` fails intermittently in `validate` under `-race` on a loaded runner. Unrelated to this stack; re-run, do not ignore a second failure.
+* **Measured before the fixes that merged later.** All load and profile numbers here are from `cargo` at `ed1820f` to `2ba73e4`. They predate #234 (explicit refresh; CPU weights), #235 (the adapter result buffer: the 152 KB per read figure is pre-fix), #238, #239 and #241 (audit capacity on every path) and, if merged, #237. A rerun on the release build is the release gate.
+* **The gate is a release-candidate check, not a proof:** a pull request runs three entries once each. The 4 vCPU target had 1 run in 10 with 38 generator-cap refusals (0.4%), which the strict gate counts as a failure.
+* **Unverified here:** the exit-node path (modelled as added delay only), mixed gateway and node versions, a multi-node cluster, and db-api's own behaviour.
 
 ## Running the test
 
@@ -348,6 +368,6 @@ python3 scripts/pooled_read_load.py --profile 4c8g --duration 300 --output /tmp/
 python3 scripts/pooled_read_load_summary.py /tmp/run/report.json
 ```
 
-`--set key=value` overrides any scenario key (`benchmarks/pooled-read-load/scenarios/`). The report holds per-class latency, errors by
+Install the one Python dependency with `pip install pyyaml==6.0.2`. `--set key=value` overrides any scenario key (`benchmarks/pooled-read-load/scenarios/`). The report holds per-class latency, errors by
 code, node CPU and RSS, workers, spawns, evictions, cache hit rate, source queries per dashboard refresh, resolver calls, the audit journal
-use and a CPU profile (`node-cpu-top.txt`). Entries that are expected to fail their gate (undersized comparisons) are `informational`: their reports are published but do not fail the workflow.
+use and a CPU profile (`node-cpu-top.txt`). The matrix is `benchmarks/pooled-read-load/matrix.json`. A pull request runs only the gated entries (`gated: true`: the 4 vCPU target, the three-user first-release load and the shared-alias evidence run); a manual dispatch runs all 14, including the undersized comparisons and the repeats, whose reports are published without failing the workflow. A gated entry fails on any failed request, any `DEADLINE_EXCEEDED` or `UNAVAILABLE`, any capacity error and on the scenario's latency ceilings (`gate:` in the scenario).

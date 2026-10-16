@@ -31,15 +31,18 @@ Numbers come from [pooled-read-workers.md](pooled-read-workers.md) (load matrix)
 | #229 | ed1820f | fewer source round trips (2 on the critical path, 3 total with the background `ROLLBACK`) |
 | #230 | 20aefc3 | control-plane diet: store, verified-grant cache, audit group commit |
 | #231, #232 | 9db56ce, cf0b016 | tests |
+| #234 | fa90c64, 4598412, 80f236a | an explicit refresh always executes; background CPU weighted below read workers (`cpu.weight` 100 read worker, 50 one-shot, 20 background) |
+| #235 | eae8975 | pools the adapter's 64 KiB result buffer |
 | #236 | 2ba73e4 | a full audit pending queue is capacity (429), not an outage (503); `max_pending` must cover admitted work |
+| #238, #241 | 09ec963, 03af5a8 | audit tests made deterministic / pinning the gateway-side fixes |
+| #239 | cee0d3e, e2505e9 | audit capacity versus fault on every audit path; the node refuses a `max_pending` below the work it admits |
 
 `git log --oneline --first-parent <previous release SHA>..RELEASE_SHA` on `cargo` lists the exact commits for the release record (rebase merges: each PR is its own commits). The harness (#224) is test-only and is not released.
 
-**Fix in progress** (not in the release unless merged first; each is also listed in the runbook): #234 explicit refresh always executes (the probe missed in 11 of 63 runs), #235 pooled 64 KiB result buffer (adapter allocations 89 -> 152 KB per read),
-#237 per-source connection budget and capacity pressure ending as `RESOURCE_EXHAUSTED` (today a pool smaller than the active connections answers 503 `Worker unavailable`), #239 audit capacity versus fault on every path.
+**Merged after the measurements, not re-measured:** #234, #235, #238, #239, #241 (and #237 once it merges: per-source connection budget, `pool_size` default, no 503 under capacity). The release gate is a rerun on the release build.
 
 **Verified fixed on the merged code** by the matrix with `benchmarks/pooled-read-load/patches/` removed: every read passing the client receipt check, cache bypass wired, `read_workers` and `pool_size` effective, idle-worker eviction, no polling re-verification (Ed25519 verifications per read 30 -> 4), workers keyed by saved connection.
-**One open finding without an owner:** a stall of the 2 vCPU / 1 GB node in 1 of 7 runs at the target load (runbook finding 10). It does not affect the 4 vCPU target (0 stalls in 10 runs).
+**Open:** a stall of the 2 vCPU / 1 GB node in 1 of 7 runs at the target load ([issue 240](https://github.com/SyneHQ/kelvo-go/issues/240); runbook finding 10). It does not affect the 4 vCPU target (0 stalls in 10 runs). See Known issues at the end of this document.
 
 ## 1. What ships
 
@@ -108,6 +111,7 @@ Order: **node with its adapters and launcher, then the gateway, then db-api.**
 
 * From #222 the journal header does not bind `audit.max_pending`. A journal **records the value in force when it was created.** Record that value for every existing journal (gateway and node) **before** the upgrade; it is needed for rollback (section 5).
 * #230 adds group commit: `audit.write_timeout` must be at least 52 ms; check the current value (production's is **[no access]**).
+* Set `audit.max_pending` to at least the larger of the two minimums the node enforces at load (#239): gateway `max_http_requests`; node `policy.workers[<node>] + operations.max_concurrent` (+ `exports.max_concurrent` + `exports.max_downloads` if exports are on). A smaller value refuses to start (`audit.max_pending must be at least the work the service admits at once`); an existing node with exports needs it raised **before** the upgrade.
 * Size the journals for the new rate before the switch (runbook: 2 KiB per slot, about 2 gateway receipts and 1 node receipt per read). Resizing needs a new journal directory: **[owner]** retention of the old journal.
 
 ## 3. Configuration
@@ -120,7 +124,7 @@ A node that still has the pre-migration config uses `operations.warm_pool` capac
 
 **What the measurements allow.** On the merged code the current node is no longer CPU-bound: 20 workers at `pool_size` 12 carried the full 50-user mix in 5 of 7 runs (p50 2.0-2.3 s, p95 3.9-4.5 s per read, node 0.35-0.6 cores, 3-11 throttled periods,
 cgroup memory peak 580-624 MiB of the 1 GiB), with one stall (758 deadline expiries) and one run with 53 generator-cap refusals. That is not a margin to promise, so the first release **sheds load at the door** and targets a handful of users, the load the 3-user entry
-(`2c1g-first-release-3users`, one explorer opening a page every 3-5 s, one 10-panel dashboard viewer refreshing every 10 s, one console user) carried in 4 of 4 runs with 0 errors (explorer reads p50 1.2 s, p95 4.0 s; dashboard panels p95 2.0 s; console p95 2.0 s; node 0.4 cores, 0 throttled periods, 335-350 MiB).
+(the matrix entry `2c1g-first-release-3users`, which runs the `2c1g-first-release.yaml` scenario with a light loadgen mix: one explorer opening a page every 3-5 s, one 10-panel dashboard viewer refreshing every 10 s, one console user) carried in 4 of 4 runs with 0 errors (explorer reads p50 1.2 s, p95 4.0 s; dashboard panels p95 2.0 s; console p95 2.0 s; node 0.4 cores, 0 throttled periods, 335-350 MiB).
 At **6 explorers, 6 viewers and 2 consoles** on the same config (8 workers, `max_http_requests` 64, `max_queries` 32) it sheds as designed: 72-619 capacity refusals, 95-195 503 `Worker unavailable` (8 workers against more than 8 active connections: thrash) and p95 6-7 s; it is not an error-free configuration at that load.
 Memory is not the limit: 345 MiB for gateway and node, 12-19 MiB per worker, 11 MiB shared. So this config is a **bridge**: it turns the feature on for a handful of users while the node is replaced; it is not the 50-user target.
 **[owner]** If the bridge must carry more than a handful of users, the measured alternative is 20 workers at `pool_size` 12 on this node (about 0.6 GiB, 5 of 7 clean runs, twice the latency of the target).
@@ -138,7 +142,7 @@ Settings (the scenario file; capacity is `read_workers`):
 | `resources.*` | `max_concurrent` 12, `memory_mb` 2100, `baseline_mb` 250, `overhead_mb` 64, `separate_classes: true`, `query_reserve_slots` 10, `query_reserve_memory_mb` 1700 | the interactive share admits `min(slots, memory / 160)` reservations of 160 MiB (32 + 64 + 16 x 4 stream buffers): 8 workers and 2 one-shot fallbacks. Memory here is **accounting**, larger than the VM on purpose (real use is about a tenth) |
 | `operations.max_concurrent` | 1 | one analysis job at a time on this size |
 | `gateway.max_http_requests` | 64 | load is shed at the front door |
-| `audit.max_entries`, `max_pending` | 262144, 256 | 512 MiB per journal; the gateway journal (about 2 receipts per read) lasts 1 h at about 37 reads/s. **`max_pending` 64 failed: 345 requests got 503 `Audit storage unavailable` at a peak of 103 in flight;** it must cover admitted work (at least `max_http_requests` plus `operations.max_concurrent`) |
+| `audit.max_entries`, `max_pending` | 262144, 256 | 512 MiB per journal; the gateway journal (about 2 receipts per read) lasts 1 h at about 37 reads/s. **`max_pending` 64 failed: 345 requests got 503 `Audit storage unavailable` at a peak of 103 in flight;** the node refuses to start below the work a service admits: gateway `max_pending` >= `gateway.max_http_requests` (64 here), node >= `policy.workers[node]` + `operations.max_concurrent` (16 + 1 here); one value serves both, so 256 |
 | db-api client | `MaxConcurrent` 32, `MaxControlConcurrent` 32 | an overload becomes fast refusals, not a collapse |
 | Cgroup (systemd unit) | `MemoryMax=1G`, `MemorySwapMax=0`, `CPUQuota=200%`, `Delegate=yes` | as in `process-containment.md`; **[root] [no access]** the existing unit's values |
 
@@ -179,6 +183,7 @@ Mirrors the existing process: stage a release directory, verify its hashes, plan
 2. **[no access]** Read the running release: its directory under `/opt/kelvo/releases/`, its manifest and hashes, `kelvo version`, the node and gateway configs, the unit files, the previous upgrade's receipt.
 3. **[root]** Record: `systemctl show kelvo-node -p MemoryMax -p CPUQuotaPerSecUSec -p Delegate -p MemorySwapMax`; the NATS metadata record and consumer state (unchanged by this release, recorded for the receipt);
    each audit journal's creation `max_pending` (section 2.2) and free space for the new journal size; the egress IP seen by a source (`curl https://ifconfig.me` as the `kelvo` user, via the same path).
+   **Back up before the apply [root] [no access]**: the node and gateway configs, every audit journal directory with its creation `max_pending`, the containment state directory and the NATS state (JetStream store, consumer state, metadata record), to a location outside the release directory, and record how to restore each. Keep the old journal directories until the rollback window closes.
 4. Previous failure: **[no access]** an earlier upgrade failed at worker execution and needed recovery. Obtain that incident's notes and add its cause as a pre-check. This plan adds the checks below, which cover the usual causes
    (adapter digest, launcher pairing, containment placement, group limits), but the actual cause is not in this repository.
 5. Draft the config for the first step (A) and the release manifest; plan review by a second person **[owner]**.
@@ -212,7 +217,7 @@ Run them from the host as the service user; certificates are the deployment's ow
 | 6 | **Worker execution smoke**, the step that failed last time: through db-api (or a signed grant from a test principal) on the canary connection: one native `SELECT 1`, one 50-row preview, one schema inspection, one analysis operation | all succeed; `journalctl -u kelvo-node | grep 'kelvo read failed'` empty; a worker cgroup appears under `jobs/` and stays |
 | 7 | the same read a second time within 60 s | faster than the first (no resolve); one worker still present |
 | 8 | the same read after 70 s | re-authorizes once (`resolver` call count +1), still succeeds |
-| 9 | an explicit refresh through db-api (`X-Refresh`) | reaches the source (source-side statement count +1); **known flake:** the harness probe missed in 11 of 63 runs ([#234](https://github.com/SyneHQ/kelvo-go/pull/234) in progress), so a miss alone is not a rollback condition until that fix is released |
+| 9 | an explicit refresh through db-api (`X-Refresh`) | reaches the source (source-side statement count +1); the harness probe missed in 11 of 63 runs before #234; #234 is merged (a refresh never joins a running read) but not re-measured, so treat a miss on the release build as a defect to report, and a rollback condition only together with another failure |
 | 10 | egress IP check as in 4.1 | unchanged |
 
 Any failure in 1-8 is a rollback condition (section 5) unless the cause is found and fixed within the window **[owner]**.
@@ -238,6 +243,8 @@ Any failure in 1-8 is a rollback condition (section 5) unless the cause is found
 
 ## 5. Rollback
 
+**Drain order for a rollback (and for any restart):** db-api first; then the **node before the gateway**: the gateway keeps serving status, cancel and result reads and waits its drain grace because result handles are shared; admission stops and readiness fails on SIGTERM on either service. While the node is down, queued reads wait until a node assigns them, the job expires (`policy.job_ttl`, 2 m in the scenarios) or the client disconnects, and they occupy the gateway's parked-waiter pool of `max_http_requests`; past it the gateway answers 429. Start the old node before the old gateway and confirm `/ready` before db-api resumes (`docs/cluster.md`, `docs/operations.md` Maintenance; **rehearse it** on a canary: that the waiters survive a node restart is documented, not measured here).
+
 **Conditions:** any trigger in 4.5; any failure of probes 1-8; a worker-execution failure that is not understood in 30 minutes; a security finding. Rollback is cheap before step B and must stay cheap: **do not migrate the config and the binaries in one change.**
 
 Order (reverse of the deploy):
@@ -245,7 +252,7 @@ Order (reverse of the deploy):
 1. **db-api first.** Stop sending single-call reads and `inspect` requests (a node with the pool disabled, or an older one, answers inspections `UNAVAILABLE`); db-api goes back to its previous read and metadata paths. **[no access]** Hakopod rollback.
 2. **Gateway and node, together.** **[root]** Drain as in 4.3, point the unit back to the previous release directory (previous `kelvo`, **its** launcher and **its** adapter; all four digests of the old manifest), restore the previous config files. Adapter and node are one pair: a v2 node with a
    v1 adapter, or the reverse, fails closed and reads run one-shot or fail.
-3. **Faster partial rollback without a binary change:** set `operations.warm_pool.enabled: false` and restart. Reads return to the one-shot path; inspections fail, so do step 1 first.
+3. **Faster partial rollback without a binary change:** set `operations.warm_pool.enabled: false` **and remove the whole `read_workers` block**, then restart. `enabled: false` alone is not enough: once `read_workers` is present the node refuses to start (`read_workers requires operations.warm_pool enabled, and capacity set only in read_workers`). Reads return to the one-shot path; inspections fail, so do step 1 first. After migration step B this is the only no-binary rollback; before step B, restoring the previous config file is enough.
 4. **Audit journal `max_pending`.** An older binary opens a journal only if its configuration equals the journal header **including `max_pending`**, and the header holds the value from when the journal was created. If `audit.max_pending` was changed after the
    upgrade, set it back to the recorded creation value (section 2.2) before starting the old binary, or start the old binary on a new, empty journal directory and keep the old one for reconciliation. **Never delete a journal to get past the error.**
    #230's group commit changes no header, but `write_timeout` below 52 ms is a configuration error on the new binary only.
@@ -263,7 +270,7 @@ drain per `docs/operations.md`). The steps below assume a **same-identity cutove
 1. **Provision [root] [no access]** (infrastructure repo; not run here): a VM in db-api's region and network, 4 vCPU / 8 GB, Linux with Landlock ABI 3+, cgroup v2, the `kelvo` user, the unit file with `Delegate=yes`, `MemoryMax=8G`, `CPUQuota=400%`,
    directories as in 4.2. Same release directory layout; stage the **same** release that is running (do not move host and version together).
 2. **Tailscale.** Install and join the tailnet with a tag for the node. Make the Oracle VM the exit node: advertise it (`tailscale up --advertise-exit-node` on the Oracle VM, approve it in the admin console **[owner]**), then on the new host set it as the exit node with local-network access so
-   the traffic that must stay local stays local: `tailscale set --exit-node=<oracle> --exit-node-allow-lan-access=true`. **All other outbound traffic then leaves through the Oracle VM**, so the broker, the resolver (db-api) and the gateway's clients must be on the local network or the tailnet, not
+   the traffic that must stay local stays local: `tailscale set --exit-node=<oracle> --exit-node-allow-lan-access=true`. **All other outbound traffic then leaves through the Oracle VM** (and **can lock you out**: the command can cut the SSH or console session that ran it. Keep console or out-of-band access open, keep `--exit-node-allow-lan-access=true`, and from a second session test the return paths for SSH, monitoring and deploy before leaving it in place; revert with `tailscale set --exit-node=`), so the broker, the resolver (db-api) and the gateway's clients must be on the local network or the tailnet, not
    on the public internet. **[owner]** whether to route only source networks instead (subnet routes and ACLs), which changes the egress IP guarantee. ACL: the new host may reach the Oracle VM as an exit node and nothing more; customer databases' allowlists keep the Oracle VM's public IP.
 3. **Verify before cutover.** As the `kelvo` user on the new host: egress IP equals the Oracle VM's; a TLS connection to one canary source with `sslmode=verify-full` succeeds; RTT to the source (`ping`/connect time) measured and compared with the model:
    the new `pool_size` follows `ceil(42 x turns x RTT / 1.5 s)` with RTT = host to exit node + exit node to source (runbook table). Bandwidth: the exit node carries all result bytes; the test mix was about 0.3 MB/s mean; check the uplink for the largest export.
@@ -272,10 +279,17 @@ drain per `docs/operations.md`). The steps below assume a **same-identity cutove
 6. **db-api [no access]:** change the Kelvo endpoint (Hakopod environment) to the new host's name; the gateway's client-facing certificate needs a SAN for the new name; the worker and gateway mTLS identities (`spiffe://kelvo/gateway`, `spiffe://kelvo/tenant/<t>/worker/<id>`) are unchanged if the certificates move with the identity; the resolver URL
    in the principal policy (`access.principals.<p>.delegated_resolver.url`) is **frozen in policy metadata**: keep the resolver at the same URL (a changed URL is a policy change and a drain/reprovision). DNS: lower the TTL a day ahead; switch the record; the old name stays valid until the rollback window closes.
 7. **Observation:** the window of 4.5 on the new host; the baseline for CPU per read and latency is the profile on this host shape, not the Oracle VM's.
-8. **Rollback path:** keep the Oracle VM's Kelvo stopped but intact for 7 days **[owner]**, with its release directory and config. Rollback: drain the new host, start the old node and gateway on the Oracle VM (same identity), point db-api's endpoint back, confirm the egress IP and probes. The exit-node setup does not need
+8. **Rollback path:** keep the Oracle VM's Kelvo stopped but intact for 7 days **[owner]**, with its release directory, config and journals. Rollback: drain the new host (node before gateway, see section 5), start the old node and gateway on the Oracle VM (same identity), point db-api's endpoint back, confirm the egress IP and probes. The exit-node setup does not need
    to change because the Oracle VM's IP is the same in both directions. Do not run both hosts with one identity.
-9. After the window: remove Kelvo from the Oracle VM (**[owner]**), leaving only Tailscale and the exit-node configuration; its 951 MB limit then no longer applies to workers.
+9. After the window: remove Kelvo from the Oracle VM (**[owner]**), leaving only Tailscale and the exit-node configuration; its 951 MB limit then no longer applies to workers. **Never delete the Oracle Kelvo install without a verified backup** (config, journals, containment and NATS state, release directories): the rollback path of step 8 needs them for 7 days, and the journals are the audit record.
 
 ## 7. Receipts to keep
 
 Release SHA and commit list; the four digests and the artifact's `SOURCE`; the config diff per step; `--check-config` output; the journal creation values; probes 1-10 with timestamps; observation-window metrics; the egress IP before and after; the rollback receipt if used.
+
+## 8. Known issues
+
+* **2 vCPU / 1 GB stall** ([issue 240](https://github.com/SyneHQ/kelvo-go/issues/240)): 1 of 7 target-load runs on the current node failed every request from about t = 225 s with the node at 0.5 cores; unexplained. It is why the first release is a few users, not the 50-user mix. The harness captures goroutines and worker state if a run stalls (a manual dispatch of the matrix).
+* **Flaky `validate` test** ([issue 242](https://github.com/SyneHQ/kelvo-go/issues/242)): `TestPrivateRuntimeDataOpenUsesOperationContextAndConfiguredBudget` fails intermittently under `-race`; re-run, do not ignore a repeat.
+* **Pre-fix measurements.** Every number here predates #234, #235 (the 152 KB adapter allocations per read figure is pre-#235), #238, #239, #241 and, until merged, #237. The thresholds in 4.1 are the measured spread plus margin on that code and **must be re-derived from the rerun on the release build**.
+* **Not verified:** the exit-node path (modelled as added delay), mixed gateway and node versions, a multi-node cluster, node restart behaviour for waiting gateway requests, and the earlier worker-execution incident's cause.
