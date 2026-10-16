@@ -99,44 +99,48 @@ func TestResultCacheHitReportsOwnTiming(t *testing.T) {
 	}
 }
 
-// A refresh bypasses the kept result and joins only a running refresh that
-// started after that result was stored; concurrent refreshes then share one
-// execution: at most one refresh execution per key at a time.
-func TestResultCacheRefreshBursts(t *testing.T) {
+// recv waits briefly for a result so a regression fails cleanly instead of
+// hanging until the test timeout.
+func recv(t *testing.T, ch <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-ch:
+		return err
+	case <-time.After(3 * time.Second):
+		t.Fatal("read did not finish")
+		return nil
+	}
+}
+
+// A refresh never joins a running read of any kind: every running read began
+// before the refresh arrived and may predate the change being refreshed. Each
+// refresh runs its own execution, even while another refresh is in flight.
+func TestResultCacheRefreshNeverJoinsRunningRefresh(t *testing.T) {
 	c := newResultCache(time.Minute, 16, 1<<20)
 	_, _ = c.do(context.Background(), "k", "t", false, nil, (&fakeRead{data: "kept"}).execute, noReplay)
-	// A refresh is running; later refreshes join it.
-	fresh := &fakeRead{data: "fresh", block: make(chan struct{})}
-	results := make(chan error, 4)
+	first := &fakeRead{data: "first", block: make(chan struct{})}
+	results := make(chan error, 2)
 	go func() {
-		_, err := c.do(context.Background(), "k", "t", true, nil, fresh.execute, noReplay)
+		_, err := c.do(context.Background(), "k", "t", true, nil, first.execute, noReplay)
 		results <- err
 	}()
-	waitFor(t, func() bool { return fresh.runs.Load() == 1 })
-	burst := &fakeRead{data: "never"}
-	for i := 0; i < 3; i++ {
-		go func() {
-			_, err := c.do(context.Background(), "k", "t", true, nil, burst.execute, noReplay)
-			results <- err
-		}()
+	waitFor(t, func() bool { return first.runs.Load() == 1 })
+	// The data changes while the first refresh runs; this refresh must see it.
+	second := &fakeRead{data: "second"}
+	go func() {
+		_, err := c.do(context.Background(), "k", "t", true, nil, second.execute, noReplay)
+		results <- err
+	}()
+	waitFor(t, func() bool { return second.runs.Load() == 1 })
+	if err := recv(t, results); err != nil {
+		t.Fatal(err)
 	}
-	waitFor(t, func() bool {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		f := c.flights["k"]
-		return f != nil && len(f.participants) == 4
-	})
-	close(fresh.block)
-	for i := 0; i < 4; i++ {
-		if err := <-results; err != nil {
-			t.Fatal(err)
-		}
+	close(first.block)
+	if err := recv(t, results); err != nil {
+		t.Fatal(err)
 	}
-	c.mu.Lock()
-	kept := string(c.entries["k"].Value.(*cacheEntry).data)
-	c.mu.Unlock()
-	if burst.runs.Load() != 0 || fresh.runs.Load() != 1 || kept != "fresh" {
-		t.Fatal("refresh burst ran more than one execution", burst.runs.Load(), kept)
+	if first.runs.Load() != 1 || second.runs.Load() != 1 {
+		t.Fatal("a refresh was answered by a refresh that started before it arrived", first.runs.Load(), second.runs.Load())
 	}
 }
 
@@ -152,12 +156,50 @@ func TestResultCacheRefreshNeverJoinsRunningPlainRead(t *testing.T) {
 	}()
 	waitFor(t, func() bool { return plain.runs.Load() == 1 })
 	refresh := &fakeRead{data: "refreshed"}
-	if _, err := c.do(context.Background(), "k", "t", true, nil, refresh.execute, noReplay); err != nil || refresh.runs.Load() != 1 {
-		t.Fatal("refresh was answered by a running plain read", err, refresh.runs.Load())
+	refreshed := make(chan error, 1)
+	go func() {
+		_, err := c.do(context.Background(), "k", "t", true, nil, refresh.execute, noReplay)
+		refreshed <- err
+	}()
+	waitFor(t, func() bool { return refresh.runs.Load() == 1 })
+	if err := recv(t, refreshed); err != nil {
+		t.Fatal(err)
 	}
 	close(plain.block)
-	if err := <-done; err != nil || plain.runs.Load() != 1 {
+	if err := recv(t, done); err != nil || plain.runs.Load() != 1 {
 		t.Fatal(err)
+	}
+}
+
+// A plain read that arrives while a refresh runs may share its execution.
+func TestResultCachePlainReadMayJoinRunningRefresh(t *testing.T) {
+	c := newResultCache(time.Minute, 16, 1<<20)
+	refresh := &fakeRead{data: "refreshed", block: make(chan struct{})}
+	results := make(chan error, 2)
+	go func() {
+		_, err := c.do(context.Background(), "k", "t", true, nil, refresh.execute, noReplay)
+		results <- err
+	}()
+	waitFor(t, func() bool { return refresh.runs.Load() == 1 })
+	plain := &fakeRead{data: "plain"}
+	go func() {
+		_, err := c.do(context.Background(), "k", "t", false, nil, plain.execute, noReplay)
+		results <- err
+	}()
+	waitFor(t, func() bool {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		f := c.flights["k"]
+		return f != nil && len(f.participants) == 2
+	})
+	close(refresh.block)
+	for range 2 {
+		if err := recv(t, results); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if plain.runs.Load() != 0 {
+		t.Fatal("plain read ran its own execution")
 	}
 }
 
