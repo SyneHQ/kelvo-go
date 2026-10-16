@@ -201,3 +201,83 @@ func TestApplicationStorageErrorSplitsAuditCapacityFromFault(t *testing.T) {
 		t.Errorf("fault: status=%d retry=%q", fault.Code, fault.Header().Get("Retry-After"))
 	}
 }
+
+// A node's 429 on a supervised export's execute call, end to end through the
+// supervisor: the export ends as capacity (RESOURCE_EXHAUSTED), not cancelled.
+func TestSupervisedExportExecuteRefusedForAuditCapacityEndsAsCapacity(t *testing.T) {
+	g, store, _ := exportGatewayFixture(t, "none")
+	store.assign = true
+	executions := 0
+	installExportGatewayWorker(t, g, func(w http.ResponseWriter, r *http.Request) {
+		executions++
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "audit queue full", http.StatusTooManyRequests)
+	})
+	w := httptest.NewRecorder()
+	r := exportGatewayRequest("POST", "/v1/exports", rotationOld, `{"query":{"mode":"federated","sql":"SELECT id, label FROM sales","sources":["sales"]}}`)
+	if v := exportGatewayCall(g, w, r); v != nil || w.Code != http.StatusCreated {
+		t.Fatalf("submission failed: %d %s %v", w.Code, w.Body.String(), v)
+	}
+	final := awaitExportGatewayState(t, store, ExportFailed)
+	if final.Job.Error == nil || final.Job.Error.Code != "RESOURCE_EXHAUSTED" {
+		t.Fatalf("export ended as %+v, want RESOURCE_EXHAUSTED", final.Job.Error)
+	}
+	if executions != 1 {
+		t.Fatalf("%d execute calls: a refused execution must never be replayed", executions)
+	}
+}
+
+// The gateway's reopen of a refused claim must not depend on the client still
+// being there: the request's context is cancelled before the reopen runs.
+type cancelAfterResponse struct {
+	inner  http.RoundTripper
+	cancel context.CancelFunc
+}
+
+func (c cancelAfterResponse) RoundTrip(r *http.Request) (*http.Response, error) {
+	response, err := c.inner.RoundTrip(r)
+	c.cancel() // the client goes away once the node has answered
+	return response, err
+}
+
+// strictContextStore refuses a compare-and-swap whose context is already done,
+// as the real store does.
+type strictContextStore struct{ *compressionRelayStore }
+
+func (s strictContextStore) CompareAndSwap(ctx context.Context, old Snapshot, next Job) (Snapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return Snapshot{}, err
+	}
+	return s.compressionRelayStore.CompareAndSwap(ctx, old, next)
+}
+
+func TestClaimReopenAfterANodeAuditRefusalSurvivesTheClientLeaving(t *testing.T) {
+	inner := &compressionRelayStore{
+		gatewayStore: gatewayStore{policy: Policy{TenantID: "relay", Limits: query.DefaultLimits()}},
+		snapshot: Snapshot{Revision: 1, Job: Job{ID: "gone-client", TenantID: "relay", State: Assigned,
+			Owner: "worker-owner", WorkerID: "worker-one", ExpiresAt: time.Now().Add(time.Minute)}},
+	}
+	store := strictContextStore{inner}
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "audit queue full", http.StatusTooManyRequests)
+	}))
+	defer upstream.Close()
+	endpoint, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := &http.Client{Transport: cancelAfterResponse{inner: upstream.Client().Transport, cancel: cancel}}
+	tenant := gatewayTenant{store: store, workers: map[string]workerEndpoint{"worker-one": {url: endpoint, client: client}}}
+	w := httptest.NewRecorder()
+	(&Gateway{}).results(w, httptest.NewRequest(http.MethodGet, "/v1/queries/gone-client/results", nil).WithContext(ctx), tenant, "gone-client", nil)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	got, _ := inner.Get(context.Background(), "gone-client")
+	if got.Job.State != Assigned || got.Job.Claim != "" {
+		t.Fatalf("claim not reopened after the client left: state=%s claim=%q", got.Job.State, got.Job.Claim)
+	}
+}

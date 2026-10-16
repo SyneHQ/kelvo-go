@@ -6,6 +6,7 @@ package cluster
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -205,5 +206,35 @@ func TestSupervisedExportFailsAsCapacityWhenTheAuditQueueIsFull(t *testing.T) {
 	got := awaitExportGatewayState(t, store, ExportFailed)
 	if got.Job.Error == nil || got.Job.Error.Code != "RESOURCE_EXHAUSTED" {
 		t.Fatalf("export ended as %+v, want RESOURCE_EXHAUSTED", got.Job.Error)
+	}
+}
+
+// The application's execution path: a full audit queue is capacity
+// (RESOURCE_EXHAUSTED), a journal fault stays UNAVAILABLE.
+func TestApplicationExecutionSplitsAuditCapacityFromFault(t *testing.T) {
+	cfg := serviceAuditConfig(t)
+	cfg.MaxPending = 1
+	a, err := OpenServiceAudit(cfg, "worker", []string{"app1"}) // the application's scope is its instance
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.CloseBounded() })
+	app := &Application{audit: a, cfg: ApplicationConfig{InstanceID: "app1", ServicePrincipal: "svc"}}
+	p := &preparedApplicationOperation{app: app}
+	held, err := a.journal.Begin(context.Background(), a.binding("app1", nil), audit.OperationExecution) // the one reservation
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := p.Execute(context.Background())
+	if !errors.Is(err, audit.ErrBusy) || receipt.ErrorCode != "RESOURCE_EXHAUSTED" {
+		t.Fatalf("full queue: err=%v code=%q, want ErrBusy and RESOURCE_EXHAUSTED", err, receipt.ErrorCode)
+	}
+	_ = held.Finish(context.Background(), audit.Succeeded, audit.None)
+	if err := a.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	receipt, err = p.Execute(context.Background())
+	if err == nil || errors.Is(err, audit.ErrBusy) || receipt.ErrorCode != "UNAVAILABLE" {
+		t.Fatalf("closed journal: err=%v code=%q, want a fault and UNAVAILABLE", err, receipt.ErrorCode)
 	}
 }
