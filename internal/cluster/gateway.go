@@ -16,6 +16,8 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -809,6 +811,14 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 		return
 	}
 	if resp.StatusCode != 200 {
+		// A node that refused the read for capacity says so (409 with its public
+		// error). That is a retryable refusal, not an unavailable worker: relay
+		// it as 429 with Retry-After. The node already recorded the job's error.
+		if retry, message, ok := nodeCapacityRefusal(resp); ok {
+			w.Header().Set("Retry-After", strconv.Itoa(retry))
+			g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", message)
+			return
+		}
 		g.fail(t, s, "Worker unavailable")
 		g.auditError(w, op, 503, "UNAVAILABLE", "Worker unavailable")
 		return
@@ -1119,3 +1129,36 @@ func (g *Gateway) cancelUnfinished(t gatewayTenant, id string) {
 // relayBuffers holds the 32 KiB copy buffers of result relays, so a read does
 // not allocate one.
 var relayBuffers = sync.Pool{New: func() any { b := make([]byte, 32<<10); return &b }}
+
+var (
+	capacityRetryAfter = regexp.MustCompile(`retry after ([0-9]{1,4})s`)
+	capacityMessage    = regexp.MustCompile(`^[A-Za-z0-9 ;,.'-]{1,200}$`)
+)
+
+// nodeCapacityRefusal reads a node's error reply (409 with {"error": {...}}) and
+// reports a RESOURCE_EXHAUSTED refusal with its retry hint in seconds and its
+// public message. Any other reply, or one that does not parse, is not one.
+func nodeCapacityRefusal(resp *http.Response) (retry int, message string, ok bool) {
+	if resp.StatusCode != http.StatusConflict || !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		return 0, "", false
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&body) != nil || body.Error.Code != "RESOURCE_EXHAUSTED" {
+		return 0, "", false
+	}
+	retry, message = 1, "Read capacity unavailable; retry after 1s"
+	if m := capacityRetryAfter.FindStringSubmatch(body.Error.Message); m != nil {
+		if n, err := strconv.Atoi(m[1]); err == nil && n >= 1 {
+			retry = n
+		}
+	}
+	if capacityMessage.MatchString(body.Error.Message) {
+		message = body.Error.Message
+	}
+	return retry, message, true
+}
