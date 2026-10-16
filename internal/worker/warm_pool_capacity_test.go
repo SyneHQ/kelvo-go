@@ -483,7 +483,7 @@ func TestWarmPool_CredentialWindowStampedAtDispatch(t *testing.T) {
 	if _, err := mgr.Execute(ctx, exec, OperationProcessConfig{}, stale, &workerTestSink{}); err != nil {
 		t.Fatal("a read stamped before its wait was not re-stamped at dispatch:", err)
 	}
-	if got := sent.Load(); got <= before || got > time.Now().Add(credentialWindowMax).Unix() {
+	if got := sent.Load(); got <= before || got > time.Now().Add(credentialWindowLimit()).Unix() {
 		t.Fatal("dispatched window", got, "not within (now, now+window]")
 	}
 }

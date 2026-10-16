@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
@@ -188,12 +189,21 @@ func readOperationID() string {
 // validity (75s for read credentials) and the read's own expiry, within the
 // five seconds a process request may claim.
 func credentialWindow(validUntil, expires int64) int64 {
-	return min(validUntil, expires, time.Now().Add(credentialWindowMax).Unix())
+	return min(validUntil, expires, time.Now().Add(credentialWindowLimit()).Unix())
 }
 
 // credentialWindowMax is the most a process request may claim; a var so tests
 // can make a queued read outlast it.
-var credentialWindowMax = 5 * time.Second
+// Atomic: requests still in flight from one test may read it while the next
+// test changes it.
+var credentialWindowMax atomic.Int64 // nanoseconds; zero means 5s
+
+func credentialWindowLimit() time.Duration {
+	if d := time.Duration(credentialWindowMax.Load()); d > 0 {
+		return d
+	}
+	return 5 * time.Second
+}
 
 type credentialBoundKey struct{}
 

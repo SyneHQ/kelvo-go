@@ -255,9 +255,8 @@ func TestReadWorkerKeyedBySavedConnection(t *testing.T) {
 // stamped when a read is sent, not when it queued. A key at max_in_flight
 // launches a second worker (max_per_key 2).
 func TestReadWorkerBurstOnOneConnectionNeverFails(t *testing.T) {
-	old := credentialWindowMax
-	credentialWindowMax = time.Second
-	defer func() { credentialWindowMax = old }()
+	credentialWindowMax.Store(int64(time.Second))
+	defer credentialWindowMax.Store(0)
 	fs := &fakeSet{}
 	fs.serve = func(p *fakeWorkerProcess) {
 		source := make(chan struct{}, 4)
