@@ -32,6 +32,7 @@ type loadScenario struct {
 	Resolver    loadScenarioResolver   `yaml:"resolver"`
 	Source      loadScenarioSource     `yaml:"source"`
 	ReadWorkers *ReadWorkersConfig     `yaml:"read_workers,omitempty"`
+	Gate        loadScenarioGate       `yaml:"gate"`
 	Sample      time.Duration          `yaml:"sample_interval"`
 }
 
@@ -53,6 +54,13 @@ type loadScenarioResolver struct {
 	Delay         time.Duration `yaml:"delay"`
 	MaxConcurrent int           `yaml:"max_concurrent"`
 }
+
+// loadScenarioGate holds the latency ceilings scripts/pooled_read_load.py gates a run on.
+type loadScenarioGate struct {
+	P95MS      int            `yaml:"p95_ms"`
+	ClassP95MS map[string]int `yaml:"class_p95_ms"`
+}
+
 type loadScenarioSource struct {
 	Host      string `yaml:"host"`
 	Port      int    `yaml:"port"`

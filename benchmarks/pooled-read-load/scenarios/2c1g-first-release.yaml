@@ -41,3 +41,5 @@ audit: {max_entries: 262144, max_pending: 256}
 resolver: {delay: 300ms, max_concurrent: 16}
 source: {host: 127.0.0.1, port: 0, password: "", ca_pem: "", customers: 20}
 sample_interval: 1s
+# Latency ceiling of the gate (ms) at the three-user load: all requests p95 3.9-4.0 s in 4 runs.
+gate: {p95_ms: 5000}

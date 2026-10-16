@@ -204,6 +204,21 @@ def profile_plain(args, out, report, pg, proxy, nats_port, certs, scenario, pass
     report["gate"] = {"profiled_reads": report["passed"]}
 
 
+def latency_gate(loadgen, scenario):
+    """Checks every gated entry must pass beyond the capacity checks: no failed request of any kind, and the scenario's
+    latency ceilings (scenario key "gate": p95_ms for all requests, class_p95_ms per class)."""
+    codes = loadgen.get("errors_by_code", {})
+    all_requests = loadgen.get("all_requests", {})
+    checks = {"no_failed_requests": all_requests.get("errors", 1) == 0,
+              "no_deadline_or_unavailable": not any(codes.get(c) for c in ("DEADLINE_EXCEEDED", "UNAVAILABLE"))}
+    limits = scenario.get("gate") or {}
+    if "p95_ms" in limits:
+        checks["p95_within_ceiling"] = all_requests.get("p95_ms", float("inf")) <= limits["p95_ms"]
+    for klass, ceiling in (limits.get("class_p95_ms") or {}).items():
+        checks["p95_%s_within_ceiling" % klass] = loadgen.get("classes", {}).get(klass, {}).get("p95_ms", float("inf")) <= ceiling
+    return checks
+
+
 def set_override(tree, dotted, value):
     keys = dotted.split(".")
     for key in keys[:-1]:
@@ -449,6 +464,7 @@ def main():
             capacity = loadgen.get("capacity_errors")
             gate = {"loadgen_exit_zero": load_exit == 0, "node_exit_zero": service_exit == 0, "no_capacity_errors": capacity == 0, "load_generator_not_capped": loadgen.get("client_admission_refusals", 1) == 0, "no_oom_kill": node.get("memory_events_oom", 0) == 0,
                     "no_capacity_failures_logged_by_node": not any(k.split("/")[1] == "capacity" for k in failed_reads)}
+            gate.update(latency_gate(loadgen, scenario))
             report["gate"] = gate
             report["passed"] = all(gate.values())
     finally:
