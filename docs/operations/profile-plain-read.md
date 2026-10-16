@@ -5,12 +5,40 @@ on the wire), from the Go client through the gateway's single-call path, the nod
 at 80 ms round trip to the source and 300 ms per credential resolve. Measured at **low load** (one reader, 3 reads per
 second) and at **50 concurrent** (50 closed-loop readers on one connection).
 
-Status: measured on the integration build (#223) **with measurement patch 0001** (the receipt-batch defect), result cache
+Status of the **baseline** below (everything under "Ranked cost" and after): measured on the integration build (#223) **with measurement patch 0001** (the receipt-batch defect), result cache
 off so every read reaches the worker, 4 vCPU / 8 GB node, 20 workers. Two runs: CI run 38791531066 (run 1) and
 38793567524 (run 2, adds an idle window and the ed25519 cost); raw profiles are the artifact `pooled-read-profile` of each.
 The CI runners are shared, and **absolute CPU differed by 2x between the two runs for the same work** (50 concurrent: 47 s vs 24 s
 of node CPU for 900 reads). Shares and counts agree; treat absolute CPU as a range. Code-reading facts are marked *(code)*;
 everything else was measured.
+
+## After the merged fixes (cargo `2ba73e4`, no patch, slim adapter)
+
+The same profile, rerun on the merged code three times (CI runs 38878205691, 38881519648, 38883939553; artifact `pooled-read-profile`; `pool_size` 4 as in the baseline, result cache off, 20 workers, 4 vCPU runner).
+`scripts/pooled_read_profile_compare.py before=<baseline artifact> after1=... after2=... after3=...` prints the table. Baseline = run 38795023128 (the ranked tables below).
+
+| | before, low | before, 50 concurrent | after, low (3 runs) | after, 50 concurrent (3 runs) |
+| --- | --- | --- | --- | --- |
+| client p50 / p95 / p99 (ms) | 388 / 398 / 436 | 2880 / 5582 / 6892 | **243** / 471-476 / 474-509 | 2938-2949 / **3919-3971** / 4563-4665 |
+| reads/s | 2.68 | 13.92 | 3.73-3.85 | 16.03-16.10 |
+| **failed reads** | 0 / 161 | **119 / 881** | 0 / 224-232 | **0 / 1010-1017** |
+| source round trips per read | 4.06 | 3.49 | 3.04 | 3.02 |
+| node CPU per read, net of idle (ms) | 16.38 | 40.23 | 5.35-5.75 | **6.54-8.61** |
+| worker CPU per read (ms) | 2.26 | 1.46 | 1.46-1.50 | 0.96-1.23 |
+| node allocations per read (MB) | 1.16 | 1.84 | 0.59-0.72 | 0.59-0.65 |
+| Ed25519 verifications per read | 33.8 | 30.3 | 3.5-5.6 (one run's low-load count was not captured) | **3.6-5.2** |
+| adapter allocations per read (KB) / mallocs | 88.7 / 2362 | 89.9 / 2368 | 152 / 2301 | 153 / 2305 |
+| worker anonymous memory, mean (MiB) | 20.2 | 20.1 | 11.9-12.2 | 12.0-12.2 |
+| worker cgroup memory (MiB) | 22.9 | | 13.0 | |
+| idle node (cores) | 0.182 | | 0.078-0.124 | |
+
+* **The 14% failure rate at 50 concurrent is gone** (119 of 881 `Worker unavailable` before; 0 of about 1,010 in all three runs). Throughput rose from 13.9 to 16.1 reads/s: the pool-4 ceiling is 4 / (3 x 80 ms) = 16.7/s, so what is left is the source round trips.
+* **The control-plane cost per read fell 4-6x** (the share of it was not re-ranked): 6.5-8.6 ms of node CPU per read at 50 concurrent instead of 40 ms, 4-5 Ed25519 verifications per read instead of 30 (the verified-grant cache of #230), 0.6 MB of node allocations per read instead of 1.8 MB. Worker CPU per read is flat at about 1-1.5 ms.
+* **Source round trips: 3.0 per read, 2 on the critical path.** The third is the background `ROLLBACK` that #229 moved off the critical path; the connection is not free until it completes, so pool sizing uses 3 (runbook, `pool_size`). Low-load p50 fell from 388 to 243 ms (1.8 round trips of 80 ms less).
+* **Adapter allocations rose from 89 KB to 152 KB per read** with the same malloc count: a larger buffer per read. **Fix in progress:** [#235](https://github.com/SyneHQ/kelvo-go/pull/235) pools the 64 KiB result buffer.
+* **Slim adapter:** 13.0 MiB cgroup memory per worker against 22.9 MiB, 11.2 MiB anonymous; the binary is 16.6 MB against 154.6 MB.
+* The 50-concurrent p50 stays at about 2.9 s because 50 readers share one connection's 4 source connections (queueing, not CPU); the node was not the limit. The mixed-load runs with `pool_size` 12 are in [pooled-read-workers.md](pooled-read-workers.md).
+* The ranked wall, CPU and allocation tables below were **not regenerated** for the merged code; they remain the baseline that the three follow-up sessions worked from. The raw pprof files of the new runs are in the artifacts above (`window-*.cpu.pprof`, `window-*.allocs.pprof`) for the next ranking.
 
 ## Ranked cost: where one read goes
 
