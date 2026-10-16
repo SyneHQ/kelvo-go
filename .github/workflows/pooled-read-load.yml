@@ -36,6 +36,8 @@ jobs:
           - {name: 4c8g-workers4, profile: 4c8g, duration: '', set: '--set read_workers.max_workers=4 --set read_workers.pool_size=4'}
           - {name: 4c8g-workers20, profile: 4c8g, duration: '', set: '--set read_workers.pool_size=4'}
           - {name: 2c1g-first-release, profile: 2c1g-first-release, duration: '', set: '--loadgen-arg=-explorers=6 --loadgen-arg=-viewers=3 --loadgen-arg=-consoles=2'}
+          # The load the first-release config is claimed to carry: about three active users on 3 connections (see the upgrade plan).
+          - {name: 2c1g-first-release-3users, profile: 2c1g-first-release, duration: '', set: '--loadgen-arg=-explorers=1 --loadgen-arg=-dashboards=1 --loadgen-arg=-viewers=1 --loadgen-arg=-consoles=1 --loadgen-arg=-analysis=0 --loadgen-arg=-explorer-think-min=3s --loadgen-arg=-explorer-think-max=5s --loadgen-arg=-dashboard-refresh=10s'}
           # Sweeps: half the virtual users on the small node. 4c8g-workers20-pool12 is the target config (4c8g.yaml as shipped); workers4 and workers20 (pool 4) are the undersized comparisons.
           - {name: 2c1g-workers20-half, profile: 2c1g, duration: '', set: '--set read_workers.max_workers=20 --set resources.max_concurrent=26 --set resources.query_reserve_slots=22 --set resources.memory_mb=4400 --set resources.query_reserve_memory_mb=4000 --set resources.query_reserve_scratch_mb=200 --set resources.scratch_mb=300 --loadgen-arg=-explorers=10 --loadgen-arg=-viewers=5 --loadgen-arg=-consoles=5'}
           - {name: 4c8g-workers20-pool12, profile: 4c8g, duration: '', set: ''}
