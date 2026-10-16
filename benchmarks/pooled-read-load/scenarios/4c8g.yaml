@@ -27,10 +27,10 @@ warm_pool:
   cache_ttl: 10s
   reauthorize_every: 60s
 read_workers:             # capacity of the read workers; pool_size is the adapter's source connections per worker
-  max_workers: 4
+  max_workers: 20
   max_per_key: 1
   max_in_flight: 16
-  pool_size: 4
+  pool_size: 12
   idle_ttl: 30m
   queue_wait: 10s
   stream_buffer_mb: 4
