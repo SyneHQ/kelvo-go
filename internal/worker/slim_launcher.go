@@ -30,7 +30,7 @@ type SlimFallbackLauncher struct {
 	fallbacks atomic.Int64 // launches run on the full adapter instead of the slim one
 	mu        sync.Mutex
 	degraded  bool
-	checked   time.Time
+	checked   time.Time // last time the slim binary was verified, degraded or not
 	logged    bool
 }
 
@@ -63,12 +63,26 @@ func (l *SlimFallbackLauncher) Launch(ctx context.Context, e *Executor, cfg Oper
 		return l.inner.Launch(ctx, e, l.full, limits)
 	}
 	proc, cleanup, err := l.inner.Launch(ctx, e, cfg, limits)
-	if err == nil || ctx.Err() != nil || l.usable(ctx, l.slim) {
+	if err == nil || ctx.Err() != nil || !l.slimUnusable(ctx) {
 		return proc, cleanup, err // a failure that is not the slim binary's
 	}
 	l.degrade()
 	l.fallbacks.Add(1)
 	return l.inner.Launch(ctx, e, l.full, limits)
+}
+
+// slimUnusable verifies the slim binary after a failed launch, hashing it at
+// most once per slimRecheckEvery: a burst of failed launches for another
+// reason (no capacity, a backing-off key) must not hash the file each time.
+func (l *SlimFallbackLauncher) slimUnusable(ctx context.Context) bool {
+	l.mu.Lock()
+	if time.Since(l.checked) < slimRecheckEvery {
+		l.mu.Unlock()
+		return false // verified a moment ago and it was usable
+	}
+	l.checked = time.Now()
+	l.mu.Unlock()
+	return !l.usable(ctx, l.slim)
 }
 
 // stillDegraded reports whether this launch should use the full adapter,

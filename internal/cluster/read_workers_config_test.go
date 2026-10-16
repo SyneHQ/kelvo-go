@@ -2,10 +2,13 @@
 package cluster
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
 
@@ -195,6 +198,37 @@ func TestReadAdapterMetrics(t *testing.T) {
 	var out strings.Builder
 	n.writeReadAdapterMetrics(&out)
 	for _, want := range []string{"kelvo_read_adapter_slim_active 1\n", "kelvo_read_adapter_slim_fallbacks_total 0\n"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing %q in %q", want, out.String())
+		}
+	}
+}
+
+// failSlimLauncher refuses to launch the slim binary and accepts any other.
+type failSlimLauncher struct{ slim string }
+
+func (l failSlimLauncher) Launch(_ context.Context, _ *worker.Executor, cfg worker.OperationProcessConfig, _ query.Limits) (worker.WorkerProcess, func() error, error) {
+	if cfg.Binary == l.slim {
+		return nil, nil, errors.New("exec failed")
+	}
+	return nil, nil, nil
+}
+
+// A slim binary that fails its launch check flips the gauge to 0 and counts
+// each launch that ran on the full adapter instead.
+func TestReadAdapterMetricsAfterFallback(t *testing.T) {
+	slim := worker.OperationProcessConfig{Binary: "/nonexistent/kelvo-adapter-relational", SHA256: strings.Repeat("b", 64)}
+	full := worker.OperationProcessConfig{Binary: "/nonexistent/kelvo-adapter-go", SHA256: strings.Repeat("a", 64)}
+	launcher := worker.NewSlimFallbackLauncher(failSlimLauncher{slim: slim.Binary}, slim, full)
+	n := &Node{operations: &nodeOperations{slimLauncher: launcher}}
+	for range 2 {
+		if _, _, err := launcher.Launch(context.Background(), nil, slim, query.Limits{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out strings.Builder
+	n.writeReadAdapterMetrics(&out)
+	for _, want := range []string{"kelvo_read_adapter_slim_active 0\n", "kelvo_read_adapter_slim_fallbacks_total 2\n"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q in %q", want, out.String())
 		}
