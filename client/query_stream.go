@@ -4,7 +4,6 @@ package client
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/operations"
@@ -116,13 +115,5 @@ func streamStatusFailure(response *http.Response) error {
 			return ErrStreamUnsupported
 		}
 	}
-	switch response.StatusCode {
-	case http.StatusTooManyRequests:
-		e := failure("RESOURCE_EXHAUSTED")
-		if seconds, err := strconv.Atoi(response.Header.Get("Retry-After")); err == nil && seconds > 0 {
-			e.RetryAfter = min(time.Duration(seconds)*time.Second, maxRetryAfter)
-		}
-		return e
-	}
-	return statusFailure(response.StatusCode)
+	return responseFailure(response)
 }

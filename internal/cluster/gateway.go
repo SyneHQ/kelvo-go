@@ -73,6 +73,9 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 	if cfg.MaxHTTPRequests < 1 || cfg.MaxHTTPRequests > 4096 || len(cfg.Tenants) == 0 {
 		return nil, errors.New("cluster gateway: max_http_requests must be positive")
 	}
+	if err := validateGatewayAudit(cfg); err != nil {
+		return nil, err
+	}
 	if err := validateGatewayAuthentication(&cfg); err != nil {
 		return nil, err
 	}
@@ -548,7 +551,7 @@ func (g *Gateway) submit(w http.ResponseWriter, r *http.Request, t gatewayTenant
 func (g *Gateway) submitJob(w http.ResponseWriter, r *http.Request, t gatewayTenant, wait time.Duration, accepted func(string)) (Snapshot, bool) {
 	op, auditErr := g.audit.beginRequest(r.Context(), t.store.Policy().TenantID, audit.QuerySubmit)
 	if auditErr != nil {
-		g.err(w, 503, "UNAVAILABLE", "Audit storage unavailable")
+		g.auditBeginFailed(w, auditErr)
 		return Snapshot{}, false
 	}
 	defer op.abort(r.Context())
@@ -634,7 +637,7 @@ func (g *Gateway) status(w http.ResponseWriter, r *http.Request, t gatewayTenant
 func (g *Gateway) cancelJob(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string) {
 	op, auditErr := g.audit.beginRequest(r.Context(), t.store.Policy().TenantID, audit.QueryCancel)
 	if auditErr != nil {
-		g.err(w, 503, "UNAVAILABLE", "Audit storage unavailable")
+		g.auditBeginFailed(w, auditErr)
 		return
 	}
 	defer op.abort(r.Context())
@@ -680,7 +683,7 @@ func (g *Gateway) results(w http.ResponseWriter, r *http.Request, t gatewayTenan
 func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gatewayTenant, id string, admission *requestAdmission, slotWait time.Duration) {
 	op, auditErr := g.audit.beginRequest(r.Context(), t.store.Policy().TenantID, audit.QueryResults)
 	if auditErr != nil {
-		g.err(w, 503, "UNAVAILABLE", "Audit storage unavailable")
+		g.auditBeginFailed(w, auditErr)
 		return
 	}
 	defer op.abort(r.Context())
@@ -785,6 +788,13 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusTooManyRequests {
+		// The node's audit queue was full when it began this execution; it has
+		// already ended the job. That is capacity, to be retried, not an outage.
+		w.Header().Set("Retry-After", "1")
+		g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Audit queue full on the worker; retry after 1s")
+		return
+	}
 	if resp.StatusCode != 200 {
 		g.fail(t, s, "Worker unavailable")
 		g.auditError(w, op, 503, "UNAVAILABLE", "Worker unavailable")

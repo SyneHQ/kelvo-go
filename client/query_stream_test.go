@@ -132,3 +132,31 @@ func TestQueryStreamUnsupportedNodeAndRetryHint(t *testing.T) {
 		t.Fatalf("retry hint %v", err)
 	}
 }
+
+// A 429 from any endpoint carries the node's retry hint, so a caller can tell
+// capacity (retry) from a result limit.
+func TestEveryEndpointsCapacityRefusalCarriesTheRetryHint(t *testing.T) {
+	for _, withHint := range []bool{true, false} {
+		server := clientFixtureServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if withHint {
+				w.Header().Set("Retry-After", "2")
+			}
+			w.WriteHeader(http.StatusTooManyRequests)
+		}, 0)
+		c := clientFixtureClient(t, clientFixtureConfig(t, server))
+		_, submitErr := c.Submit(context.Background(), clientFixtureRequest(), Authority{})
+		_, resultsErr := c.Results(context.Background(), "fixture_handle", Authority{}, &clientFixtureSink{})
+		_, statusErr := c.Status(context.Background(), "fixture_handle", Authority{})
+		for name, err := range map[string]error{"submit": submitErr, "results": resultsErr, "status": statusErr} {
+			clientFixtureError(t, err, "RESOURCE_EXHAUSTED")
+			var e *Error
+			want := time.Duration(0)
+			if withHint {
+				want = 2 * time.Second
+			}
+			if !errors.As(err, &e) || e.RetryAfter != want {
+				t.Errorf("%s with hint=%v: retry after %v, want %v", name, withHint, e.RetryAfter, want)
+			}
+		}
+	}
+}

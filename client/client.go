@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -312,6 +313,19 @@ func statusFailure(status int) error {
 	default:
 		return failure("UNAVAILABLE")
 	}
+}
+
+// responseFailure is statusFailure for a response: a 429 carries the node's
+// Retry-After as the error's RetryAfter, so a caller can tell capacity from a
+// result limit on every endpoint, not only the single-call read.
+func responseFailure(response *http.Response) error {
+	err := statusFailure(response.StatusCode)
+	if e, ok := err.(*Error); ok && response.StatusCode == http.StatusTooManyRequests {
+		if seconds, parseErr := strconv.Atoi(response.Header.Get("Retry-After")); parseErr == nil && seconds > 0 {
+			e.RetryAfter = min(time.Duration(seconds)*time.Second, maxRetryAfter)
+		}
+	}
+	return err
 }
 func (c *Client) defaultLimits() Limits {
 	return Limits{c.cfg.MaxRows, c.cfg.MaxDecodedBytes, c.cfg.MaxWireBytes}

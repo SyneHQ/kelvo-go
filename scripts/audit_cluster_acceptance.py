@@ -142,7 +142,7 @@ class Smoke:
 
     def audit_config(self, name, directory):
         return dict(service_id=name, directory=str(directory), max_entries=128,
-                    max_pending=8, retention="1h", write_timeout="2s")
+                    max_pending=64, retention="1h", write_timeout="2s")
 
     def provision(self):
         require(os.geteuid() != 0, "ROOT_EXECUTION_REFUSED")

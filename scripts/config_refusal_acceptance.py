@@ -61,7 +61,7 @@ def add_feature(config, feature, journal):
     config = copy.deepcopy(config)
     if feature == "audit":
         config["audit"] = dict(service_id="compatibility", directory=str(journal), max_entries=128,
-                               max_pending=8, retention="1h", write_timeout="2s")
+                               max_pending=64, retention="1h", write_timeout="2s")
     elif feature == "row_column_policy":
         policies = [t["policy"] for t in config.get("tenants", [])]
         if "policy" in config:

@@ -47,7 +47,7 @@ func (c *Client) submit(ctx context.Context, raw []byte, auth Authority) (QueryH
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusCreated {
-		return QueryHandle{}, statusFailure(response.StatusCode)
+		return QueryHandle{}, responseFailure(response)
 	}
 
 	if !operationContentType(response, "application/json") || response.ContentLength > maxHandleBytes {
@@ -87,7 +87,7 @@ func (c *Client) status(ctx context.Context, id string, auth Authority) (QuerySt
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return QueryStatus{}, statusFailure(response.StatusCode)
+		return QueryStatus{}, responseFailure(response)
 	}
 	var status QueryStatus
 	if err = decodeJSON(response, &status, maxStatusBytes); err != nil {
@@ -127,7 +127,7 @@ func (c *Client) cancelQuery(ctx context.Context, id string, auth Authority) (Qu
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return QueryHandle{}, statusFailure(response.StatusCode)
+		return QueryHandle{}, responseFailure(response)
 	}
 	var handle QueryHandle
 	if err = decodeJSON(response, &handle, maxHandleBytes); err != nil {
@@ -162,7 +162,7 @@ func (c *Client) results(ctx context.Context, id string, auth Authority, sink Si
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return stats, statusFailure(response.StatusCode)
+		return stats, responseFailure(response)
 	}
 	completion := response.Header.Values("Kelvo-Result-Completion")
 	if !operationContentType(response, "application/vnd.apache.arrow.stream") || len(completion) > 1 || (len(completion) == 1 && completion[0] != "durable-eos-v1") {
