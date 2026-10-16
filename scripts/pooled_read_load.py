@@ -359,7 +359,8 @@ def main():
             shutil.copyfile(args.relational_adapter, out / "kelvo-adapter-relational")
             (out / "kelvo-adapter-relational").chmod(0o555)
         env = {"KELVO_LOAD_SCENARIO": str(out / "scenario.yaml"), "KELVO_LOAD_OUT": str(out), "KELVO_LOAD_BINARY": str(out / "kelvo"), "KELVO_LOAD_SANDBOX": str(out / "kelvo-landlock"),
-               "KELVO_LOAD_ADAPTER_BINARY": str(out / "kelvo-adapter-go"), "KELVO_LOAD_NATS_URL": "tls://127.0.0.1:%d" % nats_port, "KELVO_LOAD_NATS_CA_FILE": str(certs / "ca.pem")}
+               "KELVO_LOAD_ADAPTER_BINARY": str(out / "kelvo-adapter-go"), "KELVO_LOAD_NATS_URL": "tls://127.0.0.1:%d" % nats_port, "KELVO_LOAD_NATS_CA_FILE": str(certs / "ca.pem"),
+               "KELVO_LOAD_PG_ADMIN_DSN": "postgres://postgres:%s@127.0.0.1:%d/postgres?sslmode=disable" % (password, args.postgres_port)}
         if args.relational_adapter:
             env["KELVO_LOAD_RELATIONAL_ADAPTER"] = str(out / "kelvo-adapter-relational")
         for role, prefix in (("admin", "NATS"), ("worker", "NATS_WORKER"), ("gateway", "NATS_GATEWAY")):
