@@ -26,7 +26,7 @@ func TestReadWorkersSizeTheWarmPoolAndAdapter(t *testing.T) {
 	}
 	got := node.effectiveWarmPool()
 	if got.MaxWorkers != 2 || got.MaxInFlight != 16 || got.IdleTTL != 30*time.Minute || got.QueueTimeout != 2*time.Second || got.StreamBufferMB != 8 ||
-		got.MaxPerKey != 2 || got.EvictMinIdle != 2*time.Second || got.MaxPerTenant != 7 || got.QueueDepth != 64 || !got.Enabled {
+		got.MaxPerKey != 2 || got.EvictMinIdle != time.Second || got.MaxPerTenant != 7 || got.QueueDepth != 64 || !got.Enabled {
 		t.Fatalf("effective warm pool: %+v", got)
 	}
 	if node.readPoolSize() != 8 {
@@ -79,6 +79,9 @@ func TestReadWorkersValidation(t *testing.T) {
 		"max_per_key above workers":        {ReadWorkersConfig{MaxWorkers: 2, MaxPerKey: 3}, base, errReadWorkersConfig},
 		"evict_min_idle in both":           {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.EvictMinIdle = time.Second; return w }(), errReadWorkersWarmPool},
 		"evict_min_idle too large":         {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 11 * time.Minute}, base, errReadWorkersConfig},
+		"evict_min_idle at queue_wait":     {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 2 * time.Second, QueueWait: 2 * time.Second}, base, errReadWorkersConfig},
+		"evict_min_idle above queue_wait":  {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 3 * time.Second}, base, errReadWorkersConfig},
+		"evict_min_idle just below":        {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: 1999 * time.Millisecond}, base, nil},
 		"evict_min_idle negative":          {ReadWorkersConfig{MaxWorkers: 1, EvictMinIdle: -time.Second}, base, errReadWorkersConfig},
 		"stream_buffer_mb in both":         {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.StreamBufferMB = 4; return w }(), errReadWorkersWarmPool},
 		"queue wait and timeout both":      {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.QueueTimeout = time.Second; return w }(), errReadWorkersWarmPool},
