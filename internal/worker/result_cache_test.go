@@ -99,14 +99,13 @@ func TestResultCacheHitReportsOwnTiming(t *testing.T) {
 	}
 }
 
-// A refresh bypasses the kept result and joins only a running read that
+// A refresh bypasses the kept result and joins only a running refresh that
 // started after that result was stored; concurrent refreshes then share one
 // execution: at most one refresh execution per key at a time.
 func TestResultCacheRefreshBursts(t *testing.T) {
 	c := newResultCache(time.Minute, 16, 1<<20)
 	_, _ = c.do(context.Background(), "k", "t", false, nil, (&fakeRead{data: "kept"}).execute, noReplay)
-	// A plain read is running when the refresh arrives; it started after the
-	// kept result was stored, so the refresh joins it.
+	// A refresh is running; later refreshes join it.
 	fresh := &fakeRead{data: "fresh", block: make(chan struct{})}
 	results := make(chan error, 4)
 	go func() {
@@ -138,6 +137,27 @@ func TestResultCacheRefreshBursts(t *testing.T) {
 	c.mu.Unlock()
 	if burst.runs.Load() != 0 || fresh.runs.Load() != 1 || kept != "fresh" {
 		t.Fatal("refresh burst ran more than one execution", burst.runs.Load(), kept)
+	}
+}
+
+// An explicit refresh arriving while a plain read is running must still
+// execute: that read began before the refresh and could predate the change.
+func TestResultCacheRefreshNeverJoinsRunningPlainRead(t *testing.T) {
+	c := newResultCache(time.Minute, 16, 1<<20)
+	plain := &fakeRead{data: "plain", block: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.do(context.Background(), "k", "t", false, nil, plain.execute, noReplay)
+		done <- err
+	}()
+	waitFor(t, func() bool { return plain.runs.Load() == 1 })
+	refresh := &fakeRead{data: "refreshed"}
+	if _, err := c.do(context.Background(), "k", "t", true, nil, refresh.execute, noReplay); err != nil || refresh.runs.Load() != 1 {
+		t.Fatal("refresh was answered by a running plain read", err, refresh.runs.Load())
+	}
+	close(plain.block)
+	if err := <-done; err != nil || plain.runs.Load() != 1 {
+		t.Fatal(err)
 	}
 }
 
