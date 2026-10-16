@@ -554,7 +554,9 @@ func main() {
 			c := r.Intn(node.Customers)
 			for step := 0; time.Now().Before(d.end); step++ {
 				if !d.analysisStep(c, step) {
-					sleepUntil(d.end, 5*time.Second) // a failing job backs off, as an application would
+					if !sleepUntil(d.end, 5*time.Second) { // a failing job backs off, as an application would
+						return // and stops when no backoff fits before the end, rather than spinning on the failure
+					}
 				}
 			}
 		})
