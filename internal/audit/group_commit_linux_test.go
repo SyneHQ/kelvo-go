@@ -26,6 +26,14 @@ type trackedIO struct {
 	syncNS   atomic.Int64 // time spent inside sync
 	syncErr  atomic.Bool
 	delay    time.Duration
+	// skipFsync makes sync a no-op for tests that assert what the writer decides,
+	// not durability: a real fsync on a loaded host can stall for seconds.
+	skipFsync bool
+	// gate, when set, holds the first sync until it is closed; entered is
+	// closed when that sync starts.
+	gate     chan struct{}
+	entered  chan struct{}
+	gateOnce sync.Once
 }
 
 func newTrackedIO(delay time.Duration) *trackedIO {
@@ -42,6 +50,12 @@ func newTrackedIO(delay time.Duration) *trackedIO {
 		covered := t.seq
 		t.mu.Unlock()
 		t.syncs.Add(1)
+		if t.gate != nil {
+			t.gateOnce.Do(func() {
+				close(t.entered)
+				<-t.gate
+			})
+		}
 		began := time.Now()
 		defer func() { t.syncNS.Add(int64(time.Since(began))) }()
 		if t.delay > 0 {
@@ -50,7 +64,10 @@ func newTrackedIO(delay time.Duration) *trackedIO {
 		if t.syncErr.Load() {
 			return errors.New("injected sync failure")
 		}
-		err := f.Sync()
+		var err error
+		if !t.skipFsync {
+			err = f.Sync()
+		}
 		if err == nil {
 			t.mu.Lock()
 			t.durable = max(t.durable, covered)
@@ -72,6 +89,7 @@ func (t *trackedIO) durableAt(offset int64) bool {
 func groupConfig(t testing.TB, entries, pending int) Config {
 	cfg := testConfig(t.TempDir())
 	cfg.MaxEntries, cfg.MaxPending = entries, pending
+	cfg.WriteTimeout = 30 * time.Second // the longest allowed: a slow host must not read as a lost write
 	return cfg
 }
 
@@ -91,7 +109,10 @@ func openTracked(t *testing.T, cfg Config, io *trackedIO) *Journal {
 }
 
 // Operations that arrive together share syncs, and none is acknowledged before
-// the sync that covers its writes has returned.
+// the sync that covers its writes has returned. This is the one test that uses
+// real fsyncs, to prove the records are durable; it asserts correctness only,
+// with the longest write timeout, so a slow disk cannot fail it. The other
+// grouping tests inject the sync and never touch the disk's speed.
 func TestAuditGroupCommitSharesSyncsAndAcknowledgesOnlyDurableOperations(t *testing.T) {
 	const workers = 24
 	tracked := newTrackedIO(3 * time.Millisecond)
@@ -140,6 +161,7 @@ func TestAuditGroupCommitSharesSyncsAndAcknowledgesOnlyDurableOperations(t *test
 
 func TestAuditGroupCommitSyncFailureFailsTheWholeGroupWithoutReceipts(t *testing.T) {
 	tracked := newTrackedIO(5 * time.Millisecond)
+	tracked.skipFsync = true // the failure is injected; no real fsync is needed
 	j := openTracked(t, groupConfig(t, 64, 16), tracked)
 	tracked.syncErr.Store(true)
 	var wg sync.WaitGroup
@@ -167,55 +189,14 @@ func TestAuditGroupCommitSyncFailureFailsTheWholeGroupWithoutReceipts(t *testing
 	}
 }
 
-// A burst that forms a group must not make the operation after it wait: a lone
-// operation is written and synced at once, whatever came before.
-func TestAuditLoneOperationAfterAGroupIsNotDelayed(t *testing.T) {
-	// A long window makes waiting for company obvious: a lone operation that
-	// waited would take about this long, however loaded the runner is.
-	const longWindow = 400 * time.Millisecond
-	defer func(previous time.Duration) { groupWindow = previous }(groupWindow)
-	groupWindow = longWindow
-	tracked := newTrackedIO(2 * time.Millisecond)
-	j := openTracked(t, groupConfig(t, 256, 32), tracked)
-	var wg sync.WaitGroup
-	for range 16 { // a burst: several operations reach the writer together
-		wg.Go(func() {
-			for range 4 {
-				r, err := j.Begin(context.Background(), testBinding(), QueryExecution)
-				if err != nil {
-					t.Error(err)
-					return
-				}
-				_ = r.Finish(context.Background(), Succeeded, None)
-			}
-		})
-	}
-	wg.Wait()
-	for range 5 {
-		started, syncBefore, groupsBefore := time.Now(), tracked.syncNS.Load(), tracked.syncs.Load()
-		r, err := j.Begin(context.Background(), testBinding(), QueryExecution)
-		if err != nil {
-			t.Fatal(err)
-		}
-		overhead := time.Since(started) - time.Duration(tracked.syncNS.Load()-syncBefore)
-		// Waiting for company would cost the whole window; a loaded runner adds
-		// scheduling noise, nowhere near that.
-		if tracked.syncs.Load()-groupsBefore != 1 || overhead > longWindow/4 {
-			t.Fatalf("a lone begin after a group added %s beyond its sync (%d syncs)", overhead, tracked.syncs.Load()-groupsBefore)
-		}
-		if err := r.Finish(context.Background(), Succeeded, None); err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(10 * time.Millisecond) // lone again
-	}
-}
-
-// Grouping costs a lone operation nothing: it is written and synced at once.
-func TestAuditLoneOperationIsNotDelayedByGrouping(t *testing.T) {
+// What the writer decides, not how long it took: a lone operation never waits
+// for company, so it never starts a wait on the group window, however loaded the
+// machine is. The window wait is counted by the journal for exactly this.
+func TestAuditLoneOperationNeverWaitsOnTheGroupWindow(t *testing.T) {
 	tracked := newTrackedIO(0)
+	tracked.skipFsync = true
 	j := openTracked(t, groupConfig(t, 64, 8), tracked)
 	for range 10 {
-		started, syncBefore := time.Now(), tracked.syncNS.Load()
 		r, err := j.Begin(context.Background(), testBinding(), QueryExecution)
 		if err != nil {
 			t.Fatal(err)
@@ -223,20 +204,75 @@ func TestAuditLoneOperationIsNotDelayedByGrouping(t *testing.T) {
 		if err := r.Finish(context.Background(), Succeeded, None); err != nil {
 			t.Fatal(err)
 		}
-		// Everything but the filesystem's own sync time is the writer's overhead.
-		overhead := time.Since(started) - time.Duration(tracked.syncNS.Load()-syncBefore)
-		if overhead > groupCommitWindow*2 {
-			t.Fatalf("a lone begin and finish added %s beyond its syncs", overhead)
-		}
+	}
+	if got := j.windowWaits.Load(); got != 0 {
+		t.Fatalf("the writer waited on the group window %d times for lone operations", got)
 	}
 	if got := tracked.syncs.Load(); got != 20 {
 		t.Fatalf("%d syncs for 20 lone operations, want 20", got)
 	}
 }
 
+// ... and that holds right after a real group. The group is forced, not hoped
+// for: the first sync is held while three more operations queue behind it, so
+// the writer must see three together next.
+func TestAuditLoneOperationAfterAGroupNeverWaitsOnTheGroupWindow(t *testing.T) {
+	tracked := newTrackedIO(0)
+	tracked.skipFsync = true
+	j := openTracked(t, groupConfig(t, 64, 8), tracked)
+	// Set after opening: opening a fresh journal syncs its header, and that sync
+	// must not be the held one. The writer reads these only after the first
+	// operation, which reaches it through a channel from this goroutine.
+	tracked.gate, tracked.entered = make(chan struct{}), make(chan struct{})
+	var wg sync.WaitGroup
+	begin := func() {
+		wg.Go(func() {
+			r, err := j.Begin(context.Background(), testBinding(), QueryExecution)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			if err := r.Finish(context.Background(), Succeeded, None); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	begin() // its sync is held
+	select {
+	case <-tracked.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first sync never started")
+	}
+	for range 3 {
+		begin()
+	}
+	for len(j.jobs) < 3 { // all three are queued behind the held sync
+		time.Sleep(time.Millisecond)
+	}
+	close(tracked.gate)
+	wg.Wait()
+	if got := j.windowWaits.Load(); got < 1 {
+		t.Fatalf("no group formed (%d window waits), so this test would prove nothing", got)
+	}
+	groupWaits := j.windowWaits.Load()
+	for range 10 {
+		r, err := j.Begin(context.Background(), testBinding(), QueryExecution)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := r.Finish(context.Background(), Succeeded, None); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := j.windowWaits.Load(); got != groupWaits {
+		t.Fatalf("lone operations after a group waited on the group window %d times", got-groupWaits)
+	}
+}
+
 // Close finishes still-active receipts with one sync and reports a failed one.
 func TestAuditCloseSyncsInterruptedReceiptsOnce(t *testing.T) {
 	tracked := newTrackedIO(0)
+	tracked.skipFsync = true
 	j, err := openWithIO(groupConfig(t, 64, 8), testScope(), tracked.diskIO)
 	if err != nil {
 		t.Fatal(err)

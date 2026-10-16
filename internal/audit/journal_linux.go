@@ -28,10 +28,6 @@ import (
 // the sync that covers its writes has returned.
 const maxGroupSize = 64
 
-// groupWindow is groupCommitWindow; a variable so a test can make the wait long
-// enough to tell apart from scheduling noise.
-var groupWindow = groupCommitWindow
-
 type diskIO struct {
 	write    func(*os.File, []byte, int64) error
 	sync     func(*os.File) error
@@ -81,6 +77,7 @@ type Journal struct {
 	active, retained, freeCount, nextExpiry atomic.Int64
 	closeErr                                error // read only after done closes
 	syncs                                   atomic.Int64
+	windowWaits                             atomic.Int64 // times the writer waited for company
 }
 
 func randomID() (string, error) {
@@ -393,7 +390,8 @@ func (j *Journal) collect(first *operation) []*operation {
 	}
 	drain()
 	if len(group) > 1 {
-		timer := time.NewTimer(groupWindow)
+		j.windowWaits.Add(1) // counted, so a test can tell that the writer waited
+		timer := time.NewTimer(groupCommitWindow)
 		defer timer.Stop()
 	wait:
 		for len(group) < maxGroupSize {
