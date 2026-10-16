@@ -187,7 +187,12 @@ func (n *Node) cleanupOperationResults() {
 			ctx, stop := context.WithTimeout(n.ctx, 5*time.Second)
 			_, err := n.operations.results.Cleanup(ctx, 32)
 			stop()
-			if err != nil && n.ctx.Err() == nil {
+			// A timeout is contention (the store's root lock, a slow scan under
+			// load), not corruption: retry next tick. Draining here stops query
+			// dispatch while the heartbeat stays alive, so every queued read
+			// waits forever (#240).
+			if err != nil && n.ctx.Err() == nil && !errors.Is(err, context.DeadlineExceeded) {
+				log.Printf("kelvo: operation result cleanup failed; draining node %s: %v", n.cfg.WorkerID, err)
 				n.operations.failed.Store(true)
 				n.BeginDrain()
 				return
