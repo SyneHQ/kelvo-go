@@ -797,6 +797,11 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 		if recheckTimer != nil {
 			recheckTimer.Stop()
 		}
+		// Woken at or past its deadline (a select picks any ready case): a read out
+		// of time launches and evicts nothing on its way out.
+		if !time.Now().Before(queueBy) {
+			return nil, nil, busy()
+		}
 	}
 }
 
