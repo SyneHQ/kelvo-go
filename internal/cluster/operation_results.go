@@ -94,7 +94,7 @@ func (n *Node) serveOperationResult(w http.ResponseWriter, r *http.Request) bool
 	}
 	op, err := n.audit.begin(ctx, n.cfg.Policy.TenantID, &authority, audit.OperationResults)
 	if err != nil {
-		http.Error(w, "Audit unavailable", 503)
+		auditBeginHTTPError(w, err, "Audit unavailable")
 		return true
 	}
 	defer op.abort(ctx)

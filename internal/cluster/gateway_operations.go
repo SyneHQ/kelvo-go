@@ -270,6 +270,9 @@ func (g *Gateway) operationAdmissionRejected(w http.ResponseWriter, requestDiges
 
 func (g *Gateway) operationError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, audit.ErrBusy): // a full audit queue is capacity, not a journal fault
+		w.Header().Set("Retry-After", "1")
+		g.err(w, 429, "RESOURCE_EXHAUSTED", "Audit queue full; retry after 1s")
 	case errors.Is(err, operationstore.ErrNotFound):
 		g.err(w, 404, "NOT_FOUND", "Operation not found")
 	case errors.Is(err, operationstore.ErrConflict):

@@ -381,7 +381,11 @@ func (r *ExportRuntime) RunExport(parent context.Context, claimed ExportSnapshot
 	defer stopDeadline()
 	op, err := r.audit.begin(ctx, j.TenantID, &j.Authority.Principal, audit.ExportExecution)
 	if err != nil {
-		return result, errors.Join(err, r.failExport(j.ID, err, false))
+		cause := err
+		if errors.Is(err, audit.ErrBusy) { // the job's public error says capacity, not an outage
+			cause = query.NewError("RESOURCE_EXHAUSTED", "Audit queue full")
+		}
+		return result, errors.Join(err, r.failExport(j.ID, cause, false))
 	}
 	defer op.abort(ctx)
 	reservationBudget, err := r.pool.Acquire(ctx, admission.Request{Class: admission.ClassExport, MemoryBytes: (int64(j.Spec.QueryLimits.MemoryMB) + r.cfg.Resources.OverheadMB) << 20, ScratchBytes: int64(j.Spec.QueryLimits.MaxTempMB) << 20})

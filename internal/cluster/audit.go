@@ -37,7 +37,7 @@ func (c *ServiceAuditConfig) Validate() error {
 // errAuditCapacity: the audit queue is smaller than the work the service admits
 // at once, so it would refuse requests it has already accepted. The text is
 // static: it carries no configuration values.
-var errAuditCapacity = errors.New("audit.max_pending must be at least the work the service admits at once: max_http_requests on a gateway, this node's workers plus operations.max_concurrent on a node")
+var errAuditCapacity = errors.New("audit.max_pending must be at least the work the service admits at once: max_http_requests on a gateway, this node's workers plus operations.max_concurrent plus exports.max_concurrent and max_downloads on a node")
 
 func validateGatewayAudit(cfg GatewayConfig) error {
 	if cfg.Audit == nil {
@@ -58,6 +58,10 @@ func nodeAuditDemand(config NodeConfig) int {
 	demand := config.Policy.Workers[config.WorkerID]
 	if config.Operations != nil {
 		demand += config.Operations.MaxConcurrent
+	}
+	if config.Exports != nil {
+		// Each export execution and each concurrent download holds one.
+		demand += config.Exports.MaxConcurrent + config.Exports.MaxDownloads
 	}
 	return demand
 }
@@ -302,6 +306,18 @@ func (o *auditOperation) abort(ctx context.Context) {
 		return
 	}
 	_ = o.terminal(audit.Unknown, audit.Interrupted, true)
+}
+
+// auditBeginHTTPError is auditBeginFailed for the node's plain-text endpoints:
+// a full pending queue is capacity (429, retry), anything else a journal fault
+// (503 with the endpoint's own message).
+func auditBeginHTTPError(w http.ResponseWriter, err error, faultMessage string) {
+	if errors.Is(err, audit.ErrBusy) {
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "audit queue full", http.StatusTooManyRequests)
+		return
+	}
+	http.Error(w, faultMessage, http.StatusServiceUnavailable)
 }
 
 // auditBeginFailed answers a failed audit begin. A full pending queue is

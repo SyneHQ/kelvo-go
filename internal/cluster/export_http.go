@@ -93,7 +93,7 @@ func (r *ExportRuntime) serveExportPart(w http.ResponseWriter, req *http.Request
 	}
 	op, err := r.audit.begin(req.Context(), s.Job.TenantID, &s.Job.Authority.Principal, audit.ExportResults)
 	if err != nil {
-		http.Error(w, "audit storage unavailable", http.StatusServiceUnavailable)
+		auditBeginHTTPError(w, err, "audit storage unavailable")
 		return
 	}
 	defer op.abort(req.Context())

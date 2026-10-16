@@ -504,7 +504,10 @@ func validTransition(a, b string) bool {
 	case Assigned:
 		return b == Claimed || b == Cancelled || b == Failed
 	case Claimed:
-		return b == Running || b == Cancelled || b == Failed
+		// Assigned again only to reopen a claim the node refused before it
+		// touched the job (its audit queue was full); CompareAndSwap also
+		// requires the claim to be cleared.
+		return b == Running || b == Assigned || b == Cancelled || b == Failed
 	case Running:
 		return b == ResultReady || b == Cancelled || b == Failed
 	case ResultReady:
@@ -569,6 +572,10 @@ func (s *NATSStore) CompareAndSwap(ctx context.Context, old Snapshot, next Job) 
 			return Snapshot{}, ErrConflict
 		}
 		if next.State != Claimed && next.Claim != "" {
+			return Snapshot{}, ErrConflict
+		}
+	} else if cur.Job.State == Claimed && next.State == Assigned {
+		if next.Claim != "" { // reopening a claim clears it, nothing else
 			return Snapshot{}, ErrConflict
 		}
 	} else if next.Claim != cur.Job.Claim {
