@@ -9,19 +9,37 @@ asked for this plan, not from this repository; steps that depend on them are mar
 * **[owner]** needs a decision by the service owner.
 * **[no access]** depends on something this session cannot see or reach; the executor must supply or verify it.
 
-Numbers come from [pooled-read-workers.md](pooled-read-workers.md) (load matrix) and [profile-plain-read.md](profile-plain-read.md). They were
-measured on the integration build with a measurement patch; **every threshold below must be re-validated on the release build** (section 4.1).
+Numbers come from [pooled-read-workers.md](pooled-read-workers.md) (load matrix) and [profile-plain-read.md](profile-plain-read.md), measured on the merged `cargo` code
+(`2ba73e4`) with no patch, on CI runners. **Every threshold below must be re-validated on the release build** (section 4.1).
 
 ## 0. Where the code is today (2026-10-16; refresh before every use)
 
-Merged to `cargo`: #212 design, #215 phase 1 (frame v2, multiplexed warm sessions), #226 exact `NUMERIC`, #227 bounded source codes, #231.
-Open, and part of this release when merged: #217 routing, #218 admission classes, #219 result cache, #220 single-call read, #221 credentials once per
-connection and re-authorization, #222 `read_workers` settings and the audit header change, #225 `read_workers` wiring and `serve --pool-size`, #228 slim relational adapter,
-#229 fewer source round trips, #230 control-plane diet, plus the read-path fixes routed from the load test. The harness (#224) and the integration branch (#223) are test-only and are not released.
+**Merged to `cargo`** (head `2ba73e4` at the time of writing; the release SHA is whatever `cargo` is when the release is cut):
 
-Known open defects at the time of writing (see the runbook): every read fails the client receipt check until #219's batch count is fixed; `bypass_cache` does not reach the
-cache; idle workers are not evicted for a new key; reads that wait more than 5 s for a slot fail as expired credentials; waiting single-call reads re-verify the grant every
-50 ms; workers are keyed by query alias. **Do not release until each is fixed and shown fixed by the matrix with `benchmarks/pooled-read-load/patches/` empty.**
+| PR | Commit(s) | What |
+| --- | --- | --- |
+| #212 | 1357e62 | design |
+| #215 | 6a2d609 | phase 1: frame v2, multiplexed warm sessions |
+| #217 | 0c41b44 | phase 2: in-flight multiplexing, routed reads and inspections |
+| #218 | 7447f28 (with 2c) | admission classes; result cache; one `BypassCache` field |
+| #220 | 77dec5f | phase 0 + 5: failure log, resolve metric, single-call read (`POST /v1/queries/stream`) |
+| #221 | fa37ab8 (phase 3) | credentials once per connection, re-authorized every 60 s; workers keyed by saved connection (65bd44c) |
+| #222 | dae3305 | `read_workers` settings; audit journal header no longer binds `max_pending` |
+| #225 | 9410c79 | `read_workers` wired into the warm pool; `serve --pool-size` |
+| #226, #227 | 22e34fa, 537cf3e | exact `NUMERIC` text; bounded source error codes |
+| #228 | 164d0fd | slim relational adapter (`kelvo-adapter-relational`), `read_workers.relational_adapter` |
+| #229 | ed1820f | fewer source round trips (2 on the critical path, 3 total with the background `ROLLBACK`) |
+| #230 | 20aefc3 | control-plane diet: store, verified-grant cache, audit group commit |
+| #231, #232 | 9db56ce, cf0b016 | tests |
+| #236 | 2ba73e4 | a full audit pending queue is capacity (429), not an outage (503); `max_pending` must cover admitted work |
+
+`git log --oneline --first-parent <previous release SHA>..RELEASE_SHA` on `cargo` lists the exact commits for the release record (rebase merges: each PR is its own commits). The harness (#224) is test-only and is not released.
+
+**Fix in progress** (not in the release unless merged first; each is also listed in the runbook): #234 explicit refresh always executes (the probe missed in 11 of 63 runs), #235 pooled 64 KiB result buffer (adapter allocations 89 -> 152 KB per read),
+#237 per-source connection budget and capacity pressure ending as `RESOURCE_EXHAUSTED` (today a pool smaller than the active connections answers 503 `Worker unavailable`), #239 audit capacity versus fault on every path.
+
+**Verified fixed on the merged code** by the matrix with `benchmarks/pooled-read-load/patches/` removed: every read passing the client receipt check, cache bypass wired, `read_workers` and `pool_size` effective, idle-worker eviction, no polling re-verification (Ed25519 verifications per read 30 -> 4), workers keyed by saved connection.
+**One open finding without an owner:** a stall of the 2 vCPU / 1 GB node in 1 of 7 runs at the target load (runbook finding 10). It does not affect the 4 vCPU target (0 stalls in 10 runs).
 
 ## 1. What ships
 
@@ -57,7 +75,7 @@ pull requests by rebase merge, each PR appears as its own commits.
 All on `RELEASE_SHA`:
 
 * CI green: `validate`, `warm-adapter` (which runs the read-worker gates on the slim adapter), `federation`, `package`, `go-adapters`, `jdbc-adapter`, `public-sdk`.
-* The load matrix and the profile with **no patch**: workflows `Pooled read load` and `Pooled read profile`, run on the release branch; pass criteria in section 4.1.
+* The load matrix and the profile with **no patch** (there is no patch directory any more): workflows `Pooled read load` and `Pooled read profile`, run on the release branch; pass criteria in section 4.1.
 * `scripts/release_upgrade_acceptance.py` for snapshot compatibility if acceleration is used (`docs/release-upgrades.md`).
 * **Not covered anywhere yet:** a mixed-version rolling upgrade of this stack (`docs/rolling-upgrades.md` authorizes only tested pairs). Treat the whole tenant, node and adapter, as one step.
 * **[owner]** accept that the load test models the exit-node RTT as added delay only (no Tailscale), and measured one node.
@@ -73,7 +91,7 @@ Order: **node with its adapters and launcher, then the gateway, then db-api.**
 | Gateway to node | single-call read uses the existing internal results route | Roll gateways and nodes of a tenant together; no mixed-version claim exists |
 | db-api to gateway: `POST /v1/queries/stream` | Against a gateway without it the client returns `ErrStreamUnsupported` before sending anything, and db-api falls back to submit, wait and fetch (a 404, 405 or 501 without the `Kelvo-Stream: 1` marker means "no such endpoint") | db-api after the node |
 | db-api `inspect` requests | Metadata inspections run only on read workers; a node without them (or with the pool disabled) answers `UNAVAILABLE`. **There is no fallback** | db-api sends `inspect` only to nodes known to accept it; on rollback db-api stops first |
-| Query alias | workers are keyed by the request alias until the read-path fix lands | db-api sends one alias per saved connection, and `sslmode=verify-full&connect_timeout=5` DSNs from the resolver |
+| Query alias and DSN | workers are keyed by the saved connection since #221 (no alias requirement; verified by the shared-alias run) | db-api sends `sslmode=verify-full&connect_timeout=5` DSNs from the resolver; the delegated query path refuses `sslmode=disable` |
 
 ### 2.1 Configuration migration (#222, #225, #228)
 
@@ -95,51 +113,56 @@ Order: **node with its adapters and launcher, then the gateway, then db-api.**
 ## 3. Configuration
 
 Validity: both configs below are the scenario files `benchmarks/pooled-read-load/scenarios/2c1g-first-release.yaml` and `4c8g.yaml`, which `TestPooledReadLoadScenariosAreValid` checks with the node's own
-validation (resources, containment, operations, warm pool). They use the pre-#225 key names (`operations.warm_pool.*`); after step B the capacity keys move to `read_workers` as in section 2.1.
+validation (resources, containment, operations, `read_workers`, warm pool). They already use the post-#225 keys: capacity is in `read_workers`, the rest of the pool in `operations.warm_pool` (the harness file shows the pool's fixed fields at the top level).
+A node that still has the pre-migration config uses `operations.warm_pool` capacity keys until step B of section 2.1.
 
 ### 3.1 First release on the current node: 2 vCPU / 1 GB, a few users
 
-**What the measurements allow.** On this size the load test collapsed at its design load and at half of it (10 explorers, 5 viewers per dashboard; 880 of 928 reads failed), with the node at 78-95% of its CPU
-limit and throttled thousands of periods. The only 2 vCPU runs with no errors carried **about three active users**: one explorer opening a page every 3-5 s (42 requests), one viewer of a
-10-panel dashboard refreshing every 10 s, one console user (at 80 ms to the source: explorer reads p95 5.5 s, dashboard panels p95 3 s, console p95 1.7 s; 4 workers, run `evidence-shared-alias`). Memory is not the limit: 340 MiB for gateway and node, 22 MiB per worker, 42 MiB shared.
-8 workers are about 0.6 GiB. So this config is a **bridge**: it turns the feature on for a handful of users while the node is replaced; it is not the 50-user target.
+**What the measurements allow.** On the merged code the current node is no longer CPU-bound: 20 workers at `pool_size` 12 carried the full 50-user mix in 5 of 7 runs (p50 2.0-2.3 s, p95 3.9-4.5 s per read, node 0.35-0.6 cores, 3-11 throttled periods,
+cgroup memory peak 580-624 MiB of the 1 GiB), with one stall (758 deadline expiries) and one run with 53 generator-cap refusals. That is not a margin to promise, so the first release **sheds load at the door** and targets a handful of users, the load the 3-user entry
+(`2c1g-first-release-3users`, one explorer opening a page every 3-5 s, one 10-panel dashboard viewer refreshing every 10 s, one console user) carried in 4 of 4 runs with 0 errors (explorer reads p50 1.2 s, p95 4.0 s; dashboard panels p95 2.0 s; console p95 2.0 s; node 0.4 cores, 0 throttled periods, 335-350 MiB).
+At **6 explorers, 6 viewers and 2 consoles** on the same config (8 workers, `max_http_requests` 64, `max_queries` 32) it sheds as designed: 72-619 capacity refusals, 95-195 503 `Worker unavailable` (8 workers against more than 8 active connections: thrash) and p95 6-7 s; it is not an error-free configuration at that load.
+Memory is not the limit: 345 MiB for gateway and node, 12-19 MiB per worker, 11 MiB shared. So this config is a **bridge**: it turns the feature on for a handful of users while the node is replaced; it is not the 50-user target.
+**[owner]** If the bridge must carry more than a handful of users, the measured alternative is 20 workers at `pool_size` 12 on this node (about 0.6 GiB, 5 of 7 clean runs, twice the latency of the target).
 
-Settings (differences from the load-test 2 vCPU file are in the right column):
+Settings (the scenario file; capacity is `read_workers`):
 
 | Setting | Value | Why |
 | --- | --- | --- |
 | `policy.limits.max_bytes` | 67108864 | routing needs 64 MiB or less; the default 256 MiB silently disables read workers |
 | `policy.workers` (a1) | 16 | node job permits for the query path; sheds load at the node instead of queueing without bound (**changing it re-initializes cluster metadata: [owner]**; keep the current value if it is higher and shed at the gateway) |
-| `warm_pool.max_workers` | 8 | at least the number of hot connections; 8 workers is about 0.6 GiB real memory |
-| `warm_pool.idle_ttl` | 10m | bounds memory while idle workers are not evicted for new keys |
-| `warm_pool.max_per_key`, `max_in_flight` | 1, 16 (after the burst fix: `read_workers.max_per_key` 2) | defaults |
-| `resources.*` | `max_concurrent` 12, `memory_mb` 1400, `baseline_mb` 250, `separate_classes: true`, `query_reserve_slots` 10, `query_reserve_memory_mb` 1000 | the interactive share admits `min(slots, memory / 96)` = 10 reservations: 8 workers and 2 one-shot fallbacks. Memory here is **accounting** (96 MiB per reservation, 4x real use), larger than the VM on purpose |
+| `read_workers.max_workers` | 8 | at least the number of hot connections (more than 8 active connections thrash and answer 503 `Worker unavailable`: **never run `max_workers` below the active connections**); 8 workers are about 0.2 GiB |
+| `read_workers.pool_size` | 4 (measured); 8-12 for bursts | measured at 4 with the 3-user load; 12 is the value measured at the target; `max_workers x pool_size` at most 256 |
+| `read_workers.idle_ttl`, `max_per_key`, `max_in_flight`, `queue_wait`, `stream_buffer_mb` | 30m, 1, 16, 10s, 4 | measured values; `max_per_key` 2 is the default (burst scale-out) |
+| `read_workers.relational_adapter` | the slim adapter (step C) | 13 MiB per worker against 23 MiB; fallback to the full adapter is automatic |
+| `resources.*` | `max_concurrent` 12, `memory_mb` 2100, `baseline_mb` 250, `overhead_mb` 64, `separate_classes: true`, `query_reserve_slots` 10, `query_reserve_memory_mb` 1700 | the interactive share admits `min(slots, memory / 160)` reservations of 160 MiB (32 + 64 + 16 x 4 stream buffers): 8 workers and 2 one-shot fallbacks. Memory here is **accounting**, larger than the VM on purpose (real use is about a tenth) |
 | `operations.max_concurrent` | 1 | one analysis job at a time on this size |
 | `gateway.max_http_requests` | 64 | load is shed at the front door |
-| `audit.max_entries`, `max_pending` | 262144, 64 | 512 MiB per journal; the gateway journal (about 2 receipts per read) lasts 1 h at about 37 reads/s |
+| `audit.max_entries`, `max_pending` | 262144, 256 | 512 MiB per journal; the gateway journal (about 2 receipts per read) lasts 1 h at about 37 reads/s. **`max_pending` 64 failed: 345 requests got 503 `Audit storage unavailable` at a peak of 103 in flight;** it must cover admitted work (at least `max_http_requests` plus `operations.max_concurrent`) |
 | db-api client | `MaxConcurrent` 32, `MaxControlConcurrent` 32 | an overload becomes fast refusals, not a collapse |
 | Cgroup (systemd unit) | `MemoryMax=1G`, `MemorySwapMax=0`, `CPUQuota=200%`, `Delegate=yes` | as in `process-containment.md`; **[root] [no access]** the existing unit's values |
 
 Acceptance for this config (canary tenant only, section 4): no `class=capacity` failure, no `PROTOCOL_ERROR`, `nr_throttled` flat, memory below 80% of `MemoryMax`, p95 of single reads under the db-api budget at 3 users. At the first
-sign of CPU throttling add no capacity; move to 3.2.
+sign of CPU throttling above a few periods per 5 minutes, or any `Worker unavailable`, add no capacity; move to 3.2.
 
 ### 3.2 Target: 4 vCPU / 8 GB co-located with db-api
 
-The `4c8g.yaml` scenario with `max_workers` 20 is the tested point (0 server capacity errors, page open p95 9.3 s on a shared runner). Recommended production values, with the
-caveat that the whole load matrix must be rerun on the release build:
+The `4c8g.yaml` scenario is the tested point: 20 workers, `pool_size` 12, the slim adapter. Over 10 runs it had **0 server capacity errors in all of them, 0 failed requests in 9, and 38 generator-cap refusals (0.4%) in one**; per read p50 0.74-0.83 s, p95 1.9-2.3 s, p99 2.7-3.7 s; page open of 42 requests p50 1.4 s, p95 2.9 s;
+node 0.26-0.52 cores (13% of 4 vCPU), 0 throttled periods; cgroup memory peak 779-816 MiB. The whole matrix must be rerun on the release build (section 4.1).
 
 | Area | Setting | Value |
 | --- | --- | --- |
-| Pool | `read_workers.max_workers` | at least the hot connections within `idle_ttl` (20 tested; 8 GB fits about 240 by memory, but the interactive admission share must be raised with it: slots and `query_reserve_memory_mb / 96`) |
-| | `max_per_key` | 2 (burst scale-out) once the fix lands; 1 before |
-| | `max_in_flight`, `queue_wait`, `idle_ttl` | 16, 2 s, 10m |
-| | `pool_size` | `ceil(42 x turns x RTT / 1.5 s)`: 9 at 80 ms with 4 turns, 4-5 with #229's 2 turns; 8-16 until #229 is deployed; at most 32 |
+| Pool | `read_workers.max_workers` | at least the hot connections within `idle_ttl` (20 tested; 8 GB fits about 240 by memory, but the interactive admission share must be raised with it: `query_reserve_slots` above `max_workers` and `query_reserve_memory_mb` at least 160 MiB per worker plus a result download) |
+| | `max_per_key` | 1 (measured); the default 2 allows a burst to scale out to a second worker |
+| | `max_in_flight`, `queue_wait`, `idle_ttl`, `stream_buffer_mb` | 16, 10s, 30m, 4 |
+| | `pool_size` | **12** at 80-100 ms RTT (measured at 80 ms: page open 1.4 s p50 against 3.2 s at 4); formula `ceil(42 x 3 x RTT / 1.5 s)` (a warm read holds a connection for 3 round trips): 7 at 80 ms, 9 at 100 ms, 14 at 160 ms; at most 32; `max_workers x pool_size` at most 256 (20 x 12 = 240). Through the exit node RTT is the sum of both legs |
+| Adapter | `read_workers.relational_adapter` | the slim adapter, pinned by digest |
 | Cache | `cache_ttl` 10s, `reauthorize_every` 60s | signed off by the owner |
 | Admission | `separate_classes` true, `query_reserve_slots` 28, `query_reserve_memory_mb` 5500, `containment.max_groups` 128 | see the runbook |
 | Audit | `max_entries` 524288, `max_pending` 512, `retention` 1h | 1 GiB per journal; the gateway journal lasts 1 h at about 74 reads/s |
-| Gateway | `max_http_requests` 512 | measured peak in flight 270 |
+| Gateway | `max_http_requests` 512 | measured peak in flight 290 |
 | Cgroup | `MemoryMax=8G`, `CPUQuota=400%` | |
-| db-api client | `MaxConcurrent` 256, `MaxControlConcurrent` 128 | |
+| db-api client | `MaxConcurrent` 256, `MaxControlConcurrent` 128 | the generator's 256 cap is reached at the design load in about 1 run in 10; spread db-api over more than one client or raise nothing |
 
 After the host move the Oracle VM is the Tailscale exit node only (section 6); the round trip to a source is the sum of both legs.
 
@@ -150,8 +173,9 @@ Mirrors the existing process: stage a release directory, verify its hashes, plan
 
 ### 4.1 Before the change window
 
-1. **Qualification** (section 1.2) and gates (1.3) complete; the load matrix on the release build meets, with no patch: 0 server capacity errors, 0 `PROTOCOL_ERROR`, 4 vCPU / 8 GB page-open p95 and failures no worse than the recorded baseline
-   (run 38784590203: 43 of 2704 explorer reads, p95 9.3 s), and CPU per read and allocations per read no worse than the profile baseline (run 38793567524) with the fixes' improvements recorded. **[owner]** the final thresholds.
+1. **Qualification** (section 1.2) and gates (1.3) complete; the load matrix on the release build meets, with no patch, on the 4 vCPU / 8 GB 20-worker pool-12 entry (run it three times, all must pass): 0 server capacity errors, 0 `PROTOCOL_ERROR` on reads, 0 failed requests apart from generator-cap refusals (at most 0.5% of requests),
+   page-open p95 at most 3.5 s, explorer read p95 at most 2.6 s and p99 at most 4 s, node CPU at most 0.8 cores and 0 throttled periods; and the plain-read profile at 50 concurrent: 0 failures, node CPU at most 10 ms per read, at most 6 Ed25519 verifications per read, source round trips 3.0 per read.
+   The thresholds are the measured spread plus margin (runs 38874114296 to 38900878104, profile 38878205691 to 38883939553); the baseline before the fixes was 43 of 2704 failed reads, page-open p95 9.3 s and 40 ms of node CPU per read (runs 38784590203 and 38795023128). **[owner]** the final thresholds.
 2. **[no access]** Read the running release: its directory under `/opt/kelvo/releases/`, its manifest and hashes, `kelvo version`, the node and gateway configs, the unit files, the previous upgrade's receipt.
 3. **[root]** Record: `systemctl show kelvo-node -p MemoryMax -p CPUQuotaPerSecUSec -p Delegate -p MemorySwapMax`; the NATS metadata record and consumer state (unchanged by this release, recorded for the receipt);
    each audit journal's creation `max_pending` (section 2.2) and free space for the new journal size; the egress IP seen by a source (`curl https://ifconfig.me` as the `kelvo` user, via the same path).
@@ -188,7 +212,7 @@ Run them from the host as the service user; certificates are the deployment's ow
 | 6 | **Worker execution smoke**, the step that failed last time: through db-api (or a signed grant from a test principal) on the canary connection: one native `SELECT 1`, one 50-row preview, one schema inspection, one analysis operation | all succeed; `journalctl -u kelvo-node | grep 'kelvo read failed'` empty; a worker cgroup appears under `jobs/` and stays |
 | 7 | the same read a second time within 60 s | faster than the first (no resolve); one worker still present |
 | 8 | the same read after 70 s | re-authorizes once (`resolver` call count +1), still succeeds |
-| 9 | an explicit refresh through db-api (`X-Refresh`) | reaches the source (source-side statement count +1); only meaningful once the cache bypass fix is in |
+| 9 | an explicit refresh through db-api (`X-Refresh`) | reaches the source (source-side statement count +1); **known flake:** the harness probe missed in 11 of 63 runs ([#234](https://github.com/SyneHQ/kelvo-go/pull/234) in progress), so a miss alone is not a rollback condition until that fix is released |
 | 10 | egress IP check as in 4.1 | unchanged |
 
 Any failure in 1-8 is a rollback condition (section 5) unless the cause is found and fixed within the window **[owner]**.
@@ -204,8 +228,8 @@ Any failure in 1-8 is a rollback condition (section 5) unless the cause is found
 | Client-visible protocol errors | db-api logs `PROTOCOL_ERROR` | any |
 | CPU throttling | cgroup `cpu.stat` `nr_throttled` | increasing by more than 100 per minute for 3 minutes |
 | Memory | cgroup `memory.current`, `memory.events` `oom_kill` | above 80% of `MemoryMax` for 5 minutes; any `oom_kill` |
-| Warm pool health | `/resources`, job cgroup count, `slim_fallbacks` | `workers == max_workers` with fallbacks, or `slim_fallbacks` increasing |
-| Audit | gateway answers 503 `Audit storage unavailable` | any; and projected journal fill above 70% within `retention` |
+| Warm pool health | `/resources`, job cgroup count, `slim_fallbacks`, 503 `Worker unavailable` | `workers == max_workers` with fallbacks, `slim_fallbacks` increasing, or any `Worker unavailable` (a pool smaller than the active connections) |
+| Audit | gateway answers 503 `Audit storage unavailable` (a full journal; a full pending queue is a 429 since #236) | any 503; any 429 from audit pressure above 0.5% of requests; projected journal fill above 70% within `retention` |
 | Latency | db-api per-read p95 | above the agreed budget for 10 minutes **[owner]** |
 | Resolver | `kelvo_worker_resolve_seconds` | p95 above 1 s |
 

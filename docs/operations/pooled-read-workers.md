@@ -1,11 +1,9 @@
 # Pooled read workers: production configuration and rollout
 
-Status: **measured on an integration build, not on released code.** The numbers come from
-`scripts/pooled_read_load.py` (workflow `Pooled read load`) run against
-`feature/pooled-read-worker-integration` (#223) with one measurement-only workaround
-(`benchmarks/pooled-read-load/patches/`). Six product defects found by that run are open
-(see [Open defects](#open-defects-that-gate-rollout)); every number below must be re-measured,
-and the patch directory must be empty, before this is rolled out. No claim here is a promise.
+Status: **measured on the merged code** (`cargo` at `2ba73e4`, no patches; the harness's `patches/` directory is gone). The numbers come from
+`scripts/pooled_read_load.py` (workflow `Pooled read load`) and `Pooled read profile`, both in this PR. Product fixes for the defects the first
+runs found are merged (see [Product findings](#product-findings-and-their-status)); five findings are still **fix in progress** in other pull requests. Every number is from CI runners that share
+CPU with the load generator, PostgreSQL and the delay proxy; read them as measurements of this harness, not promises.
 
 ## What was measured
 
@@ -16,76 +14,79 @@ and the patch directory must be empty, before this is rolled out. No claim here 
 | Sources | PostgreSQL 17 with 20 databases and 20 roles, so 20 customers and 20 workers; 5 teams of 4 connections; TLS (`verify-full`) |
 | Network | 80 ms round trip to the source (a delaying TCP proxy, 40 ms each way) |
 | Credentials | the real `resolver.Handler` and the real lease checks against the gateway, plus 300 ms per resolve |
-| Node | real gateway, node, contained read workers, audit journals and a single-node TLS JetStream broker; the gateway and node run in one process inside a delegated systemd cgroup (`MemoryMax`, `CPUQuota`) |
+| Node | real gateway, node, contained read workers (the slim relational adapter), audit journals and a single-node TLS JetStream broker; the gateway and node run in one process inside a delegated systemd cgroup (`MemoryMax`, `CPUQuota`) |
 | Node sizes | 2 vCPU / 1 GB (the 2026-10-12 node) and 4 vCPU / 8 GB |
-| Runs | CI run 38783149779 (v3), 38784590203 (v4, repeat), 38785952871 (audit measurement). All tables below are v4 |
+| Runs | six matrix runs on the merged code: 38874114296, 38878205819, 38881519514, 38883939562, 38887246821, 38900878104 (this PR's workflow, one job per configuration; the last two repeat the pool-12 entries three times each). Profile: 38878205691, 38881519648, 38883939553 (three runs); baseline before the fixes: 38784590203 (matrix v4) and 38793567524 / 38795023128 (profile) |
 
 What the harness does **not** model: the tunnel to the source (only added round trip), a
-dedicated node (it shares the 4-vCPU CI runner with the generator, PostgreSQL and the proxy: runner
-CPU was 60-97% busy, so the 4 vCPU numbers are pessimistic), several nodes, customer databases
+dedicated node (it shares the CI runner with the generator, PostgreSQL and the proxy), several nodes, customer databases
 with real latency variance, and db-api's own behaviour. The resolver and lease client run in the
-node's process here; in production they are db-api's cost, so node CPU is overstated by that
-small share.
+node's process here; in production they are db-api's cost, so node CPU is slightly overstated.
 
-## Results (v4, single runs)
+## Results on the merged code
 
-`w4` is the default pool (`max_workers: 4`), `w20` is `max_workers: 20` (one per customer).
-Failed/sent counts include deadline expiry at 30 s and the load generator's own cap of 256
-requests in flight (client-admission refusals), listed separately below.
+Run 38900878104 (the last). `w4` is `max_workers: 4`, `w20` is 20 (one per customer); "pool 4" and "pool 12" are `read_workers.pool_size`, the source connections per worker.
+Failed/sent counts include deadline expiry at 30 s and the load generator's own cap of 256 requests in flight (client-admission refusals), listed separately.
 
-| | 2 vCPU / 1 GB w4 | 2 vCPU / 1 GB w20 | 4 vCPU / 8 GB w4 | 4 vCPU / 8 GB w20 | 4 vCPU / 8 GB w20, source pool 16 |
-| --- | --- | --- | --- | --- | --- |
-| explorer reads failed / sent | 2083 / 2112 | 1370 / 2000 | 567 / 2016 | **43 / 2704** | 62 / 2704 |
-| explorer inspections failed / sent | 3386 / 3432 | 2234 / 3250 | 890 / 3276 | **95 / 4394** | 98 / 4394 |
-| dashboard panels failed / sent | 1217 / 1500 | 674 / 1620 | 149 / 1490 | **17 / 1800** | 24 / 1860 |
-| page open (42 requests) p50 / p95 / p99 | 12.6 / 30 / 30 s | 13.7 / 30 / 30 s | 19.1 / 26.3 / 28.8 s | **5.8 / 9.3 / 11.1 s** | 3.4 / 8.2 / 9.9 s |
-| explorer read p50 / p95 | 9.0 / 29.4 s | 8.1 / 24.6 s | 11.3 / 23.0 s | 3.5 / 7.4 s | 2.4 / 7.4 s |
-| dashboard refresh (10 panels) p95 | 28.5 s | 23.4 s | 20.0 s | 6.2 s | 7.0 s |
-| console p50 / p95 | 24.8 / 29.6 s | 7.5 / 24.8 s | 6.0 / 14.9 s | 1.0 / 4.3 s | 1.0 / 3.7 s |
-| server capacity errors (`RESOURCE_EXHAUSTED`) | 2 | 2 | 15 | 0 | 0 |
-| generator-cap refusals | 4506 | 3095 | 1498 | 123 | 185 |
-| in flight, mean / peak | 226 / 275 | 182 / 266 | 189 / 263 | 106 / 260 | 83 / 271 |
-| node CPU, mean cores / of limit | 1.91 / 95% | 1.56 / 78% | 2.58 / 65% | 1.52 / 38% | 1.50 / 38% |
-| CPU-throttled periods | 2962 | 1956 | 0 | 0 | 0 |
-| cgroup memory peak | 451 MiB | 660 MiB | 969 MiB | 1057 MiB | 897 MiB |
-| RSS: gateway+node / all workers, peak (shared binary pages counted once per worker) | 338 / 257 MiB | 340 / 773 MiB | 342 / 1762 MiB | 348 / 1806 MiB | 344 / 1316 MiB |
-| workers spawned / one-shot fallbacks | 4 / 1891 | 12 / 248 | 4 / 6535 | 20 / 129 | 20 / 0 |
-| resolver calls | 849 | 697 | 4544 | 622 | 576 |
-| dashboard: source queries per viewer refresh | 0.61 | 1.84 | 6.02 | 2.41 | 2.52 |
-| source connections, max | 8 | 42 | 25 | 77 | 290 |
+| | 2 vCPU w4 | 2 vCPU w20 pool 4 | 2 vCPU w20 **pool 12** | 4 vCPU w4 | 4 vCPU w20 pool 4 | 4 vCPU w20 **pool 12** |
+| --- | --- | --- | --- | --- | --- | --- |
+| explorer reads failed / sent | 264 / 2496 | 1831 / 2384 | **0 / 2896** | 314 / 2448 | 2 / 2848 | **0 / 3088** |
+| explorer inspections failed / sent | 518 / 4056 | 2968 / 3874 | **0 / 4706** | 601 / 3978 | 2 / 4628 | **0 / 5018** |
+| dashboard panels failed / sent | 142 / 1640 | 1183 / 1580 | **0 / 1920** | 165 / 1700 | 0 / 1860 | **0 / 1970** |
+| console failed / sent | 0 / 173 | 100 / 146 | 0 / 230 | 1 / 183 | 0 / 233 | 0 / 245 |
+| page open (42 requests) p50 / p95 / p99 | 8.5 / 13.0 / 13.8 s | 4.8 / 30 / 30 s | 2.9 / 4.5 / 5.0 s | 8.3 / 12.8 / 17.4 s | 3.2 / 5.8 / 7.0 s | **1.4 / 2.9 / 3.3 s** |
+| explorer read p50 / p95 / p99 | 6.4 / 11.5 / 12.8 s | 4.4 / 8.4 / 9.4 s | 1.9 / 4.0 / 4.7 s | 6.3 / 11.4 / 12.7 s | 1.9 / 4.4 / 5.7 s | **0.8 / 2.1 / 2.8 s** |
+| dashboard panel p50 / p95 / p99 | 5.1 / 9.6 / 10.8 s | 1.5 / 6.6 / 7.3 s | 1.0 / 3.0 / 5.2 s | 4.8 / 9.9 / 13.1 s | 0.8 / 3.0 / 3.7 s | **0.3 / 1.1 / 1.9 s** |
+| dashboard refresh (10 panels) p95 | 10.6 s | 7.1 s | 3.1 s | 10.2 s | 3.1 s | 1.1 s |
+| console p50 / p95 / p99 | 5.6 / 9.1 / 10.7 s | 2.9 / 7.2 / 8.2 s | 1.3 / 3.4 / 4.1 s | 5.6 / 9.9 / 10.4 s | 0.6 / 3.5 / 3.9 s | 0.6 / 1.3 / 2.0 s |
+| errors by code | client cap 829, `UNAVAILABLE` 94, capacity 1 | client cap 4040, deadline 2031, capacity 9, `UNAVAILABLE` 17 | none | client cap 983, `UNAVAILABLE` 98 | client cap 4 | none |
+| in flight, mean / peak | 153 / 267 | 210 / 286 | 62 / 229 | 152 / 262 | 62 / 257 | 31 / 210 |
+| node CPU, mean cores / of limit | 0.66 / 33% | 0.33 / 17% | 0.56 / 28% | 0.65 / 16% | 0.54 / 14% | 0.51 / 13% |
+| CPU-throttled periods | 2 | 0 | 3 | 0 | 0 | 0 |
+| cgroup memory peak | 477 MiB | 467 MiB | 608 MiB | 488 MiB | 733 MiB | 784 MiB |
+| RSS: gateway+node / all workers, peak (shared pages counted per worker) | 345 / 455 MiB | 347 / 369 MiB | 344 / 380 MiB | 342 / 351 MiB | 344 / 557 MiB | 344 / 610 MiB |
+| workers spawned / one-shot fallbacks | 329 / 0 | 49 / 0 | 190 / 0 | 315 / 0 | 19 / 0 | 20 / 0 |
+| resolver calls | 613 | 140 | 632 | 603 | 622 | 659 |
+| dashboard: source queries per viewer refresh (10 = no cache) | 2.87 | 0.63 | 2.68 | 2.22 | 2.63 | 3.11 |
+| source connections, max | 17 | 38 | 131 | 14 | 74 | 219 |
 
-Reading the table:
+### The same, before the fixes (v4, integration build with a measurement patch)
 
-* **No configuration met "no failures".** The best, 4 vCPU / 8 GB with 20 workers, had 0 server
-  capacity errors but 43 of 2704 explorer reads failed (client cap and `UNAVAILABLE`) and a page open
-  took 9.3 s at p95. Nothing here supports a claim of 50 users without errors.
-* **2 vCPU / 1 GB does not carry this load**, with 4 or 20 workers, or at half the users (not
-  in the table: 880 of 928 explorer reads failed). It ran at 78-95% of its CPU limit and was
-  throttled 2000-3000 periods. Under queueing a node spends its CPU on polling and signature checks
-  (see defect 5), which turns a backlog into a collapse.
-* **`max_workers: 4` collapses on either size**, including 4 vCPU where CPU was 65% used: with 20
-  customers the pool is full of other keys' workers, so most reads run one-shot (6535 fallbacks),
-  and metadata inspections cannot (they need a worker).
-* At 4 vCPU the gain from a larger source pool (4 to 16 connections per worker) is a lower
-  median (page open 5.8 to 3.4 s, explorer read 3.5 to 2.4 s in v4; 5.6 to 3.1 s in v3) and the same p95,
-  at 4x the source connections. At 80 ms round trip a read in a read-only transaction costs about 4
-  round trips (idle explorer read p50 was 0.32 s), so a 4-connection pool serves about 12 reads per
-  second per worker. The tail did not improve; do not read more into one repeat.
-* Dashboards: ten viewers on one dashboard cost 1.8-2.5 source queries per refresh (10 without
-  the cache) at a hit rate of 0.76-0.82, not 1.0, because viewers refresh from random phases and
-  the TTL is 10 s.
-* Source traffic was small: 99 MB from the source in 310 s (about 2.6 Mbit/s mean).
+4 vCPU / 8 GB, 20 workers, pool 4: 43 of 2704 explorer reads failed, page open 5.8 / 9.3 / 11.1 s (p50 / p95 / p99), explorer read p50 3.5 s and p95 7.4 s, node CPU 1.52 cores (38% of the limit) and
+52 ms of CPU per request; 2 vCPU: 78-95% of the CPU limit, 2000-3000 throttled periods, collapse. The pool-16 experiment of that run is superseded by the pool-12 column above.
+
+### Repeats of the two target configurations
+
+Single runs vary on a shared runner (the generator's 256-request cap is close to the peak in flight), so the pool-12 entries were run again. **Server-side capacity errors were 0 in every run listed.**
+
+| | runs | clean (0 failed requests) | the others | p50 / p95 / p99 over all runs | node CPU, mean cores | cgroup memory peak |
+| --- | --- | --- | --- | --- | --- | --- |
+| 4 vCPU / 8 GB, 20 workers, pool 12 | 10 | **9** | 1 run: 38 generator-cap refusals of 10,010 requests (0.4%) | 744-827 ms / 1.88-2.28 s / 2.69-3.66 s | 0.26-0.52 | 779-816 MiB |
+| 2 vCPU / 1 GB, 20 workers, pool 12 | 7 | **5** | 1 run: 53 generator-cap refusals; 1 run stalled: 758 requests hit the 30 s deadline, 1,539 hit the generator cap, with the node at 0.51 cores (cause not found) | 1.87-2.27 s / 3.94-4.52 s / 4.73-5.63 s | 0.35-0.60 | 579-624 MiB |
+
+Reading the results:
+
+* **The merged code carries 50 users on both sizes once `pool_size` is 12; the source connection pool is the limit, not CPU.** With pool 4, 20 workers fail on the 2 vCPU node (page-open p95 30 s in this run, the generator cap in every one) and
+  are marginal on 4 vCPU (client-cap refusals in 5 of 6 runs, 4-59 of about 9,600 requests; 4 failed requests of 2,848 reads in this one). A worker with 4 source connections serves at most 4 / (3 x 80 ms) = 16.7 reads/s (see [Source connections per worker](#source-connections-per-worker-pool_size)); a 42-read page open on one connection then takes about 3 s before anything queues behind it.
+* **CPU is no longer the limit.** The node used 0.5 cores at 50 users on 4 vCPU (v4: 1.52) and 0.35-0.6 cores on 2 vCPU (v4: 1.9, throttled thousands of periods). The cost per read fell from 40 ms to 6-9 ms of node CPU
+  ([profile-plain-read.md](profile-plain-read.md)).
+* **`max_workers: 4` still collapses with 20 customers.** The pool is full of other keys' workers: 300+ spawns, a miss rate of 17-19%, and a 503 `Worker unavailable` for 94-98 requests. Eviction now works (v4 ran 6535 one-shot fallbacks; now 0), but a pool smaller than the active connections thrashes.
+  **Never run `max_workers` below the number of connections active within `idle_ttl`.**
+* **2 vCPU / 1 GB carries the mixed load in about 70% of runs** (5 of 7), at 2x the latency of the 4 vCPU node (page open p50 2.9 s against 1.4 s; read p95 4.0 s against 2.1 s), a peak memory of about 610 MiB of the 1 GiB, and without
+  headroom (throttled periods in every run, one unexplained stall). It is a viable bridge for the current node, not a recommendation for the 50-user target.
+* **At 80 ms round trip a warm read takes 243 ms at low load** (v4: 388 ms); the 42-read page open on 4 vCPU is 1.4 s p50 (v4: 5.8 s).
+* Dashboards: ten viewers on one dashboard cost 2.1-3.1 source queries per refresh (10 without the cache) at a hit rate of 0.69-0.79, not 1.0, because viewers refresh from random phases and the TTL is 10 s.
+* The generator's own cap: 256 requests in flight. Peak in flight reaches 210-290 even on the faster node because a page open is 42 requests at once; client-cap refusals are not server errors but are failures a user would see, so they are counted.
 
 ## Recommended production configuration
 
-For a 4 vCPU / 8 GB node serving about 50 concurrent users over about 20 hot connections. Where a
-value was not varied in the measurements it is the code default and says so. Every `warm_pool` key
-sits under `operations:`; **`read_workers` is validated but not read by anything yet** (defect 3),
-so the pool is configured only by `operations.warm_pool`.
+For a 4 vCPU / 8 GB node serving about 50 concurrent users over about 20 hot connections. Where a value was not varied in the measurements it is the code default and says so. Capacity of the read workers is set in
+**`read_workers`** (node setting, restart to change); `operations.warm_pool` holds `enabled`, the cache, caps and the queue depth, and **must not set the same capacity fields** (a configuration error). The file is the scenario
+`benchmarks/pooled-read-load/scenarios/4c8g.yaml`, validated by `TestPooledReadLoadScenariosAreValid` with the node's own checks.
 
 ```yaml
 policy:                      # cluster metadata: changing these means re-initialising the cluster
-  max_queries: 256           # queued + running jobs per tenant; measured peak in flight 270 with the cap at 256
+  max_queries: 256           # queued + running jobs per tenant; measured peak in flight 290 with the cap at 256
   job_ttl: 2m
   lease_duration: 5s
   replicas: 3                # production brokers are replicated; the load test used 1
@@ -101,54 +102,55 @@ policy:                      # cluster metadata: changing these means re-initial
 resources:
   max_concurrent: 32
   memory_mb: 7000
-  baseline_mb: 500           # gateway + node process measured at ~340 MiB RSS
-  overhead_mb: 64            # must be >= limits.memory_mb + containment native + parent overhead
+  baseline_mb: 500           # gateway + node process measured at ~345 MiB RSS
+  overhead_mb: 64            # must be >= limits.memory_mb + containment native + parent overhead, and >= max_in_flight x stream_buffer_mb
   scratch_mb: 1024
   separate_classes: true     # analysis jobs cannot take the interactive share
-  query_reserve_slots: 28    # the interactive share: read workers and native reads
-  query_reserve_memory_mb: 5500
+  query_reserve_slots: 28    # the interactive share: read workers and native reads; must exceed max_workers by one
+  query_reserve_memory_mb: 5500   # must fit max_workers x (worker_memory_mb + overhead_mb + max_in_flight x stream_buffer_mb) + one result download
   query_reserve_scratch_mb: 768
 
 containment:
-  max_groups: 128            # >= max_workers + one-shot fallbacks; peak seen: 28 cgroups
+  max_groups: 128            # >= max_workers + one-shot fallbacks; peak seen: 21 cgroups
 containment_budget: {native_overhead_mb: 16, parent_overhead_mb: 16, max_processes: 64}
+
+read_workers:                # capacity of the read workers (#222, #225, #228)
+  max_workers: 20            # >= connections active within idle_ttl. 4 collapsed with 20 customers
+  max_per_key: 1             # measured with 1; the default is 2 (a burst may scale out to a second worker)
+  max_in_flight: 16          # default; reads in flight per worker
+  pool_size: 12              # source connections per worker, 1-32; max_workers x pool_size <= 256. See "pool_size" below
+  idle_ttl: 30m              # default
+  queue_wait: 10s            # default 2s; bounded wait for a worker slot before a retryable refusal; must be < 30s
+  stream_buffer_mb: 4        # default 8; max_in_flight x stream_buffer_mb must fit resources.overhead_mb
+  relational_adapter:        # the slim adapter (kelvo-adapter-relational), pinned like operations.adapter
+    binary: /opt/kelvo/releases/<release>/kelvo-adapter-relational
+    sha256: <digest from the build>
 
 operations:
   max_concurrent: 2          # background analysis jobs; must be <= resources.max_concurrent and <= audit.max_pending
   max_downloads: 2
   max_result_bytes: 16777216 # 16 MiB is the maximum
-  warm_pool:                 # the read workers
+  adapter: {binary: ..., sha256: ...}   # the full adapter, for operations
+  warm_pool:                 # the rest of the pool's settings; capacity fields are not set here
     enabled: true
-    max_workers: 20          # >= hot connections (measured). 4 (default) collapsed. No LRU eviction yet
-    max_per_key: 1           # default; one worker per connection
-    max_in_flight: 16        # default; reads in flight per worker
-    max_per_tenant: 32       # default; reads in flight per team
+    max_per_tenant: 32       # default 64; reads in flight per team
     max_per_connection: 16   # default max_per_key x max_in_flight
     queue_depth: 64          # default; reads waiting for a full worker
-    queue_timeout: 10s       # default; then RESOURCE_EXHAUSTED, retry after 1 s
-    idle_ttl: 10m            # default is 30m; shorter bounds memory until idle workers are evicted for new keys
-    worker_memory_mb: 64     # default; a cap. Measured cgroup memory per worker is 21-27 MiB (profile-plain-read.md)
+    worker_memory_mb: 64     # default; a cap. Measured per worker: 12 MiB anonymous at pool 4, cgroup 13 MiB with the slim adapter
     reauthorize_every: 60s   # signed off by the owner: a revoked source is refused within 60 s
     cache_disabled: false
-    cache_ttl: 10s           # signed off; refresh bypass via X-Refresh only (defect 2)
+    cache_ttl: 10s           # signed off; an explicit refresh bypasses it (BypassCache)
     cache_max_entry_bytes: 4194304
     cache_max_total_bytes: 67108864
 
-read_workers:                # accepted and validated, currently inert; keep it equal to warm_pool
-  max_workers: 20
-  max_in_flight: 16
-  pool_size: 4               # the adapter hard-codes 4 (relational PoolSize); see defect 3
-  idle_ttl: 10m
-  queue_wait: 2s
-
 audit:                       # gateway and node, each its own journal directory
   max_entries: 524288        # see "Audit journal sizing"
-  max_pending: 512           # >= operations.max_concurrent; covers queued starts and active receipts
+  max_pending: 512           # must cover admitted work: >= operations.max_concurrent and about max_http_requests (see below)
   retention: 1h
-  write_timeout: 2s
+  write_timeout: 2s          # at least 52 ms (#230's group commit)
 
 gateway:
-  max_http_requests: 512     # measured peak in flight 270
+  max_http_requests: 512     # measured peak in flight 290
 
 connection_resolvers:
   <issuer>:
@@ -156,32 +158,32 @@ connection_resolvers:
     max_concurrent: 16       # one resolve costs the resolver ~300 ms: 16 slots allow ~50 resolves/s
 ```
 
+(The harness file puts the pool's fixed fields under `warm_pool:` at the top level of the scenario; in a node config they sit under `operations.warm_pool`.)
+
 db-api's client: `MaxConcurrent: 256` (the maximum) and `MaxControlConcurrent: 128`. The Go client refuses
 immediately (`RESOURCE_EXHAUSTED`) when its own limit is full, which looks like a node capacity
-error and is not one; the harness reports it as `CLIENT_ADMISSION_LIMIT`. Every run above hit it at 123-4506 requests.
+error and is not one; the harness reports it as `CLIENT_ADMISSION_LIMIT`. A page open of 42 requests plus dashboards reaches 210-290 in flight at the design load, so the cap is in reach in about 1 run of 10 on the 4 vCPU node.
 
-The two states are separate on purpose: `separate_classes` and `query_reserve_*` split the admission
-pool, `warm_pool.*` shapes the read workers inside the interactive share.
+The two states are separate on purpose: `separate_classes` and `query_reserve_*` split the admission pool, `read_workers` shapes the read workers inside the interactive share.
 
 ## Node sizing for 50 concurrent users
 
-Derived from the 4 vCPU / 8 GB, 20 worker run (v4: 9014 single-call requests in 306 s, about 29
-per second):
+Derived from the 4 vCPU / 8 GB, 20 worker, pool 12 runs (about 10,000 single-call requests in 306 s, about 33 per second):
 
 | Resource | Measured | Rule |
 | --- | --- | --- |
-| CPU | 1.52 cores mean, 52 ms of node CPU per request (CPU of the NATS broker and PostgreSQL excluded) | cores >= 2 x (requests per second x 0.05); about 3 cores at 30 requests per second. Plan **4 vCPU**. 2 vCPU ran at 78-95% of its limit and collapsed |
-| Memory | gateway + node 340 MiB; each read worker 21-27 MiB of its own (anonymous: Go heap, stacks) plus a 42 MiB mapping of the 154 MB adapter binary that all workers share ([profile-plain-read.md](profile-plain-read.md)); cgroup peak 1.06 GiB with 20 workers, which also holds the page cache of the audit journals | 0.4 GiB + 22 MiB x (hot connections within `idle_ttl`) + 42 MiB. 20 workers: about 0.9 GiB; 100 workers: about 2.7 GiB |
-| Source connections | 4 per worker, 77 at 20 workers | check the customer databases' `max_connections`; 16 per worker is 290 |
+| CPU | 0.26-0.52 cores mean, about 15 ms of node CPU per request including the share of the gateway (CPU of the NATS broker and PostgreSQL excluded; the load generator, proxy and PostgreSQL used another 0.1-0.3 cores of the runner) | cores >= 4 x (requests per second x 0.015); about 2 cores at 30 requests per second keeps the node below 30% busy. The 2 vCPU node ran at 28% busy but with 3-11 throttled periods in every run, so plan **4 vCPU** for headroom |
+| Memory | gateway + node 345 MiB; each read worker on the slim adapter 12 MiB anonymous at pool 4 and about 19 MiB at pool 12 (RSS 30 MiB with shared binary pages counted per worker); cgroup peak 780-816 MiB with 20 workers at pool 12, which also holds the page cache of the audit journals | 0.4 GiB + 20 MiB x (hot connections within `idle_ttl`) + 20 MiB. 20 workers: about 0.8 GiB; 100 workers: about 2.5 GiB |
+| Source connections | `pool_size` per worker: 219 backends at 20 workers x 12 | check the customer databases' `max_connections`; the node bounds `max_workers x pool_size` at 256 |
 | Disk (audit) | 2 KiB per audit slot, preallocated | see below |
 
-**Recommended node: 4 vCPU / 8 GB.** Memory is not what limits a node: 20 workers fit in 1 GiB and 100 in about 3 GiB; CPU is (see above). 4 GB is enough for the memory; 8 GB leaves room for fallback children, journals and growth. Take `max_workers` from the number of distinct connections active within `idle_ttl`, not from
-users: idle workers are not evicted for new keys (defect 4), so a pool smaller than the hot set collapses.
+**Recommended node: 4 vCPU / 8 GB** with 20 workers and `pool_size` 12. Memory is not what limits a node: 20 workers fit in 0.8 GiB and 100 in about 2.5 GiB. The 2 vCPU / 1 GB node carried the same configuration in 5 of 7 runs at about twice the latency; use it as a bridge only (see the upgrade plan).
+Take `max_workers` from the number of distinct connections active within `idle_ttl`, not from users.
 
 ### Workers per GB
 
-A worker's own memory is 21-27 MiB (anonymous pages); the adapter binary's 42 MiB of resident pages are shared by all workers and
-charged once ([profile-plain-read.md](profile-plain-read.md)); gateway and node are 340 MiB. With a quarter of the cgroup kept free:
+A worker's own memory is about 12 MiB (pool 4) to 19 MiB (pool 12) of anonymous pages with the slim adapter; the binary's resident pages (16.6 MB file, 11 MiB resident) are shared by all workers and
+charged once ([profile-plain-read.md](profile-plain-read.md)); gateway and node are 345 MiB. With a quarter of the cgroup kept free and 24 MiB per worker (conservative: above the measured 19 MiB at pool 12):
 
 | cgroup memory | Workers that fit in memory (24 MiB each) |
 | --- | --- |
@@ -190,66 +192,61 @@ charged once ([profile-plain-read.md](profile-plain-read.md)); gateway and node 
 | 4 GB | 112 |
 | 8 GB | 240 |
 
-(workers = (0.75 x memory - 382 MiB) / 24 MiB.) Only 20 workers were run; the 0.9 GiB for 20 is extrapolated from 12 (cgroup peak 660 MiB) and
-measured at 1.06 GiB at 20 including the journals' page cache. **The admission pool, not memory, is the limit that bites first:** each worker
-reserves `limits.memory_mb + overhead_mb` (96 MiB logical with the 32 + 64 used here, four times what it uses), and the interactive share
-admits `min(query_reserve_slots, query_reserve_memory_mb / 96)` of them: 28 with the recommended config. Raise `query_reserve_slots` and
-`query_reserve_memory_mb` together to admit more (for example slots 64 and memory 6144 MiB on 8 GB; not tested), and `containment.max_groups` above the worker count
-plus one-shot fallbacks (peak 28 cgroups seen). `warm_pool.max_workers` may not exceed `resources.max_concurrent`.
+(workers = (0.75 x memory - 382 MiB) / 24 MiB.) Measured: 20 workers at pool 12 used a cgroup peak of 784-816 MiB on 4 vCPU and 580-624 MiB on 2 vCPU/1 GB, including the journals' page cache. **The admission pool, not memory, is the limit that bites first:** each worker
+reserves `limits.memory_mb + overhead_mb + max_in_flight x stream_buffer_mb` of the interactive share (32 + 64 + 64 = 160 MiB logical with the values here, several times what it uses; node validation checks that all `max_workers` fit with a result download), and the interactive share
+admits `min(query_reserve_slots, query_reserve_memory_mb / 160)` of them. Raise `query_reserve_slots` and
+`query_reserve_memory_mb` together to admit more, and `containment.max_groups` above the worker count
+plus one-shot fallbacks (peak 21 cgroups seen). `read_workers.max_workers` may not exceed `resources.max_concurrent`.
 
 ### Source connections per worker (`pool_size`)
 
-A warm read costs 4 source round trips (2 after #229), so one worker, with a pool of P connections to a source at round trip R,
-serves at most **P / (4 x R)** reads per second, and a burst of B reads on one connection takes about B x 4 x R / P:
+A source connection stays busy for **3 round trips per warm read**: 2 on the critical path (the client waits for them) and the background `ROLLBACK`, which #229 took off the critical path but which still has to finish before the connection serves the next read. (Before #229 it was 4.) So one worker with a pool of P connections to a source at round trip R
+serves at most **P / (3 x R)** reads per second, and a burst of B reads on one connection takes about B x 3 x R / P:
 
-| RTT to the source | Warm read | Pool 4: ceiling / 42-read page open | Pool 8 | Pool 16 | Pool 4 with 2 round trips (#229) |
+| RTT to the source | Warm read, client waits (2 turns) | Pool 4: ceiling / 42-read page open | Pool 8 | Pool 12 | Pool 16 |
 | --- | --- | --- | --- | --- | --- |
-| 20 ms | 80 ms | 50/s, 0.8 s | 100/s, 0.4 s | 200/s, 0.2 s | 100/s, 0.4 s |
-| 40 ms | 160 ms | 25/s, 1.7 s | 50/s, 0.8 s | 100/s, 0.4 s | 50/s, 0.8 s |
-| 80 ms (measured) | 320 ms | 12.5/s, 3.4 s | 25/s, 1.7 s | 50/s, 0.8 s | 25/s, 1.7 s |
-| 100 ms | 400 ms | 10/s, 4.2 s | 20/s, 2.1 s | 40/s, 1.1 s | 20/s, 2.1 s |
-| 160 ms | 640 ms | 6.3/s, 6.7 s | 12.5/s, 3.4 s | 25/s, 1.7 s | 12.5/s, 3.4 s |
+| 20 ms | 40 ms | 67/s, 0.6 s | 133/s, 0.3 s | 200/s, 0.2 s | 267/s, 0.2 s |
+| 40 ms | 80 ms | 33/s, 1.3 s | 67/s, 0.6 s | 100/s, 0.4 s | 133/s, 0.3 s |
+| 80 ms (measured) | 160 ms | 16.7/s, 2.5 s | 33/s, 1.3 s | 50/s, 0.8 s | 67/s, 0.6 s |
+| 100 ms | 200 ms | 13/s, 3.2 s | 27/s, 1.6 s | 40/s, 1.1 s | 53/s, 0.8 s |
+| 160 ms | 320 ms | 8.3/s, 5.0 s | 17/s, 2.5 s | 25/s, 1.7 s | 33/s, 1.3 s |
 
-The 80 ms row was measured: 12.1 reads/s from the adapter alone with 4 connections, 14.1 through the whole stack, page open 3.4 s. Pool 16
-cut the explorer page-open median from 5.8 to 3.4 s in the mixed run (the tail did not move) and took the source from 77 to 290 connections.
+Measured at 80 ms with pool 4: **16.1 reads/s** at 50 concurrent on one connection (profile, three runs: 16.0-16.1), against the 16.7/s ceiling; a warm read is 243 ms at low load. In the mixed run, pool 4 against pool 12 on the 4 vCPU node: page-open p50 3.2 s against 1.4 s, p95 5.8 s against 2.9 s, explorer read p95 4.4 s against 2.1 s, and failed requests 4 against 0. On the 2 vCPU node the pool is the difference between failing and (mostly) passing.
 
-Recommendation: size `pool_size` so a 42-read page open finishes in about 1.5 s: `pool = ceil(42 x turns x R / 1.5 s)`, which is **9 at 80 ms**, 12 at 100 ms and 18 at 160 ms (4
-turns): use 8-16; do not go past the customer database's connection allowance (`pool_size x
-workers` per source: 20 workers x 16 = 320). **Through the Tailscale exit node the RTT is
-the sum of both legs**: Kelvo to the exit node plus the exit node to the source. An 80 ms exit-to-source leg plus 20 ms to the exit node is the 100 ms row:
-12 connections for a 1.5 s page open. `pool_size` is not configurable yet (defect 3: the adapter constant is 4; the Phase 4 wiring adds
-`--pool-size`), so until then the ceiling is the pool-4 column and a page open on a 100 ms path takes about 4 s.
+Recommendation: **`pool_size` 12 at 80-100 ms round trip** (the measured value, 1.4 s page open); `pool = ceil(42 x 3 x R / 1.5 s)` gives 7 at 80 ms, 9 at 100 ms and 14 at 160 ms for a 1.5 s page open, and the measured 12 leaves room for bursts of several users on
+one connection. **Through the Tailscale exit node the RTT is the sum of both legs**: Kelvo to the exit node plus the exit node to the source. An 80 ms exit-to-source leg plus 20 ms to the exit node is the 100 ms row: pool 12 (page open about 1.1 s idle). Do not go past the customer database's connection allowance:
+`pool_size x max_workers` per source host (20 x 12 = 240; the node refuses more than 256 in total). A per-source connection budget in the node is **fix in progress** ([#237](https://github.com/SyneHQ/kelvo-go/pull/237)).
 
 ### Audit journal sizing
 
 Each journal is preallocated at 16 KiB + 2 KiB x `max_entries` (262,144 entries was a 512 MiB file) and **never
-overwrites an unexpired entry**; when it is full the gateway answers 503 `Audit storage unavailable`. Measured at
-9014 single-call requests plus 23 analysis operations: the **gateway journal used 17,662 entries (1.96 per request) and the node
-journal 8,844 (0.98 per request)**. Size each journal at `requests per second x receipts per request x retention seconds`:
+overwrites an unexpired entry**. Measured at about 10,000 single-call requests plus 22 analysis operations in 306 s: the **gateway journal used 19,935 entries (1.99 per request) and the node
+journal 9,980 (1.0 per request)**. Size each journal at `requests per second x receipts per request x retention seconds`:
 
 | Request rate | Gateway, retention 1 h | Node, retention 1 h |
 | --- | --- | --- |
-| 30/s | 212,000 entries (434 MiB) | 106,000 entries (217 MiB) |
-| 100/s | 706,000 entries (1.4 GiB) | 353,000 entries (0.7 GiB) |
-| the maximum | 1,048,576 entries (2 GiB), about 148 requests/s for 1 h | |
+| 30/s | 215,000 entries (440 MiB) | 108,000 entries (220 MiB) |
+| 100/s | 716,000 entries (1.4 GiB) | 360,000 entries (0.7 GiB) |
+| the maximum | 1,048,576 entries (2 GiB), about 146 requests/s for 1 h | |
 
-The 4096-entry journal first used in the harness was an early mistake of mine, not a measured threshold; the
-sizes above come from the usage count, not from a failure. Alert on usage (see below) because the failure
-mode is a hard stop for all traffic of that service.
+**A full journal and a full pending queue are different.** A full journal stops all traffic of that service. A full *pending queue* (`audit.max_pending`, admitted work waiting for its receipt) used to answer 503 `Audit storage unavailable`, which looked like an outage;
+**#236 merged: it is now capacity, a 429.** In the first run on the first-release config (`max_pending` 64) 345 requests got the 503 at a peak of 103 in flight; with 256 the 503 did not recur. `max_pending` must cover the admitted work: at least
+`gateway.max_http_requests` plus `operations.max_concurrent`. Further capacity-versus-fault fixes on every audit path are **fix in progress** ([#239](https://github.com/SyneHQ/kelvo-go/pull/239)).
+Alert on usage (see below) because a full journal is a hard stop.
 
 ## Deploy order and mixed versions
 
-Deploy: **node (and its adapter), then the gateway, then db-api**.
+Deploy: **node (and its adapters), then the gateway, then db-api.** The step-by-step plan, with probes and rollback, is [pooled-read-workers-upgrade.md](pooled-read-workers-upgrade.md).
 
-* Node and adapter are a pair. The node pins the adapter binary by SHA-256 (`operations.adapter.sha256`), and frame
+* Node and adapter are a pair. The node pins the adapter binary by SHA-256 (`operations.adapter.sha256`, and `read_workers.relational_adapter.sha256` for the slim one), and frame
   protocol v2 (multiplexed streams) fails closed: a v1 adapter's Hello is refused with a version mismatch, so no
   read worker starts. Native reads then fall back to the one-shot path, and metadata inspections (which have no one-shot path) fail
-  `UNAVAILABLE`. Ship the node binary and the adapter built from the same revision.
+  `UNAVAILABLE`. Ship the node binary, the launcher and the adapters built from the same revision. A slim adapter that is configured but unusable falls back to the full adapter.
 * db-api after the node. db-api's single-call read, `client.QueryStream`, needs `POST /v1/queries/stream`. Against a node without it the client returns
-  `ErrStreamUnsupported` before anything is sent, and db-api falls back to submit, wait and fetch. The new `inspect` request field
+  `ErrStreamUnsupported` before anything is sent, and db-api falls back to submit, wait and fetch. The `inspect` request field
   has no such fallback: send it only to nodes that accept it.
-* db-api must send one query alias per saved connection (defect 6) and TLS (`sslmode=verify-full&connect_timeout=5`) DSNs from the resolver
-  (the delegated query path rejects `sslmode=disable`; the operation path allows it).
+* db-api sends TLS (`sslmode=verify-full&connect_timeout=5`) DSNs from the resolver
+  (the delegated query path rejects `sslmode=disable`; the operation path allows it). Workers are keyed by the saved connection since #221 (the request alias no longer matters; the shared-alias evidence run has 0 errors).
 * **Untested:** mixed gateway/node versions from this stack. `docs/rolling-upgrades.md` only authorizes tested pairs. Roll all gateways and
   nodes of a tenant as one step; do not run a new gateway against old nodes.
 * A node restart ends its workers; credentials and cache are in memory. After a restart the first read per connection resolves again
@@ -279,18 +276,18 @@ Available now (node `GET /metrics` and `GET /resources`, gateway mTLS; log lines
 | Signal | Source | Alert (starting point from the measurements) |
 | --- | --- | --- |
 | Failed read, by code, class and stage | node log `kelvo read failed: code= class= stage= duration_ms=` | any `class=capacity`; `stage=resolve` or `validation` rate above 1% of reads |
-| Job duration | `kelvo_job_duration_seconds` | p95 above the db-api timeout budget. `kelvo_job_queue_wait_seconds` is **not** a useful signal: it measures the node permit, 99.8% of jobs waited under 1 ms in the healthy run and 98.1% in the collapsed 2 vCPU run (99.3% under 1 s), because the waiting happens in the gateway and the pool |
+| Job duration | `kelvo_job_duration_seconds` | p95 above the db-api timeout budget. `kelvo_job_queue_wait_seconds` is **not** a useful signal: it measures the node permit and was under 1 ms for nearly all jobs even in collapsed runs, because the waiting happens in the gateway and the pool |
 | Rejections | `kelvo_jobs_rejected_total` | any increase |
 | Credential resolve time | `kelvo_worker_resolve_seconds` | p95 over 1 s (300 ms was the test's resolve) |
 | Admission pool | `GET /resources` | interactive share above 80% for 5 minutes |
-| CPU throttling | cgroup `cpu.stat` `nr_throttled` on the node's unit | **any increase**: every collapsed run had 2000-3000; healthy runs had 0 |
+| CPU throttling | cgroup `cpu.stat` `nr_throttled` on the node's unit | **any sustained increase**: 3-11 periods per 5 minutes were seen on the healthy 2 vCPU runs, 0 on 4 vCPU; the collapsed v4 runs had 2000-3000 |
 | Memory | cgroup `memory.current` / `memory.peak` against `MemoryMax` | above 80% |
 | Audit journal | no metric; compute from the request rate (about 2 gateway receipts and 1 node receipt per request) | projected fill above 70% of `max_entries` within `retention` |
 
 **Not exported today, and needed:** warm pool counters (workers, spawns, hits, misses, one-shot fallbacks, evictions by
 cause, authorizations, queue wait) and result cache hits. They exist in process (`WarmPoolMetrics`) and the load harness reads
-them there; production cannot. Until they are exported, one-shot fallbacks are only visible as CPU and latency.
-Alert on fallbacks above 1% of reads and on `workers == max_workers` with misses once they exist.
+them there; production cannot. Until they are exported, one-shot fallbacks and worker thrash are only visible as CPU, latency and `Worker unavailable` 503s.
+Alert on fallbacks above 1% of reads and on `workers == max_workers` with misses once they exist. The slim adapter has `kelvo_read_adapter_slim_active` and `kelvo_read_adapter_slim_fallbacks_total`.
 
 ## The hosting change
 
@@ -302,39 +299,41 @@ What it changes (reasoning from the measurements; the tunnel itself was not meas
   Mumbai-US-East link. The resolve and its two custody checks per read are now local calls, and with reauthorization
   every 60 s a warm connection pays them once a minute, not per read.
 * **Kelvo to the source gains the exit node.** Every source packet takes the extra path, so the source round trip is
-  RTT(Kelvo, exit node) + RTT(exit node, source). The test's 80 ms models that sum. A warm read costs about 4 source round
-  trips (measured idle p50 0.32 s at 80 ms), a connection open several more, and with the adapter's fixed 4-connection pool a worker
-  serves at most about 1/RTT reads per second (12 per second at 80 ms). Put the exit node close to the customers' databases, or
-  raise the pool (defect 3) before moving: if source round trips dominate, doubling the round trip roughly doubles a page open (an estimate, not measured).
-* **Bandwidth.** All result bytes cross the exit node: 99 MB in 310 s at the 50-user mix, about 0.3 MB/s mean (2.6 Mbit/s). Console pages
+  RTT(Kelvo, exit node) + RTT(exit node, source). The test's 80 ms models that sum. A warm read keeps a source connection for 3 round
+  trips (2 the client waits for; measured idle p50 0.24 s at 80 ms), a connection open several more, and a worker with `pool_size` P
+  serves at most P / (3 x RTT) reads per second (50 per second at pool 12 and 80 ms; 40 at 100 ms). Put the exit node close to the customers' databases and set `pool_size` from the table above
+  before the move: if source round trips dominate, doubling the round trip roughly doubles a page open (an estimate, not measured).
+* **Bandwidth.** All result bytes cross the exit node: the 50-user mix moved about 0.3 MB/s mean (2.6 Mbit/s) in earlier runs. Console pages
   and analysis exports dominate. Size the exit node's uplink for the largest simultaneous export, not the mean.
-* Tailscale adds per-packet encryption on both ends; at this rate that is small next to the node's 52 ms of CPU per request, but
+* Tailscale adds per-packet encryption on both ends; at this rate that is small next to the node's 15 ms of CPU per request, but
   it was not measured.
 * The Oracle node stops running Kelvo, so its 951 MB limit no longer applies to workers; the new node is sized as above.
 
 ## Observations that are not defects of this stack
 
-* **Unconstrained `NUMERIC` results fail.** `sum(amount)` or `avg(amount)` over `numeric` returned `SOURCE_FAILED` for every panel until the
-  query cast to `numeric(18,2)`. The adapter fails explicitly on a type it cannot map (as AGENTS.md requires), but dashboards produce these
-  aggregates constantly. Tracked separately; db-api or the user must cast for now.
 * **The delegated query path accepts only `sslmode=verify-full&connect_timeout=5`** PostgreSQL DSNs, with the CA passed as the
   `tls_ca_pem` source option. Operations accept `sslmode=disable`.
-* **Result cache TTL and viewers.** A 10 s TTL does not turn ten viewers into one query unless they refresh within the same window.
+* **Result cache TTL and viewers.** A 10 s TTL does not turn ten viewers into one query unless they refresh within the same window (2.1-3.1 source queries per refresh with ten viewers).
+* **Source turns per read are 3, not 2.** The third is the background `ROLLBACK` after the read; it is off the critical path, but its connection is not free until it finishes. Sizing uses 3.
 
-## Open defects that gate rollout
+## Product findings and their status
 
-Evidence is in the artifacts of the runs above; owners are the pull requests that introduced them.
+Evidence is in the artifacts of the runs above. "Fixed" means verified on the merged code by the runs listed; "fix in progress" means a pull request is open.
 
-1. **Every read-worker read fails the client's receipt check** (`PROTOCOL_ERROR`): the job's `Stats.Batches` is never set on the read-worker path (#219).
-   Unpatched, 386 of 388 requests failed. Measured with patch 0001.
-2. **`bypass_cache` does not reach the cache** (#220, #219): the gateway sets `BypassCache`, the cache reads `Refresh`. In every run `bypass_cache_reaches_source: false`, `refresh_reaches_source: true`.
-3. **`read_workers` is inert** (#222): not read by the warm pool; the adapter's pool size is a constant 4.
-4. **Idle workers are not evicted for a new key** (read-path stack): a full pool sends new keys one-shot and fails their inspections.
-5. **A waiting single-call read polls every 50 ms and re-verifies the signed grant each time** (#220, `Gateway.relayResults`): 47% of node CPU on the 2 vCPU runs.
-6. **Workers are keyed by the request alias** (#217/#221): connections of one team that share an alias evict each other.
+| # | Finding (from the first runs) | Status |
+| --- | --- | --- |
+| 1 | Every read-worker read failed the client's receipt check (`PROTOCOL_ERROR`, `Stats.Batches` never set) | **Fixed** (the phase 2 and 3 stack). 0 `PROTOCOL_ERROR` on reads in every run; 2-3 on analysis operations in overload runs of the first-release scenario only (not explained: the operation path under 429s) |
+| 2 | `X-Refresh` / `bypass_cache` did not reach the cache | **Fixed** (7447f28: one `BypassCache` field). The probe confirms that an explicit refresh reaches the source in 52 of 63 runs; the 11 misses (in all configurations, no pattern) are an explicit-refresh flake, **fix in progress** ([#234](https://github.com/SyneHQ/kelvo-go/pull/234)) |
+| 3 | `read_workers` settings were inert; the adapter pool was fixed at 4 | **Fixed** (#222, #225): `pool_size` reaches the adapter (`serve --pool-size`); measured in the pool-12 runs |
+| 4 | Idle workers were not evicted for a new key | **Fixed**: 0 one-shot fallbacks in every run. A pool smaller than the active connections still thrashes and answers 503 `Worker unavailable`; making that a bounded capacity refusal is **fix in progress** ([#237](https://github.com/SyneHQ/kelvo-go/pull/237)) |
+| 5 | Waiting single-call reads polled every 50 ms and re-verified the grant | **Fixed** (#230): Ed25519 verifications per read 30 -> 4; node CPU per read 40 ms -> 6-9 ms |
+| 6 | Workers keyed by the request's connection alias | **Fixed** (#221, 65bd44c): the shared-alias run has 0 errors and 5 spawns |
+| 7 | Unconstrained `NUMERIC` results failed | **Fixed** (#226 exact decimal text; #227 bounded source codes) |
+| 8 | A pending-queue-full audit journal answered 503 `Audit storage unavailable` | **Fixed** (#236: 429); capacity versus fault on the other audit paths **fix in progress** ([#239](https://github.com/SyneHQ/kelvo-go/pull/239)) |
+| 9 | Adapter allocations per read rose from 89 KB to 152 KB (mallocs unchanged), from the pooled result buffer's new shape | **Fix in progress** ([#235](https://github.com/SyneHQ/kelvo-go/pull/235), pools the 64 KiB result buffer) |
+| 10 | A run on the 2 vCPU node stalled: 758 requests hit the 30 s deadline with the node at 0.5 cores and no server-side capacity error (1 of 7 runs of that configuration; a second run had 53 generator-cap refusals) | **Open, unexplained.** The 4 vCPU node had no stall in 10 runs |
 
-Before rollout: all six fixed, `benchmarks/pooled-read-load/patches/` empty, the full matrix rerun on the fixed stack with
-0 server capacity errors and 0 client-cap refusals, the metrics gap above closed, and the mixed-version step tested.
+Before rollout: the five items marked fix in progress either merged or accepted by the owner, the metrics gap above closed, the mixed-version step tested, and the matrix rerun on the release build with 0 server capacity errors.
 
 ## Running the test
 
@@ -343,11 +342,12 @@ Workflow `Pooled read load` (pull requests that touch the harness, or manually).
 ```sh
 python3 scripts/pooled_read_load.py --profile 4c8g --duration 300 --output /tmp/run \
   --postgres-password-file pg.password --kelvo bin/kelvo --launcher bin/kelvo-landlock \
-  --adapter bin/kelvo-adapter-go --cluster-test bin/cluster.test --loadgen bin/loadgen --latproxy bin/latproxy \
-  --set warm_pool.max_workers=20
+  --adapter bin/kelvo-adapter-go --relational-adapter bin/kelvo-adapter-relational \
+  --cluster-test bin/cluster.test --loadgen bin/loadgen --latproxy bin/latproxy \
+  --set read_workers.pool_size=12
 python3 scripts/pooled_read_load_summary.py /tmp/run/report.json
 ```
 
 `--set key=value` overrides any scenario key (`benchmarks/pooled-read-load/scenarios/`). The report holds per-class latency, errors by
 code, node CPU and RSS, workers, spawns, evictions, cache hit rate, source queries per dashboard refresh, resolver calls, the audit journal
-use and a CPU profile (`node-cpu-top.txt`).
+use and a CPU profile (`node-cpu-top.txt`). Entries that are expected to fail their gate (undersized comparisons) are `informational`: their reports are published but do not fail the workflow.
