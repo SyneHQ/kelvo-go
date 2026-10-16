@@ -321,6 +321,7 @@ func warmPoolCapacityContract(t *testing.T, limits admission.Limits) {
 	warm := DefaultWarmPoolConfig()
 	warm.Enabled = true
 	warm.QueueTimeout = 500 * time.Millisecond
+	warm.EvictMinIdle = 10 * time.Millisecond // this gate is about capacity; idle age has its own unit tests
 	mgr, err := NewWarmPoolManager(warm, nil)
 	if err != nil {
 		t.Fatal(err)
