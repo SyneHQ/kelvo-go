@@ -76,7 +76,7 @@ jobs:
             --kelvo "$bin/kelvo" --launcher "$bin/kelvo-landlock" --adapter "$bin/kelvo-adapter-go" --relational-adapter "$bin/kelvo-adapter-relational" \
             --cluster-test "$bin/cluster.test" --loadgen "$bin/loadgen" --latproxy "$bin/latproxy" \
             --adapter-profile-test "$bin/adapter-profile.test" \
-            --set read_workers.max_workers=20 --set warm_pool.cache_disabled=true
+            --set read_workers.max_workers=20 --set read_workers.pool_size=4 --set warm_pool.cache_disabled=true
       - name: Retain the profile
         if: always()
         run: |

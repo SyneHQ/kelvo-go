@@ -37,7 +37,7 @@ read_workers:             # capacity of the read workers; pool_size is the adapt
   stream_buffer_mb: 4
 operations: {max_concurrent: 1, max_downloads: 1, max_result_bytes: 16777216}
 gateway: {max_http_requests: 64}
-audit: {max_entries: 262144, max_pending: 64}
+audit: {max_entries: 262144, max_pending: 256}
 resolver: {delay: 300ms, max_concurrent: 16}
 source: {host: 127.0.0.1, port: 0, password: "", ca_pem: "", customers: 20}
 sample_interval: 1s
