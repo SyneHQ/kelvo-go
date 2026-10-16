@@ -23,7 +23,7 @@ Omit `audit` to disable it. All limits are explicit. Configuration loading and `
 | `service_id` | 1–64 lowercase letters, digits or hyphens, beginning with a letter |
 | `directory` | Clean absolute path, privately owned by the service UID |
 | `max_entries` | 1–1,048,576 retained or active receipts |
-| `max_pending` | 1–4,096 queued starts and active receipts combined; no larger than `max_entries`. A runtime limit: the journal header does not bind it, so it can change on restart without a new journal. Must cover the work the service admits at once, or loading the configuration fails: at least `max_http_requests` on a gateway, and at least this node's `policy.workers` entry plus `operations.max_concurrent` on a node |
+| `max_pending` | 1–4,096 queued starts and active receipts combined; no larger than `max_entries`. A runtime limit: the journal header does not bind it, so it can change on restart without a new journal. Must cover the work the service admits at once, or loading the configuration fails: at least `max_http_requests` on a gateway, and at least this node's `policy.workers` entry plus `operations.max_concurrent` plus `exports.max_concurrent` and `exports.max_downloads` on a node |
 | `retention` | Greater than zero through 30 days, from terminal time |
 | `write_timeout` | 52 ms through 30 seconds, including queue and I/O acknowledgement. The floor is the 2 ms group-commit window plus 50 ms for an fsync |
 

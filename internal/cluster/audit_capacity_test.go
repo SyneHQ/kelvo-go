@@ -168,3 +168,36 @@ func TestNodeAuditDemandCountsExports(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A node's audit refusal on an export part is capacity to the downloader too,
+// end to end through the relay (not by feeding an error to the mapper).
+func TestExportPartRelayPassesOnANodeAuditRefusalAs429(t *testing.T) {
+	g, store, _ := exportGatewayFixture(t, "none")
+	wire, stats := exportGatewayWire(t, "none")
+	seedExportGatewayReady(t, g, store, wire, stats)
+	hits := 0
+	installExportGatewayWorker(t, g, func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "audit queue full", http.StatusTooManyRequests)
+	})
+	w := httptest.NewRecorder()
+	if panicked := exportGatewayCall(g, w, exportGatewayRequest(http.MethodGet, "/v1/exports/"+exportGatewayID+"/parts/0", rotationOld, "")); panicked != nil {
+		t.Fatalf("relay aborted: %v", panicked)
+	}
+	if hits != 1 || w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") != "1" || !strings.Contains(w.Body.String(), "RESOURCE_EXHAUSTED") {
+		t.Fatalf("worker hits=%d status=%d retry=%q body=%s", hits, w.Code, w.Header().Get("Retry-After"), w.Body.String())
+	}
+}
+
+func TestApplicationStorageErrorSplitsAuditCapacityFromFault(t *testing.T) {
+	busy, fault := httptest.NewRecorder(), httptest.NewRecorder()
+	applicationStorageError(busy, audit.ErrBusy)
+	applicationStorageError(fault, audit.ErrUncertain)
+	if busy.Code != http.StatusTooManyRequests || busy.Header().Get("Retry-After") != "1" || !strings.Contains(busy.Body.String(), "RESOURCE_EXHAUSTED") {
+		t.Errorf("busy: status=%d retry=%q body=%s", busy.Code, busy.Header().Get("Retry-After"), busy.Body.String())
+	}
+	if fault.Code != http.StatusServiceUnavailable || fault.Header().Get("Retry-After") != "" {
+		t.Errorf("fault: status=%d retry=%q", fault.Code, fault.Header().Get("Retry-After"))
+	}
+}

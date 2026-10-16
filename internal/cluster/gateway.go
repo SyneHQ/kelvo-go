@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -795,7 +796,14 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 		// the retry learns why.
 		reopened := s.Job
 		reopened.State, reopened.Claim = Assigned, ""
-		_, _ = t.store.CompareAndSwap(ctx, s, reopened)
+		// Not the request's context: the client may be gone, and the claim must
+		// not stay consumed because of it.
+		reopenCtx, stopReopen := context.WithTimeout(context.Background(), 3*time.Second)
+		if _, reopenErr := t.store.CompareAndSwap(reopenCtx, s, reopened); reopenErr != nil {
+			// Without it every retry gets 409 until the job expires; say so.
+			log.Printf("gateway: could not reopen a claim the node refused for audit capacity: %v", reopenErr)
+		}
+		stopReopen()
 		w.Header().Set("Retry-After", "1")
 		g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Audit queue full on the worker; retry after 1s")
 		return

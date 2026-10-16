@@ -281,6 +281,9 @@ func (p *preparedApplicationOperation) Execute(ctx context.Context) (receipt ope
 	}
 	op, err := p.app.beginAudit(ctx, audit.OperationExecution)
 	if err != nil {
+		if errors.Is(err, audit.ErrBusy) { // capacity, not an outage
+			return rejected("RESOURCE_EXHAUSTED"), err
+		}
 		return rejected("UNAVAILABLE"), err
 	}
 	defer op.abort(ctx)
