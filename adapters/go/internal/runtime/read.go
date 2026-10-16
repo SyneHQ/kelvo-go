@@ -8,6 +8,7 @@ import (
 	"errors"
 	"hash"
 	"io"
+	"sync"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
 	"github.com/SYNEHQ/kelvo-go/operations"
@@ -22,7 +23,14 @@ func executeRead(ctx context.Context, input adapter.ProcessRequest, invocation a
 	// Arrow IPC writes each message, buffer and pad separately; buffered,
 	// a small result leaves in one write (one Result frame) per batch.
 	// Limits and the digest still see every byte as it is produced.
-	buffered := bufio.NewWriterSize(output, resultBufferBytes)
+	// The 64 KiB buffer is pooled: allocating it per read was the largest single
+	// allocation of a small read. Nothing touches it after executeRead returns.
+	buffered := resultBuffers.Get().(*bufio.Writer)
+	buffered.Reset(output)
+	defer func() {
+		buffered.Reset(nil) // drop the reference to output
+		resultBuffers.Put(buffered)
+	}()
 	wire := &boundedHashWriter{writer: buffered, hash: sha256.New(), maximum: input.Limits.MaxBytes}
 	sink := &arrowSink{ctx: ctx, wire: wire, flush: buffered.Flush, maxRows: input.Limits.MaxRows, batchRows: int64(input.Limits.BatchRows)}
 	var stats adapter.QueryStats
@@ -70,6 +78,8 @@ func executeRead(ctx context.Context, input adapter.ProcessRequest, invocation a
 // resultBufferBytes holds a small result's IPC messages until its batch ends.
 // Larger writes pass straight through, so big results stream as before.
 const resultBufferBytes = 64 << 10
+
+var resultBuffers = sync.Pool{New: func() any { return bufio.NewWriterSize(nil, resultBufferBytes) }}
 
 type boundedHashWriter struct {
 	writer         io.Writer
