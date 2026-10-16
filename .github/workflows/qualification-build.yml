@@ -15,11 +15,11 @@ jobs:
       matrix:
         include:
           - name: new
-            sha: a45556e
+            sha: 5a748f7
             bridge: '0'
             target: adapter-build
           - name: new-bridge
-            sha: a45556e
+            sha: 5a748f7
             bridge: '1'
             target: build
     steps:
