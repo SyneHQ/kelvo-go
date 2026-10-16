@@ -539,7 +539,7 @@ jobs:
           cd adapters/go
           KELVO_RT_ASSERT=1 KELVO_RT_DELAY_MS=80 go test -race -count=1 -v -timeout 10m \
             -run 'TestReadRoundTripsLive|TestReadScenariosLive|TestPostgresReadSemanticsLive|TestPostgresDeadIdleConnectionsAreReplacedLive|TestPostgresStatementCountsSettleAfterBackgroundRollbackLive' \
-            ./connectors/relational | grep -E "^(---|\s+---|ok|FAIL|panic)|ENGINE=|SCENARIO"
+            ./connectors/relational | grep -E "^(---|\s+---|ok|FAIL|panic)|ENGINE=|SCENARIO|_test.go"
       - name: Remove the fixtures
         if: always()
         run: docker rm -f -v kelvo-rt-postgres kelvo-rt-mysql >/dev/null 2>&1 || true
