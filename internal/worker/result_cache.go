@@ -58,6 +58,7 @@ func (e *cacheEntry) size() int64 { return int64(len(e.data)+len(e.key)) + cache
 // and is cancelled only when every caller interested in it has gone.
 type cacheFlight struct {
 	started time.Time
+	refresh bool // led by an explicit refresh
 	done    chan struct{}
 	cancel  context.CancelFunc
 
@@ -145,7 +146,7 @@ func (c *resultCache) do(ctx context.Context, key, tenant string, refresh bool, 
 			return f.stats, f.err
 		}
 	}
-	f := &cacheFlight{started: time.Now(), done: make(chan struct{}), participants: map[int]time.Time{}}
+	f := &cacheFlight{started: time.Now(), refresh: refresh, done: make(chan struct{}), participants: map[int]time.Time{}}
 	c.flights[key] = f
 	id := c.joinLocked(f, ctx)
 	c.mu.Unlock()
@@ -153,15 +154,20 @@ func (c *resultCache) do(ctx context.Context, key, tenant string, refresh bool, 
 }
 
 // joinableLocked reports whether a read may join f. A plain read joins any
-// running read. A refresh joins one that started after the kept result it
-// bypasses was stored, or any when nothing is kept: one refresh execution per
-// key at a time, and never older than the result it refreshes.
+// running read. A refresh joins only a running refresh, and only one that
+// started after the kept result it bypasses was stored (or any when nothing is
+// kept): a burst of refreshes shares one execution, but a refresh is never
+// answered by a plain read that began before it arrived, which could predate
+// the change the user is refreshing for.
 func (c *resultCache) joinableLocked(f *cacheFlight, key string, refresh bool) bool {
 	if f.dead {
 		return false
 	}
 	if !refresh {
 		return true
+	}
+	if !f.refresh {
+		return false
 	}
 	element := c.entries[key]
 	return element == nil || f.started.After(element.Value.(*cacheEntry).stored)
