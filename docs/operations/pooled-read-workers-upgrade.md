@@ -43,7 +43,7 @@ Numbers come from [pooled-read-workers.md](pooled-read-workers.md) (load matrix)
 **Merged after the measurements, not re-measured:** #234, #235, #238, #239, #241 and #237 (per-source connection budget, adapter pool default 8, victim-age eviction, 429 for capacity). The release gate is a rerun on the release build.
 
 **Verified fixed on the merged code** by the matrix with `benchmarks/pooled-read-load/patches/` removed: every read passing the client receipt check, cache bypass wired, `read_workers` and `pool_size` effective, idle-worker eviction, no polling re-verification (Ed25519 verifications per read 30 -> 4), workers keyed by saved connection.
-**Open:** a stall of the 2 vCPU / 1 GB node in 1 of 7 runs at the target load ([issue 240](https://github.com/SyneHQ/kelvo-go/issues/240); runbook finding 10). It does not affect the 4 vCPU target (0 stalls in 10 runs). See Known issues at the end of this document.
+**Open, a release blocker (fix in progress, [issue 240](https://github.com/SyneHQ/kelvo-go/issues/240); runbook finding 10):** a gateway wedge seen on the 2 vCPU / 1 GB node (1 of 7 runs) and on the 4 vCPU target (about 1 run in 11). The release waits on the fix. See Known issues at the end of this document.
 
 ## 1. What ships
 
@@ -290,7 +290,7 @@ Release SHA and commit list; the four digests and the artifact's `SOURCE`; the c
 
 ## 8. Known issues
 
-* **2 vCPU / 1 GB stall** ([issue 240](https://github.com/SyneHQ/kelvo-go/issues/240)): 1 of 7 target-load runs on the current node failed every request from about t = 225 s with the node at 0.5 cores; unexplained. It is why the first release is a few users, not the 50-user mix. The harness captures goroutines and worker state if a run stalls (a manual dispatch of the matrix).
+* **Gateway wedge, a release blocker, fix in progress ([issue 240](https://github.com/SyneHQ/kelvo-go/issues/240)).** First seen on the current 2 vCPU / 1 GB node (1 of 7 target-load runs) and **also on the 4 vCPU target, about 1 run in 11**: healthy until about t = 100 s, then every request failed with 255 gateway requests parked waiting for job results and the workers and sources idle. The target's numbers hold for the 10 runs that did not stall. **The release waits on the fix.** It is also why the first release is a few users, not the 50-user mix. The harness captures goroutines and worker state when a run stalls (the stall capture, a gated run's artifact `stall/`).
 * **Flaky `validate` test** ([issue 242](https://github.com/SyneHQ/kelvo-go/issues/242)): `TestPrivateRuntimeDataOpenUsesOperationContextAndConfiguredBudget` fails intermittently under `-race`; re-run, do not ignore a repeat.
 * **Pre-fix measurements.** Every number here predates #234, #235 (the 152 KB adapter allocations per read figure is pre-#235), #238, #239, #241 and #237. The thresholds in 4.1 are the measured spread plus margin on that code and **must be re-derived from the rerun on the release build**.
 * **Not verified:** the exit-node path (modelled as added delay), mixed gateway and node versions, a multi-node cluster, node restart behaviour for waiting gateway requests, and the earlier worker-execution incident's cause.
