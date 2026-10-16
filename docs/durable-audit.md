@@ -23,7 +23,7 @@ Omit `audit` to disable it. All limits are explicit. Configuration loading and `
 | `service_id` | 1–64 lowercase letters, digits or hyphens, beginning with a letter |
 | `directory` | Clean absolute path, privately owned by the service UID |
 | `max_entries` | 1–1,048,576 retained or active receipts |
-| `max_pending` | 1–4,096 queued starts and active receipts combined; no larger than `max_entries`. A runtime limit: the journal header does not bind it, so it can change on restart without a new journal |
+| `max_pending` | 1–4,096 queued starts and active receipts combined; no larger than `max_entries`. A runtime limit: the journal header does not bind it, so it can change on restart without a new journal. Must cover the work the service admits at once, or loading the configuration fails: at least `max_http_requests` on a gateway, and at least this node's `policy.workers` entry plus `operations.max_concurrent` on a node |
 | `retention` | Greater than zero through 30 days, from terminal time |
 | `write_timeout` | 52 ms through 30 seconds, including queue and I/O acknowledgement. The floor is the 2 ms group-commit window plus 50 ms for an fsync |
 
@@ -95,3 +95,13 @@ On the dedicated Azure x86-64 test VM (4 visible CPUs, Xeon Platinum 8573C, Linu
 Opening measurements used four pending reservations and two tenants. They exclude mature retained-entry indexes, queries, surrounding runtime and filesystem cache. RSS deltas included negative values from GC, allocator reuse and lazy pages; they are not a memory ceiling.
 
 [Journal evidence](evidence/durable-audit-journal.json) includes repeated race checks, bounded blocked-I/O/crash fixtures and real `ENOSPC` on disposable 1 MiB tmpfs. [Runtime evidence](evidence/durable-audit-runtime.json) covers gateway/worker/refresh/CLI boundaries and records skipped fixtures. [Service acceptance](evidence/durable-audit-service.json) records two isolated runs through real gateway, worker, NATS and scheduled refresh processes: trusted receipts, restart persistence, damaged-journal rejection and explicit replacement recovery. Its two-row ClickHouse endpoint is an HTTP/Arrow fixture. These checks do not measure throughput, simulate power loss or qualify a storage provider; commands, hashes, resource bounds and failed attempts accompany the evidence.
+
+## A full audit queue is capacity, not an outage
+
+When every pending reservation is in use, a new request is refused with
+`429 RESOURCE_EXHAUSTED` ("Audit queue full; retry after 1s") and `Retry-After: 1`.
+Nothing was admitted. Clients treat it as retryable capacity (`client.Error.RetryAfter`
+is set on every endpoint's 429). A real journal fault (a failed sync, corruption, a
+closing journal, full retention) stays `503 UNAVAILABLE` "Audit storage unavailable".
+A worker whose own queue is full ends the job and answers 429; the gateway passes
+that on as the same retryable 429.

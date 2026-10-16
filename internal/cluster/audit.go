@@ -34,9 +34,40 @@ func (c *ServiceAuditConfig) Validate() error {
 	return c.Config.Validate()
 }
 
+// errAuditCapacity: the audit queue is smaller than the work the service admits
+// at once, so it would refuse requests it has already accepted. The text is
+// static: it carries no configuration values.
+var errAuditCapacity = errors.New("audit.max_pending must be at least the work the service admits at once: max_http_requests on a gateway, this node's workers plus operations.max_concurrent on a node")
+
+func validateGatewayAudit(cfg GatewayConfig) error {
+	if cfg.Audit == nil {
+		return nil
+	}
+	if err := cfg.Audit.Validate(); err != nil {
+		return err
+	}
+	if cfg.Audit.MaxPending < cfg.MaxHTTPRequests {
+		return errAuditCapacity
+	}
+	return nil
+}
+
+// nodeAuditDemand is how many audit reservations a node can need at once: one
+// per query execution its workers run and one per concurrent operation.
+func nodeAuditDemand(config NodeConfig) int {
+	demand := config.Policy.Workers[config.WorkerID]
+	if config.Operations != nil {
+		demand += config.Operations.MaxConcurrent
+	}
+	return demand
+}
+
 func validateNodeAudit(config NodeConfig) error {
 	if err := config.Audit.Validate(); err != nil {
 		return err
+	}
+	if config.Audit != nil && config.Audit.MaxPending < nodeAuditDemand(config) {
+		return errAuditCapacity
 	}
 	if config.Audit == nil || config.ScratchDirectory == "" {
 		return nil
@@ -271,6 +302,19 @@ func (o *auditOperation) abort(ctx context.Context) {
 		return
 	}
 	_ = o.terminal(audit.Unknown, audit.Interrupted, true)
+}
+
+// auditBeginFailed answers a failed audit begin. A full pending queue is
+// capacity, not an outage: 429 with a retry hint, which clients treat as
+// retryable. Anything else (a failed sync, corruption, a closing journal, full
+// retention) is a journal fault and stays 503.
+func (g *Gateway) auditBeginFailed(w http.ResponseWriter, err error) {
+	if errors.Is(err, audit.ErrBusy) {
+		w.Header().Set("Retry-After", "1")
+		g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Audit queue full; retry after 1s")
+		return
+	}
+	g.err(w, http.StatusServiceUnavailable, "UNAVAILABLE", "Audit storage unavailable")
 }
 
 func (g *Gateway) auditError(w http.ResponseWriter, op *auditOperation, status int, code, message string) {

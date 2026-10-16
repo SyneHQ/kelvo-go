@@ -882,6 +882,12 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer completion.Complete()
 	op, auditErr := n.audit.begin(ctx, n.cfg.Policy.TenantID, authority, audit.QueryExecution)
 	if auditErr != nil {
+		if errors.Is(auditErr, audit.ErrBusy) { // a full queue is capacity, not a journal fault
+			_ = n.finish(id, Failed, query.Stats{}, query.NewError("RESOURCE_EXHAUSTED", "Audit queue full"))
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, "audit queue full", http.StatusTooManyRequests)
+			return
+		}
 		_ = n.finish(id, Failed, query.Stats{}, query.NewError("UNAVAILABLE", "Audit storage unavailable"))
 		http.Error(w, "audit storage unavailable", http.StatusServiceUnavailable)
 		return

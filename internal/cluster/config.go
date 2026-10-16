@@ -91,6 +91,9 @@ func LoadGateway(path string) (GatewayConfig, error) {
 	if totalQueries > c.MaxQueries || totalConcurrent > c.MaxConcurrent {
 		return c, errors.New("tenant budgets exceed the configured cluster capacity")
 	}
+	if err := validateGatewayAudit(c); err != nil {
+		return c, err
+	}
 	if err := validateGatewayExports(c); err != nil {
 		return c, err
 	}

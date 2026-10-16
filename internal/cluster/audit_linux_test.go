@@ -34,7 +34,7 @@ import (
 
 func serviceAuditConfig(t *testing.T) *ServiceAuditConfig {
 	t.Helper()
-	return &ServiceAuditConfig{ServiceID: "replica-one", Config: audit.Config{Directory: filepath.Join(t.TempDir(), "journal"), MaxEntries: 16, MaxPending: 4, Retention: time.Hour, WriteTimeout: 2 * time.Second}}
+	return &ServiceAuditConfig{ServiceID: "replica-one", Config: audit.Config{Directory: filepath.Join(t.TempDir(), "journal"), MaxEntries: 32, MaxPending: 16, Retention: time.Hour, WriteTimeout: 2 * time.Second}}
 }
 func openServiceAudit(t *testing.T, kind string) (*ServiceAudit, *ServiceAuditConfig) {
 	t.Helper()
