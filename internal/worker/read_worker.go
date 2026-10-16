@@ -205,7 +205,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 				receipt, err = pool.execute(bounded(quotaCtx), e, pool.Adapter, input, sink, nil)
 			}
 			if warmTried || errors.Is(err, errWarmUnavailable) {
-				receipt, err = e.ExecuteOperation(withAdmissionClass(quotaCtx, admission.ClassInteractive), e.oneShotAdapter(pool), input, sink)
+				receipt, err = runOperation(e, withAdmissionClass(quotaCtx, admission.ClassInteractive), e.oneShotAdapter(pool), input, sink)
 			}
 		}
 		return receiptStats(receipt, err), receiptError(receipt, err), true
@@ -427,6 +427,10 @@ func receiptError(receipt operations.Receipt, err error) error {
 	}
 	return query.NewError(code, "Source read failed")
 }
+
+// runOperation is the operation path a credentialed inspection falls back to
+// when no worker is available. A variable so a test can see the adapter it gets.
+var runOperation = (*Executor).ExecuteOperation
 
 // oneShotAdapter is the adapter a one-shot child runs: always the full
 // operation adapter. The pool's adapter may be the slim relational build, which

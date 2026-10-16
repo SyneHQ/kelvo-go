@@ -496,3 +496,34 @@ func TestOneShotAdapterIsTheFullOperationAdapter(t *testing.T) {
 		t.Fatalf("without an operation adapter the pool's is the only one: %q", got.Binary)
 	}
 }
+
+// With the slim adapter selected and no warm worker available, a credentialed
+// inspection runs the operation path on the full operation adapter. Reverting
+// the call to the pool's adapter hands the slim binary (no one-shot mode) to it.
+func TestInspectionFallbackRunsOnTheFullOperationAdapter(t *testing.T) {
+	slim := OperationProcessConfig{Binary: "/fake/kelvo-adapter-relational"}
+	full := OperationProcessConfig{Binary: "/fake/kelvo-adapter-go"}
+	launcher := &recordingLauncher{failing: map[string]bool{slim.Binary: true}}
+	e, mgr := readWorkerExecutor(t, &fakeSet{})
+	mgr.launcher, mgr.Adapter, e.OperationAdapter = launcher, slim, full
+	var ran []string
+	original := runOperation
+	runOperation = func(_ *Executor, _ context.Context, cfg OperationProcessConfig, input adapter.ProcessRequest, _ query.Sink) (operations.Receipt, error) {
+		ran = append(ran, cfg.Binary)
+		return operations.Receipt{Version: operations.Version, OperationID: input.OperationID, RequestSHA256: input.RequestSHA256, Outcome: operations.Completed, Effect: operations.EffectNone}, nil
+	}
+	t.Cleanup(func() { runOperation = original })
+	inspect := query.Request{Mode: "native", ConnectionID: "app", Inspect: &operations.MetadataSpec{Object: "schemas", Limit: 10}}
+	if _, err := e.Execute(context.Background(), inspect, &workerTestSink{}); err != nil {
+		t.Fatal("inspection failed when the slim adapter could not start:", err)
+	}
+	launcher.mu.Lock()
+	asked := append([]string(nil), launcher.asked...)
+	launcher.mu.Unlock()
+	if len(asked) == 0 || asked[0] != slim.Binary {
+		t.Fatalf("the warm worker was not tried on the slim adapter first: %v", asked)
+	}
+	if len(ran) != 1 || ran[0] != full.Binary {
+		t.Fatalf("the operation path ran on %v, want the full operation adapter", ran)
+	}
+}

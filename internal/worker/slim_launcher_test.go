@@ -4,6 +4,8 @@ package worker
 import (
 	"context"
 	"errors"
+	"log"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -108,5 +110,54 @@ func TestSlimLauncherPassesOtherBinariesThrough(t *testing.T) {
 	}
 	if len(inner.asked) != 1 || inner.asked[0] != l.full.Binary || l.Degraded() {
 		t.Fatalf("asked %v", inner.asked)
+	}
+}
+
+// The first fall back logs one line, later ones (and a second degradation
+// after recovery) do not repeat it.
+func TestSlimLauncherLogsOnce(t *testing.T) {
+	var out strings.Builder
+	log.SetOutput(&out)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	l, inner, usable := slimFixture("/opt/kelvo/kelvo-adapter-relational")
+	for range 3 {
+		_, _, _ = l.Launch(context.Background(), nil, l.slim, query.Limits{})
+	}
+	// Recover, then break again.
+	*usable = true
+	inner.failing = map[string]bool{}
+	l.mu.Lock()
+	l.checked = time.Now().Add(-2 * slimRecheckEvery)
+	l.mu.Unlock()
+	_, _, _ = l.Launch(context.Background(), nil, l.slim, query.Limits{})
+	if l.Degraded() {
+		t.Fatal("did not recover")
+	}
+	*usable = false
+	inner.failing["/opt/kelvo/kelvo-adapter-relational"] = true
+	l.mu.Lock()
+	l.checked = time.Now().Add(-2 * slimRecheckEvery)
+	l.mu.Unlock()
+	_, _, _ = l.Launch(context.Background(), nil, l.slim, query.Limits{})
+	if !l.Degraded() {
+		t.Fatal("did not degrade again")
+	}
+	if n := strings.Count(out.String(), "slim relational read adapter failed its launch check"); n != 1 {
+		t.Fatalf("logged %d times: %q", n, out.String())
+	}
+}
+
+// Failed launches for another reason do not hash the slim binary each time.
+func TestSlimLauncherRateLimitsItsCheckOnFailedLaunches(t *testing.T) {
+	l, _, _ := slimFixture("/opt/kelvo/kelvo-adapter-relational")
+	var checks int
+	l.usable = func(context.Context, OperationProcessConfig) bool { checks++; return true }
+	for range 20 {
+		if _, _, err := l.Launch(context.Background(), nil, l.slim, query.Limits{}); err == nil {
+			t.Fatal("a failed launch of a usable binary succeeded")
+		}
+	}
+	if checks != 1 || l.Degraded() {
+		t.Fatalf("hashed the binary %d times for 20 failed launches (degraded=%v)", checks, l.Degraded())
 	}
 }
