@@ -10,11 +10,11 @@ asked for this plan, not from this repository; steps that depend on them are mar
 * **[no access]** depends on something this session cannot see or reach; the executor must supply or verify it.
 
 Numbers come from [pooled-read-workers.md](pooled-read-workers.md) (load matrix) and [profile-plain-read.md](profile-plain-read.md), measured on the merged `cargo` code
-(`2ba73e4`) with no patch, on CI runners. **Every threshold below must be re-validated on the release build** (section 4.1).
+(`ed1820f` to `2ba73e4`) with no patch, on CI runners. The plan is written against `cargo` **5a748f7**, where every product PR is merged. **Every threshold below must be re-validated on the release build** (section 4.1).
 
 ## 0. Where the code is today (2026-10-16; refresh before every use)
 
-**Merged to `cargo`** (head `2ba73e4` at the time of writing; the release SHA is whatever `cargo` is when the release is cut):
+**Merged to `cargo`** (head `5a748f7` at the time of writing; the release SHA is whatever `cargo` is when the release is cut):
 
 | PR | Commit(s) | What |
 | --- | --- | --- |
@@ -35,11 +35,12 @@ Numbers come from [pooled-read-workers.md](pooled-read-workers.md) (load matrix)
 | #235 | eae8975 | pools the adapter's 64 KiB result buffer |
 | #236 | 2ba73e4 | a full audit pending queue is capacity (429), not an outage (503); `max_pending` must cover admitted work |
 | #238, #241 | 09ec963, 03af5a8 | audit tests made deterministic / pinning the gateway-side fixes |
+| #237 | 1e2634d, cae5fdb, b0a35cd, 9ebb2e4, 7e80ef7, e21c61d, 6ffd117, 5a748f7 (head) | per-source connection budget (`pool_size x max_per_key <= max_source_connections`, default 64); the adapter's pool default is 8; a worker is evicted for another key only after idling `evict_min_idle`; capacity pressure is a 429 + `Retry-After`, not a 503 |
 | #239 | cee0d3e, e2505e9 | audit capacity versus fault on every audit path; the node refuses a `max_pending` below the work it admits |
 
 `git log --oneline --first-parent <previous release SHA>..RELEASE_SHA` on `cargo` lists the exact commits for the release record (rebase merges: each PR is its own commits). The harness (#224) is test-only and is not released.
 
-**Merged after the measurements, not re-measured:** #234, #235, #238, #239, #241 (and #237 once it merges: per-source connection budget, `pool_size` default, no 503 under capacity). The release gate is a rerun on the release build.
+**Merged after the measurements, not re-measured:** #234, #235, #238, #239, #241 and #237 (per-source connection budget, adapter pool default 8, victim-age eviction, 429 for capacity). The release gate is a rerun on the release build.
 
 **Verified fixed on the merged code** by the matrix with `benchmarks/pooled-read-load/patches/` removed: every read passing the client receipt check, cache bypass wired, `read_workers` and `pool_size` effective, idle-worker eviction, no polling re-verification (Ed25519 verifications per read 30 -> 4), workers keyed by saved connection.
 **Open:** a stall of the 2 vCPU / 1 GB node in 1 of 7 runs at the target load ([issue 240](https://github.com/SyneHQ/kelvo-go/issues/240); runbook finding 10). It does not affect the 4 vCPU target (0 stalls in 10 runs). See Known issues at the end of this document.
@@ -90,7 +91,7 @@ Order: **node with its adapters and launcher, then the gateway, then db-api.**
 | Boundary | Behaviour | Consequence for the order |
 | --- | --- | --- |
 | Node to adapter: frame protocol v2 | Hello carries version 2; a v1 adapter's Hello is refused with a version mismatch (`frame.ErrVersion`), so the worker never serves. The node also pins the adapter digest. **Fails closed.** | Adapter and node ship in one release directory and are switched together |
-| Launcher: `serve --pool-size N` (#225) | An older launcher refuses the argument; an older adapter exits on it. The worker never answers Hello, the launch fails, reads run one-shot | Deploy the new launcher and adapters with the node **before** setting `pool_size`; the node cannot detect support |
+| Launcher: `serve --pool-size N` (#225) | An older launcher refuses the argument; an older adapter exits on it. The worker never answers Hello, the launch fails, reads run one-shot. An unset `pool_size` sends no flag, so the old pair keeps working (and the adapter's own default of 8 applies from #237, 4 before it) | Deploy the new launcher and adapters with the node **before** setting `pool_size`; the node cannot detect support |
 | Gateway to node | single-call read uses the existing internal results route | Roll gateways and nodes of a tenant together; no mixed-version claim exists |
 | db-api to gateway: `POST /v1/queries/stream` | Against a gateway without it the client returns `ErrStreamUnsupported` before sending anything, and db-api falls back to submit, wait and fetch (a 404, 405 or 501 without the `Kelvo-Stream: 1` marker means "no such endpoint") | db-api after the node |
 | db-api `inspect` requests | Metadata inspections run only on read workers; a node without them (or with the pool disabled) answers `UNAVAILABLE`. **There is no fallback** | db-api sends `inspect` only to nodes known to accept it; on rollback db-api stops first |
@@ -104,7 +105,7 @@ Order: **node with its adapters and launcher, then the gateway, then db-api.**
   Run `kelvo node --config ... --check-config` (static messages, prints no values) before every restart.
 * Step C: set `read_workers.relational_adapter` (`binary`, `sha256`) to enable the slim adapter; a configured but unusable slim binary logs one line at start and reads fall back to the full adapter
   (`kelvo_read_adapter_slim_active` and `kelvo_read_adapter_slim_fallbacks_total` on `/metrics`).
-* Step D: set `pool_size` (1-32, with `max_workers x pool_size` at most 256) only after steps A-C are healthy.
+* Step D: set `pool_size` (1-32, with `pool_size x max_per_key` at most `read_workers.max_source_connections`, default 64, at most 1024; an unset `pool_size` counts as 8) only after steps A-C are healthy. The budget is per worker key, not per source database: keys that share a database (team, schema, credential revision) each hold that many. Also settable: `evict_min_idle` (default `min(1s, queue_wait/2)`; an explicit value must be below `queue_wait`; `queue_wait` must be below 30 s). `read_workers.max_workers` is 1-64 and at most `resources.max_concurrent`. Run `--check-config`: a configuration valid before #237 (for example `max_per_key` 8 with `pool_size` 32) may be refused.
 * `policy.workers`, `policy.limits` and `policy.max_queries` stay pinned in cluster metadata; this release changes none of them. `read_workers` does not replace `policy.workers`.
 
 ### 2.2 Audit journal (#222, #230)
@@ -125,7 +126,7 @@ A node that still has the pre-migration config uses `operations.warm_pool` capac
 **What the measurements allow.** On the merged code the current node is no longer CPU-bound: 20 workers at `pool_size` 12 carried the full 50-user mix in 5 of 7 runs (p50 2.0-2.3 s, p95 3.9-4.5 s per read, node 0.35-0.6 cores, 3-11 throttled periods,
 cgroup memory peak 580-624 MiB of the 1 GiB), with one stall (758 deadline expiries) and one run with 53 generator-cap refusals. That is not a margin to promise, so the first release **sheds load at the door** and targets a handful of users, the load the 3-user entry
 (the matrix entry `2c1g-first-release-3users`, which runs the `2c1g-first-release.yaml` scenario with a light loadgen mix: one explorer opening a page every 3-5 s, one 10-panel dashboard viewer refreshing every 10 s, one console user) carried in 4 of 4 runs with 0 errors (explorer reads p50 1.2 s, p95 4.0 s; dashboard panels p95 2.0 s; console p95 2.0 s; node 0.4 cores, 0 throttled periods, 335-350 MiB).
-At **6 explorers, 6 viewers and 2 consoles** on the same config (8 workers, `max_http_requests` 64, `max_queries` 32) it sheds as designed: 72-619 capacity refusals, 95-195 503 `Worker unavailable` (8 workers against more than 8 active connections: thrash) and p95 6-7 s; it is not an error-free configuration at that load.
+At **6 explorers, 6 viewers and 2 consoles** on the same config (8 workers, `max_http_requests` 64, `max_queries` 32) it sheds as designed: 72-619 capacity refusals, 95-195 503 `Worker unavailable` (8 workers against more than 8 active connections: thrash; measured before #237, which turns this into a bounded 429 + `Retry-After` and is not re-measured) and p95 6-7 s; it is not an error-free configuration at that load.
 Memory is not the limit: 345 MiB for gateway and node, 12-19 MiB per worker, 11 MiB shared. So this config is a **bridge**: it turns the feature on for a handful of users while the node is replaced; it is not the 50-user target.
 **[owner]** If the bridge must carry more than a handful of users, the measured alternative is 20 workers at `pool_size` 12 on this node (about 0.6 GiB, 5 of 7 clean runs, twice the latency of the target).
 
@@ -136,7 +137,7 @@ Settings (the scenario file; capacity is `read_workers`):
 | `policy.limits.max_bytes` | 67108864 | routing needs 64 MiB or less; the default 256 MiB silently disables read workers |
 | `policy.workers` (a1) | 16 | node job permits for the query path; sheds load at the node instead of queueing without bound (**changing it re-initializes cluster metadata: [owner]**; keep the current value if it is higher and shed at the gateway) |
 | `read_workers.max_workers` | 8 | at least the number of hot connections (more than 8 active connections thrash and answer 503 `Worker unavailable`: **never run `max_workers` below the active connections**); 8 workers are about 0.2 GiB |
-| `read_workers.pool_size` | 4 (measured); 8-12 for bursts | measured at 4 with the 3-user load; 12 is the value measured at the target; `max_workers x pool_size` at most 256 |
+| `read_workers.pool_size` | 4 (measured); 8-12 for bursts | measured at 4 with the 3-user load; 12 is the value measured at the target; unset means the adapter's default of 8 (not measured); `pool_size x max_per_key` at most `max_source_connections` (64) |
 | `read_workers.idle_ttl`, `max_per_key`, `max_in_flight`, `queue_wait`, `stream_buffer_mb` | 30m, 1, 16, 10s, 4 | measured values; `max_per_key` 2 is the default (burst scale-out) |
 | `read_workers.relational_adapter` | the slim adapter (step C) | 13 MiB per worker against 23 MiB; fallback to the full adapter is automatic |
 | `resources.*` | `max_concurrent` 12, `memory_mb` 2100, `baseline_mb` 250, `overhead_mb` 64, `separate_classes: true`, `query_reserve_slots` 10, `query_reserve_memory_mb` 1700 | the interactive share admits `min(slots, memory / 160)` reservations of 160 MiB (32 + 64 + 16 x 4 stream buffers): 8 workers and 2 one-shot fallbacks. Memory here is **accounting**, larger than the VM on purpose (real use is about a tenth) |
@@ -159,7 +160,7 @@ node 0.26-0.52 cores (13% of 4 vCPU), 0 throttled periods; cgroup memory peak 77
 | Pool | `read_workers.max_workers` | at least the hot connections within `idle_ttl` (20 tested; 8 GB fits about 240 by memory, but the interactive admission share must be raised with it: `query_reserve_slots` above `max_workers` and `query_reserve_memory_mb` at least 160 MiB per worker plus a result download) |
 | | `max_per_key` | 1 (measured); the default 2 allows a burst to scale out to a second worker |
 | | `max_in_flight`, `queue_wait`, `idle_ttl`, `stream_buffer_mb` | 16, 10s, 30m, 4 |
-| | `pool_size` | **12** at 80-100 ms RTT (measured at 80 ms: page open 1.4 s p50 against 3.2 s at 4); formula `ceil(42 x 3 x RTT / 1.5 s)` (a warm read holds a connection for 3 round trips): 7 at 80 ms, 9 at 100 ms, 14 at 160 ms; at most 32; `max_workers x pool_size` at most 256 (20 x 12 = 240). Through the exit node RTT is the sum of both legs |
+| | `pool_size` | **12** at 80-100 ms RTT (measured at 80 ms: page open 1.4 s p50 against 3.2 s at 4); formula `ceil(42 x 3 x RTT / 1.5 s)` (a warm read holds a connection for 3 round trips): 7 at 80 ms, 9 at 100 ms, 14 at 160 ms; at most 32; `pool_size x max_per_key` at most `max_source_connections` (default 64; 12 x 1 here). The budget is per worker key; budget each source database's `max_connections` for its active keys x that product. Through the exit node RTT is the sum of both legs |
 | Adapter | `read_workers.relational_adapter` | the slim adapter, pinned by digest |
 | Cache | `cache_ttl` 10s, `reauthorize_every` 60s | signed off by the owner |
 | Admission | `separate_classes` true, `query_reserve_slots` 28, `query_reserve_memory_mb` 5500, `containment.max_groups` 128 | see the runbook |
@@ -233,7 +234,7 @@ Any failure in 1-8 is a rollback condition (section 5) unless the cause is found
 | Client-visible protocol errors | db-api logs `PROTOCOL_ERROR` | any |
 | CPU throttling | cgroup `cpu.stat` `nr_throttled` | increasing by more than 100 per minute for 3 minutes |
 | Memory | cgroup `memory.current`, `memory.events` `oom_kill` | above 80% of `MemoryMax` for 5 minutes; any `oom_kill` |
-| Warm pool health | `/resources`, job cgroup count, `slim_fallbacks`, 503 `Worker unavailable` | `workers == max_workers` with fallbacks, `slim_fallbacks` increasing, or any `Worker unavailable` (a pool smaller than the active connections) |
+| Warm pool health | `/resources`, job cgroup count, `slim_fallbacks`, 503 `Worker unavailable` | `workers == max_workers` with fallbacks, `slim_fallbacks` increasing, any `Worker unavailable` (a 503, which #237 removes for capacity; a 429 with `Retry-After` from the pool is a pool smaller than the active connections: raise `max_workers`) |
 | Audit | gateway answers 503 `Audit storage unavailable` (a full journal; a full pending queue is a 429 since #236) | any 503; any 429 from audit pressure above 0.5% of requests; projected journal fill above 70% within `retention` |
 | Latency | db-api per-read p95 | above the agreed budget for 10 minutes **[owner]** |
 | Resolver | `kelvo_worker_resolve_seconds` | p95 above 1 s |
@@ -291,5 +292,5 @@ Release SHA and commit list; the four digests and the artifact's `SOURCE`; the c
 
 * **2 vCPU / 1 GB stall** ([issue 240](https://github.com/SyneHQ/kelvo-go/issues/240)): 1 of 7 target-load runs on the current node failed every request from about t = 225 s with the node at 0.5 cores; unexplained. It is why the first release is a few users, not the 50-user mix. The harness captures goroutines and worker state if a run stalls (a manual dispatch of the matrix).
 * **Flaky `validate` test** ([issue 242](https://github.com/SyneHQ/kelvo-go/issues/242)): `TestPrivateRuntimeDataOpenUsesOperationContextAndConfiguredBudget` fails intermittently under `-race`; re-run, do not ignore a repeat.
-* **Pre-fix measurements.** Every number here predates #234, #235 (the 152 KB adapter allocations per read figure is pre-#235), #238, #239, #241 and, until merged, #237. The thresholds in 4.1 are the measured spread plus margin on that code and **must be re-derived from the rerun on the release build**.
+* **Pre-fix measurements.** Every number here predates #234, #235 (the 152 KB adapter allocations per read figure is pre-#235), #238, #239, #241 and #237. The thresholds in 4.1 are the measured spread plus margin on that code and **must be re-derived from the rerun on the release build**.
 * **Not verified:** the exit-node path (modelled as added delay), mixed gateway and node versions, a multi-node cluster, node restart behaviour for waiting gateway requests, and the earlier worker-execution incident's cause.
