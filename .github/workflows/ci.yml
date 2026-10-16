@@ -512,7 +512,8 @@ jobs:
           echo "::add-mask::$pg"
           echo "::add-mask::$my"
           docker run -d --name kelvo-rt-postgres -p 127.0.0.1:55433:5432 \
-            -e POSTGRES_PASSWORD="$pg" -e POSTGRES_DB=rt postgres:17.6 >/dev/null
+            -e POSTGRES_PASSWORD="$pg" -e POSTGRES_DB=rt postgres:17.6 \
+            -c shared_preload_libraries=pg_stat_statements >/dev/null
           docker run -d --name kelvo-rt-mysql -p 127.0.0.1:55434:3306 \
             -e MYSQL_ROOT_PASSWORD="$my" -e MYSQL_DATABASE=rt mysql:8.4 >/dev/null
           for attempt in $(seq 1 90); do
@@ -537,7 +538,7 @@ jobs:
           go work edit "-replace=github.com/sijms/go-ora/v2@v2.9.0=$GITHUB_WORKSPACE/third_party/go-ora-v2.9.0"
           cd adapters/go
           KELVO_RT_ASSERT=1 KELVO_RT_DELAY_MS=80 go test -race -count=1 -v -timeout 10m \
-            -run 'TestReadRoundTripsLive|TestReadScenariosLive|TestPostgresReadSemanticsLive|TestPostgresDeadIdleConnectionsAreReplacedLive' \
+            -run 'TestReadRoundTripsLive|TestReadScenariosLive|TestPostgresReadSemanticsLive|TestPostgresDeadIdleConnectionsAreReplacedLive|TestPostgresStatementCountsSettleAfterBackgroundRollbackLive' \
             ./connectors/relational | grep -E "^(---|\s+---|ok|FAIL|panic)|ENGINE=|SCENARIO"
       - name: Remove the fixtures
         if: always()

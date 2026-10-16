@@ -287,6 +287,7 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	if err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("CONFIGURATION_ERROR")
 	}
+	processLimits.CPUWeight = operationCPUWeight(class)
 	holdProcess, err := custody.Hold()
 	if err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")

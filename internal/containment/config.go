@@ -55,12 +55,25 @@ type Limits struct {
 	MaxProcesses    int64
 	CPUQuotaMicros  int64
 	CPUPeriodMicros int64
+	// CPUWeight is the cgroup v2 cpu.weight (1..10000, kernel default 100) that
+	// shares CPU between sibling groups when the node is contended; cpu.max only
+	// caps a group. Zero leaves the kernel default untouched.
+	CPUWeight int64
 }
+
+// CPU weights by workload. A background or fallback child must not take CPU
+// from an interactive read worker when they compete; weights only matter under
+// contention, so an idle node still lets any of them use its full quota.
+const (
+	CPUWeightReadWorker = 100
+	CPUWeightOneShot    = 50
+	CPUWeightBackground = 20
+)
 
 func (l Limits) validate() error {
 	if l.MemoryBytes < 16<<20 || l.MemoryBytes > 1<<50 || l.MaxProcesses < 8 || l.MaxProcesses > 65536 ||
 		l.CPUPeriodMicros < 1000 || l.CPUPeriodMicros > 1_000_000 || l.CPUQuotaMicros < 1000 ||
-		l.CPUQuotaMicros > l.CPUPeriodMicros*1024 {
+		l.CPUQuotaMicros > l.CPUPeriodMicros*1024 || l.CPUWeight < 0 || l.CPUWeight > 10000 {
 		return ErrInvalid
 	}
 	return nil

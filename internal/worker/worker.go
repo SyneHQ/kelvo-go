@@ -475,6 +475,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		if prepErr != nil {
 			return stats, prepErr
 		}
+		processLimits.CPUWeight = containment.CPUWeightOneShot
 		token, prepErr := custody.Hold()
 		if prepErr != nil {
 			return stats, prepErr

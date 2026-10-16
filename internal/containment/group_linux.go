@@ -51,6 +51,9 @@ func (g *kernelGroup) configure(limits Limits) error {
 		{"memory.oom.group", "1"}, {"pids.max", strconv.FormatInt(limits.MaxProcesses, 10)},
 		{"cpu.max", fmt.Sprintf("%d %d", limits.CPUQuotaMicros, limits.CPUPeriodMicros)},
 	}
+	if limits.CPUWeight > 0 {
+		wanted = append(wanted, struct{ name, value string }{"cpu.weight", strconv.FormatInt(limits.CPUWeight, 10)})
+	}
 	kind, err := readFile(int(g.fd.Fd()), "cgroup.type", 128)
 	if err != nil || kind != "domain\n" {
 		return ErrUnsupported

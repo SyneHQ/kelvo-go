@@ -436,3 +436,37 @@ func TestKernelMissingControllersFailsClosed(t *testing.T) {
 		t.Fatal("missing controllers did not fail closed", err)
 	}
 }
+
+// cpu.weight is how a background or fallback child yields CPU to an
+// interactive read worker under contention; cpu.max alone only caps it.
+func TestKernelCPUWeightIsAppliedAndDefaultsUntouched(t *testing.T) {
+	m := kernelManager(t)
+	for _, tc := range []struct {
+		weight int64
+		want   string
+	}{{CPUWeightBackground, "20"}, {CPUWeightReadWorker, "100"}, {0, "100"}} {
+		limits := kernelLimits()
+		limits.CPUWeight = tc.weight
+		job, err := m.Prepare(limits, func() {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := readFile(int(job.group.(*kernelGroup).fd.Fd()), "cpu.weight", 128)
+		if err != nil || strings.TrimSpace(got) != tc.want {
+			t.Fatalf("weight %d: cpu.weight %q %v", tc.weight, got, err)
+		}
+		if _, err := job.Finish(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestCPUWeightBounds(t *testing.T) {
+	for weight, ok := range map[int64]bool{-1: false, 0: true, 1: true, 10000: true, 10001: false} {
+		limits := kernelLimits()
+		limits.CPUWeight = weight
+		if (limits.validate() == nil) != ok {
+			t.Fatalf("cpu.weight %d accepted=%v", weight, !ok)
+		}
+	}
+}
