@@ -104,7 +104,11 @@ func (w *stallWatch) capture(dir string, now time.Time, src stallSources) {
 		_ = pprof.Lookup("goroutine").WriteTo(f, 2)
 		_ = f.Close()
 	}
-	write("procs.txt", processStates(src.cgroupRoot, src.unitCgroup))
+	procs := processStates(src.cgroupRoot, src.unitCgroup)
+	if procs == "" {
+		procs = "no contained process found under the unit's cgroup\n" // an empty file would read as a failed capture
+	}
+	write("procs.txt", procs)
 	if snapshot, err := json.MarshalIndent(src.pool.Snapshot(), "", " "); err == nil {
 		write("admission.json", string(snapshot))
 	}
