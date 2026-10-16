@@ -54,21 +54,23 @@ func TestReadWorkersValidation(t *testing.T) {
 		warm worker.WarmPoolConfig
 		err  error
 	}{
-		"valid":                       {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32}, base, nil},
-		"connection budget":           {ReadWorkersConfig{MaxWorkers: 9, PoolSize: 32}, base, errReadWorkersConnections},
-		"connection budget boundary":  {ReadWorkersConfig{MaxWorkers: 8, PoolSize: 32}, base, nil},
-		"no capacity":                 {ReadWorkersConfig{}, base, errReadWorkersConfig},
-		"pool size":                   {ReadWorkersConfig{MaxWorkers: 1, PoolSize: 33}, base, errReadWorkersConfig},
-		"in flight":                   {ReadWorkersConfig{MaxWorkers: 1, MaxInFlight: 65}, base, errReadWorkersConfig},
-		"above admission":             {ReadWorkersConfig{MaxWorkers: 9}, base, errReadWorkersConfig},
-		"warm pool disabled":          {ReadWorkersConfig{MaxWorkers: 1}, worker.WarmPoolConfig{}, errReadWorkersWarmPool},
-		"max_workers in both":         {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.MaxWorkers = 1; return w }(), errReadWorkersWarmPool},
-		"idle_ttl in both":            {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.IdleTTL = time.Minute; return w }(), errReadWorkersWarmPool},
-		"max_in_flight in both":       {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.MaxInFlight = 4; return w }(), errReadWorkersWarmPool},
-		"max_per_key in both":         {ReadWorkersConfig{MaxWorkers: 2}, func() worker.WarmPoolConfig { w := base; w.MaxPerKey = 1; return w }(), errReadWorkersWarmPool},
-		"max_per_key above workers":   {ReadWorkersConfig{MaxWorkers: 2, MaxPerKey: 3}, base, errReadWorkersConfig},
-		"stream_buffer_mb in both":    {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.StreamBufferMB = 4; return w }(), errReadWorkersWarmPool},
-		"queue wait and timeout both": {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.QueueTimeout = time.Second; return w }(), errReadWorkersWarmPool},
+		"valid":                            {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32}, base, nil},
+		"connection budget":                {ReadWorkersConfig{MaxWorkers: 9, PoolSize: 32}, base, errReadWorkersConnections},
+		"connection budget boundary":       {ReadWorkersConfig{MaxWorkers: 8, PoolSize: 32}, base, nil},
+		"queue wait at the launch timeout": {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 30 * time.Second}, base, errReadWorkersConfig},
+		"queue wait just below it":         {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 29 * time.Second}, base, nil},
+		"no capacity":                      {ReadWorkersConfig{}, base, errReadWorkersConfig},
+		"pool size":                        {ReadWorkersConfig{MaxWorkers: 1, PoolSize: 33}, base, errReadWorkersConfig},
+		"in flight":                        {ReadWorkersConfig{MaxWorkers: 1, MaxInFlight: 65}, base, errReadWorkersConfig},
+		"above admission":                  {ReadWorkersConfig{MaxWorkers: 9}, base, errReadWorkersConfig},
+		"warm pool disabled":               {ReadWorkersConfig{MaxWorkers: 1}, worker.WarmPoolConfig{}, errReadWorkersWarmPool},
+		"max_workers in both":              {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.MaxWorkers = 1; return w }(), errReadWorkersWarmPool},
+		"idle_ttl in both":                 {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.IdleTTL = time.Minute; return w }(), errReadWorkersWarmPool},
+		"max_in_flight in both":            {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.MaxInFlight = 4; return w }(), errReadWorkersWarmPool},
+		"max_per_key in both":              {ReadWorkersConfig{MaxWorkers: 2}, func() worker.WarmPoolConfig { w := base; w.MaxPerKey = 1; return w }(), errReadWorkersWarmPool},
+		"max_per_key above workers":        {ReadWorkersConfig{MaxWorkers: 2, MaxPerKey: 3}, base, errReadWorkersConfig},
+		"stream_buffer_mb in both":         {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.StreamBufferMB = 4; return w }(), errReadWorkersWarmPool},
+		"queue wait and timeout both":      {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.QueueTimeout = time.Second; return w }(), errReadWorkersWarmPool},
 	} {
 		rw := tc.rw.withDefaults()
 		err := validateNodeReadWorkers(readWorkersNode(&rw, tc.warm))

@@ -94,7 +94,7 @@ read_workers:
   max_in_flight: 16     # reads per worker, 1-64, default 16
   pool_size: 4          # source connections per worker, 1-32; leave unset for the adapter's own 4
   idle_ttl: 30m         # 10ms-24h, default 30m
-  queue_wait: 2s        # bounded admission wait, 10ms-1m, default 2s
+  queue_wait: 2s        # bounded admission wait, 10ms up to the 30s launch timeout (exclusive), default 2s
   stream_buffer_mb: 8   # unread result bytes per stream, 1-256, default 8
 ```
 
