@@ -273,6 +273,9 @@ type WarmPoolManager struct {
 	// backoff holds, per key, the window after a failed launch during which
 	// reads go straight to the one-shot path instead of relaunching.
 	backoff map[string]launchBackoff
+	// evictedAt is when a key's worker was last evicted to make room for another
+	// key: the thrash guard keeps that key from evicting in turn for a while.
+	evictedAt map[string]time.Time
 }
 
 type launchBackoff struct {
@@ -289,14 +292,15 @@ func NewWarmPoolManager(cfg WarmPoolConfig, launcher WorkerLauncher) (*WarmPoolM
 		launcher = &defaultWorkerLauncher{}
 	}
 	mgr := &WarmPoolManager{
-		cfg:      cfg,
-		launcher: launcher,
-		caps:     cfg.caps(),
-		cache:    cfg.resultCache(),
-		workers:  make(map[string]*warmWorkerEntry),
-		backoff:  make(map[string]launchBackoff),
-		killed:   make(chan struct{}),
-		stopRpr:  make(chan struct{}),
+		cfg:       cfg,
+		launcher:  launcher,
+		caps:      cfg.caps(),
+		cache:     cfg.resultCache(),
+		workers:   make(map[string]*warmWorkerEntry),
+		backoff:   make(map[string]launchBackoff),
+		evictedAt: make(map[string]time.Time),
+		killed:    make(chan struct{}),
+		stopRpr:   make(chan struct{}),
 	}
 	if cfg.Enabled {
 		go mgr.reapLoop()
@@ -678,7 +682,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 				scaleOutRefused = true
 				continue
 			}
-			if !m.evictIdleOther(ctx, key, queueBy) {
+			if !(m.mayEvictFor(key) && m.evictIdleOther(ctx, key, queueBy)) {
 				if ctx.Err() != nil {
 					return nil, nil, ctx.Err()
 				}
@@ -696,7 +700,7 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 				return nil, nil, busy()
 			}
 			m.mu.Unlock()
-			if m.evictIdleOther(ctx, key, queueBy) {
+			if m.mayEvictFor(key) && m.evictIdleOther(ctx, key, queueBy) {
 				continue
 			}
 			if ctx.Err() != nil {
@@ -729,6 +733,35 @@ func (m *WarmPoolManager) Acquire(ctx context.Context, e *Executor, cfg Operatio
 	}
 }
 
+// evictGuard is how long a key whose worker was evicted for another key may
+// not evict one in return: idle_ttl/60, at least 5s. Without it keys with more
+// active connections than workers evict each other's workers in turn, each read
+// paying a launch and none finding a warm worker.
+func (m *WarmPoolManager) evictGuard() time.Duration {
+	return max(m.cfg.IdleTTL/60, 5*time.Second)
+}
+
+// mayEvictFor reports whether key may evict another key's idle worker now. A
+// key refused waits for capacity and, when its wait ends, gets a retryable
+// RESOURCE_EXHAUSTED.
+func (m *WarmPoolManager) mayEvictFor(key string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	at, evicted := m.evictedAt[key]
+	return !evicted || time.Since(at) >= m.evictGuard()
+}
+
+// recordEvictionLocked notes that key's worker was evicted for another key.
+func (m *WarmPoolManager) recordEvictionLocked(key string) {
+	now := time.Now()
+	for k, at := range m.evictedAt {
+		if now.Sub(at) >= m.evictGuard() {
+			delete(m.evictedAt, k)
+		}
+	}
+	m.evictedAt[key] = now
+}
+
 // evictIdleOther evicts the least recently used idle worker of another key
 // and waits, until queueBy, for it to end so its reservation is free for a
 // new worker. It reports false when every other worker is busy, the worker
@@ -746,6 +779,7 @@ func (m *WarmPoolManager) evictIdleOther(ctx context.Context, key string, queueB
 		return false
 	}
 	m.evictLocked(victim, &m.metrics.EvictionsLRU)
+	m.recordEvictionLocked(victim.key)
 	m.mu.Unlock()
 	timer := time.NewTimer(time.Until(queueBy))
 	defer timer.Stop()
