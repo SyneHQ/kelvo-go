@@ -253,8 +253,8 @@ func TestContainedReadWorkerServesExplorerPageOpen(t *testing.T) {
 	report, _ := json.Marshal(map[string]any{"cold": cold, "warm": warmBurst, "spawns": metrics.Spawns.Load(), "fallbacks": metrics.Fallbacks.Load(),
 		"backends": len(g.pids), "reservations_while_idle": active, "max_in_flight": g.mgr.Config().maxInFlight()})
 	t.Logf("GATE_METRICS %s", report)
-	// relational.PoolSize in the adapter module is 4.
-	if metrics.Spawns.Load() != 1 || metrics.Fallbacks.Load() != 0 || len(g.pids) < 1 || len(g.pids) > 4 || active != 1 {
+	// relational.DefaultPoolSize in the adapter module is 8.
+	if metrics.Spawns.Load() != 1 || metrics.Fallbacks.Load() != 0 || len(g.pids) < 1 || len(g.pids) > 8 || active != 1 {
 		t.Fatal("explorer page was not served by one pooled worker", string(report))
 	}
 	g.drain()

@@ -23,7 +23,7 @@ type Session struct {
 
 const (
 	// DefaultPoolSize is the pool a warm session gets unless the node asks for another.
-	DefaultPoolSize = 4
+	DefaultPoolSize = 8
 	// MaxPoolSize bounds what a node may ask for.
 	MaxPoolSize = 32
 )
