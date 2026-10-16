@@ -59,6 +59,17 @@ func endRollback(db *sql.DB) {
 	}
 }
 
+// wakeWaiters tells reads waiting on this pool that an ordinary read returned
+// a connection to idle.
+func wakeWaiters(db *sql.DB) {
+	rollbackPools.Lock()
+	defer rollbackPools.Unlock()
+	if st := rollbackPools.m[db]; st != nil {
+		close(st.wake)
+		st.wake = make(chan struct{})
+	}
+}
+
 func waitForRollback(ctx context.Context, db *sql.DB) {
 	for {
 		rollbackPools.Lock()
@@ -110,6 +121,13 @@ func (s *Session) Query(ctx context.Context, request adapter.Query, sink adapter
 // so after PoolSize+1 attempts the read has had a freshly dialed one. A failure
 // of the user query is never retried.
 func (s *Session) read(ctx context.Context, statement string, parameters []any, limits adapter.Limits, sink adapter.Sink) (stats adapter.QueryStats, err error) {
+	if ctx == nil {
+		return adapter.QueryStats{}, adapter.ErrInvalid
+	}
+	// One deadline covers every attempt: readOnce would otherwise grant each
+	// retry a fresh 30 s default.
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	for range PoolSize + 1 {
 		stats, err = s.readOnce(ctx, statement, parameters, limits, sink)
 		var stale *staleConn
@@ -190,6 +208,9 @@ func (s *Session) readOnce(ctx context.Context, statement string, parameters []a
 			_ = conn.Raw(func(any) error { return driver.ErrBadConn })
 		}
 		_ = conn.Close()
+		if s.reusable {
+			wakeWaiters(s.Pool)
+		}
 	}()
 	// Consume the operation-owned pool after acquisition. The held connection
 	// remains usable, but queued/new borrowers cannot receive this session.

@@ -506,7 +506,7 @@ func TestKeepOpenRetryIsBounded(t *testing.T) {
 	if err := runRead(s, context.Background()); !errors.Is(err, driver.ErrBadConn) {
 		t.Fatalf("second failure not reported: %v", err)
 	}
-	if state.queries.Load() != 0 || state.opens.Load() != PoolSize+1 {
+	if state.queries.Load() != 0 || int(state.opens.Load()) != PoolSize+1 {
 		t.Fatalf("retries not bounded: queries=%d opens=%d", state.queries.Load(), state.opens.Load())
 	}
 }
