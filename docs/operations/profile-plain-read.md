@@ -68,9 +68,9 @@ and 12.1 (adapter alone, in process). Fifty readers on one connection therefore 
 **14% of reads (125 of 891; 119 of 881 in run 3) failed** with 503 `Worker unavailable` at this concurrency. Run 3's node failure log
 (`node_failed_reads_logged`) classifies them: **110 `INVALID_ARGUMENT` at stage `validation` and 9 `RESOURCE_EXHAUSTED` (class `capacity`)**; no worker
 died (`evictions_error` 0, spawns 7). The probable cause of the 110, by reading the path (not isolated by an experiment): `executeOnReadWorker`
-stamps each request with `CredentialsValidUntil = now + 5 s` before it queues (`read_worker.go:114`); a read that then waits more than 5 s
+stamps each request with `CredentialsValidUntil = now + 5 s` before it queues (`executeOnReadWorker`, baseline code); a read that then waits more than 5 s
 for a free slot (queue timeout 10 s, `warm_pool.go` `Acquire`) fails when `EncodeProcessRequest` re-validates it
-(`warm_pool.go:777`; `adapter/process.go:74` rejects `CredentialsValidUntil <= now`). That fits the failures being the slowest 13% (p95 of the successes is 5.6 s, the slowest 8.9 s).
+(`WarmPoolManager.execute`; the request validation in `adapter/process.go` rejects `CredentialsValidUntil <= now`; the merged code derives the window again at dispatch with `credentialWindow` in `warm_pool.go`). That fits the failures being the slowest 13% (p95 of the successes is 5.6 s, the slowest 8.9 s).
 The 9 are the per-team in-flight cap (`max_per_tenant` 32) timing out.
 
 ### CPU at 50 concurrent, per read (run 2; run 1 shares in brackets)
@@ -135,18 +135,18 @@ The `libstdc++` mapping shows the build carries a C++ runtime (the `duckdb_arrow
 ### Result bytes *(code, from a read of the path; frame count measured)*
 
 For this read, one batch and a cache miss. The adapter wrote **14 result frames for 3,128 bytes** (measured, `result_frames_per_read`): Arrow IPC
-writes each metadata block, buffer and padding separately and nothing buffers them (`process.go:319`, `frameResultWriter`), so each costs two
+writes each metadata block, buffer and padding separately and nothing buffers them (`frameResultWriter` in the adapter's `process.go`), so each costs two
 syscalls on the adapter's stdout, one allocation and one read on the node.
 
 | Operation | Times | Where |
 | --- | --- | --- |
-| Arrow record built from rows | 1 | adapter `rowarrow.go:57` |
-| **IPC encode** | **2** | adapter `process.go:319`; node `IPCSink`, `worker.go:712` (re-encodes what it just decoded) |
-| **IPC decode** | **2** | node `ipc.go:65` (validates and decodes); client `ipc.go:228` |
-| **SHA-256 over the wire bytes** | **2** | adapter `boundedHashWriter` (`process.go:281`); node `framedResultReader` (`warm_pool.go:1016`), compared with the receipt's digest |
-| Body copies | node 4 (frame allocation, reader copy, cache tee `result_cache.go:164` on a miss, Arrow read buffers), gateway 1 (`io.CopyBuffer`, `gateway.go:808`), client 1 | |
-| Verifies of the result | adapter row count; node receipt cross-check (`warm_pool.go:866`: rows, bytes, digest); gateway `WireBytes` and EOS (`gateway.go:820-826`); client receipt trailer (`query_stream.go:101`) | |
-| Other hashing | `operations.Digest` twice (`read_worker.go:93`, `:105`), `resultCacheKey` once, `QueryDigest` in `delegatedExecution` twice (`worker.go:205`, `:224`) | |
+| Arrow record built from rows | 1 | adapter `rowarrow.go` (the row-to-Arrow builder) |
+| **IPC encode** | **2** | adapter `frameResultWriter`; node `IPCSink` in `worker.go` (re-encodes what it just decoded) |
+| **IPC decode** | **2** | node `ipc.go` (the validating decoder); client `ipc.go` (the result reader) |
+| **SHA-256 over the wire bytes** | **2** | adapter `boundedHashWriter` (`process.go`); node `framedResultReader` (`warm_pool.go`), compared with the receipt's digest |
+| Body copies | node 4 (frame allocation, reader copy, cache tee in `result_cache.go` on a miss, Arrow read buffers), gateway 1 (`io.CopyBuffer`, `relayResults` in `gateway.go`), client 1 | |
+| Verifies of the result | adapter row count; node receipt cross-check (`WarmPoolManager.execute`: rows, bytes, digest); gateway `WireBytes` and EOS (`gateway.go`, the end-of-stream check); client receipt trailer (`client.QueryStream`) | |
+| Other hashing | `operations.Digest` twice (`executeOnReadWorker`), `resultCacheKey` once, `QueryDigest` in `delegatedExecution` twice (`worker.go`) | |
 
 A cache hit replaces all adapter work, both hashes and the receipt check with one decode and one encode on the node.
 
