@@ -188,6 +188,9 @@ func (g *Gateway) superviseExport(parent context.Context, release context.Cancel
 	}()
 	op, err := g.audit.beginRequest(ctx, store.Policy().TenantID, audit.ExportExecution)
 	if err != nil {
+		if auditBusy(err) { // capacity: the export fails as RunExport's does, not as cancelled
+			g.endSupervisedExport(store, initial, ExportFailed, &query.Error{Code: "RESOURCE_EXHAUSTED", Message: "Audit queue full"})
+		}
 		return
 	}
 	defer op.abort(ctx)
@@ -205,6 +208,9 @@ func (g *Gateway) superviseExport(parent context.Context, release context.Cancel
 	result, err := g.executeSupervisedExport(ctx, store, claimed)
 	if err != nil {
 		_ = op.complete(err)
+		if auditBusy(err) { // the node's queue was full; its refusal is capacity, not a cancellation
+			g.endSupervisedExport(store, initial, ExportFailed, &query.Error{Code: "RESOURCE_EXHAUSTED", Message: "Audit queue full"})
+		}
 		return
 	}
 	if requestAuthorityErr(ctx) != nil || op.complete(nil) != nil || requestAuthorityErr(ctx) != nil || g.publishSupervisedExport(ctx, store, claimed, result) != nil || requestAuthorityErr(ctx) != nil {
@@ -329,6 +335,9 @@ func (g *Gateway) executeSupervisedExport(ctx context.Context, store ExportStore
 		return result, err
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusTooManyRequests { // the node's audit queue was full
+		return result, errWorkerAuditBusy
+	}
 	if response.StatusCode != http.StatusOK {
 		return result, errors.New("export worker unavailable")
 	}
@@ -369,6 +378,12 @@ func (g *Gateway) publishSupervisedExport(ctx context.Context, store ExportStore
 // Loss of a supervisor never replays SQL. A failed withdrawal remains bounded
 // by persisted authority/expiry; uncertain publication is retained for review.
 func (g *Gateway) withdrawSupervisedExport(store ExportStore, initial ExportSnapshot) {
+	g.endSupervisedExport(store, initial, ExportCancelled, &query.Error{Code: "CANCELLED", Message: "Export supervision ended"})
+}
+
+// endSupervisedExport ends an export this supervisor still owns, if it is
+// still active, in the given terminal state.
+func (g *Gateway) endSupervisedExport(store ExportStore, initial ExportSnapshot, state string, cause *query.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	for range 8 {
@@ -377,8 +392,8 @@ func (g *Gateway) withdrawSupervisedExport(store ExportStore, initial ExportSnap
 			return
 		}
 		next := current.Job
-		next.State = ExportCancelled
-		next.Error = &query.Error{Code: "CANCELLED", Message: "Export supervision ended"}
+		next.State = state
+		next.Error = cause
 		_, err = store.CompareAndSwapExport(ctx, current, next)
 		if !errors.Is(err, ErrExportConflict) {
 			return
@@ -416,7 +431,7 @@ func (g *Gateway) serveExportHTTP(w http.ResponseWriter, r *http.Request, tenant
 func (g *Gateway) exportHTTPError(w http.ResponseWriter, op *auditOperation, err error) {
 	status, code, message := http.StatusServiceUnavailable, "UNAVAILABLE", "Export unavailable"
 	switch {
-	case errors.Is(err, audit.ErrBusy): // a full audit queue is capacity, not a journal fault
+	case auditBusy(err): // a full audit queue (here or on the node) is capacity, not a journal fault
 		w.Header().Set("Retry-After", "1")
 		status, code, message = http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Audit queue full; retry after 1s"
 	case errors.Is(err, ErrExportNotFound):
@@ -696,6 +711,10 @@ func (g *Gateway) exportPart(w http.ResponseWriter, r *http.Request, store Expor
 		return
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusTooManyRequests { // the node's audit queue was full
+		g.exportHTTPError(w, op, errWorkerAuditBusy)
+		return
+	}
 	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "application/vnd.apache.arrow.stream" || response.Header.Get("Content-Encoding") != "" || (response.ContentLength >= 0 && response.ContentLength != part.EncodedBytes) {
 		g.exportHTTPError(w, op, errors.New("invalid export part response"))
 		return

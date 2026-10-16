@@ -8,10 +8,13 @@ import (
 	"crypto/sha256"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
+	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
 // Against a real journal: a full pending queue answers 429 with a retry hint
@@ -139,5 +142,68 @@ func TestAuditNodeCancelWithFullQueueIs429AndCancelsNothing(t *testing.T) {
 	got, _ := store.Get(context.Background(), id)
 	if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") != "1" || got.Job.State != Assigned {
 		t.Fatalf("status=%d retry=%q state=%s", w.Code, w.Header().Get("Retry-After"), got.Job.State)
+	}
+}
+
+// A node's audit refusal on an operation result is capacity to the caller,
+// end to end through the gateway's relay.
+func TestOperationResultRelayPassesOnANodeAuditRefusalAs429(t *testing.T) {
+	f, _, record, _ := operationResultFixture(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "audit queue full", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	u, _ := url.Parse(server.URL)
+	f.g.tenants["team-a"] = gatewayTenant{store: f.cluster, workers: map[string]workerEndpoint{"worker-a": {url: u, client: server.Client()}}}
+	r := httptest.NewRequest(http.MethodGet, "/v1/operations/"+record.ID+"/results", nil).WithContext(f.context)
+	r.Header.Set(operationGrantHeader, f.grant)
+	w := httptest.NewRecorder()
+	f.g.operationResults(w, r, f.state, f.claims, record)
+	if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") != "1" || !strings.Contains(w.Body.String(), "RESOURCE_EXHAUSTED") {
+		t.Fatalf("status=%d retry=%q body=%s", w.Code, w.Header().Get("Retry-After"), w.Body.String())
+	}
+}
+
+// A supervised export whose execution cannot get an audit reservation fails as
+// capacity (RESOURCE_EXHAUSTED), as RunExport's does, not as cancelled.
+func TestSupervisedExportFailsAsCapacityWhenTheAuditQueueIsFull(t *testing.T) {
+	g, store, _ := exportGatewayFixture(t, "none")
+	cfg := serviceAuditConfig(t)
+	cfg.MaxPending = 1
+	a, err := OpenServiceAudit(cfg, "gateway", []string{"a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.CloseBounded() })
+	g.audit = a
+	held, err := a.journal.Begin(context.Background(), a.binding("a", nil), audit.ExportExecution) // the one reservation
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Finish(context.Background(), audit.Succeeded, audit.None)
+
+	_, key, ok := g.auth.lookup(rotationOld)
+	if !ok {
+		t.Fatal("missing key")
+	}
+	authority, _ := authorityForPrincipal(store.policy, "analyst")
+	ctx := context.WithValue(context.Background(), jobAuthorityKey{}, authority)
+	ctx = context.WithValue(ctx, keyAuthorizationContext{}, keyAuthorization{g.auth, key})
+	job, err := normalizeExportSubmission(ctx, store.policy, ExportSubmission{Request: query.Request{Mode: "federated", Sources: []string{"sales"}, SQL: "SELECT id, label FROM sales"}, SupervisorOwner: g.exportOwner, AuthorityUntil: time.Now().Add(time.Second)}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	job.ID = exportGatewayID
+	store.mu.Lock()
+	store.job = ExportSnapshot{Job: job, Revision: 1}
+	store.mu.Unlock()
+	if !g.registerExportSupervisor() {
+		t.Fatal("supervisor not registered")
+	}
+	go g.superviseExport(ctx, func() {}, store, ExportSnapshot{Job: job, Revision: 1})
+	got := awaitExportGatewayState(t, store, ExportFailed)
+	if got.Job.Error == nil || got.Job.Error.Code != "RESOURCE_EXHAUSTED" {
+		t.Fatalf("export ended as %+v, want RESOURCE_EXHAUSTED", got.Job.Error)
 	}
 }

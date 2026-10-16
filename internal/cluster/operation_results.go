@@ -170,6 +170,10 @@ func (g *Gateway) operationResults(w http.ResponseWriter, r *http.Request, state
 	}
 	defer response.Body.Close()
 	ref := record.Receipt.Result
+	if response.StatusCode == http.StatusTooManyRequests { // the node's audit queue was full
+		g.operationError(w, errWorkerAuditBusy)
+		return
+	}
 	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "application/vnd.apache.arrow.stream" || response.Header.Get("Content-Encoding") != "" || (response.ContentLength >= 0 && response.ContentLength != ref.Bytes) {
 		g.operationError(w, operationstore.ErrUnavailable)
 		return

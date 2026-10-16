@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -55,6 +56,12 @@ func (r *ExportRuntime) ServeHTTP(w http.ResponseWriter, req *http.Request) bool
 		result, err := r.RunExport(req.Context(), s)
 		if err != nil {
 			w.Header().Set("Content-Type", "application/json")
+			if errors.Is(err, audit.ErrBusy) { // capacity: the gateway passes it on as 429
+				w.Header().Set("Retry-After", "1")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_ = json.NewEncoder(w).Encode(map[string]any{"error": &query.Error{Code: "RESOURCE_EXHAUSTED", Message: "Audit queue full"}})
+				return true
+			}
 			w.WriteHeader(http.StatusConflict)
 			_ = json.NewEncoder(w).Encode(map[string]any{"error": query.PublicError(err)})
 			return true

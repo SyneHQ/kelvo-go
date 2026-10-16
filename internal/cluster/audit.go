@@ -308,11 +308,21 @@ func (o *auditOperation) abort(ctx context.Context) {
 	_ = o.terminal(audit.Unknown, audit.Interrupted, true)
 }
 
+// errWorkerAuditBusy is what a gateway makes of a node's 429 on a relayed
+// request: the node's audit queue was full, which is capacity to the caller.
+var errWorkerAuditBusy = errors.New("worker audit queue full")
+
+// auditBusy reports an audit queue that was full, here or on the node that was
+// asked to do the work.
+func auditBusy(err error) bool {
+	return errors.Is(err, audit.ErrBusy) || errors.Is(err, errWorkerAuditBusy)
+}
+
 // auditBeginHTTPError is auditBeginFailed for the node's plain-text endpoints:
 // a full pending queue is capacity (429, retry), anything else a journal fault
 // (503 with the endpoint's own message).
 func auditBeginHTTPError(w http.ResponseWriter, err error, faultMessage string) {
-	if errors.Is(err, audit.ErrBusy) {
+	if auditBusy(err) {
 		w.Header().Set("Retry-After", "1")
 		http.Error(w, "audit queue full", http.StatusTooManyRequests)
 		return
@@ -325,7 +335,7 @@ func auditBeginHTTPError(w http.ResponseWriter, err error, faultMessage string) 
 // retryable. Anything else (a failed sync, corruption, a closing journal, full
 // retention) is a journal fault and stays 503.
 func (g *Gateway) auditBeginFailed(w http.ResponseWriter, err error) {
-	if errors.Is(err, audit.ErrBusy) {
+	if auditBusy(err) {
 		w.Header().Set("Retry-After", "1")
 		g.err(w, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Audit queue full; retry after 1s")
 		return
