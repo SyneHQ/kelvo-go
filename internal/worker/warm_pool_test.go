@@ -1517,6 +1517,11 @@ func TestWarmPool_IdleLRUEvictionForNewKeys(t *testing.T) {
 		return r
 	}
 	for _, conn := range []string{"c1", "c2", "c3", "c1", "c4"} {
+		// This test is about which worker is evicted; the thrash guard that stops a
+		// key evicted a moment ago from evicting in turn has its own test.
+		mgr.mu.Lock()
+		clear(mgr.evictedAt)
+		mgr.mu.Unlock()
 		if _, err := mgr.Execute(context.Background(), exec, OperationProcessConfig{}, keyed(conn), &workerTestSink{}); err != nil {
 			t.Fatal(conn, err)
 		}
@@ -1733,4 +1738,59 @@ func TestWarmPoolTenantCapDefault(t *testing.T) {
 	if over.Validate() == nil {
 		t.Fatal("a tenant cap above max_workers x max_in_flight was accepted")
 	}
+}
+
+// More keys than workers must not thrash: a key whose worker was evicted for
+// another key may not evict one in return. Reads that cannot get a worker end
+// as RESOURCE_EXHAUSTED with a retry hint and nothing falls back or fails as
+// unavailable, and the number of launches stays near one per key instead of
+// one per read.
+func TestWarmPool_TwentyKeysOnFourWorkersDoNotThrash(t *testing.T) {
+	fs := &fakeSet{serve: func(p *fakeWorkerProcess) { serveFake(p, nil) }}
+	cfg := DefaultWarmPoolConfig()
+	cfg.Enabled, cfg.MaxWorkers, cfg.MaxPerKey, cfg.QueueTimeout = true, 4, 1, 30*time.Millisecond
+	mgr, err := NewWarmPoolManager(cfg, fs.launcher())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mgr.Drain(context.Background()) })
+	exec := &Executor{Limits: query.Limits{MemoryMB: 64, Timeout: 5 * time.Second}}
+	const keys, rounds = 20, 30
+	var wg sync.WaitGroup
+	var served, exhausted, other atomic.Int64
+	var firstOther atomic.Value
+	for k := 0; k < keys; k++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := testProcessRequest(fmt.Sprintf("op-%d", k), "tenant-a", "team-a", fmt.Sprintf("conn-%d", k), strings.Repeat("1", 64))
+			req.CredentialsValidUntil = time.Now().Unix() + 4
+			for range rounds {
+				_, release, err := mgr.Acquire(context.Background(), exec, OperationProcessConfig{}, req)
+				var public *query.Error
+				switch {
+				case err == nil:
+					served.Add(1)
+					time.Sleep(time.Millisecond) // a short read
+					release(nil)
+					time.Sleep(time.Duration(2+k%3) * time.Millisecond) // workers sit idle between reads
+				case errors.As(err, &public) && public.Code == "RESOURCE_EXHAUSTED" && strings.Contains(public.Message, "retry after"):
+					exhausted.Add(1)
+				default:
+					other.Add(1)
+					firstOther.CompareAndSwap(nil, err.Error())
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	spawns := mgr.metrics.Spawns.Load()
+	if other.Load() != 0 || mgr.metrics.Fallbacks.Load() != 0 {
+		t.Fatalf("reads ended as something other than a result or RESOURCE_EXHAUSTED: %d (%v), fallbacks %d", other.Load(), firstOther.Load(), mgr.metrics.Fallbacks.Load())
+	}
+	// One launch per key, plus at most one more per key for its eviction.
+	if spawns > 2*keys {
+		t.Fatalf("%d launches for %d keys and %d reads: workers thrash", spawns, keys, keys*rounds)
+	}
+	t.Logf("served=%d exhausted=%d spawns=%d evictions=%d", served.Load(), exhausted.Load(), spawns, mgr.metrics.EvictionsLRU.Load())
 }
