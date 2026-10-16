@@ -157,7 +157,8 @@ func (m *WarmPoolManager) retireAuthorization(key string, observed *readAuthoriz
 // authorization used them, and those authorizations end too. Any other
 // definitive denial (this principal not permitted, or a connection this
 // principal can no longer see) ends only this principal's authorization; the
-// workers stay for the others. It waits for kills up to ctx.
+// workers stay for the others, and drain once no live authorization holds
+// them. It waits for kills and drains up to ctx.
 func (m *WarmPoolManager) revokeAuthorization(ctx context.Context, key string, observed *readAuthorization, denial error) error {
 	if observed == nil {
 		return nil
@@ -176,9 +177,15 @@ func (m *WarmPoolManager) revokeAuthorization(ctx context.Context, key string, o
 			}
 		}
 	}
+	// With the last live authorization gone, nobody may use these workers:
+	// drain them now rather than leave their credentials until the idle TTL.
+	drain := !gone && !m.referencedLocked(observed.workerKey)
 	m.authMu.Unlock()
 	if gone {
 		return m.killKey(ctx, observed.workerKey)
+	}
+	if drain {
+		m.drainKey(ctx, observed.workerKey)
 	}
 	return nil
 }

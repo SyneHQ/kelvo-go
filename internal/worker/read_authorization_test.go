@@ -590,24 +590,43 @@ func TestReadOutwaitingItsAuthorizationIsReauthorized(t *testing.T) {
 	}
 }
 
-// A principal no longer permitted loses its own authorization only: even with
-// no other principal on them, the workers are not killed for it.
-func TestReadAuthorizationPrincipalDenialExpiresOnlyItself(t *testing.T) {
+// A principal's denial ends its own authorization only: the worker stays
+// while another principal still holds it. When the last principal holding it
+// is denied, the worker drains at once: no credentials linger until the idle
+// TTL for a connection nobody may use.
+func TestReadAuthorizationLastDenialDrainsWorker(t *testing.T) {
 	d := newDynamicReads(t)
+	for _, p := range []string{"p1", "p2"} {
+		if err := d.read(context.Background(), p, "saved-a", "SELECT 1"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	d.mgr.cfg.ReauthorizeEvery = 150 * time.Millisecond
-	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err != nil {
+	time.Sleep(200 * time.Millisecond) // both must authorize again
+	if err := d.read(context.Background(), "p2", "saved-a", "SELECT 1"); err != nil { // p2 holds the worker again
 		t.Fatal(err)
 	}
-	time.Sleep(200 * time.Millisecond)
 	d.deny.Store("grant-p1-saved-a", true)
 	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err == nil {
 		t.Fatal("denied principal served")
 	}
+	if d.fs.procs[0].killed.Load() {
+		t.Fatal("one principal's denial ended a worker another principal holds")
+	}
+	time.Sleep(200 * time.Millisecond)
+	d.deny.Store("grant-p2-saved-a", true)
+	if err := d.read(context.Background(), "p2", "saved-a", "SELECT 1"); err == nil {
+		t.Fatal("denied principal served")
+	}
+	// Right after the last denial, not at the idle TTL (30 minutes).
+	if !d.fs.procs[0].killed.Load() {
+		t.Fatal("the worker outlived the last authorization that held it")
+	}
 	d.mgr.authMu.Lock()
 	left := len(d.mgr.auths)
 	d.mgr.authMu.Unlock()
-	if left != 0 || d.fs.procs[0].killed.Load() || d.mgr.metrics.EvictionsAuth.Load() != 0 {
-		t.Fatal("a principal's denial did more than expire its authorization:", left, d.fs.procs[0].killed.Load())
+	if left != 0 || d.mgr.metrics.EvictionsAuth.Load() != 0 {
+		t.Fatal("a principal denial killed as a gone source, or left authorizations:", left, d.mgr.metrics.EvictionsAuth.Load())
 	}
 }
 
