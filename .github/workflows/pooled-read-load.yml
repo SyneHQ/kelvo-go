@@ -116,6 +116,7 @@ jobs:
           grep -av 'kelvo read failed' node.test.log | tail -c 200000 > ../../pooled-read-load/node.test.log 2>/dev/null || true
           tail -c 20000 service.log > ../../pooled-read-load/service.log 2>/dev/null || true
           tail -c 20000 nats.log > ../../pooled-read-load/nats.log 2>/dev/null || true
+          cp -r stall ../../pooled-read-load/stall 2>/dev/null || true
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

@@ -45,6 +45,12 @@ type loadSample struct {
 	JobGroups  int     `json:"job_cgroups"`
 	RSSNode    uint64  `json:"rss_node_bytes"`    // the gateway and node process
 	RSSWorkers uint64  `json:"rss_workers_bytes"` // every contained worker and one-shot child
+	// Work in flight and started, so a stall reads as "requests entered and none
+	// finished" rather than only a flat CPU line.
+	GatewayInflight  int64 `json:"gateway_inflight"`
+	GatewayStarted   int64 `json:"gateway_started"`
+	GatewayCompleted int64 `json:"gateway_completed"`
+	PoolReadsStarted int64 `json:"warm_pool_reads_started"` // warm-pool hits + misses
 }
 
 // rssOf sums VmRSS of the processes listed by cgroup.procs files under dir.
@@ -148,6 +154,7 @@ func TestPooledReadLoadNode(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Minute)
 	defer cancel()
 	root := t.TempDir()
+	stall := newStallWatch(out)
 	cgroupRoot, cgroupState := get("CGROUP_ROOT"), get("CGROUP_STATE")
 	unitCgroup := filepath.Dir(cgroupRoot) // the delegated service; jobs/ is a child
 
@@ -220,7 +227,19 @@ func TestPooledReadLoadNode(t *testing.T) {
 	publicServer := serve(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if g := gatewayRef.Load(); g != nil {
 			rec := &statusRecorder{ResponseWriter: w, status: 200, start: time.Now()}
+			var endStall func(int)
+			if strings.HasPrefix(r.URL.Path, "/v1/queries") {
+				endStall = stall.begin()
+			}
 			g.ServeHTTP(rec, r)
+			if endStall != nil {
+				// A request that only ends at its 30 s deadline is not progress.
+				if time.Since(rec.start) > 15*time.Second {
+					endStall(http.StatusGatewayTimeout)
+				} else {
+					endStall(rec.status)
+				}
+			}
 			if r.URL.Path == "/v1/queries/stream" {
 				logs["gateway_stream_total"].add(time.Since(rec.start).Seconds())
 				if rec.ttfb > 0 {
@@ -567,6 +586,16 @@ func TestPooledReadLoadNode(t *testing.T) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	stop := filepath.Join(out, "stop")
+	stallSource := stallSources{cgroupRoot: cgroupRoot, unitCgroup: unitCgroup, pool: pool, adminDSN: os.Getenv("KELVO_LOAD_PG_ADMIN_DSN"),
+		poolReads: func() (int64, int64, int64) {
+			pm := engine.WarmPool.Metrics()
+			return pm.Hits.Load(), pm.Misses.Load(), pm.Spawns.Load()
+		},
+		metrics: func() string {
+			rec := httptest.NewRecorder()
+			registry.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+			return rec.Body.String()
+		}}
 sampling:
 	for {
 		select {
@@ -574,6 +603,7 @@ sampling:
 			t.Fatal("load run exceeded its deadline")
 		case <-ticker.C:
 			windows.poll(t)
+			stall.poll(time.Now(), stallSource, t.Logf)
 			entries, _ := os.ReadDir(cgroupRoot)
 			groups := 0
 			for _, e := range entries {
@@ -584,7 +614,9 @@ sampling:
 			peakGroups = max(peakGroups, groups)
 			samples = append(samples, loadSample{T: time.Since(began).Seconds(), CPUUsec: readUint(filepath.Join(unitCgroup, "cpu.stat"), "usage_usec"),
 				MemCurrent: readUint(filepath.Join(unitCgroup, "memory.current"), ""), JobGroups: groups,
-				RSSNode: rssOf(filepath.Join(unitCgroup, "supervisor"), false), RSSWorkers: rssOf(cgroupRoot, true)})
+				RSSNode: rssOf(filepath.Join(unitCgroup, "supervisor"), false), RSSWorkers: rssOf(cgroupRoot, true),
+				GatewayInflight: stall.inflight.Load(), GatewayStarted: stall.started.Load(), GatewayCompleted: stall.completed.Load(),
+				PoolReadsStarted: engine.WarmPool.Metrics().Hits.Load() + engine.WarmPool.Metrics().Misses.Load()})
 			if _, err := os.Stat(stop); err == nil {
 				break sampling
 			}
@@ -610,6 +642,7 @@ sampling:
 		"memory_peak_bytes":     readUint(filepath.Join(unitCgroup, "memory.peak"), ""),
 		"memory_events_oom":     readUint(filepath.Join(unitCgroup, "memory.events"), "oom_kill"),
 		"peak_job_cgroups":      peakGroups,
+		"stall_captures":        stall.captures, // > 0: see stall/capture-N in the artifact
 		"samples":               samples,
 		"ed25519_verify_micros": verifyUnit,
 		"resolver_http":         resolverTally.copy(),
