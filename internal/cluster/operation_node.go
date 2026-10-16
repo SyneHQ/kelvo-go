@@ -179,6 +179,7 @@ func (n *Node) cleanupOperationResults() {
 	defer n.wg.Done()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	timeouts := cleanupTimeouts{lastOK: time.Now()}
 	for {
 		select {
 		case <-n.ctx.Done():
@@ -187,6 +188,13 @@ func (n *Node) cleanupOperationResults() {
 			ctx, stop := context.WithTimeout(n.ctx, 5*time.Second)
 			_, err := n.operations.results.Cleanup(ctx, 32)
 			stop()
+			if err == nil {
+				timeouts.succeeded(time.Now())
+			} else if n.ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
+				if count, since, logIt := timeouts.timedOut(time.Now()); logIt {
+					log.Printf("kelvo: operation result cleanup timed out %d consecutive times on node %s; last success %s ago", count, n.cfg.WorkerID, since.Round(time.Second))
+				}
+			}
 			// A timeout is contention (the store's root lock, a slow scan under
 			// load), not corruption: retry next tick. Draining here stops query
 			// dispatch while the heartbeat stays alive, so every queued read
@@ -200,6 +208,20 @@ func (n *Node) cleanupOperationResults() {
 		}
 	}
 }
+
+// cleanupTimeouts counts consecutive cleanup timeouts so a stuck cleanup is
+// visible: it asks for a log on the first and then every 60th.
+type cleanupTimeouts struct {
+	count  int
+	lastOK time.Time
+}
+
+func (c *cleanupTimeouts) timedOut(now time.Time) (count int, since time.Duration, logIt bool) {
+	c.count++
+	return c.count, now.Sub(c.lastOK), c.count == 1 || c.count%60 == 0
+}
+
+func (c *cleanupTimeouts) succeeded(now time.Time) { c.count, c.lastOK = 0, now }
 
 type preparedNodeOperation struct {
 	node       *Node
