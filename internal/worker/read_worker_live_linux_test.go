@@ -66,6 +66,13 @@ type burstResult struct {
 }
 
 // percentile is nearest-rank over sorted durations.
+// median of a small sample.
+func median(values []float64) float64 {
+	sorted := slices.Clone(values)
+	slices.Sort(sorted)
+	return sorted[len(sorted)/2]
+}
+
 func percentile(sorted []time.Duration, p int) float64 {
 	i := (len(sorted)*p + 99) / 100
 	return float64(sorted[max(i, 1)-1].Microseconds()) / 1000
@@ -319,21 +326,39 @@ func TestContainedExplorerUnaffectedByFullBackgroundClass(t *testing.T) {
 			fullSamples++
 		}
 	}
-	sample()
-	loaded := g.bursts("warm-under-load", 3)
+	// Compare the median per-burst p95, over several bursts each, so one noisy
+	// burst on a shared runner cannot decide the gate.
+	const rounds = 7
+	var loadedP95, idleP95 []float64
+	var loaded, idle burstResult
+	for i := 0; i < rounds; i++ {
+		sample()
+		_, one := g.burst(fmt.Sprintf("warm-under-load-%d", i))
+		loadedP95 = append(loadedP95, one.P95MS)
+		loaded.N, loaded.Failures = loaded.N+one.N, loaded.Failures+one.Failures
+	}
 	sample()
 	cancelLoad()
 	loaders.Wait()
-	idle := g.bursts("warm-idle", 3)
+	for i := 0; i < rounds; i++ {
+		_, one := g.burst(fmt.Sprintf("warm-idle-%d", i))
+		idleP95 = append(idleP95, one.P95MS)
+		idle.N, idle.Failures = idle.N+one.N, idle.Failures+one.Failures
+	}
+	loadedMedian, idleMedian := median(loadedP95), median(idleP95)
+	loaded.P95MS, idle.P95MS = loadedMedian, idleMedian
 
 	metrics := g.mgr.Metrics()
-	report, _ := json.Marshal(map[string]any{"cold_under_load": cold, "loaded": loaded, "idle": idle, "spawns": metrics.Spawns.Load(), "fallbacks": metrics.Fallbacks.Load(),
+	report, _ := json.Marshal(map[string]any{"cold_under_load": cold, "loaded": loaded, "idle": idle, "loaded_p95_per_burst": loadedP95, "idle_p95_per_burst": idleP95,
+		"median_ratio": loadedMedian / idleMedian, "spawns": metrics.Spawns.Load(), "fallbacks": metrics.Fallbacks.Load(),
 		"background_slots": 2, "background_full_samples": fmt.Sprintf("%d/%d", fullSamples, samples), "analysis_runs": analysisRuns.Load(), "analysis_failures": analysisFailures.Load()})
 	t.Logf("GATE_METRICS %s", report)
-	// 1.5x plus 25 ms absorbs scheduler noise at these latencies on a shared
-	// runner; a blocked or queued explorer would add seconds, not milliseconds.
+	// Separate admission classes reserve slots, not CPU: background children
+	// run with a lower cpu.weight (containment.CPUWeightBackground), so under
+	// load the explorer's median p95 stays within 1.5x plus 25 ms of idle. A
+	// blocked or queued explorer would add seconds, not milliseconds.
 	if metrics.Spawns.Load() != 1 || metrics.Fallbacks.Load() != 0 || fullSamples != samples || loaded.Failures+idle.Failures+cold.Failures != 0 ||
-		loaded.P95MS > idle.P95MS*1.5+25 {
+		loadedMedian > idleMedian*1.5+25 {
 		t.Fatal("explorer was affected by a full background class", string(report))
 	}
 	g.drain()
@@ -362,7 +387,28 @@ func TestContainedDashboardViewersShareOneSourceQueryPerPanel(t *testing.T) {
 	panel := func(i int) string {
 		return fmt.Sprintf("SELECT count(*)::bigint AS n, sum(amount)::float8 AS total FROM public.explorer_t%d WHERE id > 0", i)
 	}
+	// pg_stat_statements counts a statement when its portal is destroyed, which
+	// for a read inside a read-only transaction is when ROLLBACK runs, and the
+	// adapter finishes that ROLLBACK after it has returned the result. Wait until
+	// no source backend is mid-transaction or running before reading the counts.
+	settle := func() {
+		deadline := time.Now().Add(15 * time.Second)
+		for {
+			var busy int
+			if err := conn.QueryRow(setup, "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND (state = 'active' OR state LIKE 'idle in transaction%')").Scan(&busy); err != nil {
+				t.Fatal(err)
+			}
+			if busy == 0 {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%d source backends still busy after the reads returned", busy)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 	calls := func() []int64 {
+		settle()
 		out := make([]int64, panels)
 		for i := range out {
 			if err := conn.QueryRow(setup, "SELECT coalesce(sum(calls), 0)::bigint FROM pg_stat_statements WHERE query LIKE $1",

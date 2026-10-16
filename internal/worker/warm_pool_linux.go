@@ -165,6 +165,7 @@ func launchServe(ctx context.Context, e *Executor, cfg OperationProcessConfig, l
 	}
 
 	processLimits, err := e.ContainmentBudget.ProcessLimits(int64(limits.MemoryMB), limits.Threads)
+	processLimits.CPUWeight = containment.CPUWeightReadWorker
 	if err != nil {
 		_ = binary.Close()
 		_ = workspace.cleanup()

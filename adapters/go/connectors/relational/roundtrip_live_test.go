@@ -464,3 +464,59 @@ func TestPostgresDeadIdleConnectionsAreReplacedLive(t *testing.T) {
 		t.Fatalf("pool unusable after a killed query: %v", err)
 	}
 }
+
+// pg_stat_statements counts a statement when its portal is destroyed; inside a
+// read-only transaction that is when ROLLBACK runs, which a warm session now
+// finishes after the read has returned. A gate that counts source executions
+// must therefore wait for the source to go quiet. Needs pg_stat_statements
+// preloaded on the fixture; skipped without it.
+func TestPostgresStatementCountsSettleAfterBackgroundRollbackLive(t *testing.T) {
+	creds := os.Getenv("KELVO_RT_POSTGRESQL")
+	if creds == "" {
+		t.Skip("KELVO_RT_POSTGRESQL not set")
+	}
+	_, rest, _ := strings.Cut(creds, "@")
+	target, _, _ := strings.Cut(rest, "/")
+	proxy := newDelayProxy(t, target, 0)
+	s := liveSession(t, "postgresql", proxy.addr(), creds)
+	admin, err := sql.Open("pgx", "postgres://"+creds+"?sslmode=disable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	if _, err := admin.Exec("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"); err != nil {
+		t.Skip("pg_stat_statements unavailable:", err)
+	}
+	if _, err := admin.Exec("SELECT pg_stat_statements_reset()"); err != nil {
+		t.Skip("pg_stat_statements not preloaded:", err)
+	}
+	count := func() (n int64) {
+		_ = admin.QueryRow("SELECT coalesce(sum(calls), 0)::bigint FROM pg_stat_statements WHERE query LIKE 'SELECT 4242 AS marker%'").Scan(&n)
+		return n
+	}
+	settle := func() {
+		for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(5 * time.Millisecond) {
+			var busy int
+			_ = admin.QueryRow("SELECT count(*) FROM pg_stat_activity WHERE application_name = 'kelvo-go' AND (state = 'active' OR state LIKE 'idle in transaction%')").Scan(&busy)
+			if busy == 0 {
+				return
+			}
+		}
+		t.Fatal("source never went quiet")
+	}
+	const reads = 200
+	early := 0
+	for i := int64(1); i <= reads; i++ {
+		if _, err := s.Query(context.Background(), adapter.Query{Statement: "SELECT 4242 AS marker", MaxRows: 10, MaxBytes: 1 << 20, BatchRows: 10}, nopSink{}); err != nil {
+			t.Fatal(err)
+		}
+		if count() != i {
+			early++
+		}
+		settle()
+		if got := count(); got != i {
+			t.Fatalf("after the source settled pg_stat_statements counted %d, want %d", got, i)
+		}
+	}
+	t.Logf("pg_stat_statements was behind the returned read %d/%d times before the source settled", early, reads)
+}

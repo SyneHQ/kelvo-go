@@ -5,6 +5,7 @@ import (
 	"context"
 
 	"github.com/SYNEHQ/kelvo-go/internal/admission"
+	"github.com/SYNEHQ/kelvo-go/internal/containment"
 )
 
 type admissionClassKey struct{}
@@ -13,6 +14,16 @@ type admissionClassKey struct{}
 // an inspection falling back from a read worker stays interactive.
 func withAdmissionClass(ctx context.Context, class admission.Class) context.Context {
 	return context.WithValue(ctx, admissionClassKey{}, class)
+}
+
+// operationCPUWeight is the cgroup cpu.weight of a durable operation's child:
+// interactive-class fallbacks run at the one-shot weight, every background
+// class below it, and both below a warm read worker.
+func operationCPUWeight(class admission.Class) int64 {
+	if class == admission.ClassInteractive {
+		return containment.CPUWeightOneShot
+	}
+	return containment.CPUWeightBackground
 }
 
 func admissionClass(ctx context.Context, fallback admission.Class) admission.Class {
