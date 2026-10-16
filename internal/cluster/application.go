@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"log"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -161,26 +162,21 @@ func (a *Application) authorize(ctx context.Context, record operationstore.Recor
 
 func (a *Application) maintain() {
 	defer close(a.maintenance)
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-a.ctx.Done():
-			return
-		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(a.ctx, 5*time.Second)
-			_, err := a.inputs.Cleanup(ctx, 32)
-			if err == nil {
-				_, err = a.results.Cleanup(ctx, 32)
-			}
-			cancel()
-			if err != nil && a.ctx.Err() == nil {
-				a.failed.Store(true)
-				a.BeginDrain()
-				return
-			}
+	a.maintainEvery(time.Second, func(ctx context.Context) error {
+		if _, err := a.inputs.Cleanup(ctx, 32); err != nil {
+			return err
 		}
-	}
+		_, err := a.results.Cleanup(ctx, 32)
+		return err
+	})
+}
+
+func (a *Application) maintainEvery(interval time.Duration, cleanup func(context.Context) error) {
+	runCleanupLoop(a.ctx, "application", interval, 5*time.Second, cleanup, func(err error) {
+		log.Printf("kelvo: application storage cleanup failed; draining: %v", err)
+		a.failed.Store(true)
+		a.BeginDrain()
+	})
 }
 
 func (a *Application) BeginDrain() {
