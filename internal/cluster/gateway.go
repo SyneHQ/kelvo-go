@@ -789,8 +789,13 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusTooManyRequests {
-		// The node's audit queue was full when it began this execution; it has
-		// already ended the job. That is capacity, to be retried, not an outage.
+		// The node's audit queue was full and it refused before touching the job.
+		// Open the claim again, so the retry this answer invites finds the job
+		// assignable and can succeed. If that fails the job is not claimable and
+		// the retry learns why.
+		reopened := s.Job
+		reopened.State, reopened.Claim = Assigned, ""
+		_, _ = t.store.CompareAndSwap(ctx, s, reopened)
 		w.Header().Set("Retry-After", "1")
 		g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Audit queue full on the worker; retry after 1s")
 		return

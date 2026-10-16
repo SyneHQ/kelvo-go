@@ -416,6 +416,9 @@ func (g *Gateway) serveExportHTTP(w http.ResponseWriter, r *http.Request, tenant
 func (g *Gateway) exportHTTPError(w http.ResponseWriter, op *auditOperation, err error) {
 	status, code, message := http.StatusServiceUnavailable, "UNAVAILABLE", "Export unavailable"
 	switch {
+	case errors.Is(err, audit.ErrBusy): // a full audit queue is capacity, not a journal fault
+		w.Header().Set("Retry-After", "1")
+		status, code, message = http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", "Audit queue full; retry after 1s"
 	case errors.Is(err, ErrExportNotFound):
 		status, code, message = http.StatusNotFound, "NOT_FOUND", "Export not found"
 	case errors.Is(err, ErrExportCapacity):

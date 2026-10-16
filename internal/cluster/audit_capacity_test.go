@@ -2,6 +2,7 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -118,5 +119,52 @@ func TestResultRelayMapsAWorkerAuditQueueRefusalTo429(t *testing.T) {
 	(&Gateway{}).results(w, httptest.NewRequest(http.MethodGet, "/v1/queries/busy-result/results", nil), tenant, "busy-result", nil)
 	if w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") != "1" || !strings.Contains(w.Body.String(), `"code":"RESOURCE_EXHAUSTED"`) {
 		t.Fatalf("status=%d retry=%q body=%s", w.Code, w.Header().Get("Retry-After"), w.Body.String())
+	}
+	// The retry the 429 invites needs an assignable job, not a consumed claim.
+	got, _ := store.Get(context.Background(), "busy-result")
+	if got.Job.State != Assigned || got.Job.Claim != "" {
+		t.Fatalf("job after the refusal: state=%s claim=%q, want Assigned with no claim", got.Job.State, got.Job.Claim)
+	}
+}
+
+// The other audit paths split capacity from fault the same way.
+func TestOperationAndExportAuditBeginFailuresSplitCapacityFromFault(t *testing.T) {
+	g := &Gateway{}
+	for name, respond := range map[string]func(http.ResponseWriter, error){
+		"operations": func(w http.ResponseWriter, err error) { g.operationError(w, err) },
+		"exports":    func(w http.ResponseWriter, err error) { g.exportHTTPError(w, nil, err) },
+	} {
+		busy, fault := httptest.NewRecorder(), httptest.NewRecorder()
+		respond(busy, audit.ErrBusy)
+		respond(fault, audit.ErrUncertain)
+		if busy.Code != http.StatusTooManyRequests || busy.Header().Get("Retry-After") != "1" || !strings.Contains(busy.Body.String(), "RESOURCE_EXHAUSTED") {
+			t.Errorf("%s busy: status=%d retry=%q body=%s", name, busy.Code, busy.Header().Get("Retry-After"), busy.Body.String())
+		}
+		if fault.Code != http.StatusServiceUnavailable || fault.Header().Get("Retry-After") != "" {
+			t.Errorf("%s fault: status=%d retry=%q", name, fault.Code, fault.Header().Get("Retry-After"))
+		}
+	}
+	busy, fault := httptest.NewRecorder(), httptest.NewRecorder()
+	auditBeginHTTPError(busy, audit.ErrBusy, "audit storage unavailable")
+	auditBeginHTTPError(fault, audit.ErrCorrupt, "audit storage unavailable")
+	if busy.Code != http.StatusTooManyRequests || busy.Header().Get("Retry-After") != "1" || fault.Code != http.StatusServiceUnavailable || fault.Header().Get("Retry-After") != "" {
+		t.Errorf("node endpoints: busy=%d/%q fault=%d/%q", busy.Code, busy.Header().Get("Retry-After"), fault.Code, fault.Header().Get("Retry-After"))
+	}
+}
+
+func TestNodeAuditDemandCountsExports(t *testing.T) {
+	p := testPolicy()
+	p.Workers = map[string]int{"a1": 2}
+	c := NodeConfig{Policy: p, WorkerID: "a1", Audit: auditTestConfig(0), Operations: &OperationNodeConfig{MaxConcurrent: 3}, Exports: &ExportNodeConfig{MaxConcurrent: 4, MaxDownloads: 5}}
+	if got := nodeAuditDemand(c); got != 14 {
+		t.Fatalf("demand %d, want workers 2 + operations 3 + export executions 4 + downloads 5", got)
+	}
+	c.Audit = auditTestConfig(13)
+	if err := validateNodeAudit(c); !errors.Is(err, errAuditCapacity) {
+		t.Fatalf("13 < 14 accepted: %v", err)
+	}
+	c.Audit = auditTestConfig(14)
+	if err := validateNodeAudit(c); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -798,7 +798,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if parts[3] == "cancel" && r.Method == http.MethodPost {
 		op, err := n.audit.beginGateway(r.Context(), n.cfg.Policy, audit.QueryCancel)
 		if err != nil {
-			http.Error(w, "audit storage unavailable", http.StatusServiceUnavailable)
+			auditBeginHTTPError(w, err, "audit storage unavailable")
 			return
 		}
 		defer op.abort(r.Context())
@@ -829,8 +829,38 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	n.streams.Add(1)
 	n.mu.Unlock()
 	defer n.streams.Done()
-	defer n.release(id, reserved)
+	// A refusal for want of an audit reservation leaves the job exactly as it
+	// was, claimable again, so it keeps its reservation here.
+	retryable := false
+	defer func() {
+		if !retryable {
+			n.release(id, reserved)
+		}
+	}()
 	claim := r.Header.Get("X-Kelvo-Claim")
+	// Reserve the audit slot BEFORE consuming the claim or changing the job. A
+	// full queue then answers 429 with nothing changed, so the retry it invites
+	// can succeed. (If the job cannot be read or is not claimable, the claim
+	// path below fails it exactly as before.)
+	var op *auditOperation
+	reservedAudit := false
+	if pre, getErr := n.store.Get(r.Context(), id); getErr == nil && pre.Job.State == Claimed && len(claim) == 32 && subtle.ConstantTimeCompare([]byte(pre.Job.Claim), []byte(claim)) == 1 {
+		var auditErr error
+		op, auditErr = n.audit.begin(r.Context(), n.cfg.Policy.TenantID, pre.Job.Authority, audit.QueryExecution)
+		if auditErr != nil {
+			if errors.Is(auditErr, audit.ErrBusy) {
+				n.mu.Lock()
+				reserved.started = false
+				n.mu.Unlock()
+				retryable = true
+			} else {
+				_ = n.finish(id, Failed, query.Stats{}, query.NewError("UNAVAILABLE", "Audit storage unavailable"))
+			}
+			auditBeginHTTPError(w, auditErr, "audit storage unavailable")
+			return
+		}
+		reservedAudit = true
+	}
 	var request query.Request
 	var authority *JobAuthority
 	var carrier tracing.Carrier
@@ -862,6 +892,9 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 	if err != nil {
+		if reservedAudit {
+			op.abort(r.Context()) // the reservation was for an execution that never started
+		}
 		_ = n.finish(id, Failed, query.Stats{}, query.NewError("QUERY_FAILED", "Query claim could not start"))
 		http.Error(w, "query is unavailable or already consumed", http.StatusConflict)
 		return
@@ -880,17 +913,20 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var completion containment.Completion
 	ctx = containment.WithCompletion(ctx, &completion)
 	defer completion.Complete()
-	op, auditErr := n.audit.begin(ctx, n.cfg.Policy.TenantID, authority, audit.QueryExecution)
-	if auditErr != nil {
-		if errors.Is(auditErr, audit.ErrBusy) { // a full queue is capacity, not a journal fault
-			_ = n.finish(id, Failed, query.Stats{}, query.NewError("RESOURCE_EXHAUSTED", "Audit queue full"))
-			w.Header().Set("Retry-After", "1")
-			http.Error(w, "audit queue full", http.StatusTooManyRequests)
+	if !reservedAudit {
+		// The job could not be read beforehand: reserve now, as before. A refusal
+		// here has already consumed the claim, so it fails the job.
+		var auditErr error
+		op, auditErr = n.audit.begin(ctx, n.cfg.Policy.TenantID, authority, audit.QueryExecution)
+		if auditErr != nil {
+			if errors.Is(auditErr, audit.ErrBusy) {
+				_ = n.finish(id, Failed, query.Stats{}, query.NewError("RESOURCE_EXHAUSTED", "Audit queue full"))
+			} else {
+				_ = n.finish(id, Failed, query.Stats{}, query.NewError("UNAVAILABLE", "Audit storage unavailable"))
+			}
+			auditBeginHTTPError(w, auditErr, "audit storage unavailable")
 			return
 		}
-		_ = n.finish(id, Failed, query.Stats{}, query.NewError("UNAVAILABLE", "Audit storage unavailable"))
-		http.Error(w, "audit storage unavailable", http.StatusServiceUnavailable)
-		return
 	}
 	defer op.abort(ctx)
 	deadline, _ := ctx.Deadline()

@@ -39,7 +39,7 @@ func TestSlot(t *testing.T) {
 }
 
 func TestValidTransition(t *testing.T) {
-	allowed := [][2]string{{Queued, Queued}, {Queued, Assigned}, {Queued, Failed}, {Assigned, Claimed}, {Claimed, Running}, {Running, ResultReady}, {ResultReady, ResultReady}, {ResultReady, Succeeded}, {Running, Cancelled}}
+	allowed := [][2]string{{Queued, Queued}, {Queued, Assigned}, {Queued, Failed}, {Assigned, Claimed}, {Claimed, Assigned}, {Claimed, Running}, {Running, ResultReady}, {ResultReady, ResultReady}, {ResultReady, Succeeded}, {Running, Cancelled}}
 	for _, transition := range allowed {
 		if !validTransition(transition[0], transition[1]) {
 			t.Errorf("rejected transition %s -> %s", transition[0], transition[1])
@@ -750,5 +750,60 @@ func TestNATSStoreCompareAndSwapRefusesAStaleSnapshotWithoutReading(t *testing.T
 	bare := Snapshot{Job: snap.Job, Revision: snap.Revision}
 	if _, err := store.CompareAndSwap(ctx, bare, next); err == nil {
 		t.Fatal("snapshot without a stored record was accepted")
+	}
+}
+
+// A claim can be opened again only by the exact step the gateway takes when a
+// node refused before touching the job: Claimed back to Assigned, same worker
+// and owner, claim cleared. Nothing else reopens a claim.
+func TestNATSStoreReopensAClaimOnlyByClearingItFromClaimed(t *testing.T) {
+	store := openFixture(t)
+	ctx := context.Background()
+	snap, err := store.Submit(ctx, query.Request{Mode: "federated", SQL: "select 1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { releaseJobs(store, []string{snap.Job.ID}) })
+	claimed := claimJob(t, store, snap)
+	try := func(mutate func(*Job)) error {
+		j := claimed.Job
+		mutate(&j)
+		_, err := store.CompareAndSwap(ctx, claimed, j)
+		return err
+	}
+	for name, mutate := range map[string]func(*Job){
+		"keeping the claim": func(j *Job) { j.State = Assigned },
+		"another claim":     func(j *Job) { j.State, j.Claim = Assigned, randomHex(16) },
+		"another owner":     func(j *Job) { j.State, j.Claim, j.Owner = Assigned, "", randomHex(16) },
+		"another worker":    func(j *Job) { j.State, j.Claim, j.WorkerID = Assigned, "", "worker-b" },
+	} {
+		if err := try(mutate); !errors.Is(err, ErrConflict) {
+			t.Errorf("%s: %v, want a conflict", name, err)
+		}
+	}
+	if err := try(func(j *Job) { j.State, j.Claim = Assigned, "" }); err != nil {
+		t.Fatalf("reopening a refused claim: %v", err)
+	}
+	// Once running, a job is never reopened.
+	reopened, err := store.Get(ctx, snap.Job.ID)
+	if err != nil || reopened.Job.State != Assigned {
+		t.Fatalf("not reopened: %v %+v", err, reopened.Job.State)
+	}
+	claimAgain := reopened.Job
+	claimAgain.State, claimAgain.Claim = Claimed, randomHex(16)
+	again, err := store.CompareAndSwap(ctx, reopened, claimAgain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	running := again.Job
+	running.State = Running
+	runningSnap, err := store.CompareAndSwap(ctx, again, running)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back := runningSnap.Job
+	back.State, back.Claim = Assigned, ""
+	if _, err := store.CompareAndSwap(ctx, runningSnap, back); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a running job was reopened: %v", err)
 	}
 }
