@@ -28,7 +28,13 @@ func TestNodeResultCleanupTimeoutDoesNotStopQueryDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { n.operations = nil; n.Close() }()
+	defer func() {
+		// Stop the cleanup loop before detaching the stub operations state.
+		n.cancel()
+		n.wg.Wait()
+		n.operations = nil
+		n.Close()
+	}()
 
 	dir := filepath.Join(t.TempDir(), "results")
 	results, err := operationinput.Open(operationinput.Config{MaxInputBytes: 1 << 20, Storage: exports.Config{Directory: dir, Tenant: "team-a", MaxEntries: 64, MaxStoredBytes: 16 << 20, MaxTTL: time.Hour}})
