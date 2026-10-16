@@ -390,8 +390,12 @@ func holdServe(holds map[string]chan struct{}) func(p *fakeWorkerProcess) {
 // for conn-1, then Y for conn-4, and conn-3's worker goes idle. With
 // max_per_key 1, X cannot add a worker, so Y is woken and takes the idle
 // worker's place. With max_per_key 2, X can: it is woken, evicts the idle
-// worker and launches. Either way the idle worker is not left while waiters
-// time out.
+// worker and launches; then Y takes the place of X's worker once it idles.
+// Either way the idle worker is not left while waiters time out.
+//
+// The max_per_key 1 case pins only the wake rule (a waiter at its cap is
+// passed over); the max_per_key 2 case pins eviction by a waiter that may
+// add a worker.
 func TestWarmPool_FreedSlotWakesAWaiterThatCanUseIt(t *testing.T) {
 	for _, tc := range []struct {
 		maxPerKey int
@@ -430,6 +434,19 @@ func TestWarmPool_FreedSlotWakesAWaiterThatCanUseIt(t *testing.T) {
 				}
 			case <-time.After(2 * time.Second):
 				t.Fatal("the idle worker's place went unused while", tc.served, "waited")
+			}
+			if tc.maxPerKey == 2 {
+				// Y is served promptly, well inside queue_timeout, while conn-1's
+				// first worker is still busy.
+				select {
+				case err := <-results["op-y"]:
+					if err != nil {
+						t.Fatal(err)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatal("Y was not served before conn-1's worker was released")
+				}
+				delete(results, "op-y")
 			}
 			close(holds["op-k1"])
 			for id, done := range results {
