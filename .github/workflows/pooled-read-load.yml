@@ -25,9 +25,6 @@ jobs:
   load:
     runs-on: ubuntu-latest
     timeout-minutes: 50
-    # Informational entries are measurements that are expected to fail their gate (undersized comparisons, a load past the
-    # first-release config) or that sit at the generator's own 256-request cap on a shared runner; their reports are still published.
-    continue-on-error: ${{ matrix.informational || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -97,6 +94,10 @@ jobs:
           (cd adapters/go && go build -mod=readonly -p 2 -tags duckdb_arrow -trimpath -o "$bin/kelvo-adapter-go" ./cmd/kelvo-adapter-go)
           (cd adapters/go && CGO_ENABLED=0 go build -mod=readonly -p 2 -tags slim -trimpath -ldflags "-s -w" -o "$bin/kelvo-adapter-relational" ./cmd/kelvo-adapter-go)
       - name: Run the load test (${{ matrix.name }})
+        # Informational entries are measurements expected to fail their gate (undersized comparisons, a load past the first-release
+        # config) or that sit at the generator's own 256-request cap on a shared runner: the gate result is in the published report
+        # (report.json, passed), and the step does not fail the job.
+        continue-on-error: ${{ matrix.informational || false }}
         run: |
           bin=$PWD/artifacts/load-private/bin
           python3 scripts/pooled_read_load.py --profile ${{ matrix.profile }} --label ${{ matrix.name }} \
