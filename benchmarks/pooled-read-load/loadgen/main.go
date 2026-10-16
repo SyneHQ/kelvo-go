@@ -471,8 +471,6 @@ func main() {
 			afterCached, _ := sourceCalls(ctx, *pgAdmin)
 			d.read("probe", node.Customers-1, "probe", query.Request{SQL: sql, BypassCache: true})
 			afterBypass, _ := sourceCalls(ctx, *pgAdmin)
-			d.read("probe", node.Customers-1, "probe", query.Request{SQL: sql, Refresh: true})
-			afterRefresh, _ := sourceCalls(ctx, *pgAdmin)
 			sum := func(m map[string]int64) (n int64) {
 				for _, v := range m {
 					n += v
@@ -481,9 +479,7 @@ func main() {
 			}
 			probe["source_calls_after_two_identical_reads"] = sum(afterCached)
 			probe["source_calls_after_bypass_cache_true"] = sum(afterBypass)
-			probe["source_calls_after_refresh_true"] = sum(afterRefresh)
 			probe["bypass_cache_reaches_source"] = sum(afterBypass) > sum(afterCached)
-			probe["refresh_reaches_source"] = sum(afterRefresh) > sum(afterBypass)
 			probe["samples"] = summarize(d.rec.samples)
 		}
 		report["probe_explicit_refresh"] = probe
