@@ -6,7 +6,7 @@ policy:
   job_ttl: 2m
   lease_duration: 5s
   replicas: 1
-  workers: {a1: 64}        # node job permits for the query path; read_workers does not replace it yet
+  workers: {a1: 64}        # node job permits for the query path
   limits: {max_rows: 1000000, max_bytes: 67108864, timeout: 30s, memory_mb: 32, threads: 1, max_temp_mb: 16}
 resources:
   max_concurrent: 32
@@ -22,15 +22,18 @@ containment: {max_groups: 128}
 containment_budget: {native_overhead_mb: 16, parent_overhead_mb: 16, max_processes: 64}
 warm_pool:
   enabled: true
-  idle_ttl: 30m
-  max_workers: 4
-  max_per_key: 1
-  max_in_flight: 16
   queue_depth: 64
-  queue_timeout: 10s
   worker_memory_mb: 64
   cache_ttl: 10s
   reauthorize_every: 60s
+read_workers:             # capacity of the read workers; pool_size is the adapter's source connections per worker
+  max_workers: 4
+  max_per_key: 1
+  max_in_flight: 16
+  pool_size: 4
+  idle_ttl: 30m
+  queue_wait: 10s
+  stream_buffer_mb: 4
 operations: {max_concurrent: 2, max_downloads: 2, max_result_bytes: 16777216}
 gateway: {max_http_requests: 256}
 audit: {max_entries: 262144, max_pending: 512}

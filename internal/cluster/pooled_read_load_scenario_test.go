@@ -5,10 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,9 +65,6 @@ func (sc loadScenario) validate() error {
 	if err := ValidatePolicy(sc.Policy); err != nil {
 		return err
 	}
-	if err := sc.WarmPool.Validate(); err != nil {
-		return err
-	}
 	if _, err := sc.Resources.NewPool(); err != nil {
 		return err
 	}
@@ -118,17 +115,22 @@ func TestPooledReadLoadScenariosAreValid(t *testing.T) {
 		sum := sha256.Sum256(bytes)
 		self := worker.OperationProcessConfig{Binary: exe, SHA256: hex.EncodeToString(sum[:])}
 		tls := TLSConfig{CAFile: "/x/ca", CertFile: "/x/c", KeyFile: "/x/k"}
-		node := NodeConfig{Policy: sc.Policy, Resources: &sc.Resources, ScratchDirectory: "/x/scratch", SandboxPath: "/x/sb", Containment: &ContainmentConfig{Config: sc.Containment, Budget: sc.Budget},
+		if sc.ReadWorkers != nil {
+			rw := sc.ReadWorkers.withDefaults()
+			sc.ReadWorkers = &rw
+		}
+		node := NodeConfig{Policy: sc.Policy, Resources: &sc.Resources, ReadWorkers: sc.ReadWorkers, ScratchDirectory: "/x/scratch", SandboxPath: "/x/sb", Containment: &ContainmentConfig{Config: sc.Containment, Budget: sc.Budget},
 			Audit: &ServiceAuditConfig{Config: audit.Config{Directory: "/x/audit", MaxEntries: sc.Audit.MaxEntries, MaxPending: sc.Audit.MaxPending}},
 			Operations: &OperationNodeConfig{InputURL: "https://127.0.0.1:1", TLS: tls, Results: OperationInputConfig{Directory: "/x/results", MaxEntries: 256, MaxStoredBytes: 1 << 30},
 				MaxResultBytes: sc.Operations.MaxResultBytes, MaxConcurrent: sc.Operations.MaxConcurrent, MaxDownloads: sc.Operations.MaxDownloads, PollInterval: 20 * time.Millisecond, WarmPool: &sc.WarmPool,
 				Adapter: self}}
 		// The adapter binary is checked on the real file by the load run itself.
-		if err := validateNodeOperations(node); errors.Is(err, errOperationConfig) {
-			t.Fatalf("%s: operations: %v", path, err)
+		if err := validateNodeReadWorkers(node); err != nil {
+			t.Fatalf("%s: read_workers: %v", path, err)
 		}
-		if sc.WarmPool.MaxWorkers > sc.Resources.MaxConcurrent {
-			t.Fatalf("%s: warm_pool.max_workers exceeds resources.max_concurrent", path)
+		// The adapter pin is checked on the real file by the load run itself; the test binary stands in here.
+		if err := validateNodeOperations(node); err != nil && !strings.Contains(err.Error(), "bounded execution") {
+			t.Fatalf("%s: operations: %v", path, err)
 		}
 	}
 }

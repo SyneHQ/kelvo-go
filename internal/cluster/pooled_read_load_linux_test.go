@@ -351,6 +351,18 @@ func TestPooledReadLoadNode(t *testing.T) {
 	auditDirs[0] = nodeAudit.Directory
 	op := sc.Operations
 	warm := sc.WarmPool
+	if sc.ReadWorkers != nil {
+		rw := sc.ReadWorkers.withDefaults() // the node applies defaults when it loads its config file
+		if slim := os.Getenv("KELVO_LOAD_RELATIONAL_ADAPTER"); slim != "" {
+			slimBytes, err := os.ReadFile(slim)
+			if err != nil {
+				t.Fatal(err)
+			}
+			slimSum := sha256.Sum256(slimBytes)
+			rw.RelationalAdapter = &worker.OperationProcessConfig{Binary: slim, SHA256: hex.EncodeToString(slimSum[:])}
+		}
+		sc.ReadWorkers = &rw
+	}
 	config := NodeConfig{Policy: policy, WorkerID: "a1", NATS: natsConfig("WORKER"), SandboxPath: engine.SandboxPath, ScratchDirectory: filepath.Join(root, "scratch"),
 		Resources: &sc.Resources, RuntimeResources: pool, RuntimeMetrics: registry, Audit: nodeAudit, ReadWorkers: sc.ReadWorkers,
 		Containment: &ContainmentConfig{Config: sc.Containment, Budget: sc.Budget},

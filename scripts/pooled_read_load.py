@@ -33,6 +33,8 @@ PROFILES = {
     # CPUQuota and MemoryMax are the cgroup limits the node runs under.
     "2c1g": {"cpus": 2, "memory": "1G", "scenario": "2c1g.yaml"},
     "4c8g": {"cpus": 4, "memory": "8G", "scenario": "4c8g.yaml"},
+    # The 2 vCPU / 1 GB cgroup with the first-release config of the upgrade plan.
+    "2c1g-first-release": {"cpus": 2, "memory": "1G", "scenario": "2c1g-first-release.yaml"},
 }
 NATS_VERSION = "2.15.0"
 NATS_SHA256 = "5d2c51caca950333aba84911df7d377f826f3a59ec36061c6539105084f65c92"
@@ -224,11 +226,12 @@ def main():
     parser.add_argument("--kelvo", type=Path, help="kelvo binary (one-shot children)")
     parser.add_argument("--launcher", type=Path)
     parser.add_argument("--adapter", type=Path)
+    parser.add_argument("--relational-adapter", type=Path, help="slim read adapter (-tags slim); pinned as read_workers.relational_adapter")
     parser.add_argument("--cluster-test", type=Path, help="go test -c ./internal/cluster")
     parser.add_argument("--loadgen", type=Path)
     parser.add_argument("--latproxy", type=Path)
     parser.add_argument("--nats-server", type=Path, help="default: download the pinned release")
-    parser.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override a scenario key, e.g. warm_pool.max_workers=20")
+    parser.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="override a scenario key, e.g. read_workers.max_workers=20")
     parser.add_argument("--loadgen-arg", action="append", default=[], help="extra loadgen flag, e.g. --loadgen-arg=-explorers=10")
     parser.add_argument("--profile-plain", action="store_true", help="profile one plain 50-row read at low load and at 50 concurrent, instead of the mixed load")
     parser.add_argument("--adapter-profile-test", type=Path, help="adapters/go/internal/runtime test binary (go test -c) for the in-process adapter profile")
@@ -337,8 +340,13 @@ def main():
         for name, dest in (("kelvo", "kelvo"), ("launcher", "kelvo-landlock"), ("adapter", "kelvo-adapter-go"), ("cluster_test", "cluster.test")):
             shutil.copyfile(shutil_bins[name], out / dest)
             (out / dest).chmod(0o555)
+        if args.relational_adapter:
+            shutil.copyfile(args.relational_adapter, out / "kelvo-adapter-relational")
+            (out / "kelvo-adapter-relational").chmod(0o555)
         env = {"KELVO_LOAD_SCENARIO": str(out / "scenario.yaml"), "KELVO_LOAD_OUT": str(out), "KELVO_LOAD_BINARY": str(out / "kelvo"), "KELVO_LOAD_SANDBOX": str(out / "kelvo-landlock"),
                "KELVO_LOAD_ADAPTER_BINARY": str(out / "kelvo-adapter-go"), "KELVO_LOAD_NATS_URL": "tls://127.0.0.1:%d" % nats_port, "KELVO_LOAD_NATS_CA_FILE": str(certs / "ca.pem")}
+        if args.relational_adapter:
+            env["KELVO_LOAD_RELATIONAL_ADAPTER"] = str(out / "kelvo-adapter-relational")
         for role, prefix in (("admin", "NATS"), ("worker", "NATS_WORKER"), ("gateway", "NATS_GATEWAY")):
             env["KELVO_LOAD_%s_USER" % prefix], env["KELVO_LOAD_%s_PASSWORD" % prefix] = role, users[role]
         if args.profile_plain:
