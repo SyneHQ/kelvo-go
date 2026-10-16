@@ -9,8 +9,8 @@ func TestParseArgs(t *testing.T) {
 		pool int
 		ok   bool
 	}{
-		{[]string{"worker"}, "worker", 4, hasWorkerMode}, // the slim adapter has no one-shot mode
-		{[]string{"serve"}, "serve", 4, true},
+		{[]string{"worker"}, "worker", 8, hasWorkerMode}, // the slim adapter has no one-shot mode
+		{[]string{"serve"}, "serve", 8, true},
 		{[]string{"serve", "--pool-size", "8"}, "serve", 8, true},
 		{[]string{"serve", "--pool-size", "1"}, "serve", 1, true},
 		{[]string{"serve", "--pool-size", "32"}, "serve", 32, true},

@@ -323,10 +323,11 @@ func runRead(s *Session, ctx context.Context) error {
 	return err
 }
 
-func TestKeepOpenPoolRunsFourConcurrentReadsAndFifthWaits(t *testing.T) {
+func TestKeepOpenPoolRunsPoolSizeConcurrentReadsAndTheNextWaits(t *testing.T) {
 	s, state, started, release := newPoolSession(t)
-	errs := make(chan error, 5)
-	for i := 0; i < 5; i++ {
+	readers := PoolSize + 1
+	errs := make(chan error, readers)
+	for i := 0; i < readers; i++ {
 		go func() { errs <- runRead(s, context.Background()) }()
 	}
 	for i := 0; i < PoolSize; i++ {
@@ -338,14 +339,14 @@ func TestKeepOpenPoolRunsFourConcurrentReadsAndFifthWaits(t *testing.T) {
 	}
 	select {
 	case <-started:
-		t.Fatal("fifth read ran beyond PoolSize")
+		t.Fatal("a read ran beyond PoolSize")
 	case <-time.After(50 * time.Millisecond):
 	}
 	if int(state.opens.Load()) != PoolSize {
 		t.Fatalf("opens=%d", state.opens.Load())
 	}
 	close(release)
-	for i := 0; i < 5; i++ {
+	for i := 0; i < readers; i++ {
 		if err := <-errs; err != nil {
 			t.Fatal(err)
 		}

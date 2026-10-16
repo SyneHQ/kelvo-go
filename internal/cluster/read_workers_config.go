@@ -21,13 +21,17 @@ import (
 // read_workers keeps sizing the pool from the legacy operations.warm_pool
 // capacity fields.
 type ReadWorkersConfig struct {
-	MaxWorkers     int           `yaml:"max_workers"`      // workers this node admits; one admission reservation each
-	MaxPerKey      int           `yaml:"max_per_key"`      // workers one connection may scale out to when its workers are full, default 2 (at most max_workers)
-	MaxInFlight    int           `yaml:"max_in_flight"`    // concurrent reads per worker, default 16, at most 64
-	PoolSize       int           `yaml:"pool_size"`        // source connections per worker, 1-32; unset leaves the adapter's own 4 and sends no flag
-	IdleTTL        time.Duration `yaml:"idle_ttl"`         // idle worker lifetime, default 30m
-	QueueWait      time.Duration `yaml:"queue_wait"`       // bounded admission wait before a retryable refusal, default 2s
-	StreamBufferMB int           `yaml:"stream_buffer_mb"` // unread result bytes buffered per stream, default 8
+	MaxWorkers  int `yaml:"max_workers"`   // workers this node admits; one admission reservation each
+	MaxPerKey   int `yaml:"max_per_key"`   // workers one connection may scale out to when its workers are full, default 2 (at most max_workers)
+	MaxInFlight int `yaml:"max_in_flight"` // concurrent reads per worker, default 16, at most 64
+	PoolSize    int `yaml:"pool_size"`     // source connections per worker, 1-32; unset sends no flag and the adapter keeps its own default of 8 (12 for about 80 ms to the source)
+	// MaxSourceConnections is the most connections one customer database may
+	// get from this node: pool_size x max_per_key. Workers serve different
+	// databases, so the product over all workers is not what any one source sees.
+	MaxSourceConnections int           `yaml:"max_source_connections"` // default 64, at most 1024
+	IdleTTL              time.Duration `yaml:"idle_ttl"`               // idle worker lifetime, default 30m
+	QueueWait            time.Duration `yaml:"queue_wait"`             // bounded admission wait before a retryable refusal, default 2s
+	StreamBufferMB       int           `yaml:"stream_buffer_mb"`       // unread result bytes buffered per stream, default 8
 
 	// Adapter names the binary native reads run on: "relational" (default), a
 	// slim build with only the relational engines read workers serve, or "full".
@@ -41,7 +45,9 @@ type ReadWorkersConfig struct {
 const (
 	defaultReadMaxInFlight = 16
 	defaultReadMaxPerKey   = 2
-	defaultReadPoolSize    = 4
+	defaultReadPoolSize    = 8 // the adapter's own default, used for the budget when pool_size is unset
+	defaultMaxSourceConns  = 64
+	maxMaxSourceConns      = 1024
 	defaultReadIdleTTL     = 30 * time.Minute
 	defaultReadQueueWait   = 2 * time.Second
 	defaultReadStreamMB    = 8
@@ -49,15 +55,12 @@ const (
 	maxReadQueueWait  = 30 * time.Second
 	adapterRelational = "relational"
 	adapterFull       = "full"
-	// maxSourceConnections bounds max_workers × pool_size: what one node may
-	// hold open against its sources.
-	maxSourceConnections = 256
 )
 
 var (
 	errReadWorkersConfig      = errors.New("invalid read_workers configuration")
 	errReadWorkersWarmPool    = errors.New("read_workers requires operations.warm_pool enabled, and capacity set only in read_workers")
-	errReadWorkersConnections = errors.New("read_workers max_workers × pool_size exceeds the source connection budget")
+	errReadWorkersConnections = errors.New("read_workers pool_size × max_per_key exceeds max_source_connections")
 )
 
 // withDefaults fills zero values. max_workers has no default: capacity is a
@@ -78,6 +81,9 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 	if c.StreamBufferMB == 0 {
 		c.StreamBufferMB = defaultReadStreamMB
 	}
+	if c.MaxSourceConnections == 0 {
+		c.MaxSourceConnections = defaultMaxSourceConns
+	}
 	if c.Adapter == "" {
 		c.Adapter = adapterRelational
 	}
@@ -85,7 +91,7 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 }
 
 func (c ReadWorkersConfig) validate(resources *ResourceConfig) error {
-	if c.MaxWorkers < 1 || c.MaxWorkers > 64 || c.MaxInFlight < 1 || c.MaxInFlight > 64 || c.MaxPerKey < 1 || c.MaxPerKey > c.MaxWorkers || c.PoolSize < 0 || c.PoolSize > 32 || c.StreamBufferMB < 1 || c.StreamBufferMB > 256 ||
+	if c.MaxWorkers < 1 || c.MaxWorkers > 64 || c.MaxInFlight < 1 || c.MaxInFlight > 64 || c.MaxPerKey < 1 || c.MaxPerKey > c.MaxWorkers || c.PoolSize < 0 || c.PoolSize > 32 || c.MaxSourceConnections < 1 || c.MaxSourceConnections > maxMaxSourceConns || c.StreamBufferMB < 1 || c.StreamBufferMB > 256 ||
 		c.IdleTTL < 10*time.Millisecond || c.IdleTTL > 24*time.Hour || c.QueueWait < 10*time.Millisecond || c.QueueWait >= maxReadQueueWait {
 		return errReadWorkersConfig
 	}
@@ -93,7 +99,7 @@ func (c ReadWorkersConfig) validate(resources *ResourceConfig) error {
 	if pool == 0 {
 		pool = defaultReadPoolSize // the adapter's own default
 	}
-	if c.MaxWorkers*pool > maxSourceConnections {
+	if pool*c.MaxPerKey > c.MaxSourceConnections {
 		return errReadWorkersConnections
 	}
 	if (c.Adapter != adapterRelational && c.Adapter != adapterFull) || (c.RelationalAdapter != nil && !validAdapterPin(*c.RelationalAdapter)) {

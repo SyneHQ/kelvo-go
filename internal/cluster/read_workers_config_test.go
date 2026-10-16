@@ -13,7 +13,7 @@ import (
 )
 
 func readWorkersNode(rw *ReadWorkersConfig, warm worker.WarmPoolConfig) NodeConfig {
-	return NodeConfig{ReadWorkers: rw, Resources: &ResourceConfig{MaxConcurrent: 8}, Operations: &OperationNodeConfig{WarmPool: &warm}}
+	return NodeConfig{ReadWorkers: rw, Resources: &ResourceConfig{MaxConcurrent: 32}, Operations: &OperationNodeConfig{WarmPool: &warm}}
 }
 
 // read_workers is the one source of read-worker capacity: it lays over the
@@ -57,15 +57,20 @@ func TestReadWorkersValidation(t *testing.T) {
 		warm worker.WarmPoolConfig
 		err  error
 	}{
-		"valid":                            {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32}, base, nil},
-		"connection budget":                {ReadWorkersConfig{MaxWorkers: 9, PoolSize: 32}, base, errReadWorkersConnections},
-		"connection budget boundary":       {ReadWorkersConfig{MaxWorkers: 8, PoolSize: 32}, base, nil},
+		"valid": {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32}, base, nil},
+		// The budget is per source: pool_size x max_per_key against max_source_connections.
+		"per-source budget exceeded":       {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32, MaxPerKey: 3}, base, errReadWorkersConnections},
+		"per-source budget boundary":       {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32, MaxPerKey: 2}, base, nil},
+		"raised budget":                    {ReadWorkersConfig{MaxWorkers: 4, PoolSize: 32, MaxPerKey: 3, MaxSourceConnections: 96}, base, nil},
+		"budget above its maximum":         {ReadWorkersConfig{MaxWorkers: 4, MaxSourceConnections: 1025}, base, errReadWorkersConfig},
+		"unset pool counts the default 8":  {ReadWorkersConfig{MaxWorkers: 9, MaxPerKey: 9}, base, errReadWorkersConnections},
+		"many workers, one source each":    {ReadWorkersConfig{MaxWorkers: 20, PoolSize: 16}, base, nil}, // 20 x 16 is not what one database sees
 		"queue wait at the launch timeout": {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 30 * time.Second}, base, errReadWorkersConfig},
 		"queue wait just below it":         {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 29 * time.Second}, base, nil},
 		"no capacity":                      {ReadWorkersConfig{}, base, errReadWorkersConfig},
 		"pool size":                        {ReadWorkersConfig{MaxWorkers: 1, PoolSize: 33}, base, errReadWorkersConfig},
 		"in flight":                        {ReadWorkersConfig{MaxWorkers: 1, MaxInFlight: 65}, base, errReadWorkersConfig},
-		"above admission":                  {ReadWorkersConfig{MaxWorkers: 9}, base, errReadWorkersConfig},
+		"above admission":                  {ReadWorkersConfig{MaxWorkers: 33}, base, errReadWorkersConfig},
 		"warm pool disabled":               {ReadWorkersConfig{MaxWorkers: 1}, worker.WarmPoolConfig{}, errReadWorkersWarmPool},
 		"max_workers in both":              {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.MaxWorkers = 1; return w }(), errReadWorkersWarmPool},
 		"idle_ttl in both":                 {ReadWorkersConfig{MaxWorkers: 1}, func() worker.WarmPoolConfig { w := base; w.IdleTTL = time.Minute; return w }(), errReadWorkersWarmPool},
@@ -105,10 +110,9 @@ func TestPoolSizeFlagIsSentOnlyWhenSet(t *testing.T) {
 	if n := readWorkersNode(nil, base).readPoolSize(); n != 0 {
 		t.Fatalf("no read_workers requests %d", n)
 	}
-	// The connection budget still counts the adapter's default of 4.
 	big := ReadWorkersConfig{MaxWorkers: 65}.withDefaults()
 	if err := validateNodeReadWorkers(readWorkersNode(&big, base)); err == nil {
-		t.Fatal("65 workers accepted")
+		t.Fatal("65 workers accepted (at most 64)")
 	}
 	negative := ReadWorkersConfig{MaxWorkers: 1, PoolSize: -1}.withDefaults()
 	if validateNodeReadWorkers(readWorkersNode(&negative, base)) == nil {

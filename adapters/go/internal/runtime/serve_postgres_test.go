@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
+	"github.com/SYNEHQ/kelvo-go/adapters/go/connectors/relational"
 	"github.com/SYNEHQ/kelvo-go/adapters/go/internal/frame"
 	"github.com/SYNEHQ/kelvo-go/operations"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -19,7 +20,7 @@ import (
 )
 
 // Real-PostgreSQL gate: 50 concurrent reads on one worker must succeed on a
-// session pool of at most 4 connections.
+// session pool of at most relational.PoolSize connections.
 func TestServeLoop_ConcurrentPostgresReadsShareBoundedPool(t *testing.T) {
 	dsn := os.Getenv("KELVO_TEST_WARM_POSTGRES_DSN")
 	if dsn == "" {
@@ -87,8 +88,8 @@ func TestServeLoop_ConcurrentPostgresReadsShareBoundedPool(t *testing.T) {
 		}
 		rd.Release()
 	}
-	if len(pids) == 0 || len(pids) > 4 {
-		t.Fatalf("distinct backend pids = %d, want 1..4", len(pids))
+	if len(pids) == 0 || len(pids) > relational.PoolSize {
+		t.Fatalf("distinct backend pids = %d, want 1..%d", len(pids), relational.PoolSize)
 	}
 	_ = frame.WriteClose(h.in)
 	h.wantDone(false)
