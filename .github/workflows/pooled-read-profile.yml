@@ -33,10 +33,6 @@ jobs:
           cache-dependency-path: |
             go.sum
             adapters/go/go.sum
-      - name: Apply the measurement-only workarounds
-        run: |
-          # Each patch works around a product defect; none is a fix. Remove them when the defects are fixed.
-          for p in benchmarks/pooled-read-load/patches/*.patch; do [ -e "$p" ] && git apply --check "$p" && git apply "$p"; done || true
       - name: Python dependencies
         run: python3 -c 'import yaml' || pip install --user pyyaml
       - name: Start a disposable PostgreSQL source
@@ -69,17 +65,18 @@ jobs:
           go work edit "-replace=github.com/sijms/go-ora/v2@v2.9.0=$GITHUB_WORKSPACE/third_party/go-ora-v2.9.0"
           (cd adapters/go && go build -mod=readonly -p 2 -tags duckdb_arrow -trimpath -o "$bin/kelvo-adapter-go" ./cmd/kelvo-adapter-go \
             && go test -c -mod=readonly -tags duckdb_arrow -o "$bin/adapter-profile.test" ./internal/runtime)
-          ls -l "$bin/kelvo-adapter-go" > artifacts/load-private/adapter-size.txt
+          (cd adapters/go && CGO_ENABLED=0 go build -mod=readonly -p 2 -tags slim -trimpath -ldflags "-s -w" -o "$bin/kelvo-adapter-relational" ./cmd/kelvo-adapter-go)
+          ls -l "$bin/kelvo-adapter-go" "$bin/kelvo-adapter-relational" > artifacts/load-private/adapter-size.txt
       - name: Profile one plain read
         run: |
           bin=$PWD/artifacts/load-private/bin
           python3 scripts/pooled_read_load.py --profile 4c8g --profile-plain --label plain-read \
             --duration "${{ inputs.duration || '60' }}" --output "$PWD/artifacts/load-private/run" \
             --postgres-password-file artifacts/load-private/pg.password \
-            --kelvo "$bin/kelvo" --launcher "$bin/kelvo-landlock" --adapter "$bin/kelvo-adapter-go" \
+            --kelvo "$bin/kelvo" --launcher "$bin/kelvo-landlock" --adapter "$bin/kelvo-adapter-go" --relational-adapter "$bin/kelvo-adapter-relational" \
             --cluster-test "$bin/cluster.test" --loadgen "$bin/loadgen" --latproxy "$bin/latproxy" \
             --adapter-profile-test "$bin/adapter-profile.test" \
-            --set warm_pool.max_workers=20 --set warm_pool.cache_disabled=true
+            --set read_workers.max_workers=20 --set warm_pool.cache_disabled=true
       - name: Retain the profile
         if: always()
         run: |
