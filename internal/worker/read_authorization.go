@@ -340,12 +340,14 @@ func definitiveDenial(err error) bool {
 // in the node's secret store: gone for every principal.
 var errSourceCredentialGone = query.NewError("NOT_FOUND", "Source credential not found")
 
-// sourceGone reports a denial that unambiguously holds for every principal.
-// Only the node's own secret store says so today. A connection resolver
-// answer is bound to one principal's delegation (job, worker, claim), and
-// db-api answers 403 for a deleted or revoked connection as for any other
-// refusal (404 only for a misrouted request), so a resolver denial ends that
-// principal's authorization only.
+// errSavedConnectionGone is db-api's 410: the saved connection was deleted.
+var errSavedConnectionGone = query.NewError("NOT_FOUND", "On-demand connection not found")
+
+// sourceGone reports a denial that unambiguously holds for every principal:
+// the node's own secret store lost the credential, or db-api answered 410 for
+// a deleted saved connection. Any other resolver answer (403, or 404 for a
+// request it cannot route) is bound to one principal's delegation (job,
+// worker, claim) and ends that principal's authorization only.
 func sourceGone(err error) bool {
-	return errors.Is(err, errSourceCredentialGone)
+	return errors.Is(err, errSourceCredentialGone) || errors.Is(err, errSavedConnectionGone)
 }

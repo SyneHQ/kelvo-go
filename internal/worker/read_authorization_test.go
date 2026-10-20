@@ -278,6 +278,7 @@ type dynamicReads struct {
 	hold     atomic.Pointer[chan struct{}]
 	deny     sync.Map // grant -> true: 403, this principal not permitted
 	gone     sync.Map // grant -> true: 404, the resolver did not find the connection
+	deleted  sync.Map // grant -> true: 410, the saved connection was deleted
 }
 
 func newDynamicReads(t *testing.T) *dynamicReads {
@@ -300,6 +301,10 @@ func newDynamicReads(t *testing.T) *dynamicReads {
 		}
 		if _, gone := d.gone.Load(body.Delegation); gone {
 			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if _, deleted := d.deleted.Load(body.Delegation); deleted {
+			w.WriteHeader(http.StatusGone)
 			return
 		}
 		writeConnectionResponse(t, w, connectionResolution{Version: 1, DelegationSHA256: delegation.Digest(body.Delegation),
@@ -652,6 +657,33 @@ func TestReadAuthorizationResolverNotFoundExpiresOnlyThePrincipal(t *testing.T) 
 	}
 	if err := d.read(context.Background(), "p2", "saved-a", "SELECT 1"); err != nil {
 		t.Fatal("the other principal was refused:", err)
+	}
+}
+
+// db-api's 410 means the saved connection was deleted: gone for every
+// principal, so the workers are killed although another principal is fresh.
+func TestReadAuthorizationResolverGoneKillsForEveryone(t *testing.T) {
+	d := newDynamicReads(t)
+	d.mgr.cfg.ReauthorizeEvery = 150 * time.Millisecond
+	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if err := d.read(context.Background(), "p2", "saved-a", "SELECT 1"); err != nil { // p2 fresh on the same worker
+		t.Fatal(err)
+	}
+	d.deleted.Store("grant-p1-saved-a", true)
+	if err := d.read(context.Background(), "p1", "saved-a", "SELECT 1"); err == nil {
+		t.Fatal("read served for a deleted connection")
+	}
+	if !d.fs.procs[0].killed.Load() || d.mgr.metrics.EvictionsAuth.Load() != 1 {
+		t.Fatal("a deleted connection left a worker another principal uses")
+	}
+	d.mgr.authMu.Lock()
+	left := len(d.mgr.auths)
+	d.mgr.authMu.Unlock()
+	if left != 0 {
+		t.Fatal("authorizations survived a deleted connection:", left)
 	}
 }
 
