@@ -187,7 +187,7 @@ func (n *Node) cleanupResultsEvery(interval time.Duration, cleanup func(context.
 	runCleanupLoop(n.ctx, "node "+n.cfg.WorkerID, interval, 5*time.Second, cleanup, func(err error) {
 		log.Printf("kelvo: operation result cleanup failed; draining node %s: %v", n.cfg.WorkerID, err)
 		n.operations.failed.Store(true)
-		n.BeginDrain()
+		n.Fail()
 	})
 }
 
