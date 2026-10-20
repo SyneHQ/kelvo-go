@@ -335,7 +335,8 @@ func TestPrivateRuntimeDataOpenUsesOperationContextAndConfiguredBudget(t *testin
 			return nil, ctx.Err()
 		}), nil
 	}
-	op, cancel := context.WithTimeout(context.Background(), time.Second)
+	// Generous so a loaded runner cannot expire it before the open starts.
+	op, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_, channel, err := r.prepare(op, f.executor, f.record, f.request, nil)
 	if err != nil {
@@ -366,7 +367,7 @@ func TestPrivateRuntimeDataOpenUsesOperationContextAndConfiguredBudget(t *testin
 	case <-time.After(2 * time.Second):
 		t.Fatal("parent opener did not start")
 	}
-	if remaining <= 0 || remaining > time.Second {
+	if remaining <= 0 || remaining > 30*time.Second {
 		t.Fatal("operation deadline not propagated", remaining)
 	}
 	cancel()

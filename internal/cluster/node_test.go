@@ -25,6 +25,7 @@ type nodeTestStore struct {
 	jobs  map[string]Snapshot
 	queue chan Delivery
 	acks  atomic.Int32
+	beats atomic.Int32
 }
 type nodeTestDelivery struct {
 	id    string
@@ -79,7 +80,10 @@ func (s *nodeTestStore) Next(ctx context.Context) (Delivery, error) {
 }
 func (s *nodeTestStore) Reconcile(context.Context) error                       { return nil }
 func (s *nodeTestStore) ClaimWorker(context.Context, string, string) error     { return nil }
-func (s *nodeTestStore) HeartbeatWorker(context.Context, string, string) error { return nil }
+func (s *nodeTestStore) HeartbeatWorker(context.Context, string, string) error {
+	s.beats.Add(1)
+	return nil
+}
 func (s *nodeTestStore) Close() error                                          { return nil }
 func (s *nodeTestStore) add(id string) {
 	s.mu.Lock()
@@ -279,5 +283,31 @@ func TestNodeMarksOnlyCapacityRefusalsRetryable(t *testing.T) {
 				t.Fatalf("status=%d retry-after=%q body=%q", out.Code, out.Header().Get("Retry-After"), out.Body.String())
 			}
 		})
+	}
+}
+
+func TestNodeFaultDrainStopsHeartbeatButGracefulDrainKeepsIt(t *testing.T) {
+	p := testPolicy()
+	// Policy validation floors the lease at 5s, so the heartbeat ticks every ~1.7s.
+	s := &nodeTestStore{p: p, jobs: map[string]Snapshot{}, queue: make(chan Delivery, 8)}
+	n, err := newNode(NodeConfig{Policy: p, WorkerID: "a1"}, s, probeExecutor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer n.Close()
+	n.BeginDrain()
+	waitForBeat := time.Now().Add(4 * time.Second)
+	for s.beats.Load() == 0 && time.Now().Before(waitForBeat) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if s.beats.Load() == 0 {
+		t.Fatal("graceful drain stopped renewing the lease")
+	}
+	n.Fail()
+	time.Sleep(100 * time.Millisecond) // let an in-flight tick land
+	settled := s.beats.Load()
+	time.Sleep(2 * p.LeaseDuration / 3 * 2)
+	if s.beats.Load() != settled {
+		t.Fatal("failed node kept renewing its lease")
 	}
 }

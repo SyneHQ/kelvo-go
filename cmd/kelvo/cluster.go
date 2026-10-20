@@ -376,7 +376,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	refreshGate := newRefreshGate()
 	if executor.Containment != nil {
 		executor.Containment.SetOnQuarantine(func(error) {
-			node.BeginDrain()
+			node.Fail()
 			refreshGate.Drain()
 			pool.Drain()
 			stopRefresh()

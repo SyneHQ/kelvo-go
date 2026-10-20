@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
@@ -56,6 +57,7 @@ type Node struct {
 	leaseFailure          chan struct{}
 	leaseFailureCause     CoordinationFailure // guarded by mu; fixed after fencing
 	draining              bool                // guarded by mu
+	failed                atomic.Bool         // fault drain: stop renewing the lease
 	permits               chan struct{}
 	mu                    sync.Mutex
 	jobs                  map[string]*reservation
@@ -496,6 +498,11 @@ func (n *Node) heartbeat() {
 		case <-n.ctx.Done():
 			return
 		case <-tick.C:
+			// A node that drained on a fault claims nothing; let its lease
+			// lapse so the gateway routes elsewhere. Graceful drain keeps renewing.
+			if n.failed.Load() {
+				continue
+			}
 			ctx, stop := context.WithTimeout(n.ctx, n.cfg.Policy.LeaseDuration/3)
 			err := n.store.HeartbeatWorker(ctx, n.cfg.WorkerID, n.owner)
 			stop()
@@ -633,6 +640,13 @@ func (n *Node) BeginDrain() {
 	if n.operations != nil {
 		n.operations.worker.BeginDrain()
 	}
+}
+
+// Fail drains the node because it is unhealthy and stops renewing its lease,
+// unlike BeginDrain, which keeps it registered while in-flight work finishes.
+func (n *Node) Fail() {
+	n.failed.Store(true)
+	n.BeginDrain()
 }
 
 // Drain waits for reservations, including unclaimed results, to finish. The
