@@ -311,3 +311,15 @@ func TestNodeFaultDrainStopsHeartbeatButGracefulDrainKeepsIt(t *testing.T) {
 		t.Fatal("failed node kept renewing its lease")
 	}
 }
+
+func TestNodeWatchdogFailsNodeWhenDispatchExitsUnexpectedly(t *testing.T) {
+	p := testPolicy()
+	s := &nodeTestStore{p: p, jobs: map[string]Snapshot{}, queue: make(chan Delivery, 8)}
+	n, err := newNode(NodeConfig{Policy: p, WorkerID: "a1"}, s, probeExecutor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer n.Close()
+	n.dispatchCancel() // dispatch dies without BeginDrain
+	waitFor(t, func() bool { return n.failed.Load() })
+}

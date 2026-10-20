@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"reflect"
 	"runtime"
@@ -246,9 +247,10 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 		n.wg.Add(1)
 		go n.cleanupOperationResults()
 	}
-	n.wg.Add(2)
+	n.wg.Add(3)
 	go n.dispatch()
 	go n.heartbeat()
+	go n.dispatchWatchdog()
 	started = true
 	return n, nil
 }
@@ -486,6 +488,26 @@ func (n *Node) lockLeaseMutation(ctx context.Context, id string) (func(), error)
 		return unlock, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	}
+}
+
+// dispatchWatchdog fails the node if dispatch exits while it is not draining:
+// the node would otherwise stay registered and claim nothing. It logs slot
+// accounting for the diagnosis.
+// ponytail: Store has no queue depth, so "idle with queued jobs" is not
+// detectable; add a depth probe to Store if that case shows up.
+func (n *Node) dispatchWatchdog() {
+	defer n.wg.Done()
+	select {
+	case <-n.ctx.Done():
+	case <-n.dispatchDone:
+		n.mu.Lock()
+		draining, jobs := n.draining, len(n.jobs)
+		n.mu.Unlock()
+		if !draining && n.ctx.Err() == nil {
+			log.Printf("kelvo: node %s dispatch exited while not draining (permits %d/%d, jobs %d); failing node", n.cfg.WorkerID, len(n.permits), cap(n.permits), jobs)
+			n.Fail()
+		}
 	}
 }
 
