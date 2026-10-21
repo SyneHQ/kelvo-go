@@ -142,6 +142,7 @@ operations:
     reauthorize_every: 60s   # signed off by the owner: a revoked source is refused within 60 s
     cache_disabled: false
     cache_ttl: 10s           # signed off; an explicit refresh bypasses it (BypassCache)
+    cache_rules: []          # optional, at most 64; see "Cache rules"
     cache_max_entry_bytes: 4194304
     cache_max_total_bytes: 67108864
 
@@ -170,6 +171,16 @@ The two states are separate on purpose: `separate_classes` and `query_reserve_*`
 
 **CPU weights** (cgroup v2 `cpu.weight`, #234): a read worker 100 (the kernel default), a one-shot read child 50, a background operation 20 (`containment.CPUWeightReadWorker`, `CPUWeightOneShot`, `CPUWeightBackground`). Under CPU contention the long analysis operations yield to reads
 without a quota; with spare CPU they use it. The load matrix above ran before this weighting merged, so the CPU numbers for the analysis job are not comparable to a release build.
+
+### Cache rules
+
+`warm_pool.cache_rules` gives some reads a TTL other than `cache_ttl`. Each rule is `{tenant, team, connection, ttl}`; an empty match field matches any. The first matching rule wins and a read matching none uses `cache_ttl`. `ttl: 0` keeps nothing for matching reads, though concurrent identical reads still share one execution. At most 64 rules, each `ttl` from 0 to 1h, and the cache must be enabled.
+
+```yaml
+cache_rules:
+  - {tenant: acme, connection: sales-warehouse, ttl: 5m}   # slow-moving source
+  - {team: finance, ttl: 0}                                # never keep these
+```
 
 ## Node sizing for 50 concurrent users
 

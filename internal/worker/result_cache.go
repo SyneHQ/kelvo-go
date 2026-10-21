@@ -30,6 +30,7 @@ const (
 // tenant; least recently used entries go first.
 type resultCache struct {
 	ttl                time.Duration
+	rules              []CacheRule // first match overrides ttl
 	maxEntry, maxTotal int64
 	perTenant          int64 // a quarter of maxTotal
 	maxEntries         int
@@ -81,6 +82,16 @@ func newResultCache(ttl time.Duration, maxEntry, maxTotal int64) *resultCache {
 		lru: list.New(), entries: map[string]*list.Element{}, byTenant: map[string]int64{}, flights: map[string]*cacheFlight{}}
 }
 
+// ttlFor is the TTL of a read: the first matching rule's, else the default.
+func (c *resultCache) ttlFor(tenant, team, connection string) time.Duration {
+	for _, r := range c.rules {
+		if (r.Tenant == "" || r.Tenant == tenant) && (r.Team == "" || r.Team == team) && (r.Connection == "" || r.Connection == connection) {
+			return r.TTL
+		}
+	}
+	return c.ttl
+}
+
 func (c *resultCache) tenantCap() int64 { return c.perTenant }
 
 // Hits is the number of reads served from a kept result or a shared execution.
@@ -115,6 +126,12 @@ type replayFunc func(entry *cacheEntry, sink query.Sink) (query.Stats, error)
 // a new one. A refresh skips kept results; see joinableLocked. Waiters of a read that failed get its
 // error; a read too large to keep makes each waiter run its own.
 func (c *resultCache) do(ctx context.Context, key, tenant string, refresh bool, sink query.Sink, execute executeFunc, replay replayFunc) (query.Stats, error) {
+	return c.doTTL(ctx, key, tenant, c.ttl, refresh, sink, execute, replay)
+}
+
+// doTTL is do keeping the result for ttl; 0 keeps nothing, though concurrent
+// identical reads still share one execution.
+func (c *resultCache) doTTL(ctx context.Context, key, tenant string, ttl time.Duration, refresh bool, sink query.Sink, execute executeFunc, replay replayFunc) (query.Stats, error) {
 	c.mu.Lock()
 	if !refresh {
 		if entry := c.freshLocked(key); entry != nil {
@@ -149,7 +166,7 @@ func (c *resultCache) do(ctx context.Context, key, tenant string, refresh bool, 
 	c.flights[key] = f
 	id := c.joinLocked(f, ctx)
 	c.mu.Unlock()
-	return c.lead(ctx, key, tenant, f, id, sink, execute)
+	return c.lead(ctx, key, tenant, ttl, f, id, sink, execute)
 }
 
 // joinableLocked reports whether a read may join f. A plain read joins any
@@ -196,7 +213,7 @@ func (c *resultCache) retimeLocked(f *cacheFlight) {
 // lead runs f detached from the leader's cancellation: if the leader leaves
 // while others wait, the read continues for them. The leader streams to its
 // own sink only while it is still waiting.
-func (c *resultCache) lead(ctx context.Context, key, tenant string, f *cacheFlight, id int, sink query.Sink, execute executeFunc) (query.Stats, error) {
+func (c *resultCache) lead(ctx context.Context, key, tenant string, ttl time.Duration, f *cacheFlight, id int, sink query.Sink, execute executeFunc) (query.Stats, error) {
 	// Detached from the leader; ended by retimeLocked's timer or the last
 	// participant leaving.
 	execCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
@@ -215,7 +232,7 @@ func (c *resultCache) lead(ctx context.Context, key, tenant string, f *cacheFlig
 			if recovered := recover(); recovered != nil {
 				err = query.NewError("QUERY_FAILED", fmt.Sprint("Read failed: ", recovered))
 			}
-			c.finish(key, tenant, f, buffer, stats, err)
+			c.finish(key, tenant, ttl, f, buffer, stats, err)
 		}()
 		stats, err = execute(execCtx, leader, buffer)
 	}()
@@ -266,7 +283,7 @@ func (c *resultCache) leave(f *cacheFlight, key string, id int) {
 	}
 }
 
-func (c *resultCache) finish(key, tenant string, f *cacheFlight, buffer *cappedBuffer, stats query.Stats, err error) {
+func (c *resultCache) finish(key, tenant string, ttl time.Duration, f *cacheFlight, buffer *cappedBuffer, stats query.Stats, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	buffer.releaseLocked()
@@ -277,8 +294,10 @@ func (c *resultCache) finish(key, tenant string, f *cacheFlight, buffer *cappedB
 		} else {
 			// Waiters replay a complete result even when it is not kept (a newer
 			// generation is kept, or the tenant's share is full).
-			f.entry = &cacheEntry{key: key, tenant: tenant, data: buffer.data, stats: stats, started: f.started, expires: time.Now().Add(c.ttl)}
-			c.storeLocked(f.entry)
+			f.entry = &cacheEntry{key: key, tenant: tenant, data: buffer.data, stats: stats, started: f.started, expires: time.Now().Add(ttl)}
+			if ttl > 0 {
+				c.storeLocked(f.entry)
+			}
 		}
 	}
 	if f.timer != nil {

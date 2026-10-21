@@ -241,7 +241,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		return stats, err, true
 	}
 	key := resultCacheKey(id.tenant, id.team, id.saved, auth.database, id.schema, auth.revision, r, e.Limits)
-	stats, err := pool.cache.do(ctx, key, id.tenant, r.BypassCache, sink, execute, func(entry *cacheEntry, sink query.Sink) (query.Stats, error) {
+	stats, err := pool.cache.doTTL(ctx, key, id.tenant, pool.cache.ttlFor(id.tenant, id.team, id.saved), r.BypassCache, sink, execute, func(entry *cacheEntry, sink query.Sink) (query.Stats, error) {
 		observed, err := e.readIPC(ctx, bytes.NewReader(entry.data), e.Limits, sink)
 		stats := entry.stats
 		stats.Rows, stats.WireBytes, stats.Bytes, stats.Batches = observed.Rows, observed.WireBytes, observed.Bytes, observed.Batches
