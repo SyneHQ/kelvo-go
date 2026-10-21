@@ -364,6 +364,29 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 		return err
 	}
 	defer ln.Close()
+	refreshGate := newRefreshGate()
+	if catalogue.Acceleration != nil {
+		// Same refresh path as scheduled jobs: gate, reservation, audit, sandboxed executor.
+		m, err := acceleration.NewManagerWithRuntime(catalogue, refreshFactory(cfg.SandboxPath, refreshOptions{Admission: sourceQuotas, Secrets: executor.Secrets, SourceHealth: cfg.RuntimeSourceHealth, ScratchRoot: executor.ScratchRoot, Containment: executor.Containment, ContainmentBudget: executor.ContainmentBudget, ResourceOverheadBytes: overhead}), objectRuntime)
+		if err != nil {
+			return query.NewError("CONFIGURATION_ERROR", "Acceleration store cannot be opened")
+		}
+		defer m.Close()
+		executor.RefreshOnMiss = &acceleration.OnMiss{Status: m.StatusContext, Refresh: func(ctx context.Context, id string) error {
+			release, err := refreshGate.Enter()
+			if err != nil {
+				return err
+			}
+			defer release()
+			d, _ := catalogue.Dataset(id)
+			return withRefreshReservation(ctx, pool, overhead, d.Limits, cfg.RuntimeMetrics, func(ctx context.Context) error {
+				return cfg.RuntimeAudit.RunRefresh(ctx, cfg.Policy, func(ctx context.Context) error {
+					_, err := m.Refresh(ctx, id, true)
+					return err
+				})
+			}, cfg.RuntimeTracing)
+		}}
+	}
 	node, err := cluster.NewNode(cfg, store, executor)
 	if err != nil {
 		reportStoreCoordinationDiagnostic(err)
@@ -373,7 +396,6 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 	refreshCtx, stopRefresh := context.WithCancel(context.Background())
 	defer stopRefresh()
 	defer stop()
-	refreshGate := newRefreshGate()
 	if executor.Containment != nil {
 		executor.Containment.SetOnQuarantine(func(error) {
 			node.Fail()

@@ -76,6 +76,7 @@ func TestAccelerationRejectsInvalidDefinitions(t *testing.T) {
 		"recursive input":       strings.Replace(acceleratedYAML, "connection_id: warehouse", "connection_id: orders_fast", 1),
 		"missing authorization": strings.Replace(acceleratedYAML, "authorization_version: grants-v1", "authorization_version: ''", 1),
 		"bad interval":          strings.Replace(acceleratedYAML, "refresh_interval: 30s", "refresh_interval: 1s", 1),
+		"bad on_unavailable":    strings.Replace(acceleratedYAML, "max_age: 5m", "max_age: 5m\n      on_unavailable: live", 1),
 		"no freshness":          strings.Replace(acceleratedYAML, "max_age: 5m", "max_age: 0s", 1),
 		"unknown setting":       acceleratedYAML + "      unsupported: true\n",
 	} {

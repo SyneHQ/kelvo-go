@@ -172,6 +172,8 @@ type AccelerationVersion struct {
 	Dataset     string    `json:"dataset" yaml:"dataset"`
 	Generation  string    `json:"generation" yaml:"generation"`
 	RefreshedAt time.Time `json:"refreshed_at" yaml:"refreshed_at"`
+	// RefreshedOnDemand reports that this read ran the refresh itself.
+	RefreshedOnDemand bool `json:"refreshed_on_demand,omitempty" yaml:"refreshed_on_demand,omitempty"`
 }
 
 // Sink methods are synchronous. The record is borrowed only for Write's duration.

@@ -8,7 +8,7 @@ Use it for repeated dashboards, reports or exploration that would otherwise read
 
 All built-in native connectors can feed snapshots when their query and Arrow types are supported. Check the [capability and validation matrix](source-coverage.md#acceleration-and-federation-capabilities). Measure source cost and query latency: copying an already efficient analytical database is not automatically faster.
 
-Missing, expired or incompatible snapshots fail with `DATASET_UNAVAILABLE`, without live-source fallback. Corruption can surface during execution; run `verify` for a full check.
+Missing, expired or incompatible snapshots fail with `DATASET_UNAVAILABLE`, without live-source fallback. A dataset with `on_unavailable: refresh` instead runs its normal refresh when its snapshot is missing or expired, then serves the new snapshot; the first such read pays the full refresh latency, concurrent reads share one refresh, a failed or timed-out refresh returns `DATASET_UNAVAILABLE`, and the read is marked `refreshed_on_demand` in its acceleration stats. Incompatible or corrupt snapshots still fail. Cluster nodes only; refresh runs through the node's refresh gate and resource admission. Corruption can surface during execution; run `verify` for a full check.
 
 ## Run locally
 
@@ -69,6 +69,7 @@ Query `recent_orders` with `--sources recent_orders`. Multiple accelerated alias
 | --- | --- |
 | `refresh_interval` | `0s` for manual only; otherwise at least 5s and no greater than `max_age` |
 | `max_age` | Positive, at most 30 days; measured from completed refresh |
+| `on_unavailable` | Empty (fail) or `refresh` (refresh synchronously on a missing or expired snapshot) |
 | `authorization_version` | Required; change after source grants or permitted data change |
 
 Freshness is checked before execution; readers pin the generation for the query's lifetime. Refresh time is not a database transaction watermark.
@@ -141,7 +142,7 @@ Row-group and footer limits bound encoding work, not total RSS. Wide schemas or 
 
 ## Current scope and industry standards
 
-Available: full refresh, explicit freshness, local/cluster scheduling, strict schema policy, multipart snapshots and verified recovery. Pending: incremental loading, CDC, result caching, automatic fallback and distributed single-query execution. Independent datasets have no global transactional snapshot.
+Available: full refresh, explicit freshness, local/cluster scheduling, strict schema policy, multipart snapshots and verified recovery. Pending: incremental loading, CDC, result caching, live-source fallback, background (stale-while-revalidate) refresh and distributed single-query execution. Independent datasets have no global transactional snapshot.
 
 ### Lifecycle priorities
 
