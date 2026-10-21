@@ -118,3 +118,21 @@ func TestAccelerationMongoPipelineConfiguration(t *testing.T) {
 		t.Fatal("pipeline accepted for a non-MongoDB source")
 	}
 }
+
+func TestAccelerationRouteValidation(t *testing.T) {
+	route := func(r string) string { return acceleratedYAML + "      route:\n" + r }
+	if c, err := loadAccelerationFixture(t, route("        time_column: created_at\n        live_source: warehouse\n")); err != nil || c.Acceleration.Datasets[0].Route.LiveSource != "warehouse" {
+		t.Fatal("valid route rejected", err)
+	}
+	for _, bad := range []string{
+		"        time_column: created_at\n",
+		"        live_source: warehouse\n",
+		"        time_column: created_at\n        live_source: missing\n",
+		"        time_column: created_at\n        live_source: orders_fast\n",
+		"        time_column: 'a b'\n        live_source: warehouse\n",
+	} {
+		if _, err := loadAccelerationFixture(t, route(bad)); err == nil {
+			t.Fatalf("accepted route %q", bad)
+		}
+	}
+}

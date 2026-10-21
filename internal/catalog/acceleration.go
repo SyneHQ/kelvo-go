@@ -65,8 +65,19 @@ type Dataset struct {
 	AuthorizationVersion string              `json:"authorization_version" yaml:"authorization_version"`
 	// OnUnavailable "refresh" runs the dataset's normal refresh when a query
 	// finds its snapshot missing or expired. Empty keeps the failure.
-	OnUnavailable string       `json:"on_unavailable,omitempty" yaml:"on_unavailable,omitempty"`
-	Limits        query.Limits `json:"limits" yaml:"limits"`
+	OnUnavailable string `json:"on_unavailable,omitempty" yaml:"on_unavailable,omitempty"`
+	// Route sends queries that need rows newer than the snapshot covers to a
+	// live source. Without it every query reads the snapshot.
+	Route  *Route       `json:"route,omitempty" yaml:"route,omitempty"`
+	Limits query.Limits `json:"limits" yaml:"limits"`
+}
+
+// Route names the column whose maximum the snapshot records at refresh
+// (covered_until) and the registered, non-accelerated source that serves
+// queries reaching beyond it. The live source must expose the dataset alias.
+type Route struct {
+	TimeColumn string `json:"time_column" yaml:"time_column"`
+	LiveSource string `json:"live_source" yaml:"live_source"`
 }
 
 // EffectiveVerificationLimits deliberately supplies no default. Operators must
@@ -177,6 +188,15 @@ func (c *Config) validateAcceleration(base string) error {
 		}
 		if d.OnUnavailable != "" && d.OnUnavailable != "refresh" {
 			return errors.New("dataset on_unavailable must be empty or refresh")
+		}
+		if d.Route != nil {
+			live := false
+			for _, source := range c.Sources {
+				live = live || (source.ID == d.Route.LiveSource && source.Type != "accelerated")
+			}
+			if !ValidID(d.Route.TimeColumn) || !live {
+				return errors.New("dataset route requires a time_column identifier and a registered non-accelerated live_source")
+			}
 		}
 		if d.AuthorizationVersion == "" || len(d.AuthorizationVersion) > 128 {
 			return errors.New("dataset authorization_version is required and must not exceed 128 characters")
