@@ -19,6 +19,7 @@ const multipartPartRowTarget int64 = 1 << 20
 // Borrowed record slices are released synchronously. Input batch and upstream
 // engine memory are still owned and bounded by their respective callers.
 type MultipartParquetSink struct {
+	cover              *coverage
 	tx                 MultipartRefreshWriter
 	options            MultipartOptions
 	limits             query.Limits
@@ -123,6 +124,7 @@ func (s *MultipartParquetSink) Write(record arrow.RecordBatch) error {
 	if s.schema == nil || record == nil || record.NumRows() < 0 || !SchemaEqual(s.schema, record.Schema()) {
 		return s.fail(errors.New("multipart record requires declared schema"))
 	}
+	s.cover.observe(record)
 	if record.NumRows() > s.limits.MaxRows-s.rows {
 		return s.fail(query.NewError("RESOURCE_EXHAUSTED", "Acceleration exceeds row limit"))
 	}

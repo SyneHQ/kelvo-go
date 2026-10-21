@@ -108,6 +108,9 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (_ Sna
 	sink := NewParquetSink(tx.File(), d.Limits)
 	sink.expectedSchema = previous
 	sink.schemaEvolution = d.SchemaEvolution
+	if d.Route != nil {
+		sink.cover = &coverage{column: d.Route.TimeColumn}
+	}
 	defer sink.Abort()
 	if _, err = executor.Execute(ctx, d.Query, sink); err != nil {
 		return Snapshot{}, err
@@ -123,6 +126,9 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (_ Sna
 	}
 	if err = schemaWriter.SetSchema(sink.schema); err != nil {
 		return Snapshot{}, err
+	}
+	if w, ok := tx.(CoverageWriter); ok {
+		w.SetCoveredUntil(sink.cover.Value())
 	}
 	snapshot, err := tx.Commit(fingerprint, sink.Rows())
 	if err != nil {
@@ -168,6 +174,9 @@ func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, finge
 	sink := NewMultipartParquetSink(tx, d.Limits, options)
 	sink.expectedSchema = previous
 	sink.schemaEvolution = d.SchemaEvolution
+	if d.Route != nil {
+		sink.cover = &coverage{column: d.Route.TimeColumn}
+	}
 	defer sink.Abort()
 	if _, err = executor.Execute(ctx, d.Query, sink); err != nil {
 		return Snapshot{}, err
@@ -183,6 +192,9 @@ func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, finge
 	}
 	if err = tx.SetSchema(sink.schema); err != nil {
 		return Snapshot{}, err
+	}
+	if w, ok := tx.(CoverageWriter); ok {
+		w.SetCoveredUntil(sink.cover.Value())
 	}
 	snapshot, err := tx.Commit(fingerprint)
 	if err != nil {

@@ -296,7 +296,7 @@ func (t *multipartTransaction) Commit(fingerprint string) (snapshot Snapshot, er
 	if tx.schemaHash != "" && tx.schemaHash != schemaHash {
 		return Snapshot{}, errors.New("multipart snapshot schema mismatch")
 	}
-	m := storeManifest{Version: 2, SchemaHash: schemaHash, Dataset: tx.dataset, Generation: tx.generation, Fingerprint: fingerprint, Parts: t.parts, Rows: t.rows, Bytes: t.bytes, SHA256: multipartDigest(t.parts), RefreshedAt: time.Now().UTC()}
+	m := storeManifest{Version: 2, SchemaHash: schemaHash, Dataset: tx.dataset, Generation: tx.generation, Fingerprint: fingerprint, Parts: t.parts, Rows: t.rows, Bytes: t.bytes, SHA256: multipartDigest(t.parts), RefreshedAt: time.Now().UTC(), CoveredUntil: tx.coveredUntil}
 	if err = validateManifestParts(m); err != nil {
 		return Snapshot{}, err
 	}
