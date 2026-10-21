@@ -2,10 +2,13 @@
 package acceleration
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/catalog"
+	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/xwb1989/sqlparser"
 )
 
@@ -152,4 +155,49 @@ func atMost(v *sqlparser.SQLVal, covered string) (within, comparable bool) {
 		}
 	}
 	return false, false
+}
+
+// Router plans live routes for datasets that configure route. It needs only the
+// node's snapshot metadata reader; without one every dataset reads its snapshot.
+type Router struct {
+	Status func(context.Context, string) (Snapshot, error)
+}
+
+// Plan returns request with each dataset that must read live replaced by its
+// live source, and the reason per dataset. ok is false when nothing routes or
+// the substitution is not a valid selection (for example the live source is
+// already requested); the caller then reads snapshots. The caller must still
+// authorize the substituted request exactly as a direct read of those sources.
+func (rt *Router) Plan(ctx context.Context, c catalog.Config, request query.Request) (live query.Request, reasons map[string]string, ok bool) {
+	if request.Mode == "native" {
+		return request, nil, false
+	}
+	live = request
+	live.Sources = append([]string(nil), request.Sources...)
+	for i, id := range request.Sources {
+		d, configured := c.Dataset(id)
+		if !configured || d.Route == nil {
+			continue
+		}
+		fingerprint, err := c.DatasetFingerprint(id)
+		snapshot, statusErr := rt.Status(ctx, id)
+		if err != nil || statusErr != nil || snapshot.Fingerprint != fingerprint || snapshot.CoveredUntil == "" {
+			continue // missing covered_until never routes
+		}
+		reason := RouteReason(request.SQL, id, d.Route.TimeColumn, snapshot.CoveredUntil)
+		if reason == "" {
+			continue
+		}
+		if reasons == nil {
+			reasons = map[string]string{}
+		}
+		reasons[id], live.Sources[i] = reason, d.Route.LiveSource
+	}
+	if len(reasons) == 0 {
+		return request, nil, false
+	}
+	if _, err := c.Select(live.Sources); err != nil {
+		return request, nil, false
+	}
+	return live, reasons, true
 }

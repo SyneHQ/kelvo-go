@@ -372,6 +372,7 @@ func runNode(ctx context.Context, file string, drainTimeout time.Duration) (resu
 			return query.NewError("CONFIGURATION_ERROR", "Acceleration store cannot be opened")
 		}
 		defer m.Close()
+		executor.Router = &acceleration.Router{Status: m.StatusContext}
 		executor.RefreshOnMiss = &acceleration.OnMiss{Status: m.StatusContext, Refresh: func(ctx context.Context, id string) error {
 			release, err := refreshGate.Enter()
 			if err != nil {
