@@ -174,7 +174,7 @@ without a quota; with spare CPU they use it. The load matrix above ran before th
 
 ### Cache rules
 
-`warm_pool.cache_rules` gives some reads a TTL other than `cache_ttl`. Each rule is `{tenant, team, connection, ttl}`; an empty match field matches any. The first matching rule wins and a read matching none uses `cache_ttl`. `ttl: 0` keeps nothing for matching reads, though concurrent identical reads still share one execution. At most 64 rules, each `ttl` from 0 to 1h, and the cache must be enabled.
+`warm_pool.cache_rules` gives some reads a TTL other than `cache_ttl`. Each rule is `{tenant, team, connection, ttl}`; an empty match field matches any. The first matching rule wins and a read matching none uses `cache_ttl`. `ttl: 0` keeps nothing for matching reads, though concurrent identical reads still share one execution. At most 64 rules, each `ttl` from 0 to 10m (the `cache_ttl` limit), and the cache must be enabled.
 
 ```yaml
 cache_rules:
