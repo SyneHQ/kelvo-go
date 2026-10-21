@@ -242,14 +242,15 @@ func (tx *objectMultipartTransaction) Commit(fingerprint string) (snapshot Snaps
 	if err != nil {
 		return Snapshot{}, err
 	}
-	committed := &objectCommitted{SchemaHash: schemaHash, Generation: base.local.generation, Fingerprint: fingerprint, SHA256: digest, Rows: tx.rows, Bytes: tx.bytes, Descriptor: &objectDescriptorRef{ObjectVersion: uploaded.Version, Bytes: int64(len(data)), PartCount: len(tx.parts)}}
-	prepared := Snapshot{SchemaHash: schemaHash, Dataset: base.dataset, Generation: base.local.generation, Fingerprint: fingerprint, SHA256: digest, Rows: tx.rows, Bytes: tx.bytes, Parts: make([]SnapshotPart, len(tx.parts))}
+	committed := &objectCommitted{SchemaHash: schemaHash, Generation: base.local.generation, Fingerprint: fingerprint, SHA256: digest, Rows: tx.rows, Bytes: tx.bytes, Descriptor: &objectDescriptorRef{ObjectVersion: uploaded.Version, Bytes: int64(len(data)), PartCount: len(tx.parts)}, CoveredUntil: base.coveredUntil}
+	prepared := Snapshot{SchemaHash: schemaHash, Dataset: base.dataset, Generation: base.local.generation, Fingerprint: fingerprint, SHA256: digest, Rows: tx.rows, Bytes: tx.bytes, CoveredUntil: base.coveredUntil, Parts: make([]SnapshotPart, len(tx.parts))}
 	for i, part := range tx.parts {
 		prepared.Parts[i] = SnapshotPart{Rows: part.Rows, Bytes: part.Bytes, SHA256: part.SHA256, ObjectKey: base.backend.key(base.dataset, multipartName(base.local.generation, i)), ObjectVersion: part.ObjectVersion}
 	}
 	return base.publishCommitted(committed, &prepared)
 }
-func (tx *objectMultipartTransaction) Abort() error { return tx.base.Abort() }
+func (tx *objectMultipartTransaction) SetCoveredUntil(v string) { tx.base.coveredUntil = v }
+func (tx *objectMultipartTransaction) Abort() error             { return tx.base.Abort() }
 
 var _ MultipartBackend = (*objectBackend)(nil)
 var _ MultipartRefreshWriter = (*objectMultipartTransaction)(nil)
