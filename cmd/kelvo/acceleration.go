@@ -177,13 +177,33 @@ func runAcceleration(args []string) (resultErr error) {
 	}
 	d, _ := c.Dataset(*id)
 	fingerprint, _ := c.DatasetFingerprint(*id)
+	lastRefresh := incrementalStatus(m, d)
 	publish = func() error {
 		return encodeAccelerationResult(os.Stdout, struct {
-			Ready    bool                  `yaml:"ready"`
-			Snapshot acceleration.Snapshot `yaml:"snapshot"`
-		}{snapshot.Fingerprint == fingerprint && snapshot.Age() <= d.MaxAge, snapshot})
+			Ready       bool                  `yaml:"ready"`
+			Snapshot    acceleration.Snapshot `yaml:"snapshot"`
+			LastRefresh string                `yaml:"last_refresh,omitempty"`
+		}{snapshot.Fingerprint == fingerprint && snapshot.Age() <= d.MaxAge, snapshot, lastRefresh})
 	}
 	return nil
+}
+
+// incrementalStatus is empty for datasets without incremental. The kind is
+// tracked in memory only, so a fresh process reports it as unknown.
+func incrementalStatus(m *acceleration.Manager, d catalog.Dataset) string {
+	if d.Incremental == nil {
+		return ""
+	}
+	info, ok := m.LastRefresh(d.ID)
+	switch {
+	case !ok:
+		return "unknown (tracked since process start)"
+	case info.Incremental:
+		return fmt.Sprintf("incremental, appended %d rows (since process start)", info.AppendedRows)
+	case info.Fallback != "":
+		return "full: " + info.Fallback + " (since process start)"
+	}
+	return "full (since process start)"
 }
 
 // Put the sanitized operator message first so PublicError cannot select a raw

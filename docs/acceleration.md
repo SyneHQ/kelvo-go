@@ -98,6 +98,29 @@ A routed read is a direct read of `live_source`: it must pass the same access ch
 
 Upgrade every node before configuring `route`: only datasets with `route` write `covered_until`, and older nodes reject a manifest that carries it. Existing snapshots route only after their next refresh.
 
+## Incremental refresh
+
+An append-only dataset can read only new rows:
+
+```yaml
+  incremental:
+    column: created_at
+    full_every: 24h
+```
+
+| Key | Meaning |
+|---|---|
+| `incremental.column` | Increasing identifier (integer, date or timestamp); must equal `route.time_column` when `route` is set |
+| `incremental.full_every` | Positive duration after which a refresh re-reads the whole source |
+
+An incremental refresh runs the source query wrapped as `SELECT * FROM (<query>) AS kelvo_incr WHERE "<column>" > <literal>`, where the literal is the previous snapshot's `covered_until`, then publishes a new generation holding the previous generation's rows followed by the new rows. The previous generation is never changed and stays pinned for its readers. `covered_until` is recorded whenever `incremental` or `route` is set.
+
+It falls back to a full refresh, logging the reason, when there is no previous generation, no `covered_until` or `last_full_at`, the fingerprint or schema changed (the delta must have exactly the previous schema), `full_every` has elapsed, or the query cannot be wrapped safely. Only federated SQL queries are wrapped; native queries, Mongo pipelines, several statements, and timestamps finer than microseconds always refresh fully. Timestamp literals are naive UTC, so use UTC columns.
+
+Limits: rows inserted, changed or deleted at or below the watermark (including late rows that share the maximum value) are not seen until the next full refresh. The new generation copies all previous rows, so each run still reads and writes the whole snapshot locally; only the source read shrinks. Object backends download each previous part to a temporary file under the system temp directory and verify its checksum. Protected object backends always refresh fully. Row, byte and part limits apply to the whole generation.
+
+`accelerate status` shows `last_refresh` (incremental or full, rows appended), tracked in memory since process start and unknown after a restart. `last_full_at` is stored in the snapshot metadata; upgrade every node before configuring `incremental`, as older nodes reject a manifest that carries it.
+
 ## MongoDB pipeline refresh
 
 Use a native MongoDB source and a read-only YAML pipeline:
@@ -166,7 +189,7 @@ Row-group and footer limits bound encoding work, not total RSS. Wide schemas or 
 
 ## Current scope and industry standards
 
-Available: full refresh, explicit freshness, local/cluster scheduling, strict schema policy, multipart snapshots and verified recovery. Pending: incremental loading, CDC, result caching, live-source fallback, background (stale-while-revalidate) refresh and distributed single-query execution. Independent datasets have no global transactional snapshot.
+Available: full refresh, explicit freshness, local/cluster scheduling, strict schema policy, multipart snapshots, incremental append-only refresh and verified recovery. Pending: CDC, result caching, live-source fallback, background (stale-while-revalidate) refresh and distributed single-query execution. Independent datasets have no global transactional snapshot.
 
 ### Lifecycle priorities
 
