@@ -4,10 +4,13 @@ package acceleration
 import (
 	"context"
 	"errors"
+	"log"
+	"sync"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/apache/arrow-go/v18/arrow"
 )
 
 // ExecutorFactory lets the CLI and cluster preserve their subprocess/sandbox
@@ -18,6 +21,142 @@ type Manager struct {
 	config  catalog.Config
 	store   Backend
 	factory ExecutorFactory
+	// now and logf are replaceable in tests; zero values use time.Now and log.
+	now  func() time.Time
+	logf func(string, ...any)
+	mu   sync.Mutex
+	last map[string]RefreshInfo
+}
+
+func (m *Manager) clock() time.Time {
+	if m.now != nil {
+		return m.now()
+	}
+	return time.Now()
+}
+
+func (m *Manager) logLine(format string, args ...any) {
+	if m.logf != nil {
+		m.logf(format, args...)
+		return
+	}
+	log.Printf(format, args...)
+}
+
+// LastRefresh reports the kind of the last refresh this process ran for id.
+// ok is false after a restart or before any refresh.
+func (m *Manager) LastRefresh(id string) (RefreshInfo, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	info, ok := m.last[id]
+	return info, ok
+}
+
+func (m *Manager) recordRefresh(id string, info RefreshInfo) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.last == nil {
+		m.last = map[string]RefreshInfo{}
+	}
+	m.last[id] = info
+}
+
+// incrementalPlan is an accepted incremental refresh: the wrapped delta
+// request and the pinned previous generation.
+type incrementalPlan struct {
+	request    query.Request
+	prev       PreviousGeneration
+	lastFullAt string
+}
+
+// planIncremental returns nil, with the reason logged, when the refresh must be
+// full. It runs under the writer lock so the previous generation cannot change.
+func (m *Manager) planIncremental(ctx context.Context, d catalog.Dataset, fingerprint string, forceFull bool) (*incrementalPlan, string) {
+	if d.Incremental == nil {
+		return nil, ""
+	}
+	fallback := func(why string) (*incrementalPlan, string) {
+		m.logLine("acceleration %s: full refresh instead of incremental: %s", d.ID, why)
+		return nil, why
+	}
+	if forceFull {
+		return fallback("delta schema differs from the previous generation")
+	}
+	reader, ok := m.store.(PreviousReader)
+	if !ok {
+		return fallback("backend cannot read the previous generation")
+	}
+	current, err := m.store.Status(ctx, d.ID)
+	if ok, why := incrementalDecision(d, current, err == nil, current.LastFullAt, fingerprint, m.clock()); !ok {
+		return fallback(why)
+	}
+	request, why := incrementalRequest(d.Query, d.Incremental.Column, current.CoveredUntil)
+	if why != "" {
+		return fallback(why)
+	}
+	prev, err := reader.OpenPrevious(ctx, d.ID)
+	if err != nil {
+		return fallback("previous generation is unavailable")
+	}
+	if prev.Snapshot.Generation != current.Generation {
+		_ = prev.Release()
+		return fallback("previous generation changed")
+	}
+	return &incrementalPlan{request: request, prev: prev, lastFullAt: current.LastFullAt}, ""
+}
+
+type refreshSink interface {
+	query.Sink
+	Finish() error
+	Abort()
+}
+
+// execute runs the refresh query into sink. With a plan the sink first receives
+// the previous generation's rows. errIncrementalFallback asks the caller to
+// retry fully; the appended count is the delta's row count.
+func (m *Manager) execute(ctx context.Context, d catalog.Dataset, executor query.Executor, sink refreshSink, plan *incrementalPlan, previous *arrow.Schema) (appended int64, err error) {
+	var target query.Sink = sink
+	request := d.Query
+	var preload *preloadSink
+	if plan != nil {
+		preload = &preloadSink{ctx: ctx, inner: sink, prev: plan.prev, schema: previous}
+		target, request = preload, plan.request
+	}
+	_, err = executor.Execute(ctx, request, target)
+	if preload != nil && (preload.fallback || (err == nil && !preload.loaded)) {
+		return 0, errIncrementalFallback
+	}
+	if err != nil {
+		return 0, err
+	}
+	if err = ctx.Err(); err != nil {
+		return 0, err
+	}
+	if err = sink.Finish(); err != nil {
+		return 0, err
+	}
+	if preload != nil {
+		appended = preload.appended
+	}
+	return appended, ctx.Err()
+}
+
+// finishRefresh records coverage, last_full_at and the in-memory refresh kind.
+func (m *Manager) finishRefresh(d catalog.Dataset, writer any, cover string, plan *incrementalPlan, started time.Time, appended int64, fallback string) {
+	if w, ok := writer.(CoverageWriter); ok {
+		w.SetCoveredUntil(cover)
+	}
+	if d.Incremental == nil {
+		return
+	}
+	lastFull := started.UTC().Format(time.RFC3339Nano)
+	if plan != nil {
+		lastFull = plan.lastFullAt
+	}
+	if w, ok := writer.(LastFullAtWriter); ok {
+		w.SetLastFullAt(lastFull)
+	}
+	m.recordRefresh(d.ID, RefreshInfo{Incremental: plan != nil, AppendedRows: appended, Fallback: fallback})
 }
 
 func NewManager(c catalog.Config, factory ExecutorFactory) (*Manager, error) {
@@ -55,7 +194,16 @@ func (m *Manager) Close() error { return m.store.Close() }
 
 // Refresh publishes only after a complete successful source result and Parquet
 // footer. A redelivered scheduled job rechecks freshness under the writer lock.
-func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (_ Snapshot, resultErr error) {
+func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snapshot, error) {
+	snapshot, err := m.refresh(ctx, id, onlyIfDue, false)
+	if errors.Is(err, errIncrementalFallback) {
+		return m.refresh(ctx, id, onlyIfDue, true)
+	}
+	return snapshot, err
+}
+
+func (m *Manager) refresh(ctx context.Context, id string, onlyIfDue, forceFull bool) (_ Snapshot, resultErr error) {
+	started := m.clock()
 	d, ok := m.config.Dataset(id)
 	if !ok {
 		return Snapshot{}, query.NewError("INVALID_ARGUMENT", "Unknown accelerated dataset")
@@ -77,7 +225,7 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (_ Sna
 		return Snapshot{}, err
 	}
 	if d.Multipart != nil {
-		return m.refreshMultipart(ctx, d, fingerprint, onlyIfDue)
+		return m.refreshMultipart(ctx, d, fingerprint, onlyIfDue, forceFull, started)
 	}
 	tx, err := m.store.Begin(ctx, id)
 	if err != nil {
@@ -105,31 +253,25 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (_ Sna
 	if err != nil {
 		return Snapshot{}, err
 	}
+	plan, why := m.planIncremental(ctx, d, fingerprint, forceFull)
+	if plan != nil {
+		defer plan.prev.Release()
+	}
 	sink := NewParquetSink(tx.File(), d.Limits)
 	sink.expectedSchema = previous
 	sink.schemaEvolution = d.SchemaEvolution
-	if d.Route != nil {
-		sink.cover = &coverage{column: d.Route.TimeColumn}
+	if column := d.CoverageColumn(); column != "" {
+		sink.cover = &coverage{column: column}
 	}
 	defer sink.Abort()
-	if _, err = executor.Execute(ctx, d.Query, sink); err != nil {
-		return Snapshot{}, err
-	}
-	if err = ctx.Err(); err != nil {
-		return Snapshot{}, err
-	}
-	if err = sink.Finish(); err != nil {
-		return Snapshot{}, err
-	}
-	if err = ctx.Err(); err != nil {
+	appended, err := m.execute(ctx, d, executor, sink, plan, previous)
+	if err != nil {
 		return Snapshot{}, err
 	}
 	if err = schemaWriter.SetSchema(sink.schema); err != nil {
 		return Snapshot{}, err
 	}
-	if w, ok := tx.(CoverageWriter); ok {
-		w.SetCoveredUntil(sink.cover.Value())
-	}
+	m.finishRefresh(d, tx, sink.cover.Value(), plan, started, appended, why)
 	snapshot, err := tx.Commit(fingerprint, sink.Rows())
 	if err != nil {
 		return Snapshot{}, err
@@ -143,7 +285,7 @@ func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (_ Sna
 // refreshMultipart retains one writer transaction across every part. Nothing
 // becomes visible until source execution, all footers and the schema contract
 // have completed successfully.
-func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, fingerprint string, onlyIfDue bool) (_ Snapshot, resultErr error) {
+func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, fingerprint string, onlyIfDue, forceFull bool, started time.Time) (_ Snapshot, resultErr error) {
 	backend, ok := m.store.(MultipartBackend)
 	if !ok {
 		return Snapshot{}, query.NewError("CONFIGURATION_ERROR", "Snapshot backend does not support multipart refresh")
@@ -171,31 +313,25 @@ func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, finge
 	if err != nil {
 		return Snapshot{}, err
 	}
+	plan, why := m.planIncremental(ctx, d, fingerprint, forceFull)
+	if plan != nil {
+		defer plan.prev.Release()
+	}
 	sink := NewMultipartParquetSink(tx, d.Limits, options)
 	sink.expectedSchema = previous
 	sink.schemaEvolution = d.SchemaEvolution
-	if d.Route != nil {
-		sink.cover = &coverage{column: d.Route.TimeColumn}
+	if column := d.CoverageColumn(); column != "" {
+		sink.cover = &coverage{column: column}
 	}
 	defer sink.Abort()
-	if _, err = executor.Execute(ctx, d.Query, sink); err != nil {
-		return Snapshot{}, err
-	}
-	if err = ctx.Err(); err != nil {
-		return Snapshot{}, err
-	}
-	if err = sink.Finish(); err != nil {
-		return Snapshot{}, err
-	}
-	if err = ctx.Err(); err != nil {
+	appended, err := m.execute(ctx, d, executor, sink, plan, previous)
+	if err != nil {
 		return Snapshot{}, err
 	}
 	if err = tx.SetSchema(sink.schema); err != nil {
 		return Snapshot{}, err
 	}
-	if w, ok := tx.(CoverageWriter); ok {
-		w.SetCoveredUntil(sink.cover.Value())
-	}
+	m.finishRefresh(d, tx, sink.cover.Value(), plan, started, appended, why)
 	snapshot, err := tx.Commit(fingerprint)
 	if err != nil {
 		return Snapshot{}, err
