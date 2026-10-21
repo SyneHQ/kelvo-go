@@ -14,7 +14,7 @@ func TestResultCacheRuleMatching(t *testing.T) {
 	c.rules = []CacheRule{
 		{Tenant: "a", Connection: "c1", TTL: time.Minute},
 		{Team: "t", TTL: 0},
-		{Tenant: "a", TTL: time.Hour},
+		{Tenant: "a", TTL: 5 * time.Minute},
 	}
 	for _, tc := range []struct {
 		tenant, team, conn string
@@ -23,7 +23,7 @@ func TestResultCacheRuleMatching(t *testing.T) {
 		{"a", "x", "c1", time.Minute},      // first rule
 		{"a", "t", "c1", time.Minute},      // first match wins over the later team rule
 		{"b", "t", "c2", 0},                // empty tenant and connection match any
-		{"a", "x", "c2", time.Hour},        // falls past the first two
+		{"a", "x", "c2", 5 * time.Minute},  // falls past the first two
 		{"b", "x", "c1", 10 * time.Second}, // no match takes the default
 	} {
 		if got := c.ttlFor(tc.tenant, tc.team, tc.conn); got != tc.want {
@@ -67,7 +67,7 @@ func TestWarmPoolConfigCacheRulesValidation(t *testing.T) {
 	base.Enabled = true
 	for name, mutate := range map[string]func(*WarmPoolConfig){
 		"negative ttl": func(c *WarmPoolConfig) { c.CacheRules = []CacheRule{{TTL: -time.Second}} },
-		"ttl over 1h":  func(c *WarmPoolConfig) { c.CacheRules = []CacheRule{{TTL: 2 * time.Hour}} },
+		"ttl over 10m": func(c *WarmPoolConfig) { c.CacheRules = []CacheRule{{TTL: 11 * time.Minute}} },
 		"65 rules":     func(c *WarmPoolConfig) { c.CacheRules = make([]CacheRule, 65) },
 		"cache off":    func(c *WarmPoolConfig) { c.CacheDisabled, c.CacheRules = true, []CacheRule{{TTL: time.Minute}} },
 	} {
@@ -78,7 +78,7 @@ func TestWarmPoolConfigCacheRulesValidation(t *testing.T) {
 		}
 	}
 	c := base
-	c.CacheRules = []CacheRule{{Tenant: "a", TTL: time.Hour}, {TTL: 0}}
+	c.CacheRules = []CacheRule{{Tenant: "a", TTL: 5 * time.Minute}, {TTL: 0}}
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
 	}

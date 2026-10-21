@@ -4,6 +4,7 @@ package cluster
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -45,7 +46,7 @@ func TestReadWorkersSizeTheWarmPoolAndAdapter(t *testing.T) {
 func TestWarmPoolWithoutReadWorkersIsUnchanged(t *testing.T) {
 	warm := worker.WarmPoolConfig{Enabled: true, MaxWorkers: 3, MaxInFlight: 9, IdleTTL: time.Minute, QueueTimeout: time.Second, MaxPerKey: 1, QueueDepth: 64, WorkerMemoryMB: 64}
 	node := readWorkersNode(nil, warm)
-	if got := node.effectiveWarmPool(); *got != warm || node.readPoolSize() != 0 || validateNodeReadWorkers(node) != nil {
+	if got := node.effectiveWarmPool(); !reflect.DeepEqual(*got, warm) || node.readPoolSize() != 0 || validateNodeReadWorkers(node) != nil {
 		t.Fatalf("legacy configuration changed: %+v", got)
 	}
 }

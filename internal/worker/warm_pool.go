@@ -122,8 +122,8 @@ func (c WarmPoolConfig) Validate() error {
 		return errors.New("warm_pool: cache_rules take at most 64 rules and need the cache enabled")
 	}
 	for _, rule := range c.CacheRules {
-		if rule.TTL < 0 || rule.TTL > time.Hour {
-			return errors.New("warm_pool: cache_rules ttl must be between 0 and 1h")
+		if rule.TTL < 0 || rule.TTL > 10*time.Minute {
+			return errors.New("warm_pool: cache_rules ttl must be between 0 and 10m")
 		}
 	}
 	if c.ReauthorizeEvery < 0 || c.ReauthorizeEvery > 10*time.Minute {
