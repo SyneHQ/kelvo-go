@@ -136,3 +136,22 @@ func TestAccelerationRouteValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestAccelerationIncrementalValidation(t *testing.T) {
+	inc := func(r string) string { return acceleratedYAML + "      incremental:\n" + r }
+	route := "      route:\n        time_column: created_at\n        live_source: warehouse\n"
+	if c, err := loadAccelerationFixture(t, inc("        column: created_at\n        full_every: 24h\n")); err != nil || c.Acceleration.Datasets[0].CoverageColumn() != "created_at" {
+		t.Fatal("valid incremental rejected", err)
+	}
+	if _, err := loadAccelerationFixture(t, inc("        column: created_at\n        full_every: 24h\n")+route); err != nil {
+		t.Fatal("matching route rejected", err)
+	}
+	if _, err := loadAccelerationFixture(t, inc("        column: other\n        full_every: 24h\n")+route); err == nil {
+		t.Fatal("column differing from route time_column accepted")
+	}
+	for _, bad := range []string{"        column: created_at\n", "        full_every: 1h\n", "        column: 'a b'\n        full_every: 1h\n"} {
+		if _, err := loadAccelerationFixture(t, inc(bad)); err == nil {
+			t.Fatalf("accepted incremental %q", bad)
+		}
+	}
+}

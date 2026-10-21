@@ -68,8 +68,11 @@ type Dataset struct {
 	OnUnavailable string `json:"on_unavailable,omitempty" yaml:"on_unavailable,omitempty"`
 	// Route sends queries that need rows newer than the snapshot covers to a
 	// live source. Without it every query reads the snapshot.
-	Route  *Route       `json:"route,omitempty" yaml:"route,omitempty"`
-	Limits query.Limits `json:"limits" yaml:"limits"`
+	Route *Route `json:"route,omitempty" yaml:"route,omitempty"`
+	// Incremental appends only rows newer than the previous snapshot's
+	// covered_until instead of re-reading the whole source.
+	Incremental *Incremental `json:"incremental,omitempty" yaml:"incremental,omitempty"`
+	Limits      query.Limits `json:"limits" yaml:"limits"`
 }
 
 // Route names the column whose maximum the snapshot records at refresh
@@ -78,6 +81,25 @@ type Dataset struct {
 type Route struct {
 	TimeColumn string `json:"time_column" yaml:"time_column"`
 	LiveSource string `json:"live_source" yaml:"live_source"`
+}
+
+// Incremental names the monotonically increasing column used as the watermark
+// and how long incremental refreshes may run before a full refresh re-reads
+// everything (rows changed or deleted behind the watermark appear then).
+type Incremental struct {
+	Column    string        `json:"column" yaml:"column"`
+	FullEvery time.Duration `json:"full_every" yaml:"full_every"`
+}
+
+// CoverageColumn is the column whose maximum a refresh records as covered_until.
+func (d Dataset) CoverageColumn() string {
+	switch {
+	case d.Route != nil:
+		return d.Route.TimeColumn
+	case d.Incremental != nil:
+		return d.Incremental.Column
+	}
+	return ""
 }
 
 // EffectiveVerificationLimits deliberately supplies no default. Operators must
@@ -196,6 +218,14 @@ func (c *Config) validateAcceleration(base string) error {
 			}
 			if !ValidID(d.Route.TimeColumn) || !live {
 				return errors.New("dataset route requires a time_column identifier and a registered non-accelerated live_source")
+			}
+		}
+		if d.Incremental != nil {
+			if !ValidID(d.Incremental.Column) || d.Incremental.FullEvery <= 0 {
+				return errors.New("dataset incremental requires a column identifier and a positive full_every")
+			}
+			if d.Route != nil && d.Route.TimeColumn != d.Incremental.Column {
+				return errors.New("dataset incremental column must equal route time_column")
 			}
 		}
 		if d.AuthorizationVersion == "" || len(d.AuthorizationVersion) > 128 {
