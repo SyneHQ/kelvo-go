@@ -63,7 +63,10 @@ type Dataset struct {
 	RefreshInterval      time.Duration       `json:"refresh_interval" yaml:"refresh_interval"`
 	MaxAge               time.Duration       `json:"max_age" yaml:"max_age"`
 	AuthorizationVersion string              `json:"authorization_version" yaml:"authorization_version"`
-	Limits               query.Limits        `json:"limits" yaml:"limits"`
+	// OnUnavailable "refresh" runs the dataset's normal refresh when a query
+	// finds its snapshot missing or expired. Empty keeps the failure.
+	OnUnavailable string       `json:"on_unavailable,omitempty" yaml:"on_unavailable,omitempty"`
+	Limits        query.Limits `json:"limits" yaml:"limits"`
 }
 
 // EffectiveVerificationLimits deliberately supplies no default. Operators must
@@ -171,6 +174,9 @@ func (c *Config) validateAcceleration(base string) error {
 		}
 		if d.MaxAge <= 0 || d.MaxAge > 30*24*time.Hour || d.RefreshInterval < 0 || (d.RefreshInterval > 0 && (d.RefreshInterval < 5*time.Second || d.RefreshInterval > d.MaxAge)) {
 			return errors.New("dataset max_age must be positive; refresh_interval must be zero or between 5s and max_age")
+		}
+		if d.OnUnavailable != "" && d.OnUnavailable != "refresh" {
+			return errors.New("dataset on_unavailable must be empty or refresh")
 		}
 		if d.AuthorizationVersion == "" || len(d.AuthorizationVersion) > 128 {
 			return errors.New("dataset authorization_version is required and must not exceed 128 characters")

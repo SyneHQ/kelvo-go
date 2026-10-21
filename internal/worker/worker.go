@@ -70,7 +70,9 @@ type Executor struct {
 	// copy and cannot retarget queries or copied export executors after binding.
 	catalogBinding *boundCatalog
 	// ObjectRuntime is parent-only and shared by copies, including exports.
-	ObjectRuntime     *acceleration.ObjectRuntime
+	ObjectRuntime *acceleration.ObjectRuntime
+	// RefreshOnMiss is parent-only and optional; it runs opted-in dataset refreshes.
+	RefreshOnMiss     *acceleration.OnMiss
 	Containment       containment.Domain
 	ContainmentBudget containment.Budget
 	Tracing           *tracing.Recorder
@@ -365,6 +367,12 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	defer releaseQuota()
 	ctx = quotaCtx
 	phases.enter(telemetry.PhasePrepare)
+	var onDemand map[string]bool
+	if e.RefreshOnMiss != nil {
+		if onDemand, err = e.RefreshOnMiss.Ensure(ctx, e.Config, r); err != nil {
+			return stats, err
+		}
+	}
 	resolution, err := acceleration.ResolveWithRuntime(ctx, e.Config, r, e.ObjectRuntime)
 	if err != nil {
 		return stats, err
@@ -378,6 +386,9 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	}()
 	ctx = resolution.Context()
 	sources, versions := resolution.Sources, resolution.Versions
+	for i := range versions {
+		versions[i].RefreshedOnDemand = onDemand[versions[i].Dataset]
+	}
 	cfg := catalog.Config{Sources: sources, ExtensionDirectory: e.Config.ExtensionDirectory}
 	if err := access.ValidateResolvedRequest(ctx, cfg, r); err != nil {
 		return stats, err
