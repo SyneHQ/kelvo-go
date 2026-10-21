@@ -77,6 +77,9 @@ type Snapshot struct {
 	// CoveredUntil is MAX(route.time_column) of the refreshed rows; empty when the
 	// dataset has no route or the maximum is unknown.
 	CoveredUntil string `yaml:"covered_until,omitempty"`
+	// LastFullAt is when a full refresh last produced this lineage; written only
+	// for datasets with incremental.
+	LastFullAt string `yaml:"last_full_at,omitempty"`
 	// These process-local observations never enter manifests or JSON responses.
 	ageObservedAt time.Time
 	ageObserved   time.Duration
@@ -115,6 +118,7 @@ type storeManifest struct {
 	RefreshedAt time.Time      `yaml:"refreshed_at"`
 	// Written only for datasets with a route, so other manifests are unchanged.
 	CoveredUntil string `yaml:"covered_until,omitempty"`
+	LastFullAt   string `yaml:"last_full_at,omitempty"`
 }
 
 // OpenStore creates or validates private namespaces. It never changes the
@@ -170,6 +174,7 @@ func (s *Store) openDataset(dataset string, create bool) (*os.File, error) {
 // producer must finish all writes to File before either method is called.
 type Transaction struct {
 	coveredUntil string
+	lastFullAt   string
 	schemaHash   string
 	mu           sync.Mutex
 	ctx          context.Context
@@ -299,7 +304,7 @@ func (tx *Transaction) Commit(fingerprint string, rows int64) (snapshot Snapshot
 		}
 	}()
 	manifest := storeManifest{SchemaHash: tx.schemaHash, Version: 1, Dataset: tx.dataset, Generation: tx.generation,
-		Fingerprint: fingerprint, SHA256: digest, Rows: rows, Bytes: info.Size(), RefreshedAt: time.Now().UTC(), CoveredUntil: tx.coveredUntil}
+		Fingerprint: fingerprint, SHA256: digest, Rows: rows, Bytes: info.Size(), RefreshedAt: time.Now().UTC(), CoveredUntil: tx.coveredUntil, LastFullAt: tx.lastFullAt}
 	data, err := yaml.Marshal(manifest)
 	if err != nil {
 		return Snapshot{}, err
@@ -574,7 +579,7 @@ func storeReadManifestNamed(dir *os.File, dataset, name string) (storeManifest, 
 	}
 	if (manifest.SchemaHash != "" && !storeDigest.MatchString(manifest.SchemaHash)) || (manifest.Version != 1 && manifest.Version != 2) || manifest.Dataset != dataset || !storeGenerationID.MatchString(manifest.Generation) ||
 		!storeDigest.MatchString(manifest.SHA256) || manifest.Fingerprint == "" || len(manifest.Fingerprint) > storeFingerprintLimit ||
-		manifest.Rows < 0 || manifest.Bytes < 0 || manifest.RefreshedAt.IsZero() || len(manifest.CoveredUntil) > 64 {
+		manifest.Rows < 0 || manifest.Bytes < 0 || manifest.RefreshedAt.IsZero() || len(manifest.CoveredUntil) > 64 || len(manifest.LastFullAt) > 64 {
 		return manifest, fmt.Errorf("%w: invalid snapshot manifest fields", ErrCorrupt)
 	}
 	if err := validateManifestParts(manifest); err != nil {
@@ -586,7 +591,7 @@ func storeReadManifestNamed(dir *os.File, dataset, name string) (storeManifest, 
 func (manifest storeManifest) snapshot(directory string) Snapshot {
 	snapshot := Snapshot{SchemaHash: manifest.SchemaHash, Dataset: manifest.Dataset, Generation: manifest.Generation,
 		Path: filepath.Join(directory, manifest.Generation+".parquet"), Fingerprint: manifest.Fingerprint,
-		SHA256: manifest.SHA256, Rows: manifest.Rows, Bytes: manifest.Bytes, RefreshedAt: manifest.RefreshedAt, CoveredUntil: manifest.CoveredUntil}
+		SHA256: manifest.SHA256, Rows: manifest.Rows, Bytes: manifest.Bytes, RefreshedAt: manifest.RefreshedAt, CoveredUntil: manifest.CoveredUntil, LastFullAt: manifest.LastFullAt}
 	if manifest.Version == 2 {
 		snapshot.Path = ""
 		snapshot.Parts = append([]SnapshotPart(nil), manifest.Parts...)

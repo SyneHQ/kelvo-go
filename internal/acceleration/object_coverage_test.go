@@ -22,10 +22,11 @@ func TestObjectBackendsPersistCoveredUntil(t *testing.T) {
 		t.Fatal(err)
 	}
 	tx.(CoverageWriter).SetCoveredUntil("42")
-	if snapshot, err := tx.Commit("source-config", 3); err != nil || snapshot.CoveredUntil != "42" {
+	tx.(LastFullAtWriter).SetLastFullAt("2026-03-01T00:00:00Z")
+	if snapshot, err := tx.Commit("source-config", 3); err != nil || snapshot.CoveredUntil != "42" || snapshot.LastFullAt != "2026-03-01T00:00:00Z" {
 		t.Fatalf("single commit %+v %v", snapshot, err)
 	}
-	if status, err := backend.Status(context.Background(), "events"); err != nil || status.CoveredUntil != "42" {
+	if status, err := backend.Status(context.Background(), "events"); err != nil || status.CoveredUntil != "42" || status.LastFullAt != "2026-03-01T00:00:00Z" {
 		t.Fatalf("single status %+v %v", status, err)
 	}
 
@@ -38,10 +39,11 @@ func TestObjectBackendsPersistCoveredUntil(t *testing.T) {
 		t.Fatal(err)
 	}
 	writer.(CoverageWriter).SetCoveredUntil("2026-03-01T00:00:00Z")
+	writer.(LastFullAtWriter).SetLastFullAt("2026-03-02T00:00:00Z")
 	if snapshot, err := writer.Commit("config-v1"); err != nil || snapshot.CoveredUntil == "" {
 		t.Fatalf("multipart commit %+v %v", snapshot, err)
 	}
-	if status, err := multi.Status(context.Background(), "events"); err != nil || status.CoveredUntil != "2026-03-01T00:00:00Z" {
+	if status, err := multi.Status(context.Background(), "events"); err != nil || status.CoveredUntil != "2026-03-01T00:00:00Z" || status.LastFullAt != "2026-03-02T00:00:00Z" {
 		t.Fatalf("multipart status %+v %v", status, err)
 	}
 }
