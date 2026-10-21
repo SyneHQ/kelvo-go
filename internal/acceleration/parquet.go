@@ -27,6 +27,7 @@ const parquetRowGroupBytes int64 = 8 << 20
 // This does not bound the upstream engine's query memory. Each input batch and
 // the Parquet file's cumulative row-group metadata also consume memory.
 type ParquetSink struct {
+	cover           *coverage
 	expectedSchema  *arrow.Schema
 	schemaEvolution *catalog.SchemaEvolution
 	out             *parquetCountingWriter
@@ -143,6 +144,7 @@ func (s *ParquetSink) Write(record arrow.RecordBatch) error {
 	if s.schema == nil || record == nil || !SchemaEqual(s.schema, record.Schema()) {
 		return s.fail(errors.New("Parquet record requires the declared schema"))
 	}
+	s.cover.observe(record)
 	if record.NumRows() > s.limits.MaxRows-s.rows {
 		return s.fail(query.NewError("RESOURCE_EXHAUSTED", "Acceleration exceeds row limit"))
 	}
