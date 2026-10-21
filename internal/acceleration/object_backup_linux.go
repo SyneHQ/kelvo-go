@@ -56,7 +56,7 @@ func backupObjectToLocal(ctx context.Context, backend *objectBackend, request Mi
 	if err != nil {
 		return result, err
 	}
-	manifest := storeManifest{Version: 1, Dataset: source.Dataset, Generation: source.Generation, Fingerprint: request.TargetFingerprint, SchemaHash: source.SchemaHash, SHA256: source.SHA256, Rows: source.Rows, Bytes: source.Bytes, RefreshedAt: source.RefreshedAt, CoveredUntil: source.CoveredUntil}
+	manifest := storeManifest{Version: 1, Dataset: source.Dataset, Generation: source.Generation, Fingerprint: request.TargetFingerprint, SchemaHash: source.SchemaHash, SHA256: source.SHA256, Rows: source.Rows, Bytes: source.Bytes, RefreshedAt: source.RefreshedAt, CoveredUntil: source.CoveredUntil, LastFullAt: source.LastFullAt}
 	localParts := make([]SnapshotPart, len(payloads))
 	for index, payload := range payloads {
 		filename := source.Generation + ".parquet"

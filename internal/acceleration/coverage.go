@@ -23,6 +23,17 @@ func (tx *Transaction) SetCoveredUntil(v string) {
 }
 func (t *multipartTransaction) SetCoveredUntil(v string) { t.tx.SetCoveredUntil(v) }
 
+// LastFullAtWriter records when a full refresh last built the lineage; written
+// only for datasets with incremental, so other manifests are unchanged.
+type LastFullAtWriter interface{ SetLastFullAt(string) }
+
+func (tx *Transaction) SetLastFullAt(v string) {
+	tx.mu.Lock()
+	tx.lastFullAt = v
+	tx.mu.Unlock()
+}
+func (t *multipartTransaction) SetLastFullAt(v string) { t.tx.SetLastFullAt(v) }
+
 // coverage tracks MAX(column) over the rows a refresh writes. Value renders as a
 // decimal integer or an RFC3339Nano UTC time, "" when nothing exact is known
 // (no rows, only NULLs, an unsupported type or a missing column).

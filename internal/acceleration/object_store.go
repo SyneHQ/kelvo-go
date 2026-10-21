@@ -65,6 +65,7 @@ type objectCommitted struct {
 	RefreshedAt   time.Time            `yaml:"refreshed_at"`
 	ObjectVersion string               `yaml:"object_version,omitempty"`
 	CoveredUntil  string               `yaml:"covered_until,omitempty"`
+	LastFullAt    string               `yaml:"last_full_at,omitempty"`
 }
 
 type objectWriterLease struct {
@@ -286,6 +287,7 @@ func (backend *objectBackend) writeState(ctx context.Context, client objectstore
 }
 
 func (tx *objectTransaction) SetCoveredUntil(v string) { tx.coveredUntil = v }
+func (tx *objectTransaction) SetLastFullAt(v string)   { tx.lastFullAt = v }
 
 func (backend *objectBackend) snapshot(dataset string, committed *objectCommitted, reference time.Time) (Snapshot, error) {
 	if committed == nil {
@@ -301,7 +303,7 @@ func (backend *objectBackend) snapshot(dataset string, committed *objectCommitte
 	}
 	snapshot := Snapshot{SchemaHash: committed.SchemaHash, Dataset: dataset, Generation: committed.Generation, Path: uri,
 		Fingerprint: committed.Fingerprint, SHA256: committed.SHA256, Rows: committed.Rows,
-		Bytes: committed.Bytes, RefreshedAt: committed.RefreshedAt, ObjectKey: key, ObjectVersion: committed.ObjectVersion, CoveredUntil: committed.CoveredUntil}
+		Bytes: committed.Bytes, RefreshedAt: committed.RefreshedAt, ObjectKey: key, ObjectVersion: committed.ObjectVersion, CoveredUntil: committed.CoveredUntil, LastFullAt: committed.LastFullAt}
 	return snapshot.observeClock(reference), nil
 }
 
@@ -489,6 +491,7 @@ type objectTransaction struct {
 	readerReference *readerlease.Reference
 	schemaHash      string
 	coveredUntil    string
+	lastFullAt      string
 	finishMu        sync.Mutex
 	stateMu         sync.Mutex
 	backend         *objectBackend
@@ -739,7 +742,7 @@ func (tx *objectTransaction) Commit(fingerprint string, rows int64) (snapshot Sn
 	if confirmed.Size != info.Size() || confirmed.Version != uploaded.Version || confirmed.SHA256 != digest {
 		return Snapshot{}, fmt.Errorf("%w: uploaded snapshot metadata mismatch", ErrCorrupt)
 	}
-	committed := &objectCommitted{SchemaHash: tx.schemaHash, Generation: tx.local.generation, Fingerprint: fingerprint, SHA256: digest, Rows: rows, Bytes: info.Size(), ObjectVersion: uploaded.Version, CoveredUntil: tx.coveredUntil}
+	committed := &objectCommitted{SchemaHash: tx.schemaHash, Generation: tx.local.generation, Fingerprint: fingerprint, SHA256: digest, Rows: rows, Bytes: info.Size(), ObjectVersion: uploaded.Version, CoveredUntil: tx.coveredUntil, LastFullAt: tx.lastFullAt}
 	return tx.publishCommitted(committed, nil)
 }
 
@@ -803,7 +806,7 @@ func (tx *objectTransaction) publishCommitted(committed *objectCommitted, prepar
 func sameObjectCommit(left, right *objectCommitted) bool {
 	return left != nil && right != nil && left.Generation == right.Generation && left.Fingerprint == right.Fingerprint &&
 		left.SchemaHash == right.SchemaHash && left.SHA256 == right.SHA256 && left.Rows == right.Rows && left.Bytes == right.Bytes &&
-		left.RefreshedAt.Equal(right.RefreshedAt) && left.ObjectVersion == right.ObjectVersion && left.CoveredUntil == right.CoveredUntil && sameObjectDescriptor(left.Descriptor, right.Descriptor) &&
+		left.RefreshedAt.Equal(right.RefreshedAt) && left.ObjectVersion == right.ObjectVersion && left.CoveredUntil == right.CoveredUntil && left.LastFullAt == right.LastFullAt && sameObjectDescriptor(left.Descriptor, right.Descriptor) &&
 		sameReaderBinding(left.ReaderBinding, right.ReaderBinding)
 }
 

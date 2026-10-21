@@ -140,7 +140,7 @@ func (backend *objectBackend) loadObjectSnapshot(ctx context.Context, dataset st
 	if descriptor.Dataset != dataset || descriptor.Generation != committed.Generation || descriptor.SchemaHash != committed.SchemaHash || descriptor.Rows != committed.Rows || descriptor.Bytes != committed.Bytes || len(descriptor.Parts) != ref.PartCount {
 		return Snapshot{}, fmt.Errorf("%w: descriptor identity or totals differ from manifest", ErrCorrupt)
 	}
-	snapshot = Snapshot{Dataset: dataset, Generation: committed.Generation, SchemaHash: committed.SchemaHash, Fingerprint: committed.Fingerprint, SHA256: committed.SHA256, Rows: committed.Rows, Bytes: committed.Bytes, RefreshedAt: committed.RefreshedAt, CoveredUntil: committed.CoveredUntil, Parts: make([]SnapshotPart, len(descriptor.Parts))}
+	snapshot = Snapshot{Dataset: dataset, Generation: committed.Generation, SchemaHash: committed.SchemaHash, Fingerprint: committed.Fingerprint, SHA256: committed.SHA256, Rows: committed.Rows, Bytes: committed.Bytes, RefreshedAt: committed.RefreshedAt, CoveredUntil: committed.CoveredUntil, LastFullAt: committed.LastFullAt, Parts: make([]SnapshotPart, len(descriptor.Parts))}
 	for index, part := range descriptor.Parts {
 		snapshot.Parts[index] = SnapshotPart{Rows: part.Rows, Bytes: part.Bytes, SHA256: part.SHA256, ObjectVersion: part.ObjectVersion, ObjectKey: backend.key(dataset, multipartName(committed.Generation, index))}
 	}
