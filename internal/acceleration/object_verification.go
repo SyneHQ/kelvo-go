@@ -129,7 +129,7 @@ func verificationSummary(selected selectedObjectSnapshot) Snapshot {
 	// A corrupt descriptor must not turn arbitrary parts or keys into a usable
 	// snapshot. This summary contains only validated, canonical root metadata.
 	return Snapshot{Dataset: selected.dataset, Generation: c.Generation, SchemaHash: c.SchemaHash,
-		Fingerprint: c.Fingerprint, SHA256: c.SHA256, Rows: c.Rows, Bytes: c.Bytes, RefreshedAt: c.RefreshedAt,
+		Fingerprint: c.Fingerprint, SHA256: c.SHA256, Rows: c.Rows, Bytes: c.Bytes, RefreshedAt: c.RefreshedAt, CoveredUntil: c.CoveredUntil,
 		ageObserved: selected.observation.ageObserved, ageObservedAt: selected.observation.ageObservedAt}
 }
 
