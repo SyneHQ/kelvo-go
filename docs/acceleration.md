@@ -74,6 +74,30 @@ Query `recent_orders` with `--sources recent_orders`. Multiple accelerated alias
 
 Freshness is checked before execution; readers pin the generation for the query's lifetime. Refresh time is not a database transaction watermark.
 
+## Hot/cold routing
+
+A dataset with `route` serves old time ranges from its snapshot and newer ones from a live source:
+
+```yaml
+- id: orders
+  route:
+    time_column: created_at
+    live_source: orders_live
+```
+
+| Setting | Rule |
+| --- | --- |
+| `route.time_column` | Identifier of the dataset's time column (integer, date or timestamp) |
+| `route.live_source` | Registered, non-accelerated source that answers under the dataset's alias; both keys are required together |
+
+Each refresh records `covered_until`, the exact `MAX(time_column)` of the rows it wrote, in the snapshot metadata (visible in `status`). A snapshot with no rows, only NULLs, no such column or an unsupported type records nothing and is always read.
+
+At query time Kelvo parses the SQL and reads only simple top-level `WHERE` conjuncts on the column: `>`, `>=`, `<`, `<=`, `=` against a literal and `BETWEEN a AND b`, for a single-table query on the dataset alias. If an upper bound is at or before `covered_until` the snapshot answers. Otherwise the query reads the live source (no union with the snapshot) because the snapshot may be stale: `beyond_covered` (upper bound after `covered_until`), `unbounded` (no upper bound, including no `WHERE`) or `unparsed` (`OR`, functions on the column, subqueries, joins, parameters, a literal of the wrong type, or SQL the MySQL-dialect parser rejects). The read's acceleration stats show `routed_live: true` and `route_reason`, with no generation.
+
+A routed read is a direct read of `live_source`: it must pass the same access check and source quota as one, and the live source's connection is what the query child receives. A routed dataset skips `on_unavailable: refresh`. Restricted-policy and delegated reads never route and keep reading the snapshot, as do nodes without a refresh manager (`kelvo query`, `serve`) and datasets whose snapshot has no `covered_until`.
+
+Upgrade every node before configuring `route`: only datasets with `route` write `covered_until`, and older nodes reject a manifest that carries it. Existing snapshots route only after their next refresh.
+
 ## MongoDB pipeline refresh
 
 Use a native MongoDB source and a read-only YAML pipeline:

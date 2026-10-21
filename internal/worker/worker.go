@@ -72,7 +72,10 @@ type Executor struct {
 	// ObjectRuntime is parent-only and shared by copies, including exports.
 	ObjectRuntime *acceleration.ObjectRuntime
 	// RefreshOnMiss is parent-only and optional; it runs opted-in dataset refreshes.
-	RefreshOnMiss     *acceleration.OnMiss
+	RefreshOnMiss *acceleration.OnMiss
+	// Router is parent-only and optional; it routes datasets with a route to their
+	// live source when a query needs rows newer than the snapshot covers.
+	Router            *acceleration.Router
 	Containment       containment.Domain
 	ContainmentBudget containment.Budget
 	Tracing           *tracing.Recorder
@@ -358,8 +361,9 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	if e.SourceAdmission != nil {
 		phases.enter(telemetry.PhaseSourceAdmission)
 	}
+	routed, resolveRequest := e.planRoute(ctx, r, dynamic)
 	quotaStarted := time.Now()
-	quotaCtx, releaseQuota, quotaErr := e.acquireSourceQuota(ctx, r)
+	quotaCtx, releaseQuota, quotaErr := e.acquireSourceQuota(ctx, resolveRequest)
 	admissionWait += time.Since(quotaStarted)
 	if quotaErr != nil {
 		return stats, quotaErr
@@ -369,11 +373,11 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	phases.enter(telemetry.PhasePrepare)
 	var onDemand map[string]bool
 	if e.RefreshOnMiss != nil {
-		if onDemand, err = e.RefreshOnMiss.Ensure(ctx, e.Config, r); err != nil {
+		if onDemand, err = e.RefreshOnMiss.Ensure(ctx, e.Config, resolveRequest); err != nil {
 			return stats, err
 		}
 	}
-	resolution, err := acceleration.ResolveWithRuntime(ctx, e.Config, r, e.ObjectRuntime)
+	resolution, err := acceleration.ResolveWithRuntime(ctx, e.Config, resolveRequest, e.ObjectRuntime)
 	if err != nil {
 		return stats, err
 	}
@@ -389,6 +393,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	for i := range versions {
 		versions[i].RefreshedOnDemand = onDemand[versions[i].Dataset]
 	}
+	versions = markRouted(e.Config, r, routed, sources, versions)
 	cfg := catalog.Config{Sources: sources, ExtensionDirectory: e.Config.ExtensionDirectory}
 	if err := access.ValidateResolvedRequest(ctx, cfg, r); err != nil {
 		return stats, err

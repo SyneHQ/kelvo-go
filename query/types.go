@@ -174,6 +174,10 @@ type AccelerationVersion struct {
 	RefreshedAt time.Time `json:"refreshed_at" yaml:"refreshed_at"`
 	// RefreshedOnDemand reports that this read ran the refresh itself.
 	RefreshedOnDemand bool `json:"refreshed_on_demand,omitempty" yaml:"refreshed_on_demand,omitempty"`
+	// RoutedLive reports that the read bypassed the snapshot for the dataset's live
+	// source; RouteReason is beyond_covered, unbounded or unparsed. Generation is empty.
+	RoutedLive  bool   `json:"routed_live,omitempty" yaml:"routed_live,omitempty"`
+	RouteReason string `json:"route_reason,omitempty" yaml:"route_reason,omitempty"`
 }
 
 // Sink methods are synchronous. The record is borrowed only for Write's duration.
