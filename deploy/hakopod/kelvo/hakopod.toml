@@ -1,7 +1,9 @@
 schema_version = 1
 name = "kelvo"
-# Image digests are printed in the hakopod-image workflow summary. Replace the
-# all-zero digests (valid format, never pullable) before planning.
+# Production Kelvo (tenant "shared", worker "local", principal "dbapi"),
+# moved from the Oracle VM. Gateway, node and resolver certificates are the
+# production identity, issued for 127.0.0.1; relay sidecars keep those
+# connections on 127.0.0.1 inside each pod, as on the VM.
 
 [volumes.nats-data]
 size_gib = 5
@@ -9,25 +11,25 @@ size_gib = 5
 [volumes.kelvo-state]
 size_gib = 20
 
+[volumes.gateway-state]
+size_gib = 2
 
 # kelvo-internal: nats, gateway and node only. No external egress.
 [networks.kelvo-internal]
 internal = true
 
-# kelvo-gateway: shared segment so another application (db-api) can call the gateway.
+# kelvo-gateway: shared segment so db-api (application syne) can call the gateway.
 [networks.kelvo-gateway]
 internal = true
 virtual_network = "kelvo-net"
 segment = "gateway"
 
-# kelvo-egress: gives the node external egress (database traffic). Hakopod
-# blocks private and metadata CIDRs on it. The Tailscale exit-node routing
-# for this traffic is pending Hakopod sidecar support; see README.
+# kelvo-egress: external egress for the node (WireGuard endpoint, db-api
+# resolver and rabbit through the host's tailnet address).
 [networks.kelvo-egress]
 
 [services.nats]
-# Change to roll the service after its secrets change.
-restart_nonce = "secrets-2026-10-22b"
+restart_nonce = "prod-2026-10-22a"
 image = "nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4"
 port = 4222
 networks = ["kelvo-internal"]
@@ -37,39 +39,74 @@ run_as_user = 10001
 args = ["-c", "/etc/nats/nats.conf"]
 mounts = [{ volume = "nats-data", mount_path = "/data" }]
 
-
 # Small request so the app fits the single node's reservations; the
 # profile limit still allows bursts.
 [services.nats.resources]
 cpu_request = "25m"
+
 [services.nats.secrets]
-KELVO_TEST_NATS_PROVISIONER_PASSWORD = { ref = "kelvo-nats-provisioner-password" }
-KELVO_TEST_NATS_GATEWAY_PASSWORD = { ref = "kelvo-nats-gateway-password" }
-KELVO_TEST_NATS_WORKER_PASSWORD = { ref = "kelvo-nats-worker-password" }
+KELVO_NATS_PROVISIONER_PASSWORD = { ref = "kelvo-nats-provisioner-password" }
+KELVO_NATS_GATEWAY_PASSWORD = { ref = "kelvo-nats-gateway-password" }
+KELVO_NATS_WORKER_PASSWORD = { ref = "kelvo-nats-worker-password" }
 
 [services.nats.files.conf]
 mount_path = "/etc/nats/nats.conf"
 content = """
-server_name: kelvo-test
+server_name: kelvo-shared
 listen: 0.0.0.0:4222
-max_payload: 2097152
+max_payload: 1048576
+max_pending: 4194304
+max_connections: 32
+write_deadline: "5s"
 tls {
   cert_file: /run/nats/tls/server.crt
   key_file: /run/nats/tls/server.key
   min_version: "1.3"
+  timeout: 3
 }
 jetstream {
   store_dir: /data/jetstream
-  max_file_store: 2147483648
-  max_memory_store: 67108864
+  max_memory_store: 16777216
+  max_file_store: 268435456
 }
 accounts {
-  kelvo-test {
-    jetstream { max_memory: 16777216, max_file: 1073741824, max_streams: 6, max_consumers: 8 }
-    users = [
-      {user: kelvo-test-provisioner, password: $KELVO_TEST_NATS_PROVISIONER_PASSWORD}
-      {user: kelvo-test-gateway, password: $KELVO_TEST_NATS_GATEWAY_PASSWORD}
-      {user: kelvo-test-worker, password: $KELVO_TEST_NATS_WORKER_PASSWORD}
+  shared_lz4 {
+    jetstream { max_memory: 4194304, max_file: 67108864, max_streams: 7, max_consumers: 4 }
+    users: [
+      {
+        user: gateway
+        password: $KELVO_NATS_GATEWAY_PASSWORD
+        permissions {
+          publish: { allow: [
+            "$JS.API.INFO", "$JS.API.STREAM.INFO.*",
+            "$JS.API.STREAM.MSG.GET.KV_KELVO_META",
+            "$JS.API.STREAM.MSG.GET.KV_KELVO_JOBS", "$KV.KELVO_JOBS.>",
+            "$JS.API.CONSUMER.INFO.KELVO_QUEUE.dispatch", "job.ready",
+            "$JS.API.STREAM.MSG.GET.KV_KELVO_OPERATIONS_GATEWAY", "$KV.KELVO_OPERATIONS_GATEWAY.>"
+          ] }
+          subscribe: { allow: ["_INBOX.>"] }
+        }
+      },
+      {
+        user: worker
+        password: $KELVO_NATS_WORKER_PASSWORD
+        permissions {
+          publish: { allow: [
+            "$JS.API.INFO", "$JS.API.STREAM.INFO.*",
+            "$JS.API.STREAM.MSG.GET.KV_KELVO_META",
+            "$JS.API.STREAM.MSG.GET.KV_KELVO_JOBS", "$KV.KELVO_JOBS.>",
+            "$JS.API.CONSUMER.INFO.KELVO_QUEUE.dispatch",
+            "$JS.API.CONSUMER.MSG.NEXT.KELVO_QUEUE.dispatch", "$JS.ACK.>",
+            "$JS.API.STREAM.MSG.GET.KV_KELVO_ACCEL_STATUS", "$KV.KELVO_ACCEL_STATUS.>",
+            "$JS.API.STREAM.MSG.GET.KV_KELVO_SOURCE_QUOTAS", "$KV.KELVO_SOURCE_QUOTAS.>",
+            "acceleration.refresh", "$JS.API.CONSUMER.INFO.KELVO_ACCEL_QUEUE.refresh",
+            "$JS.API.CONSUMER.MSG.NEXT.KELVO_ACCEL_QUEUE.refresh",
+            "$JS.API.STREAM.MSG.GET.KV_KELVO_OPERATIONS_GATEWAY", "$KV.KELVO_OPERATIONS_GATEWAY.>"
+          ] }
+          subscribe: { allow: ["_INBOX.>"] }
+        }
+      },
+      { user: provisioner, password: $KELVO_NATS_PROVISIONER_PASSWORD }
     ]
   }
 }
@@ -86,13 +123,12 @@ secret = { ref = "kelvo-nats-key" }
 mode = 292
 
 [services.cluster-init]
-# Change to roll the service after its secrets change.
-restart_nonce = "secrets-2026-10-22b"
+restart_nonce = "prod-2026-10-22a"
 image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
 registry_credential = "ghcr"
 # A new pod's network policy is programmed a few seconds after it starts, and
 # cluster-init connects to NATS once, at once. Wait before connecting.
-command = ["/bin/sh", "-c", "sleep 10; exec /usr/local/bin/kelvo cluster-init --config /etc/kelvo/bootstrap.yml"]
+command = ["/bin/sh", "-c", "sleep 10; mkdir -p /tmp/audit /tmp/inputs; exec /usr/local/bin/kelvo cluster-init --config /etc/kelvo/bootstrap.yml"]
 depends_on = ["nats"]
 networks = ["kelvo-internal"]
 run_as_user = 65532
@@ -100,18 +136,17 @@ run_as_group = 65532
 fs_group = 65532
 temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
 
-
 # Small request so the app fits the single node's reservations; the
 # profile limit still allows bursts.
 [services.cluster-init.resources]
 cpu_request = "20m"
+
 [services.cluster-init.job]
 timeout_seconds = 120
 retries = 1
 
 [services.cluster-init.secrets]
-KELVO_TEST_NATS_PROVISIONER_PASSWORD = { ref = "kelvo-nats-provisioner-password" }
-KELVO_TEST_API_TOKEN = { ref = "kelvo-api-token" }
+KELVO_NATS_PROVISIONER_PASSWORD = { ref = "kelvo-nats-provisioner-password" }
 
 [services.cluster-init.files.bootstrap]
 mount_path = "/etc/kelvo/bootstrap.yml"
@@ -121,98 +156,163 @@ tls:
   cert_file: /run/kelvo/tls/api.crt
   key_file: /run/kelvo/tls/api.key
 worker_tls:
-  cert_file: /run/kelvo/tls/client.crt
-  key_file: /run/kelvo/tls/client.key
-  ca_file: /run/kelvo/tls/worker-ca.crt
-max_queries: 8
-max_concurrent: 2
-max_http_requests: 32
+  cert_file: /run/kelvo/tls/internal.crt
+  key_file: /run/kelvo/tls/internal.key
+  ca_file: /run/kelvo/tls/internal-ca.crt
+max_queries: 56
+max_concurrent: 10
+max_http_requests: 256
+authentication:
+  keys_file: /run/kelvo/tls/service-keys.yml
+  reload_interval: 1s
+  min_revision: 1
+audit:
+  service_id: gateway-local
+  directory: /tmp/audit
+  max_entries: 8192
+  max_pending: 256
+  retention: 1h
+  write_timeout: 5s
+operations:
+  listen: ":8444"
+  tls:
+    cert_file: /run/kelvo/tls/internal.crt
+    key_file: /run/kelvo/tls/internal.key
+    ca_file: /run/kelvo/tls/internal-ca.crt
+  inputs:
+    shared:
+      directory: /tmp/inputs
+      max_entries: 64
+      max_stored_bytes: 16777216
 tenants:
-  - token_env: KELVO_TEST_API_TOKEN
-    policy:
-      tenant_id: kelvo-test
-      max_queries: 8
-      job_ttl: 10m
+  - policy:
+      tenant_id: shared
+      max_queries: 56
+      job_ttl: 3m
       lease_duration: 15s
       replicas: 1
       limits:
-        max_rows: 1000000
-        max_bytes: 134217728
-        timeout: 30s
-        memory_mb: 128
-        threads: 2
-        max_temp_mb: 256
-      workers: {n1: 1}
+        max_rows: 10000
+        max_bytes: 4194304
+        timeout: 60s
+        memory_mb: 32
+        threads: 1
+        max_temp_mb: 128
+        result_compression: lz4_frame
+      workers: {local: 10}
+      operations:
+        shards: 8
+        slots_per_shard: 4
+        retention: 30m
+        execution_timeout: 60s
+      access:
+        revision: 1
+        principals:
+          dbapi:
+            kind: service
+            operations:
+              - connection.test
+              - metadata.inspect
+              - query.read
+              - statement.execute
+              - native.read
+              - native.execute
+              - schema.apply
+              - migration.status
+              - migration.apply
+              - ingestion.install
+              - ingestion.state
+              - ingestion.commit
+              - watch.install
+              - watch.remove
+              - watch.read
+              - watch.ack
+            delegated_resolver:
+              issuer: db-api
+              audience: kelvo-production
+              url: https://127.0.0.1:9443/internal/kelvo/resolve
+              public_key: CAp3b9q3V59Hzse81LbYfkbfJ94YFzmy5yPB9ciucRw=
     nats:
       url: tls://nats:4222
-      username: kelvo-test-provisioner
-      password_env: KELVO_TEST_NATS_PROVISIONER_PASSWORD
+      username: provisioner
+      password_env: KELVO_NATS_PROVISIONER_PASSWORD
       ca_file: /run/kelvo/tls/nats-ca.crt
     workers:
-      - {id: n1, url: "https://node:8443"}
+      - {id: local, url: "https://127.0.0.1:8445"}
 """
-
-[services.cluster-init.files.nats-ca]
-mount_path = "/run/kelvo/tls/nats-ca.crt"
-secret = { ref = "kelvo-ca-crt" }
-mode = 288
-
-[services.cluster-init.files.client-crt]
-mount_path = "/run/kelvo/tls/client.crt"
-secret = { ref = "kelvo-gateway-client-crt" }
-mode = 288
-
-[services.cluster-init.files.client-key]
-mount_path = "/run/kelvo/tls/client.key"
-secret = { ref = "kelvo-gateway-client-key" }
-mode = 288
-
-[services.cluster-init.files.worker-ca]
-mount_path = "/run/kelvo/tls/worker-ca.crt"
-secret = { ref = "kelvo-ca-crt" }
-mode = 288
 
 [services.cluster-init.files.api-crt]
 mount_path = "/run/kelvo/tls/api.crt"
 secret = { ref = "kelvo-api-crt" }
-mode = 288
+mode = 292
 
 [services.cluster-init.files.api-key]
 mount_path = "/run/kelvo/tls/api.key"
 secret = { ref = "kelvo-api-key" }
 mode = 288
 
+[services.cluster-init.files.internal-crt]
+mount_path = "/run/kelvo/tls/internal.crt"
+secret = { ref = "kelvo-prod-gateway-internal-crt" }
+mode = 292
+
+[services.cluster-init.files.internal-key]
+mount_path = "/run/kelvo/tls/internal.key"
+secret = { ref = "kelvo-prod-gateway-internal-key" }
+mode = 288
+
+[services.cluster-init.files.internal-ca]
+mount_path = "/run/kelvo/tls/internal-ca.crt"
+secret = { ref = "kelvo-prod-internal-ca" }
+mode = 292
+
+[services.cluster-init.files.nats-ca]
+mount_path = "/run/kelvo/tls/nats-ca.crt"
+secret = { ref = "kelvo-ca-crt" }
+mode = 292
+
+[services.cluster-init.files.service-keys]
+mount_path = "/run/kelvo/tls/service-keys.yml"
+secret = { ref = "kelvo-prod-service-keys" }
+mode = 288
+
 [services.gateway]
-# Change to roll the service after its secrets change.
-restart_nonce = "secrets-2026-10-22b"
+restart_nonce = "prod-2026-10-22a"
 image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
 registry_credential = "ghcr"
 command = ["/usr/local/bin/kelvo"]
-args = ["gateway", "--config", "/etc/kelvo/gateway.yml"]
-port = 8443
-size = "medium"
+args = ["gateway", "--config", "/etc/kelvo/gateway.yml", "--drain-timeout", "30s"]
+ports = [{ name = "api", port = 8443 }, { name = "operations", port = 8444 }]
 replicas = 1
+update_strategy = "recreate"
 depends_on = ["nats", "cluster-init"]
 networks = ["kelvo-internal", "kelvo-gateway"]
 run_as_user = 65532
 run_as_group = 65532
 fs_group = 65532
-read_only_root_filesystem = true
+mounts = [{ volume = "gateway-state", mount_path = "/var/lib/kelvo/gateway" }]
 temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
 
-# Only db-api in the syne application may call the gateway.
+# The gateway reaches the node as https://127.0.0.1:8445, the address its
+# production certificate names; this relay forwards it to the node service.
+[[services.gateway.sidecars]]
+name = "relay"
+image = "alpine/socat:1.8.1.3@sha256:22d77becaeeea8ef56b8c4bb2312323acafe85354be6a85714ff5050e3537842"
+cpu = "20m"
+memory = "32Mi"
+command = ["socat", "TCP-LISTEN:8445,bind=127.0.0.1,fork,reuseaddr", "TCP:node:8443"]
 
 # Small request so the app fits the single node's reservations; the
 # profile limit still allows bursts.
 [services.gateway.resources]
 cpu_request = "30m"
+
 [services.gateway.network_access]
-from = []
+from = ["node"]
 from_applications = ["syne/db-api"]
 
 [services.gateway.secrets]
-KELVO_TEST_API_TOKEN = { ref = "kelvo-api-token" }
-KELVO_TEST_NATS_GATEWAY_PASSWORD = { ref = "kelvo-nats-gateway-password" }
+KELVO_NATS_GATEWAY_PASSWORD = { ref = "kelvo-nats-gateway-password" }
 
 [services.gateway.files.config]
 mount_path = "/etc/kelvo/gateway.yml"
@@ -222,75 +322,133 @@ tls:
   cert_file: /run/kelvo/tls/api.crt
   key_file: /run/kelvo/tls/api.key
 worker_tls:
-  cert_file: /run/kelvo/tls/client.crt
-  key_file: /run/kelvo/tls/client.key
-  ca_file: /run/kelvo/tls/worker-ca.crt
-max_queries: 8
-max_concurrent: 2
-max_http_requests: 32
+  cert_file: /run/kelvo/tls/internal.crt
+  key_file: /run/kelvo/tls/internal.key
+  ca_file: /run/kelvo/tls/internal-ca.crt
+max_queries: 56
+max_concurrent: 10
+max_http_requests: 256
+authentication:
+  keys_file: /run/kelvo/tls/service-keys.yml
+  reload_interval: 1s
+  min_revision: 1
+audit:
+  service_id: gateway-local
+  directory: /var/lib/kelvo/gateway/audit
+  max_entries: 8192
+  max_pending: 256
+  retention: 1h
+  write_timeout: 5s
+operations:
+  listen: ":8444"
+  tls:
+    cert_file: /run/kelvo/tls/internal.crt
+    key_file: /run/kelvo/tls/internal.key
+    ca_file: /run/kelvo/tls/internal-ca.crt
+  inputs:
+    shared:
+      directory: /var/lib/kelvo/gateway/inputs
+      max_entries: 64
+      max_stored_bytes: 16777216
 tenants:
-  - token_env: KELVO_TEST_API_TOKEN
-    policy:
-      tenant_id: kelvo-test
-      max_queries: 8
-      job_ttl: 10m
+  - policy:
+      tenant_id: shared
+      max_queries: 56
+      job_ttl: 3m
       lease_duration: 15s
       replicas: 1
       limits:
-        max_rows: 1000000
-        max_bytes: 134217728
-        timeout: 30s
-        memory_mb: 128
-        threads: 2
-        max_temp_mb: 256
-      workers: {n1: 1}
+        max_rows: 10000
+        max_bytes: 4194304
+        timeout: 60s
+        memory_mb: 32
+        threads: 1
+        max_temp_mb: 128
+        result_compression: lz4_frame
+      workers: {local: 10}
+      operations:
+        shards: 8
+        slots_per_shard: 4
+        retention: 30m
+        execution_timeout: 60s
+      access:
+        revision: 1
+        principals:
+          dbapi:
+            kind: service
+            operations:
+              - connection.test
+              - metadata.inspect
+              - query.read
+              - statement.execute
+              - native.read
+              - native.execute
+              - schema.apply
+              - migration.status
+              - migration.apply
+              - ingestion.install
+              - ingestion.state
+              - ingestion.commit
+              - watch.install
+              - watch.remove
+              - watch.read
+              - watch.ack
+            delegated_resolver:
+              issuer: db-api
+              audience: kelvo-production
+              url: https://127.0.0.1:9443/internal/kelvo/resolve
+              public_key: CAp3b9q3V59Hzse81LbYfkbfJ94YFzmy5yPB9ciucRw=
     nats:
       url: tls://nats:4222
-      username: kelvo-test-gateway
-      password_env: KELVO_TEST_NATS_GATEWAY_PASSWORD
+      username: gateway
+      password_env: KELVO_NATS_GATEWAY_PASSWORD
       ca_file: /run/kelvo/tls/nats-ca.crt
     workers:
-      - {id: n1, url: "https://node:8443"}
+      - {id: local, url: "https://127.0.0.1:8445"}
 """
 
 [services.gateway.files.api-crt]
 mount_path = "/run/kelvo/tls/api.crt"
 secret = { ref = "kelvo-api-crt" }
-mode = 288
+mode = 292
 
 [services.gateway.files.api-key]
 mount_path = "/run/kelvo/tls/api.key"
 secret = { ref = "kelvo-api-key" }
 mode = 288
 
-[services.gateway.files.client-crt]
-mount_path = "/run/kelvo/tls/client.crt"
-secret = { ref = "kelvo-gateway-client-crt" }
+[services.gateway.files.internal-crt]
+mount_path = "/run/kelvo/tls/internal.crt"
+secret = { ref = "kelvo-prod-gateway-internal-crt" }
+mode = 292
+
+[services.gateway.files.internal-key]
+mount_path = "/run/kelvo/tls/internal.key"
+secret = { ref = "kelvo-prod-gateway-internal-key" }
 mode = 288
 
-[services.gateway.files.client-key]
-mount_path = "/run/kelvo/tls/client.key"
-secret = { ref = "kelvo-gateway-client-key" }
-mode = 288
-
-[services.gateway.files.worker-ca]
-mount_path = "/run/kelvo/tls/worker-ca.crt"
-secret = { ref = "kelvo-ca-crt" }
-mode = 288
+[services.gateway.files.internal-ca]
+mount_path = "/run/kelvo/tls/internal-ca.crt"
+secret = { ref = "kelvo-prod-internal-ca" }
+mode = 292
 
 [services.gateway.files.nats-ca]
 mount_path = "/run/kelvo/tls/nats-ca.crt"
 secret = { ref = "kelvo-ca-crt" }
+mode = 292
+
+[services.gateway.files.service-keys]
+mount_path = "/run/kelvo/tls/service-keys.yml"
+secret = { ref = "kelvo-prod-service-keys" }
 mode = 288
 
 [services.node]
-# Change to roll the service after its secrets change.
-restart_nonce = "secrets-2026-10-22b"
+restart_nonce = "prod-2026-10-22a"
 image = "ghcr.io/synehq/kelvo-go-node@sha256:8bd9ff2fa2415abc63e0114fe86464ec7a9e2f8a9d3132572e88873d6b44293e"
+registry_credential = "ghcr"
 # start.sh (below) prepares what a container cannot know in advance, then runs
 # the image entrypoint.
 command = ["/bin/sh", "/etc/kelvo/start.sh"]
-registry_credential = "ghcr"
 node_profile = "kelvo-node"
 node_name = "hakopod-server"
 replicas = 1
@@ -298,10 +456,7 @@ update_strategy = "recreate"
 port = 8443
 size = "large"
 depends_on = ["nats", "cluster-init"]
-# Joined to the egress network so database traffic can leave the pod.
 networks = ["kelvo-internal", "kelvo-egress"]
-# The entrypoint drops to 65532 itself; fs_group makes mounted secret files
-# readable by that gid.
 fs_group = 65532
 mounts = [{ volume = "kelvo-state", mount_path = "/var/lib/kelvo" }]
 temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
@@ -343,25 +498,33 @@ WG_KEEP_DIRECT = "10.42.0.0/16,10.43.0.0/16,100.64.0.0/10"
 [services.node.sidecars.secrets.WG_PRIVATE_KEY]
 ref = "kelvo-wireguard-key"
 
+# The node reaches db-api's resolver and the gateway's operations listener as
+# 127.0.0.1, the addresses the production certificates name.
+[[services.node.sidecars]]
+name = "relay"
+image = "alpine/socat:1.8.1.3@sha256:22d77becaeeea8ef56b8c4bb2312323acafe85354be6a85714ff5050e3537842"
+cpu = "20m"
+memory = "32Mi"
+command = ["/bin/sh", "-c", "socat TCP-LISTEN:9443,bind=127.0.0.1,fork,reuseaddr TCP:100.86.180.7:9443 & exec socat TCP-LISTEN:8444,bind=127.0.0.1,fork,reuseaddr TCP:gateway:8444"]
+
 # Small request so the app fits the single node's reservations; the
 # profile limit still allows bursts.
 [services.node.resources]
 cpu_request = "60m"
+memory_request = "768Mi"
+memory_limit = "2Gi"
 
 [services.node.network_access]
 from = ["gateway"]
 
 [services.node.env]
-# k3s defaults: pod CIDR and service CIDR. Check with
-# kubectl cluster-info dump | grep -m1 cluster-cidr on the server.
-KELVO_ALLOW_CIDRS = "10.42.0.0/16,10.43.0.0/16"
-# Must match the sidecar WG_ENDPOINT.
+# Cluster CIDRs plus the host's tailnet address (rabbit private sources).
+KELVO_ALLOW_CIDRS = "10.42.0.0/16,10.43.0.0/16,100.86.180.7/32"
+# Must match the wireguard sidecar's WG_ENDPOINT.
 KELVO_WG_ENDPOINT = "100.87.80.113:51820"
 
 [services.node.secrets]
-KELVO_TEST_NATS_WORKER_PASSWORD = { ref = "kelvo-nats-worker-password" }
-# Source credentials: only KELVO_SOURCE_* names reach query child processes.
-KELVO_SOURCE_POSTGRES_DSN = { ref = "kelvo-source-postgres-dsn" }
+KELVO_NATS_WORKER_PASSWORD = { ref = "kelvo-nats-worker-password" }
 
 [services.node.files.start]
 mount_path = "/etc/kelvo/start.sh"
@@ -406,76 +569,170 @@ KELVO_EGRESS=open exec /usr/local/bin/kelvo-node-entrypoint node --config /tmp/n
 mount_path = "/etc/kelvo/node.yml"
 content = """
 listen: ":8443"
-worker_id: n1
+worker_id: local
 catalog_file: /etc/kelvo/catalog.yml
 sandbox_path: /usr/local/bin/kelvo-landlock
-scratch_directory: /var/lib/kelvo/scratch
 tls:
-  cert_file: /run/kelvo/tls/server.crt
-  key_file: /run/kelvo/tls/server.key
-  ca_file: /run/kelvo/tls/gateway-ca.crt
+  cert_file: /run/kelvo/tls/internal.crt
+  key_file: /run/kelvo/tls/internal.key
+  ca_file: /run/kelvo/tls/internal-ca.crt
 nats:
   url: tls://nats:4222
-  username: kelvo-test-worker
-  password_env: KELVO_TEST_NATS_WORKER_PASSWORD
+  username: worker
+  password_env: KELVO_NATS_WORKER_PASSWORD
   ca_file: /run/kelvo/tls/nats-ca.crt
 resources:
-  max_concurrent: 1
-  memory_mb: 2048
-  baseline_mb: 256
-  overhead_mb: 224
-  scratch_mb: 1024
+  max_concurrent: 12
+  memory_mb: 1632
+  baseline_mb: 96
+  overhead_mb: 96
+  scratch_mb: 1536
+scratch_directory: /var/lib/kelvo/scratch
 containment:
-  # Must equal <delegated cgroup>/jobs; the entrypoint prints it at startup.
+  # Must equal <delegated cgroup>/jobs; start.sh writes the real path.
   root: KELVO_CGROUP_JOBS
   state_directory: /var/lib/kelvo/containment
-  native_overhead_mb: 64
-  parent_overhead_mb: 32
+  native_overhead_mb: 48
+  parent_overhead_mb: 16
   max_processes: 64
-  max_groups: 64
+  max_groups: 48
   cleanup_timeout: 5s
+audit:
+  service_id: worker-local
+  directory: /var/lib/kelvo/audit
+  max_entries: 4096
+  max_pending: 64
+  retention: 1h
+  write_timeout: 5s
+connection_resolvers:
+  db-api:
+    # The relay sidecar forwards 127.0.0.1:9443 to db-api's resolver, so the
+    # resolver URL and certificates stay those db-api already trusts.
+    url: https://127.0.0.1:9443/internal/kelvo/resolve
+    ca_file: /run/kelvo/tls/resolver-ca.crt
+    cert_file: /run/kelvo/tls/internal.crt
+    key_file: /run/kelvo/tls/internal.key
+    timeout: 15s
+    max_concurrent: 12
+operations:
+  private_sources:
+    dbapi:
+      route_id: synehq-production-rabbit
+      proxy_address: 100.86.180.7:14443
+      proxy_server_name: rabbit
+      proxy_ca_file: /run/kelvo/tls/rabbit-ca.crt
+      proof_public_key: CAp3b9q3V59Hzse81LbYfkbfJ94YFzmy5yPB9ciucRw=
+      ticket_public_key: CAp3b9q3V59Hzse81LbYfkbfJ94YFzmy5yPB9ciucRw=
+      accepted_key_id: synehq-rabbit-receipt-20261009
+      accepted_public_key: J7FoMx5/ADctWaV2ofUYmMMrorcguCYPS3jGhmmTUhc=
+      max_sessions: 1
+      max_data_connections: 1
+      max_data_per_session: 1
+  input_url: https://127.0.0.1:8444
+  tls:
+    cert_file: /run/kelvo/tls/internal.crt
+    key_file: /run/kelvo/tls/internal.key
+    ca_file: /run/kelvo/tls/internal-ca.crt
+  adapter:
+    binary: /usr/local/bin/kelvo-adapter-go
+    sha256: 1386622757a2eaa5ff1acb1d81f90a555da889cc4c60e4cb7a39253b23575b0c
+  results:
+    directory: /var/lib/kelvo/results
+    max_entries: 32
+    max_stored_bytes: 16777216
+  max_result_bytes: 1048576
+  max_concurrent: 10
+  max_downloads: 10
+  poll_interval: 250ms
+  warm_pool:
+    enabled: false
+    idle_ttl: 30m
+    max_workers: 1
+    max_per_key: 1
+    queue_depth: 8
+    queue_timeout: 10s
+    worker_memory_mb: 32
 policy:
-  tenant_id: kelvo-test
-  max_queries: 8
-  job_ttl: 10m
+  tenant_id: shared
+  max_queries: 56
+  job_ttl: 3m
   lease_duration: 15s
   replicas: 1
   limits:
-    max_rows: 1000000
-    max_bytes: 134217728
-    timeout: 30s
-    memory_mb: 128
-    threads: 2
-    max_temp_mb: 256
-  workers: {n1: 1}
+    max_rows: 10000
+    max_bytes: 4194304
+    timeout: 60s
+    memory_mb: 32
+    threads: 1
+    max_temp_mb: 128
+    result_compression: lz4_frame
+  workers: {local: 10}
+  operations:
+    shards: 8
+    slots_per_shard: 4
+    retention: 30m
+    execution_timeout: 60s
+  access:
+    revision: 1
+    principals:
+      dbapi:
+        kind: service
+        operations:
+          - connection.test
+          - metadata.inspect
+          - query.read
+          - statement.execute
+          - native.read
+          - native.execute
+          - schema.apply
+          - migration.status
+          - migration.apply
+          - ingestion.install
+          - ingestion.state
+          - ingestion.commit
+          - watch.install
+          - watch.remove
+          - watch.read
+          - watch.ack
+        delegated_resolver:
+          issuer: db-api
+          audience: kelvo-production
+          url: https://127.0.0.1:9443/internal/kelvo/resolve
+          public_key: CAp3b9q3V59Hzse81LbYfkbfJ94YFzmy5yPB9ciucRw=
 """
 
 [services.node.files.catalog]
 mount_path = "/etc/kelvo/catalog.yml"
 content = """
-extension_directory: /opt/kelvo/extensions
-sources:
-  - id: pg
-    type: postgres
-    dsn_env: KELVO_SOURCE_POSTGRES_DSN
+sources: []
 """
 
-[services.node.files.server-crt]
-mount_path = "/run/kelvo/tls/server.crt"
-secret = { ref = "kelvo-node-crt" }
+[services.node.files.internal-crt]
+mount_path = "/run/kelvo/tls/internal.crt"
+secret = { ref = "kelvo-prod-node-internal-crt" }
+mode = 292
+
+[services.node.files.internal-key]
+mount_path = "/run/kelvo/tls/internal.key"
+secret = { ref = "kelvo-prod-node-internal-key" }
 mode = 288
 
-[services.node.files.server-key]
-mount_path = "/run/kelvo/tls/server.key"
-secret = { ref = "kelvo-node-key" }
-mode = 288
-
-[services.node.files.gateway-ca]
-mount_path = "/run/kelvo/tls/gateway-ca.crt"
-secret = { ref = "kelvo-ca-crt" }
-mode = 288
+[services.node.files.internal-ca]
+mount_path = "/run/kelvo/tls/internal-ca.crt"
+secret = { ref = "kelvo-prod-internal-ca" }
+mode = 292
 
 [services.node.files.nats-ca]
 mount_path = "/run/kelvo/tls/nats-ca.crt"
 secret = { ref = "kelvo-ca-crt" }
-mode = 288
+mode = 292
+
+[services.node.files.resolver-ca]
+mount_path = "/run/kelvo/tls/resolver-ca.crt"
+secret = { ref = "kelvo-prod-resolver-ca" }
+mode = 292
+
+[services.node.files.rabbit-ca]
+mount_path = "/run/kelvo/tls/rabbit-ca.crt"
+secret = { ref = "kelvo-prod-rabbit-ca" }
+mode = 292

@@ -59,6 +59,19 @@ if [ "${KELVO_ONLY_WIREGUARD:-0}" = 1 ]; then
 	exit 0
 fi
 
+# KELVO_ONLY_GATEWAY_CERT=1 re-issues only the gateway API certificate, with the
+# names in KELVO_GATEWAY_SANS (subjectAltName syntax), from the existing CA.
+if [ "${KELVO_ONLY_GATEWAY_CERT:-0}" = 1 ]; then
+	[ -f "$CA_DIR/ca.key" ] || die "no CA in $CA_DIR"
+	[ -n "${KELVO_GATEWAY_SANS:-}" ] || die "set KELVO_GATEWAY_SANS"
+	openssl req -new -newkey rsa:2048 -nodes -keyout "$work/api.key" -out "$work/api.csr" -subj /CN=kelvo-gateway 2>/dev/null
+	printf 'subjectAltName=%s\nextendedKeyUsage=serverAuth,clientAuth\nkeyUsage=critical,digitalSignature,keyEncipherment\n' "$KELVO_GATEWAY_SANS" > "$work/api.ext"
+	openssl x509 -req -in "$work/api.csr" -CA "$CA_DIR/ca.pem" -CAkey "$CA_DIR/ca.key" -CAcreateserial -out "$work/api.crt" -days 90 -extfile "$work/api.ext" 2>/dev/null
+	put kelvo-api-crt "$work/api.crt"
+	put kelvo-api-key "$work/api.key"
+	exit 0
+fi
+
 # KELVO_ONLY_DSN=1 stores only the test database DSN, read from stdin (pipe it in
 # so it is never typed or shown).
 if [ "${KELVO_ONLY_DSN:-0}" = 1 ]; then
@@ -93,7 +106,7 @@ leaf() {
 }
 
 leaf nats kelvo-nats "DNS:nats"
-leaf api kelvo-gateway "DNS:gateway"
+leaf api kelvo-gateway "${KELVO_GATEWAY_SANS:-DNS:gateway}"
 leaf gateway-client kelvo-gateway-client "URI:spiffe://kelvo/gateway"
 leaf node kelvo-node "DNS:node,URI:spiffe://kelvo/tenant/$TENANT/worker/$WORKER"
 
