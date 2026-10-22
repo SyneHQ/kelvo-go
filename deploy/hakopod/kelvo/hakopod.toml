@@ -9,6 +9,10 @@ size_gib = 5
 [volumes.kelvo-state]
 size_gib = 20
 
+# Tailscale node state, so the interactive login survives restarts.
+[volumes.tailscale-state]
+size_gib = 1
+
 # kelvo-internal: nats, gateway and node only. No external egress.
 [networks.kelvo-internal]
 internal = true
@@ -272,8 +276,10 @@ networks = ["kelvo-internal", "kelvo-egress"]
 # The entrypoint drops to 65532 itself; fs_group makes mounted secret files
 # readable by that gid.
 fs_group = 65532
-mounts = [{ volume = "kelvo-state", mount_path = "/var/lib/kelvo" }]
-temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }, { mount_path = "/var/lib/ts", size_mib = 16 }]
+# tailscale-state is mounted here only so the sidecar may share it; its files
+# are root-only, and the node runs as 65532.
+mounts = [{ volume = "kelvo-state", mount_path = "/var/lib/kelvo" }, { volume = "tailscale-state", mount_path = "/var/lib/tailscale-sidecar", read_only = true }]
+temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
 
 # Tailscale routes this pod's outbound traffic through the Oracle exit node.
 # The node entrypoint adds fail-closed rules for uid 65532: only loopback, the
@@ -284,7 +290,7 @@ name = "tailscale"
 image = "tailscale/tailscale@sha256:0000000000000000000000000000000000000000000000000000000000000000"
 cpu = "100m"
 memory = "128Mi"
-mounts = [{ temporary = "/var/lib/ts", mount_path = "/var/lib/tailscale" }]
+mounts = [{ volume = "tailscale-state", mount_path = "/var/lib/tailscale" }]
 # containerboot keeps its state in a Kubernetes Secret when it sees
 # KUBERNETES_SERVICE_HOST. This pod has no cluster credentials, so hide the
 # variable and keep state in TS_STATE_DIR instead.
@@ -293,12 +299,11 @@ command = ["/bin/sh", "-c", "unset KUBERNETES_SERVICE_HOST KUBERNETES_SERVICE_PO
 [services.node.sidecars.env]
 TS_USERSPACE = "false"
 TS_STATE_DIR = "/var/lib/tailscale"
+# No auth key: on first start containerboot prints a login URL in the sidecar's
+# logs. Open it and approve the machine once; the state volume keeps it logged in.
 TS_AUTH_ONCE = "true"
 TS_HOSTNAME = "kelvo-node-hakopod"
 TS_EXTRA_ARGS = "--exit-node=REPLACE_ORACLE_EXIT_NODE --exit-node-allow-lan-access"
-
-[services.node.sidecars.secrets.TS_AUTHKEY]
-ref = "tailscale-authkey"
 
 [services.node.network_access]
 from = ["gateway"]
