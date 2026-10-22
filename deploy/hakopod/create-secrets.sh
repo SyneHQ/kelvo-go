@@ -47,6 +47,18 @@ put() {
 	echo "stored $1"
 }
 
+# KELVO_ONLY_WIREGUARD=1 creates only the node's WireGuard key pair: the private
+# key is stored as kelvo-wireguard-key and the public key is printed, for the
+# egress server's peer entry. A WireGuard public key is not secret.
+if [ "${KELVO_ONLY_WIREGUARD:-0}" = 1 ]; then
+	openssl genpkey -algorithm X25519 -out "$work/wg.pem" 2>/dev/null
+	openssl pkey -in "$work/wg.pem" -outform DER 2>/dev/null | tail -c 32 | openssl base64 -A > "$work/wg.key"
+	public=$(openssl pkey -in "$work/wg.pem" -pubout -outform DER 2>/dev/null | tail -c 32 | openssl base64 -A)
+	put kelvo-wireguard-key "$work/wg.key"
+	echo "WireGuard public key (give this to the egress server): $public"
+	exit 0
+fi
+
 # KELVO_ONLY_PASSWORDS=1 rotates only the API token and NATS passwords.
 ONLY_PASSWORDS=${KELVO_ONLY_PASSWORDS:-0}
 

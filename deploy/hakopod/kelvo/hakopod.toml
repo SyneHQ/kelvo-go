@@ -9,9 +9,6 @@ size_gib = 5
 [volumes.kelvo-state]
 size_gib = 20
 
-# Tailscale node state, so the interactive login survives restarts.
-[volumes.tailscale-state]
-size_gib = 1
 
 # kelvo-internal: nats, gateway and node only. No external egress.
 [networks.kelvo-internal]
@@ -89,8 +86,9 @@ mode = 292
 [services.cluster-init]
 image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
 registry_credential = "ghcr"
-command = ["/usr/local/bin/kelvo"]
-args = ["cluster-init", "--config", "/etc/kelvo/bootstrap.yml"]
+# A new pod's network policy is programmed a few seconds after it starts, and
+# cluster-init connects to NATS once, at once. Wait before connecting.
+command = ["/bin/sh", "-c", "sleep 10; exec /usr/local/bin/kelvo cluster-init --config /etc/kelvo/bootstrap.yml"]
 depends_on = ["nats"]
 networks = ["kelvo-internal"]
 run_as_user = 65532
@@ -281,6 +279,9 @@ mode = 288
 
 [services.node]
 image = "ghcr.io/synehq/kelvo-go-node@sha256:8bd9ff2fa2415abc63e0114fe86464ec7a9e2f8a9d3132572e88873d6b44293e"
+# start.sh (below) prepares what a container cannot know in advance, then runs
+# the image entrypoint.
+command = ["/bin/sh", "/etc/kelvo/start.sh"]
 registry_credential = "ghcr"
 node_profile = "kelvo-node"
 node_name = "hakopod-server"
@@ -294,39 +295,45 @@ networks = ["kelvo-internal", "kelvo-egress"]
 # The entrypoint drops to 65532 itself; fs_group makes mounted secret files
 # readable by that gid.
 fs_group = 65532
-# tailscale-state is mounted here only so the sidecar may share it; its files
-# are root-only, and the node runs as 65532.
-mounts = [{ volume = "kelvo-state", mount_path = "/var/lib/kelvo" }, { volume = "tailscale-state", mount_path = "/var/lib/tailscale-sidecar", read_only = true }]
+mounts = [{ volume = "kelvo-state", mount_path = "/var/lib/kelvo" }]
 temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
 
-# Tailscale routes this pod's outbound traffic through the Oracle exit node.
-# The node entrypoint adds fail-closed rules for uid 65532: only loopback, the
-# cluster CIDRs below and tailscale0, so a stopped sidecar or exit node makes
-# database connections fail instead of leaving from the server's address.
-
-# Small request so the app fits the single node's reservations; the
-# profile limit still allows bursts.
-[services.node.resources]
-cpu_request = "60m"
+# WireGuard routes this pod's outbound traffic to the Oracle VM, whose public
+# address the databases allow-list. The tunnel endpoint is the VM's tailnet
+# address, reached through the host's own Tailscale (synehq-hakopod), so the VM
+# opens no public port and the pod needs no tailnet device of its own.
+# start.sh adds fail-closed rules for uid 65532: only loopback, the cluster
+# CIDRs and wg0, so a down tunnel makes database connections fail instead of
+# leaving from the server's address.
 [[services.node.sidecars]]
-name = "tailscale"
-image = "tailscale/tailscale:v1.104.2@sha256:b11583ad2e93e4671128538c88cf11f460444a5d7e449311dd1933a400ab849d"
-cpu = "100m"
-memory = "128Mi"
-mounts = [{ volume = "tailscale-state", mount_path = "/var/lib/tailscale" }]
-# containerboot keeps its state in a Kubernetes Secret when it sees
-# KUBERNETES_SERVICE_HOST. This pod has no cluster credentials, so hide the
-# variable and keep state in TS_STATE_DIR instead.
-command = ["/bin/sh", "-c", "unset KUBERNETES_SERVICE_HOST KUBERNETES_SERVICE_PORT; exec /usr/local/bin/containerboot"]
+name = "wireguard"
+image = "linuxserver/wireguard:1.0.20260223-r0-ls126@sha256:6bcf5d2f5a265c7e9835eaadd989938e681aabe8bf8bcd4556b61d463da6555c"
+cpu = "50m"
+memory = "64Mi"
+command = ["/bin/sh", "-c", """
+set -eu
+via=$(ip -4 route get 10.43.0.1 | sed -n 's/.* via \\([0-9.]*\\) dev \\([^ ]*\\).*/\\1 \\2/p')
+gw=${via% *}; dev=${via#* }
+ip link del wg0 2>/dev/null || true
+ip link add wg0 type wireguard
+printf '%s' "$WG_PRIVATE_KEY" | wg set wg0 private-key /dev/stdin peer "$WG_SERVER_PUBLIC_KEY" endpoint "$WG_ENDPOINT" allowed-ips 0.0.0.0/0 persistent-keepalive 25
+ip addr add "$WG_ADDRESS" dev wg0
+ip link set wg0 mtu 1200 up
+for c in $(printf '%s' "$WG_KEEP_DIRECT" | tr ',' ' '); do ip route replace "$c" via "$gw" dev "$dev"; done
+ip route replace default dev wg0
+echo "wireguard: default route through wg0, endpoint $WG_ENDPOINT"
+while :; do sleep 3600; done
+"""]
 
 [services.node.sidecars.env]
-TS_USERSPACE = "false"
-TS_STATE_DIR = "/var/lib/tailscale"
-# No auth key: on first start containerboot prints a login URL in the sidecar's
-# logs. Open it and approve the machine once; the state volume keeps it logged in.
-TS_AUTH_ONCE = "true"
-TS_HOSTNAME = "kelvo-node-hakopod"
-TS_EXTRA_ARGS = "--exit-node=100.87.80.113 --exit-node-allow-lan-access"
+WG_ENDPOINT = "100.87.80.113:51820"
+WG_SERVER_PUBLIC_KEY = "0jQwRvu2EDNTuPuRgIHvusfDrvZmks1R6+7IZ3hzoBg="
+WG_ADDRESS = "10.99.0.2/32"
+# Kept off the tunnel: pod and service CIDRs, and the endpoint itself.
+WG_KEEP_DIRECT = "10.42.0.0/16,10.43.0.0/16,100.64.0.0/10"
+
+[services.node.sidecars.secrets.WG_PRIVATE_KEY]
+ref = "kelvo-wireguard-key"
 
 [services.node.network_access]
 from = ["gateway"]
@@ -340,6 +347,42 @@ KELVO_ALLOW_CIDRS = "10.42.0.0/16,10.43.0.0/16"
 KELVO_TEST_NATS_WORKER_PASSWORD = { ref = "kelvo-nats-worker-password" }
 # Source credentials: only KELVO_SOURCE_* names reach query child processes.
 KELVO_SOURCE_POSTGRES_DSN = { ref = "kelvo-source-postgres-dsn" }
+
+[services.node.files.start]
+mount_path = "/etc/kelvo/start.sh"
+content = """
+#!/bin/sh
+# Runs as root in the privileged node container, before the image entrypoint.
+set -eu
+# securityfs is not mounted in containers; the entrypoint reads the LSM list.
+grep -q securityfs /proc/mounts || mount -t securityfs securityfs /sys/kernel/security
+# The container sees the host cgroup tree, so its own cgroup path changes on
+# every start. Write it into a copy of node.yml (containment.root = <cgroup>/jobs).
+cg=/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)
+sed "s#KELVO_CGROUP_JOBS#${cg%/}/jobs#" /etc/kelvo/node.yml > /tmp/node.yml
+chmod 0644 /tmp/node.yml
+# The pod network namespace outlives a container restart: drop the previous
+# start's egress rules so the entrypoint can install them again.
+for t in iptables ip6tables; do
+  while "$t" -D OUTPUT -m owner --uid-owner 65532 -j KELVO_EGRESS 2>/dev/null; do :; done
+  "$t" -F KELVO_EGRESS 2>/dev/null || true
+  "$t" -X KELVO_EGRESS 2>/dev/null || true
+done
+# Fail-closed egress for uid 65532 (the node and its query children): loopback,
+# the cluster CIDRs and the WireGuard interface only. IPv6 has no tunnel: reject.
+iptables -N KELVO_EGRESS
+iptables -A KELVO_EGRESS -o lo -j ACCEPT
+iptables -A KELVO_EGRESS -o wg0 -j ACCEPT
+for c in $(printf '%s' "$KELVO_ALLOW_CIDRS" | tr ',' ' '); do iptables -A KELVO_EGRESS -d "$c" -j ACCEPT; done
+iptables -A KELVO_EGRESS -j REJECT
+iptables -I OUTPUT -m owner --uid-owner 65532 -j KELVO_EGRESS
+ip6tables -N KELVO_EGRESS
+ip6tables -A KELVO_EGRESS -o lo -j ACCEPT
+ip6tables -A KELVO_EGRESS -j REJECT
+ip6tables -I OUTPUT -m owner --uid-owner 65532 -j KELVO_EGRESS
+# The rules above replace the image entrypoint's (which allow tailscale0).
+KELVO_EGRESS=open exec /usr/local/bin/kelvo-node-entrypoint node --config /tmp/node.yml
+"""
 
 [services.node.files.config]
 mount_path = "/etc/kelvo/node.yml"
@@ -366,7 +409,7 @@ resources:
   scratch_mb: 1024
 containment:
   # Must equal <delegated cgroup>/jobs; the entrypoint prints it at startup.
-  root: /sys/fs/cgroup/jobs
+  root: KELVO_CGROUP_JOBS
   state_directory: /var/lib/kelvo/containment
   native_overhead_mb: 64
   parent_overhead_mb: 32

@@ -13,7 +13,8 @@ privileged = true
 # egress rules, then drops to 65532 with no capabilities.
 run_as_root = true
 
-[bindings.sidecars.tailscale]
-capabilities = ["NET_ADMIN", "NET_RAW"]
-tun = true
+[bindings.sidecars.wireguard]
+# Creates wg0 and replaces the pod's default route. No tun device: kernel
+# WireGuard is configured over netlink.
+capabilities = ["NET_ADMIN"]
 run_as_root = true
