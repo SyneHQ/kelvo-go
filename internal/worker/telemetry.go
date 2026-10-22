@@ -81,6 +81,12 @@ func logFailedRead(ctx context.Context, start time.Time, err error, phases *exec
 	log.Printf("kelvo read failed: code=%s class=%s stage=%s duration_ms=%d", code, failureClass(err, code), failureStage(phases), time.Since(start).Milliseconds())
 }
 
+// FailureClass exposes the coarse failure class used in read failure logs so
+// node metrics use the same fixed vocabulary.
+func FailureClass(err error) string {
+	return failureClass(err, query.PublicError(err).Code)
+}
+
 func failureClass(err error, code string) string {
 	switch {
 	case errors.Is(err, admission.ErrBusy), errors.Is(err, admission.ErrOversize), code == "RESOURCE_EXHAUSTED":

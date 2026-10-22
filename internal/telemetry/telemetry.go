@@ -171,6 +171,23 @@ func writeMetrics(w io.Writer, s Snapshot) error {
 	return err
 }
 
+// Observe adds one duration to h using the shared bucket boundaries.
+func (h *Histogram) Observe(d time.Duration) { observe(h, d) }
+
+// WriteHistogramSeries writes one labelled series of a histogram with the
+// shared bucket boundaries. labels is a pre-rendered, already quoted label
+// list such as `tenant="a"`. The caller writes the HELP and TYPE lines once.
+func WriteHistogramSeries(w io.Writer, name, labels string, h Histogram) {
+	var out metricBuffer
+	for i, boundary := range boundaries {
+		out.printf("%s_bucket{%s,le=\"%g\"} %d\n", name, labels, boundary, h.Buckets[i])
+	}
+	out.printf("%s_bucket{%s,le=\"+Inf\"} %d\n", name, labels, h.Count)
+	out.printf("%s_sum{%s} %g\n", name, labels, h.SumSeconds)
+	out.printf("%s_count{%s} %d\n", name, labels, h.Count)
+	_, _ = w.Write(out.data)
+}
+
 type metricBuffer struct{ data []byte }
 
 func (b *metricBuffer) printf(format string, args ...any) {
