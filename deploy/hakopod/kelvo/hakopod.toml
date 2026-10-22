@@ -29,7 +29,7 @@ segment = "gateway"
 [networks.kelvo-egress]
 
 [services.nats]
-image = "nats:2.15-alpine@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+image = "nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4"
 port = 4222
 networks = ["kelvo-internal"]
 replicas = 1
@@ -38,6 +38,11 @@ run_as_user = 10001
 args = ["-c", "/etc/nats/nats.conf"]
 mounts = [{ volume = "nats-data", mount_path = "/data" }]
 
+
+# Small request so the app fits the single node's reservations; the
+# profile limit still allows bursts.
+[services.nats.resources]
+cpu_request = "25m"
 [services.nats.secrets]
 KELVO_TEST_NATS_PROVISIONER_PASSWORD = { ref = "kelvo-nats-provisioner-password" }
 KELVO_TEST_NATS_GATEWAY_PASSWORD = { ref = "kelvo-nats-gateway-password" }
@@ -82,7 +87,8 @@ secret = { ref = "kelvo-nats-key" }
 mode = 292
 
 [services.cluster-init]
-image = "ghcr.io/synehq/kelvo-go@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
+registry_credential = "ghcr"
 command = ["/usr/local/bin/kelvo"]
 args = ["cluster-init", "--config", "/etc/kelvo/bootstrap.yml"]
 depends_on = ["nats"]
@@ -92,6 +98,11 @@ run_as_group = 65532
 fs_group = 65532
 temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
 
+
+# Small request so the app fits the single node's reservations; the
+# profile limit still allows bursts.
+[services.cluster-init.resources]
+cpu_request = "20m"
 [services.cluster-init.job]
 timeout_seconds = 120
 retries = 1
@@ -170,7 +181,8 @@ secret = { ref = "kelvo-api-key" }
 mode = 288
 
 [services.gateway]
-image = "ghcr.io/synehq/kelvo-go@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
+registry_credential = "ghcr"
 command = ["/usr/local/bin/kelvo"]
 args = ["gateway", "--config", "/etc/kelvo/gateway.yml"]
 port = 8443
@@ -185,6 +197,11 @@ read_only_root_filesystem = true
 temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
 
 # Only db-api in the syne application may call the gateway.
+
+# Small request so the app fits the single node's reservations; the
+# profile limit still allows bursts.
+[services.gateway.resources]
+cpu_request = "30m"
 [services.gateway.network_access]
 from = []
 from_applications = ["syne/db-api"]
@@ -263,7 +280,8 @@ secret = { ref = "kelvo-ca-crt" }
 mode = 288
 
 [services.node]
-image = "ghcr.io/synehq/kelvo-go-node@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+image = "ghcr.io/synehq/kelvo-go-node@sha256:8bd9ff2fa2415abc63e0114fe86464ec7a9e2f8a9d3132572e88873d6b44293e"
+registry_credential = "ghcr"
 node_profile = "kelvo-node"
 node_name = "hakopod-server"
 replicas = 1
@@ -285,9 +303,14 @@ temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
 # The node entrypoint adds fail-closed rules for uid 65532: only loopback, the
 # cluster CIDRs below and tailscale0, so a stopped sidecar or exit node makes
 # database connections fail instead of leaving from the server's address.
+
+# Small request so the app fits the single node's reservations; the
+# profile limit still allows bursts.
+[services.node.resources]
+cpu_request = "60m"
 [[services.node.sidecars]]
 name = "tailscale"
-image = "tailscale/tailscale@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+image = "tailscale/tailscale:v1.104.2@sha256:b11583ad2e93e4671128538c88cf11f460444a5d7e449311dd1933a400ab849d"
 cpu = "100m"
 memory = "128Mi"
 mounts = [{ volume = "tailscale-state", mount_path = "/var/lib/tailscale" }]
@@ -303,7 +326,7 @@ TS_STATE_DIR = "/var/lib/tailscale"
 # logs. Open it and approve the machine once; the state volume keeps it logged in.
 TS_AUTH_ONCE = "true"
 TS_HOSTNAME = "kelvo-node-hakopod"
-TS_EXTRA_ARGS = "--exit-node=REPLACE_ORACLE_EXIT_NODE --exit-node-allow-lan-access"
+TS_EXTRA_ARGS = "--exit-node=100.87.80.113 --exit-node-allow-lan-access"
 
 [services.node.network_access]
 from = ["gateway"]
