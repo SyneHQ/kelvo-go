@@ -2,7 +2,7 @@
 
 Cluster gateways can bind each API key to a user or service principal. A principal can use only its configured sources and its own query handles. This is opt-in; legacy tenant keys retain tenant-wide access.
 
-Grants cover whole sources by default. Add [row/column rules](row-column-access.md) for callback federation or [guarded snapshots](guarded-snapshots.md); other restricted execution paths fail closed.
+Grants cover whole sources by default. Add [row/column rules](row-column-access.md) for callback federation or [guarded snapshots](guarded-snapshots.md); other restricted execution paths fail closed. Delegated users can be restricted per grant: see [delegated users](row-column-access.md#delegated-users); the service principal itself still cannot carry a `row_column_policy`.
 
 ## 1. Grant sources
 

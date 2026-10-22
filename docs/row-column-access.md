@@ -41,6 +41,21 @@ Comparisons support `eq`, `ne`, `lt`, `le`, `gt`, `ge` with exact signed/unsigne
 
 Projected columns support flat Arrow types, including decimals and timestamps. Nested, dictionary and extension columns are rejected. Schema and field metadata are removed. Unsupported predicates fail explicitly.
 
+## Delegated users
+
+A delegated service principal (see [on-demand connections](on-demand-connections.md)) can restrict each end user. The service signs a version 2 delegation grant whose `row_column_policy` carries the user's rules, in the same shape as above plus a `revision`:
+
+```json
+{"version": 2, "...": "version 1 fields", "row_column_policy": {"revision": "<64 hex>", "sources": {"<alias>": {"tables": {"<table>": {"columns": ["order_id"], "rows": {"kind": "comparison", "column": "account_id", "type": "int64", "op": "eq", "value": "42"}}}}}}}
+```
+
+- Source keys must be `sources[].alias` values of the grant and table keys `sources[].tables[].name` values of that source. Anything else, and any rule `access.Validate` refuses, rejects the grant before execution.
+- Version 1 grants must not carry a policy; version 2 grants must. A node that predates this rejects a version 2 token, so a restricted grant never runs unrestricted. Upgrade every gateway and node before the service sends version 2.
+- The policy is signed with the grant. Changing a byte fails verification. A grant lasts at most five minutes, so a new policy applies to every new query within that time; a read already running keeps the policy it started with.
+- The request must use `mode: federated`; a native request is refused with `UNSUPPORTED`. A table missing from a source's policy is hidden; a source missing from the policy keeps the grant's whole-source access.
+- Restricted delegated reads take the same path as principal policies: no pooled read workers, result cache or time-range routing, and scan diagnostics are off. A delegated export would carry the same policy at execution.
+- The nesting limit of the grant's JSON allows about four levels of combined `and`/`or` rules. The policy revision is not yet recorded in the durable audit receipt; that needs a journal format change.
+
 ## Boundaries
 
 - Restrictions apply to selected callback federation sources. Missing tables are denied; sources with explicit whole-source grants keep that authority.
