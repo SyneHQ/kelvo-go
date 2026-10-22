@@ -55,3 +55,6 @@
 **/*-private.*
 **/artifacts/**
 **/.git/**
+!deploy
+!deploy/hakopod
+!deploy/hakopod/node-entrypoint.sh
