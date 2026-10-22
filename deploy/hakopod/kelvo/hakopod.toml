@@ -281,8 +281,11 @@ mode = 288
 restart_nonce = "prod-2026-10-22a"
 image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
 registry_credential = "ghcr"
-command = ["/usr/local/bin/kelvo"]
-args = ["gateway", "--config", "/etc/kelvo/gateway.yml", "--drain-timeout", "30s"]
+# Kelvo reads its service keys only from a private 0600 file owned by its own
+# user under trusted directories; mounted secrets are root-owned and
+# group-readable. Copy them into a private directory in the image's sticky
+# /tmp first.
+command = ["/bin/sh", "-c", "mkdir -m 0700 -p /tmp/kelvo-auth && install -m 0600 /run/kelvo/tls/service-keys.yml /tmp/kelvo-auth/service-keys.yml && exec /usr/local/bin/kelvo gateway --config /etc/kelvo/gateway.yml --drain-timeout 30s"]
 ports = [{ name = "api", port = 8443 }, { name = "operations", port = 8444 }]
 replicas = 1
 update_strategy = "recreate"
@@ -292,7 +295,6 @@ run_as_user = 65532
 run_as_group = 65532
 fs_group = 65532
 mounts = [{ volume = "gateway-state", mount_path = "/var/lib/kelvo/gateway" }]
-temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
 
 # The gateway reaches the node as https://127.0.0.1:8445, the address its
 # production certificate names; this relay forwards it to the node service.
@@ -330,7 +332,7 @@ max_queries: 56
 max_concurrent: 10
 max_http_requests: 256
 authentication:
-  keys_file: /run/kelvo/tls/service-keys.yml
+  keys_file: /tmp/kelvo-auth/service-keys.yml
   reload_interval: 1s
   min_revision: 1
 audit:
