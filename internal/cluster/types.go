@@ -164,6 +164,7 @@ type NodeConfig struct {
 	ReadWorkers         *ReadWorkersConfig                         `yaml:"read_workers,omitempty"`
 	RuntimeExportStore  ExportStore                                `yaml:"-"`
 	Metrics             *MetricsConfig                             `yaml:"metrics,omitempty"`
+	Observability       *ObservabilityConfig                       `yaml:"observability,omitempty"`
 	Audit               *ServiceAuditConfig                        `yaml:"audit,omitempty"`
 	RuntimeAudit        *ServiceAudit                              `yaml:"-"`
 	Containment         *ContainmentConfig                         `yaml:"containment,omitempty"`

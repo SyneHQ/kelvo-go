@@ -41,6 +41,7 @@ type reservation struct {
 
 type Node struct {
 	operations            *nodeOperations
+	obs                   *readObserver
 	closeOperationRuntime func()
 	exports               *ExportRuntime
 	audit                 *ServiceAudit
@@ -246,6 +247,12 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 		}
 		n.wg.Add(1)
 		go n.cleanupOperationResults()
+	}
+	n.obs = newReadObserver(cfg.Observability)
+	if cfg.Observability != nil && cfg.Observability.StallDump != nil {
+		n.obs.stall = newStallDetector(*cfg.Observability.StallDump, n.obs)
+		n.wg.Add(1)
+		go func() { defer n.wg.Done(); n.obs.stall.run(n.ctx) }()
 	}
 	n.wg.Add(3)
 	go n.dispatch()
@@ -752,6 +759,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		n.cfg.RuntimeMetrics.ServeHTTP(w, r)
 		if r.Method == http.MethodGet {
 			n.writeReadAdapterMetrics(w)
+			n.obs.writeMetrics(w)
 		}
 		return
 	}
@@ -973,6 +981,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	sink := &nodeSink{w: w, sink: worker.NewIPCSink(tail, n.cfg.Policy.Limits)}
 	defer sink.sink.Abort()
 	executionStarted := time.Now()
+	n.obs.begin()
 	var stats query.Stats
 	executionCtx, err := executionAuthorityContext(ctx, n.cfg.Policy, authority, request)
 	if err == nil {
@@ -1005,6 +1014,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = n.finish(id, Failed, stats, err)
 	}
 	recordNodeHistory(n.cfg.RuntimeHistory, id, executionStarted, err)
+	n.obs.end(n.cfg.Policy.TenantID, id, request, time.Since(executionStarted), stats, err)
 	if err != nil {
 		if sink.started {
 			panic(http.ErrAbortHandler)

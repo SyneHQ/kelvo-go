@@ -158,6 +158,9 @@ func LoadNode(path string) (NodeConfig, error) {
 			return c, err
 		}
 	}
+	if err := c.Observability.Validate(); err != nil {
+		return c, err
+	}
 	if c.SourceHealth != nil {
 		if err := c.SourceHealth.Validate(); err != nil {
 			return c, err
