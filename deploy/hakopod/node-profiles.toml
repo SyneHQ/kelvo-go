@@ -1,0 +1,11 @@
+schema_version = 1
+
+[[bindings]]
+name = "kelvo-node"
+project = "REPLACE_PROJECT"
+environment = "REPLACE_ENVIRONMENT"
+application = "kelvo"
+service = "node"
+node = "hakopod-server"
+seccomp = "unconfined"
+privileged = true
