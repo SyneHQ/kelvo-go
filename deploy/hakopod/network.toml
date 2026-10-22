@@ -1,0 +1,6 @@
+schema_version = 1
+name = "kelvo-net"
+description = "Private path from db-api to the Kelvo gateway"
+
+[segments.gateway]
+applications = ["syne", "kelvo"]
