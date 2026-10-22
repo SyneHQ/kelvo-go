@@ -26,6 +26,8 @@ segment = "gateway"
 [networks.kelvo-egress]
 
 [services.nats]
+# Change to roll the service after its secrets change.
+restart_nonce = "secrets-2026-10-22b"
 image = "nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4"
 port = 4222
 networks = ["kelvo-internal"]
@@ -84,6 +86,8 @@ secret = { ref = "kelvo-nats-key" }
 mode = 292
 
 [services.cluster-init]
+# Change to roll the service after its secrets change.
+restart_nonce = "secrets-2026-10-22b"
 image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
 registry_credential = "ghcr"
 # A new pod's network policy is programmed a few seconds after it starts, and
@@ -179,6 +183,8 @@ secret = { ref = "kelvo-api-key" }
 mode = 288
 
 [services.gateway]
+# Change to roll the service after its secrets change.
+restart_nonce = "secrets-2026-10-22b"
 image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
 registry_credential = "ghcr"
 command = ["/usr/local/bin/kelvo"]
@@ -278,6 +284,8 @@ secret = { ref = "kelvo-ca-crt" }
 mode = 288
 
 [services.node]
+# Change to roll the service after its secrets change.
+restart_nonce = "secrets-2026-10-22b"
 image = "ghcr.io/synehq/kelvo-go-node@sha256:8bd9ff2fa2415abc63e0114fe86464ec7a9e2f8a9d3132572e88873d6b44293e"
 # start.sh (below) prepares what a container cannot know in advance, then runs
 # the image entrypoint.

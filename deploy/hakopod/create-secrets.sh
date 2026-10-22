@@ -59,6 +59,17 @@ if [ "${KELVO_ONLY_WIREGUARD:-0}" = 1 ]; then
 	exit 0
 fi
 
+# KELVO_ONLY_DSN=1 stores only the test database DSN, read from stdin (pipe it in
+# so it is never typed or shown).
+if [ "${KELVO_ONLY_DSN:-0}" = 1 ]; then
+	IFS= read -r dsn || true
+	[ -n "$dsn" ] || die "pipe the DSN on stdin"
+	printf '%s' "$dsn" > "$work/dsn"
+	dsn=
+	put kelvo-source-postgres-dsn "$work/dsn"
+	exit 0
+fi
+
 # KELVO_ONLY_PASSWORDS=1 rotates only the API token and NATS passwords.
 ONLY_PASSWORDS=${KELVO_ONLY_PASSWORDS:-0}
 
