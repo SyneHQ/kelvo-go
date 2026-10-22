@@ -93,3 +93,12 @@ COPY --from=adapter-build --chmod=0444 /out/kelvo-adapter-go.sha256 /out/kelvo-a
 
 # Keep the default target small for gateways and read-only deployments.
 FROM runtime-base AS runtime
+
+# The hakopod-node target runs the node as a Hakopod privileged pod. The
+# entrypoint needs root only to prepare the delegated cgroup subtree; it then
+# drops to 65532 with no capabilities. Egress control is not part of this image.
+FROM runtime AS hakopod-node
+USER 0:0
+COPY --chmod=0555 deploy/hakopod/node-entrypoint.sh /usr/local/bin/kelvo-node-entrypoint
+ENTRYPOINT ["/usr/local/bin/kelvo-node-entrypoint"]
+CMD ["node", "--config", "/etc/kelvo/node.yml"]
