@@ -35,11 +35,13 @@ Hakopod 0.1.0-alpha.64 or later (node profiles with `run_as_root`, and sidecars)
 
 The `tailscale` sidecar in `kelvo/hakopod.toml` joins the tailnet and uses the Oracle VM as its exit node. The route change happens in the pod's network namespace only; the host and other applications keep their own routes.
 
-1. On the Oracle VM: `sudo tailscale set --advertise-exit-node`, enable `net.ipv4.ip_forward=1` (and IPv6 forwarding if used), and approve the exit node in the Tailscale admin console (or an `autoApprovers` ACL).
-2. Create a Tailscale auth key (reusable off, ephemeral on, tagged, for example `tag:kelvo`), and allow `tag:kelvo` to use the exit node in the ACL.
-3. In Hakopod, create the application secret `tailscale-authkey` with that key. Never commit it.
+1. On the Oracle VM: `sudo tailscale set --advertise-exit-node`, enable `net.ipv4.ip_forward=1` (and IPv6 forwarding if used), and approve the exit node in the Tailscale admin console.
+2. No auth key is needed. On the first start the sidecar has no state, so `containerboot` prints a login URL in its logs (`To authenticate, visit: https://login.tailscale.com/a/...`). Read it with `hakopod logs kelvo --service node` or the sidecar terminal (`tailscale status`), open it while signed in to the tailnet, and approve the machine. The node state lives on the `tailscale-state` volume, so restarts stay logged in.
+3. In the Tailscale admin console, open the machine `kelvo-node-hakopod` and turn on "Disable key expiry", or it asks to log in again when the node key expires. Make sure the account that approved it may use the exit node.
 4. Replace `REPLACE_ORACLE_EXIT_NODE` in `TS_EXTRA_ARGS` with the exit node's tailnet IP or name, and pin the `tailscale/tailscale` image digest you have reviewed.
 5. `KELVO_ALLOW_CIDRS` in the node's env lists the cluster CIDRs that stay direct (k3s defaults `10.42.0.0/16` pods, `10.43.0.0/16` services). Check them on the server before deploying.
+
+Until the login is approved, the node's database connections fail closed (below); Kelvo itself starts.
 
 Fail-closed: the node entrypoint installs iptables and ip6tables rules for uid 65532 (the node and its query children): loopback, `KELVO_ALLOW_CIDRS` and `tailscale0` only, everything else rejected. If the sidecar or the exit node is down, database connections fail instead of leaving from the server's own address.
 
@@ -63,7 +65,7 @@ printf 'subjectAltName=DNS:node,URI:spiffe://kelvo/tenant/kelvo-test/worker/n1\n
 openssl x509 -req -in node.csr -CA ca.pem -CAkey ca.key -CAcreateserial -out node.crt -days 90 -extfile node.ext
 ```
 
-The worker ID `n1` and tenant `kelvo-test` must match the URI SAN exactly. Create these as Hakopod secrets in the UI (one PEM per secret), along with: `kelvo-api-token`, `kelvo-nats-provisioner-password`, `kelvo-nats-gateway-password`, `kelvo-nats-worker-password` (independent random values, 32+ characters), and `kelvo-source-postgres-dsn` (read-only grant on the test database).
+The worker ID `n1` and tenant `kelvo-test` must match the URI SAN exactly. `create-secrets.sh` creates all of them for you (run it yourself after `hakopod login`; it prints no values). By hand: create them as Hakopod secrets in the UI (one PEM per secret), along with: `kelvo-api-token`, `kelvo-nats-provisioner-password`, `kelvo-nats-gateway-password`, `kelvo-nats-worker-password` (independent random values, 32+ characters), and `kelvo-source-postgres-dsn` (read-only grant on the test database).
 
 ### 4. Deploy
 
