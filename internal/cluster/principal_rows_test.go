@@ -3,6 +3,7 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -107,5 +108,21 @@ func TestPrincipalRowPolicySurvivesYAMLAndDigestBinding(t *testing.T) {
 	}
 	if principalPolicyVersion(restored) != principalPolicyVersion(p) {
 		t.Fatal("YAML changed immutable policy authority")
+	}
+}
+
+// A native query on a restricted source names the supported path instead of a
+// bare denial, and still never runs.
+func TestPrincipalNativeQueryOnRestrictedSourceNamesFederatedMode(t *testing.T) {
+	p := rowPrincipalPolicy()
+	a, _ := authorityForPrincipal(p, "analyst")
+	_, err := executionAuthorityContext(context.Background(), p, &a, query.Request{Mode: "native", ConnectionID: "sales", SQL: "SELECT 1"})
+	var public *query.Error
+	if !errors.As(err, &public) || public.Code != "UNSUPPORTED" {
+		t.Fatalf("native query on a restricted source: %v", err)
+	}
+	_, err = executionAuthorityContext(context.Background(), p, &a, query.Request{Mode: "native", ConnectionID: "unknown", SQL: "SELECT 1"})
+	if !errors.As(err, &public) || public.Code == "UNSUPPORTED" {
+		t.Fatalf("ungranted source must stay a plain denial: %v", err)
 	}
 }
