@@ -335,6 +335,11 @@ WG_KEEP_DIRECT = "10.42.0.0/16,10.43.0.0/16,100.64.0.0/10"
 [services.node.sidecars.secrets.WG_PRIVATE_KEY]
 ref = "kelvo-wireguard-key"
 
+# Small request so the app fits the single node's reservations; the
+# profile limit still allows bursts.
+[services.node.resources]
+cpu_request = "60m"
+
 [services.node.network_access]
 from = ["gateway"]
 
@@ -342,6 +347,8 @@ from = ["gateway"]
 # k3s defaults: pod CIDR and service CIDR. Check with
 # kubectl cluster-info dump | grep -m1 cluster-cidr on the server.
 KELVO_ALLOW_CIDRS = "10.42.0.0/16,10.43.0.0/16"
+# Must match the sidecar WG_ENDPOINT.
+KELVO_WG_ENDPOINT = "100.87.80.113:51820"
 
 [services.node.secrets]
 KELVO_TEST_NATS_WORKER_PASSWORD = { ref = "kelvo-nats-worker-password" }
@@ -373,6 +380,9 @@ done
 iptables -N KELVO_EGRESS
 iptables -A KELVO_EGRESS -o lo -j ACCEPT
 iptables -A KELVO_EGRESS -o wg0 -j ACCEPT
+# WireGuard sends the encrypted packet with the original socket's owner, so the
+# tunnel's own UDP to the endpoint must be allowed for 65532 too.
+iptables -A KELVO_EGRESS -d "${KELVO_WG_ENDPOINT%:*}" -p udp --dport "${KELVO_WG_ENDPOINT#*:}" -j ACCEPT
 for c in $(printf '%s' "$KELVO_ALLOW_CIDRS" | tr ',' ' '); do iptables -A KELVO_EGRESS -d "$c" -j ACCEPT; done
 iptables -A KELVO_EGRESS -j REJECT
 iptables -I OUTPUT -m owner --uid-owner 65532 -j KELVO_EGRESS
