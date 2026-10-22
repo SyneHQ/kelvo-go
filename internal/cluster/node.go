@@ -982,6 +982,13 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer sink.sink.Abort()
 	executionStarted := time.Now()
 	n.obs.begin()
+	observed := false
+	defer func() {
+		// A panic before the normal end must not leave the read counted in flight.
+		if !observed {
+			n.obs.end(n.cfg.Policy.TenantID, id, request, time.Since(executionStarted), query.Stats{}, query.NewError("QUERY_FAILED", "Read failed"))
+		}
+	}()
 	var stats query.Stats
 	executionCtx, err := executionAuthorityContext(ctx, n.cfg.Policy, authority, request)
 	if err == nil {
@@ -1014,6 +1021,7 @@ func (n *Node) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = n.finish(id, Failed, stats, err)
 	}
 	recordNodeHistory(n.cfg.RuntimeHistory, id, executionStarted, err)
+	observed = true
 	n.obs.end(n.cfg.Policy.TenantID, id, request, time.Since(executionStarted), stats, err)
 	if err != nil {
 		if sink.started {
