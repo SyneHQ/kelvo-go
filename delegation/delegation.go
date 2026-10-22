@@ -56,7 +56,7 @@ type Source struct {
 	Tables       []Table `json:"tables,omitempty"`
 }
 
-// Claims is the version 1 query delegation payload. A grant lasts at most five
+// Claims is the version 1 and 2 query delegation payload. A grant lasts at most five
 // minutes and binds QuerySHA256 to the exact request produced by QueryDigest.
 type Claims struct {
 	Version          int      `json:"version"`
@@ -71,6 +71,84 @@ type Claims struct {
 	ExpiresAt        int64    `json:"exp"`
 	QuerySHA256      string   `json:"query_sha256"`
 	Sources          []Source `json:"sources"`
+	// RowColumnPolicy restricts the rows and columns of the listed sources. It is
+	// part of the signed payload. Version 1 grants never carry it and version 2
+	// grants always do, so a node that predates it rejects the whole token (the
+	// version and the unknown field) and can never run a restricted grant
+	// unrestricted.
+	RowColumnPolicy *DelegatedPolicy `json:"row_column_policy,omitempty"`
+}
+
+// DelegatedPolicy mirrors internal/access.Policy field for field. The mirror
+// exists because this package is public API: an access.Policy field would put an
+// internal type in the signature external issuers sign against. The node converts
+// it back with the same JSON shape and applies access.Validate, so the engine
+// rules are the single source of truth. Source keys are claims.sources aliases
+// and table keys are claims.sources[].tables names.
+type DelegatedPolicy struct {
+	// Revision is the lowercase hexadecimal SHA-256 of the policy as the issuer stored it.
+	Revision string                           `json:"revision"`
+	Sources  map[string]DelegatedSourcePolicy `json:"sources"`
+}
+
+// DelegatedSourcePolicy mirrors access.SourcePolicy.
+type DelegatedSourcePolicy struct {
+	Tables map[string]DelegatedTablePolicy `json:"tables"`
+}
+
+// DelegatedTablePolicy mirrors access.TablePolicy.
+type DelegatedTablePolicy struct {
+	Columns []string            `json:"columns"`
+	Rows    *DelegatedPredicate `json:"rows,omitempty"`
+	AllRows bool                `json:"all_rows,omitempty"`
+}
+
+// DelegatedPredicate mirrors access.Predicate.
+type DelegatedPredicate struct {
+	Kind     string               `json:"kind"`
+	Column   string               `json:"column,omitempty"`
+	Op       string               `json:"op,omitempty"`
+	Type     string               `json:"type,omitempty"`
+	Value    string               `json:"value,omitempty"`
+	Children []DelegatedPredicate `json:"children,omitempty"`
+}
+
+// Clone returns a deep copy so cached or context-held claims are never shared mutable state.
+func (p *DelegatedPolicy) Clone() *DelegatedPolicy {
+	if p == nil {
+		return nil
+	}
+	out := &DelegatedPolicy{Revision: p.Revision}
+	if p.Sources != nil {
+		out.Sources = make(map[string]DelegatedSourcePolicy, len(p.Sources))
+	}
+	for id, source := range p.Sources {
+		s := DelegatedSourcePolicy{}
+		if source.Tables != nil {
+			s.Tables = make(map[string]DelegatedTablePolicy, len(source.Tables))
+		}
+		for name, table := range source.Tables {
+			t := DelegatedTablePolicy{Columns: append([]string(nil), table.Columns...), AllRows: table.AllRows}
+			if table.Rows != nil {
+				r := clonePredicate(*table.Rows)
+				t.Rows = &r
+			}
+			s.Tables[name] = t
+		}
+		out.Sources[id] = s
+	}
+	return out
+}
+
+func clonePredicate(p DelegatedPredicate) DelegatedPredicate {
+	if p.Children != nil {
+		children := make([]DelegatedPredicate, len(p.Children))
+		for i := range p.Children {
+			children[i] = clonePredicate(p.Children[i])
+		}
+		p.Children = children
+	}
+	return p
 }
 
 // Trust pins the issuer, audience, cluster tenant, service principal, and signing key.
@@ -226,7 +304,7 @@ func hexText(s string, n int) bool {
 	return e == nil
 }
 func validateClaims(c Claims, now time.Time) error {
-	if c.Version != 1 || !text(c.Issuer, 128) || !text(c.Audience, 128) || !text(c.ClusterTenant, 32) || !text(c.ServicePrincipal, 32) || !text(c.AppTeam, 256) || !text(c.Subject.ID, 256) || !hexText(c.ID, 48) || !hexText(c.QuerySHA256, 64) || c.IssuedAt <= 0 || c.ExpiresAt <= c.IssuedAt || c.ExpiresAt-c.IssuedAt > 300 || c.IssuedAt > now.Unix()+30 || c.ExpiresAt <= now.Unix() || len(c.Sources) == 0 || len(c.Sources) > 32 {
+	if (c.Version != 1 && c.Version != 2) || (c.Version == 1) != (c.RowColumnPolicy == nil) || !text(c.Issuer, 128) || !text(c.Audience, 128) || !text(c.ClusterTenant, 32) || !text(c.ServicePrincipal, 32) || !text(c.AppTeam, 256) || !text(c.Subject.ID, 256) || !hexText(c.ID, 48) || !hexText(c.QuerySHA256, 64) || c.IssuedAt <= 0 || c.ExpiresAt <= c.IssuedAt || c.ExpiresAt-c.IssuedAt > 300 || c.IssuedAt > now.Unix()+30 || c.ExpiresAt <= now.Unix() || len(c.Sources) == 0 || len(c.Sources) > 32 {
 		return ErrInvalid
 	}
 	switch c.Subject.Kind {
@@ -265,6 +343,41 @@ func validateClaims(c Claims, now time.Time) error {
 				return ErrInvalid
 			}
 			seen[strings.ToLower(t.Name)] = true
+		}
+	}
+	return validatePolicyScope(c)
+}
+
+// validatePolicyScope checks the policy against the sources the same signature
+// covers. Column and predicate rules are access.Validate's, applied by the node
+// before the grant is accepted for execution; only the structure the node cannot
+// see (alias binding, shape) is checked here so Sign refuses what Verify would.
+func validatePolicyScope(c Claims) error {
+	p := c.RowColumnPolicy
+	if p == nil {
+		return nil
+	}
+	if !hexText(p.Revision, 64) || len(p.Sources) == 0 || len(p.Sources) > len(c.Sources) {
+		return ErrInvalid
+	}
+	for alias, source := range p.Sources {
+		var scope *Source
+		for i := range c.Sources {
+			if c.Sources[i].Alias == alias {
+				scope = &c.Sources[i]
+			}
+		}
+		if scope == nil || len(source.Tables) == 0 || len(source.Tables) > len(scope.Tables) {
+			return ErrInvalid
+		}
+		for name, table := range source.Tables {
+			found := false
+			for _, t := range scope.Tables {
+				found = found || t.Name == name
+			}
+			if !found || len(table.Columns) == 0 || (table.Rows != nil) == table.AllRows {
+				return ErrInvalid
+			}
 		}
 	}
 	return nil
