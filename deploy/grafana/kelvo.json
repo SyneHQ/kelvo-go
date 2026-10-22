@@ -1,0 +1,66 @@
+{
+  "title": "Kelvo",
+  "uid": "kelvo-node",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus" }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Read latency p50 by tenant",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{tenant}}", "expr": "histogram_quantile(0.5, sum by (le, tenant) (rate(kelvo_read_duration_seconds_bucket[5m])))" }
+      ]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Read latency p95 by tenant",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{tenant}}", "expr": "histogram_quantile(0.95, sum by (le, tenant) (rate(kelvo_read_duration_seconds_bucket[5m])))" }
+      ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Read error rate by class",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{class}}", "expr": "sum by (class) (rate(kelvo_reads_total{outcome!=\"success\"}[5m]))" }
+      ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Reads in flight",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "legendFormat": "{{instance}}", "expr": "kelvo_reads_in_flight" }
+      ]
+    },
+    {
+      "id": 5, "type": "stat", "title": "Stall dumps (1h)",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(kelvo_stall_dumps_total[1h]))" }
+      ]
+    },
+    {
+      "id": 6, "type": "stat", "title": "Slow-read log lines dropped (1h)",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        { "refId": "A", "expr": "sum(increase(kelvo_slow_read_log_dropped_total[1h]))" }
+      ]
+    }
+  ]
+}
