@@ -59,7 +59,7 @@ A delegated service principal (see [on-demand connections](on-demand-connections
 ## Boundaries
 
 - Restrictions apply to selected callback federation sources. Missing tables are denied; sources with explicit whole-source grants keep that authority.
-- Restricted sources cannot also have native SQL grants. Restricted queries cannot mix direct attachments, raw files or unguarded object readers; scan diagnostics are disabled. Snapshots require their own dataset-ID policy and the [guarded reader](guarded-snapshots.md).
+- Restricted sources cannot also have native SQL grants. A native query on one is refused with `UNSUPPORTED` and a message to send it with `mode: federated`, where the policy is applied; clients such as db-api should route a restricted principal's reads through federated mode. Restricted queries cannot mix direct attachments, raw files or unguarded object readers; scan diagnostics are disabled. Snapshots require their own dataset-ID policy and the [guarded reader](guarded-snapshots.md).
 - Policies come from authenticated, versioned operator configuration. Public query fields cannot supply or override them. Each worker checks the authority digest and the child checks its trusted policy envelope before source setup.
 - Source adapters receive required columns without filters. Kelvo applies policy and optimizer filters locally, so an adapter ignoring pushdown cannot bypass the boundary. This can increase source traffic.
 - Raw source budgets still apply, even when few rows are authorized. Filtering adds a mask and selected-column buffers per batch. Timing and resource usage can reflect raw data; this is not a timing-isolation guarantee.

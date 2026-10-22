@@ -117,6 +117,10 @@ func validatePrincipalPolicy(p *PrincipalPolicy) error {
 	return nil
 }
 
+// errNativeRestricted answers a native query on a source whose rows or columns
+// are restricted for this principal: only federated queries apply the policy.
+var errNativeRestricted = query.NewError("UNSUPPORTED", "Row and column policies apply to federated queries only; send this query with mode federated")
+
 func principalPolicyVersion(p Policy) string {
 	raw, _ := json.Marshal(struct {
 		Tenant string           `json:"tenant"`
@@ -187,6 +191,14 @@ func validateJobAuthorityAt(p Policy, a *JobAuthority, request query.Request, no
 	}
 	if request.Mode == "native" {
 		if !includes(grant.NativeSources, request.ConnectionID) {
+			// Row and column policies are enforced by the federated engine only, so
+			// say how to reach a restricted source instead of a bare denial. The
+			// principal already knows its own grant; this reveals nothing else.
+			if grant.RowColumnPolicy != nil && includes(grant.FederatedSources, request.ConnectionID) {
+				if _, restricted := grant.RowColumnPolicy.Sources[request.ConnectionID]; restricted {
+					return errNativeRestricted
+				}
+			}
 			return denied
 		}
 		return nil
