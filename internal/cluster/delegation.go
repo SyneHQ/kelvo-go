@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/access"
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/resolver"
@@ -51,6 +52,22 @@ func baseJobAuthority(a JobAuthority) JobAuthority {
 	return JobAuthority{PrincipalID: a.PrincipalID, PrincipalKind: a.PrincipalKind, PolicyVersion: a.PolicyVersion}
 }
 
+// errDelegatedNativeRestricted answers a native query whose grant restricts rows
+// or columns: only federated queries apply the policy. The text matches the
+// principal-policy refusal so clients handle both the same way.
+var errDelegatedNativeRestricted = query.NewError("UNSUPPORTED", "Row and column policies apply to federated queries only; send this query with mode federated")
+
+// delegatedPolicy is the restriction a verified grant imposes, if any. The
+// policy was validated by delegatedAuthority; it is converted and validated
+// again here so no caller can hold an unvalidated one.
+func delegatedPolicy(c delegation.Claims) (access.Policy, bool, error) {
+	if c.RowColumnPolicy == nil {
+		return access.Policy{}, false, nil
+	}
+	p, err := access.FromDelegated(c.RowColumnPolicy)
+	return p, err == nil, err
+}
+
 func delegatedAuthority(p Policy, a JobAuthority, r query.Request, now time.Time) (JobAuthority, delegation.Claims, error) {
 	denied := query.NewError("PERMISSION_DENIED", "Query access denied")
 	current, ok := authorityForPrincipal(p, a.PrincipalID)
@@ -63,7 +80,28 @@ func delegatedAuthority(p Policy, a JobAuthority, r query.Request, now time.Time
 	}
 	c, err := delegation.VerifyCached(r.Delegation, trust, r, now)
 	if err != nil {
+		// A restricted grant has table-scoped sources, which bound verification
+		// refuses for a native request. Name the supported path for a caller whose
+		// grant is authentic (signed by the trusted issuer for this principal)
+		// instead of a bare denial; every other failure stays a denial.
+		if claims, e := delegation.VerifyClaimsCached(r.Delegation, trust, now); e == nil && claims.RowColumnPolicy != nil && r.Mode == "native" {
+			return JobAuthority{}, delegation.Claims{}, errDelegatedNativeRestricted
+		}
 		return JobAuthority{}, delegation.Claims{}, denied
+	}
+	// A restricted grant is enforced by the federated engine only, and only once
+	// its policy is as valid as an operator's. Both are decided here, before any
+	// admission, credential or execution step, for every caller of this function.
+	if c.RowColumnPolicy != nil {
+		if r.Mode == "native" {
+			return JobAuthority{}, delegation.Claims{}, errDelegatedNativeRestricted
+		}
+		if r.Mode != "" && r.Mode != "federated" {
+			return JobAuthority{}, delegation.Claims{}, denied
+		}
+		if _, err := access.FromDelegated(c.RowColumnPolicy); err != nil {
+			return JobAuthority{}, delegation.Claims{}, denied
+		}
 	}
 	current.DelegationSHA256 = delegation.Digest(r.Delegation)
 	current.ApplicationTeam = c.AppTeam
