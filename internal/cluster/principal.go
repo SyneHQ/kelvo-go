@@ -396,6 +396,22 @@ func executionAuthorityContext(ctx context.Context, p Policy, authority *JobAuth
 		return ctx, nil
 	}
 	ctx = context.WithValue(ctx, jobAuthorityKey{}, *authority)
+	if request.Delegation != "" {
+		// The restriction of a delegated read is the one its signed grant carries,
+		// verified again here for the exact request. Queries and exports both reach
+		// this function, so neither can run the grant unrestricted.
+		_, claims, err := delegatedAuthority(p, *authority, request, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		policy, restricted, err := delegatedPolicy(claims)
+		if err != nil {
+			return nil, query.NewError("PERMISSION_DENIED", "Query access denied")
+		}
+		if restricted {
+			return access.WithPolicy(ctx, policy)
+		}
+	}
 	grant := p.Access.Principals[authority.PrincipalID]
 	if grant.RowColumnPolicy == nil {
 		return ctx, nil
