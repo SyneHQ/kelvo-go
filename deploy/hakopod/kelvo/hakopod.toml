@@ -273,10 +273,40 @@ networks = ["kelvo-internal", "kelvo-egress"]
 # readable by that gid.
 fs_group = 65532
 mounts = [{ volume = "kelvo-state", mount_path = "/var/lib/kelvo" }]
-temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
+temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }, { mount_path = "/var/lib/ts", size_mib = 16 }]
+
+# Tailscale routes this pod's outbound traffic through the Oracle exit node.
+# The node entrypoint adds fail-closed rules for uid 65532: only loopback, the
+# cluster CIDRs below and tailscale0, so a stopped sidecar or exit node makes
+# database connections fail instead of leaving from the server's address.
+[[services.node.sidecars]]
+name = "tailscale"
+image = "tailscale/tailscale@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+cpu = "100m"
+memory = "128Mi"
+mounts = [{ temporary = "/var/lib/ts", mount_path = "/var/lib/tailscale" }]
+# containerboot keeps its state in a Kubernetes Secret when it sees
+# KUBERNETES_SERVICE_HOST. This pod has no cluster credentials, so hide the
+# variable and keep state in TS_STATE_DIR instead.
+command = ["/bin/sh", "-c", "unset KUBERNETES_SERVICE_HOST KUBERNETES_SERVICE_PORT; exec /usr/local/bin/containerboot"]
+
+[services.node.sidecars.env]
+TS_USERSPACE = "false"
+TS_STATE_DIR = "/var/lib/tailscale"
+TS_AUTH_ONCE = "true"
+TS_HOSTNAME = "kelvo-node-hakopod"
+TS_EXTRA_ARGS = "--exit-node=REPLACE_ORACLE_EXIT_NODE --exit-node-allow-lan-access"
+
+[services.node.sidecars.secrets.TS_AUTHKEY]
+ref = "tailscale-authkey"
 
 [services.node.network_access]
 from = ["gateway"]
+
+[services.node.env]
+# k3s defaults: pod CIDR and service CIDR. Check with
+# kubectl cluster-info dump | grep -m1 cluster-cidr on the server.
+KELVO_ALLOW_CIDRS = "10.42.0.0/16,10.43.0.0/16"
 
 [services.node.secrets]
 KELVO_TEST_NATS_WORKER_PASSWORD = { ref = "kelvo-nats-worker-password" }

@@ -96,9 +96,13 @@ FROM runtime-base AS runtime
 
 # The hakopod-node target runs the node as a Hakopod privileged pod. The
 # entrypoint needs root only to prepare the delegated cgroup subtree; it then
-# drops to 65532 with no capabilities. Egress control is not part of this image.
-FROM runtime AS hakopod-node
+# drops to 65532 with no capabilities. It also installs fail-closed egress rules
+# for 65532 (see deploy/hakopod/node-entrypoint.sh); the Tailscale sidecar routes.
+FROM worker AS hakopod-node
 USER 0:0
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y iptables \
+    && rm -rf /var/lib/apt/lists/*
 COPY --chmod=0555 deploy/hakopod/node-entrypoint.sh /usr/local/bin/kelvo-node-entrypoint
 ENTRYPOINT ["/usr/local/bin/kelvo-node-entrypoint"]
 CMD ["node", "--config", "/etc/kelvo/node.yml"]

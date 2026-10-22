@@ -42,6 +42,32 @@ put '+cpu +memory +pids' "$cg/cgroup.subtree_control"
 # (moves and clone3 into a cgroup need write access at the common ancestor).
 run chown -R "$UID_KELVO:$UID_KELVO" "$cg"
 
+# Fail-closed egress for the node and its query children (uid 65532): only
+# loopback, the cluster CIDRs in KELVO_ALLOW_CIDRS (NATS, gateway, db-api
+# resolver) and the Tailscale interface the sidecar routes through. If the
+# sidecar or the exit node is down, database connections fail instead of
+# leaving from the server's own address. Set KELVO_EGRESS=open to skip (tests).
+if [ "${KELVO_EGRESS:-closed}" != open ]; then
+	[ -n "${KELVO_ALLOW_CIDRS:-}" ] || die "KELVO_ALLOW_CIDRS is required (comma-separated cluster CIDRs)"
+	for t in iptables ip6tables; do
+		run "$t" -N KELVO_EGRESS
+		run "$t" -A KELVO_EGRESS -o lo -j ACCEPT
+		run "$t" -A KELVO_EGRESS -o tailscale0 -j ACCEPT
+	done
+	set -f
+	for cidr in $(printf '%s' "$KELVO_ALLOW_CIDRS" | tr ',' ' '); do
+		case $cidr in
+			*:*) run ip6tables -A KELVO_EGRESS -d "$cidr" -j ACCEPT ;;
+			*) run iptables -A KELVO_EGRESS -d "$cidr" -j ACCEPT ;;
+		esac
+	done
+	set +f
+	for t in iptables ip6tables; do
+		run "$t" -A KELVO_EGRESS -j REJECT
+		run "$t" -I OUTPUT -m owner --uid-owner "$UID_KELVO" -j KELVO_EGRESS
+	done
+fi
+
 run install -d -m 0700 -o "$UID_KELVO" -g "$UID_KELVO" "$STATE_DIR" "$STATE_DIR/scratch" "$STATE_DIR/containment"
 
 if [ "$DRY" = 1 ]; then
