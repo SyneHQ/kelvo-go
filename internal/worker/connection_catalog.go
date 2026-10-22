@@ -33,7 +33,7 @@ func delegatedExecution(ctx context.Context, request query.Request) (delegation.
 		}
 		return execution, false, nil
 	}
-	if !present || execution.Token != request.Delegation || access.Restricted(ctx) || execution.Binding.JobID == "" || execution.Binding.WorkerID == "" || execution.Binding.Owner == "" || execution.Binding.Claim == "" ||
+	if !present || execution.Token != request.Delegation || !restrictionMatchesGrant(ctx, execution.Claims) || execution.Binding.JobID == "" || execution.Binding.WorkerID == "" || execution.Binding.Owner == "" || execution.Binding.Claim == "" ||
 		execution.Claims.ExpiresAt <= time.Now().Unix() || len(execution.Claims.Sources) < 1 || len(execution.Claims.Sources) > 32 {
 		return execution, true, delegatedDenied()
 	}
@@ -54,6 +54,22 @@ func delegatedExecution(ctx context.Context, request query.Request) (delegation.
 		}
 	}
 	return execution, true, nil
+}
+
+// restrictionMatchesGrant is the fail-closed pairing of a delegated execution
+// with its row and column restriction. A grant without a policy must run
+// unrestricted: any restriction in the context then did not come from the grant,
+// and is refused as before. A grant with a policy (version 2) must run under
+// exactly that policy, converted and validated by access.FromDelegated; a context
+// without it, or with any other policy, is refused. The check cannot be satisfied
+// by merely having some policy attached.
+func restrictionMatchesGrant(ctx context.Context, claims delegation.Claims) bool {
+	have, restricted := access.PolicyFromContext(ctx)
+	if claims.RowColumnPolicy == nil {
+		return !restricted
+	}
+	want, err := access.FromDelegated(claims.RowColumnPolicy)
+	return err == nil && restricted && access.SamePolicy(have, want)
 }
 
 // resolveConnections runs after process admission and creates an execution-only
