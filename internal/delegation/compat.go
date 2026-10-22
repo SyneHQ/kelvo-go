@@ -21,6 +21,10 @@ type Source = publicdelegation.Source
 type Claims = publicdelegation.Claims
 type Trust = publicdelegation.Trust
 type ExecutionBinding = publicdelegation.ExecutionBinding
+type DelegatedPolicy = publicdelegation.DelegatedPolicy
+type DelegatedSourcePolicy = publicdelegation.DelegatedSourcePolicy
+type DelegatedTablePolicy = publicdelegation.DelegatedTablePolicy
+type DelegatedPredicate = publicdelegation.DelegatedPredicate
 
 func QueryDigest(r query.Request) (string, error) { return publicdelegation.QueryDigest(r) }
 
