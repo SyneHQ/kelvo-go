@@ -90,6 +90,17 @@ CMD ["help"]
 FROM runtime-base AS worker
 COPY --from=adapter-build --chmod=0555 /out/kelvo-adapter-go /out/kelvo-adapter-relational /usr/local/bin/
 COPY --from=adapter-build --chmod=0444 /out/kelvo-adapter-go.sha256 /out/kelvo-adapter-relational.sha256 /usr/share/kelvo/
+# Customer databases on AWS RDS present certificates from Amazon's RDS CAs,
+# which Debian does not trust. Workers verify sources with verify-full, so add
+# Amazon's global RDS bundle (deploy/certs/README.md) to the system trust, one
+# certificate per file as update-ca-certificates expects.
+USER 0:0
+COPY --chmod=0444 deploy/certs/aws-rds-global-bundle.pem /tmp/aws-rds-global-bundle.pem
+RUN mkdir -p /usr/local/share/ca-certificates/aws-rds \
+    && awk '/BEGIN CERTIFICATE/{n++} {print > sprintf("/usr/local/share/ca-certificates/aws-rds/rds-%03d.crt", n)}' /tmp/aws-rds-global-bundle.pem \
+    && rm /tmp/aws-rds-global-bundle.pem \
+    && update-ca-certificates
+USER 65532:65532
 
 # Keep the default target small for gateways and read-only deployments.
 FROM runtime-base AS runtime
