@@ -564,6 +564,10 @@ ip6tables -N KELVO_EGRESS
 ip6tables -A KELVO_EGRESS -o lo -j ACCEPT
 ip6tables -A KELVO_EGRESS -j REJECT
 ip6tables -I OUTPUT -m owner --uid-owner 65532 -j KELVO_EGRESS
+# Customer databases on AWS RDS present certificates from Amazon's RDS CAs,
+# which are not in the Debian trust store. The container layer is fresh on
+# every start, so appending once per start is enough.
+cat /run/kelvo/rds/ca-*.pem >> /etc/ssl/certs/ca-certificates.crt
 # The rules above replace the image entrypoint's (which allow tailscale0).
 KELVO_EGRESS=open exec /usr/local/bin/kelvo-node-entrypoint node --config /tmp/node.yml
 """
@@ -738,4 +742,22 @@ mode = 292
 [services.node.files.rabbit-ca]
 mount_path = "/run/kelvo/tls/rabbit-ca.crt"
 secret = { ref = "kelvo-prod-rabbit-ca" }
+mode = 292
+
+# AWS RDS certificate authorities (truststore.pki.rds.amazonaws.com global
+# bundle), split in three because a Hakopod secret holds at most 64 KiB.
+# start.sh appends them to the system trust so verify-full reaches RDS sources.
+[services.node.files.rds-ca-1]
+mount_path = "/run/kelvo/rds/ca-1.pem"
+secret = { ref = "kelvo-rds-ca-1" }
+mode = 292
+
+[services.node.files.rds-ca-2]
+mount_path = "/run/kelvo/rds/ca-2.pem"
+secret = { ref = "kelvo-rds-ca-2" }
+mode = 292
+
+[services.node.files.rds-ca-3]
+mount_path = "/run/kelvo/rds/ca-3.pem"
+secret = { ref = "kelvo-rds-ca-3" }
 mode = 292
