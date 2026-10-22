@@ -24,6 +24,7 @@ func cloneClaims(c Claims) Claims {
 	for i := range c.Sources {
 		c.Sources[i].Tables = append([]Table(nil), c.Sources[i].Tables...)
 	}
+	c.RowColumnPolicy = c.RowColumnPolicy.Clone()
 	if c.Subject.JobConnections != nil {
 		copy := make(map[string]string, len(c.Subject.JobConnections))
 		for k, v := range c.Subject.JobConnections {
