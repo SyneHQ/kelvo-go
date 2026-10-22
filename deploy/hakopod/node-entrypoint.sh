@@ -37,7 +37,10 @@ echo "kelvo-node-entrypoint: cgroup root $cg (containment.root must be $cg/jobs)
 run mkdir -p "$cg/supervisor" "$cg/jobs"
 put "$$" "$cg/supervisor/cgroup.procs"
 put '+cpu +memory +pids' "$cg/cgroup.subtree_control"
-run chown -R "$UID_KELVO:$UID_KELVO" "$cg/jobs"
+# Delegate like systemd Delegate=yes: the whole subtree, including this cgroup's
+# own cgroup.procs, so the unprivileged manager may place children into jobs/
+# (moves and clone3 into a cgroup need write access at the common ancestor).
+run chown -R "$UID_KELVO:$UID_KELVO" "$cg"
 
 run install -d -m 0700 -o "$UID_KELVO" -g "$UID_KELVO" "$STATE_DIR" "$STATE_DIR/scratch" "$STATE_DIR/containment"
 
