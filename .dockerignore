@@ -58,3 +58,5 @@
 !deploy
 !deploy/hakopod
 !deploy/hakopod/node-entrypoint.sh
+!deploy/certs
+!deploy/certs/aws-rds-global-bundle.pem
