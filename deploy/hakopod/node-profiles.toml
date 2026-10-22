@@ -9,3 +9,11 @@ service = "node"
 node = "hakopod-server"
 seccomp = "unconfined"
 privileged = true
+# The entrypoint starts as root to delegate its cgroup subtree and install the
+# egress rules, then drops to 65532 with no capabilities.
+run_as_root = true
+
+[bindings.sidecars.tailscale]
+capabilities = ["NET_ADMIN", "NET_RAW"]
+tun = true
+run_as_root = true
