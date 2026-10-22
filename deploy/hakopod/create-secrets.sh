@@ -47,6 +47,10 @@ put() {
 	echo "stored $1"
 }
 
+# KELVO_ONLY_PASSWORDS=1 rotates only the API token and NATS passwords.
+ONLY_PASSWORDS=${KELVO_ONLY_PASSWORDS:-0}
+
+if [ "$ONLY_PASSWORDS" != 1 ]; then
 # CA: reuse an existing one so re-running rotates leaves, not trust.
 mkdir -p "$CA_DIR"
 chmod 0700 "$CA_DIR"
@@ -79,9 +83,12 @@ put kelvo-gateway-client-crt "$work/gateway-client.crt"
 put kelvo-gateway-client-key "$work/gateway-client.key"
 put kelvo-node-crt "$work/node.crt"
 put kelvo-node-key "$work/node.key"
+fi
 
+# NATS parses an environment variable's value as config syntax, so a value that
+# starts with a digit is read as a number and fails. Start every value with a letter.
 for name in kelvo-api-token kelvo-nats-provisioner-password kelvo-nats-gateway-password kelvo-nats-worker-password; do
-	openssl rand -hex 32 | tr -d '\n' > "$work/$name"
+	{ printf k; openssl rand -hex 32 | tr -d '\n'; } > "$work/$name"
 	put "$name" "$work/$name"
 done
 
@@ -99,6 +106,7 @@ prompt() {
 	put "$1" "$work/$1"
 }
 
+if [ "$ONLY_PASSWORDS" = 1 ]; then echo "done: API token and NATS passwords rotated"; exit 0; fi
 prompt kelvo-source-postgres-dsn "Test database DSN (read-only user)"
 
 echo "done: 14 secrets stored for $PROJECT/$ENVIRONMENT/$APPLICATION"
