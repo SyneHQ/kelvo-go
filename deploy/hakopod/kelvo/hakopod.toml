@@ -24,7 +24,7 @@ internal = true
 virtual_network = "kelvo-net"
 segment = "gateway"
 
-# kelvo-egress: external egress for the node (the WireGuard endpoint). db-api's
+# kelvo-egress: external egress for the node (databases on the internet). db-api's
 # resolver and rabbit (application syne) are reached through additional
 # NetworkPolicies managed in the devops repository.
 [networks.kelvo-egress]
@@ -160,8 +160,8 @@ worker_tls:
   cert_file: /run/kelvo/tls/internal.crt
   key_file: /run/kelvo/tls/internal.key
   ca_file: /run/kelvo/tls/internal-ca.crt
-max_queries: 56
-max_concurrent: 10
+max_queries: 256
+max_concurrent: 32
 max_http_requests: 256
 authentication:
   keys_file: /run/kelvo/tls/service-keys.yml
@@ -188,7 +188,7 @@ operations:
 tenants:
   - policy:
       tenant_id: shared
-      max_queries: 56
+      max_queries: 256
       job_ttl: 3m
       lease_duration: 15s
       replicas: 1
@@ -200,7 +200,7 @@ tenants:
         threads: 1
         max_temp_mb: 128
         result_compression: lz4_frame
-      workers: {local: 10}
+      workers: {local: 32}
       operations:
         shards: 8
         slots_per_shard: 4
@@ -328,8 +328,8 @@ worker_tls:
   cert_file: /run/kelvo/tls/internal.crt
   key_file: /run/kelvo/tls/internal.key
   ca_file: /run/kelvo/tls/internal-ca.crt
-max_queries: 56
-max_concurrent: 10
+max_queries: 256
+max_concurrent: 32
 max_http_requests: 256
 authentication:
   keys_file: /tmp/kelvo-auth/service-keys.yml
@@ -356,7 +356,7 @@ operations:
 tenants:
   - policy:
       tenant_id: shared
-      max_queries: 56
+      max_queries: 256
       job_ttl: 3m
       lease_duration: 15s
       replicas: 1
@@ -368,7 +368,7 @@ tenants:
         threads: 1
         max_temp_mb: 128
         result_compression: lz4_frame
-      workers: {local: 10}
+      workers: {local: 32}
       operations:
         shards: 8
         slots_per_shard: 4
@@ -464,43 +464,11 @@ fs_group = 65532
 mounts = [{ volume = "kelvo-state", mount_path = "/var/lib/kelvo" }]
 temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
 
-# WireGuard routes this pod's outbound traffic to the Oracle VM, whose public
-# address the databases allow-list. The tunnel endpoint is the VM's tailnet
-# address, reached through the host's own Tailscale (synehq-hakopod), so the VM
-# opens no public port and the pod needs no tailnet device of its own.
-# start.sh adds fail-closed rules for uid 65532: only loopback, the cluster
-# CIDRs and wg0, so a down tunnel makes database connections fail instead of
-# leaving from the server's address.
-[[services.node.sidecars]]
-name = "wireguard"
-image = "linuxserver/wireguard:1.0.20260223-r0-ls126@sha256:6bcf5d2f5a265c7e9835eaadd989938e681aabe8bf8bcd4556b61d463da6555c"
-cpu = "50m"
-memory = "64Mi"
-command = ["/bin/sh", "-c", """
-set -eu
-via=$(ip -4 route get 10.43.0.1 | sed -n 's/.* via \\([0-9.]*\\) dev \\([^ ]*\\).*/\\1 \\2/p')
-gw=${via% *}; dev=${via#* }
-ip link del wg0 2>/dev/null || true
-ip link add wg0 type wireguard
-printf '%s' "$WG_PRIVATE_KEY" | wg set wg0 private-key /dev/stdin peer "$WG_SERVER_PUBLIC_KEY" endpoint "$WG_ENDPOINT" allowed-ips 0.0.0.0/0 persistent-keepalive 25
-ip addr add "$WG_ADDRESS" dev wg0
-ip link set wg0 mtu 1200 up
-for c in $(printf '%s' "$WG_KEEP_DIRECT" | tr ',' ' '); do ip route replace "$c" via "$gw" dev "$dev"; done
-ip route replace default dev wg0
-echo "wireguard: default route through wg0, endpoint $WG_ENDPOINT"
-while :; do sleep 3600; done
-"""]
-
-[services.node.sidecars.env]
-WG_ENDPOINT = "100.87.80.113:51820"
-WG_SERVER_PUBLIC_KEY = "0jQwRvu2EDNTuPuRgIHvusfDrvZmks1R6+7IZ3hzoBg="
-WG_ADDRESS = "10.99.0.2/32"
-# Kept off the tunnel: pod and service CIDRs, and the endpoint itself.
-WG_KEEP_DIRECT = "10.42.0.0/16,10.43.0.0/16,100.64.0.0/10"
-
-[services.node.sidecars.secrets.WG_PRIVATE_KEY]
-ref = "kelvo-wireguard-key"
-
+# Databases see this pod's traffic from the Hakopod host's Elastic IP
+# (34.195.2.234), the address customers allow-list. Since 2026-10-24 there is
+# no tunnel: the Oracle exit in Mumbai added about 200 ms to every database
+# round trip. Changing the host's address is a customer-visible change; announce
+# it well ahead.
 # The node reaches db-api's resolver and the gateway's operations listener as
 # 127.0.0.1, the addresses the production certificates name.
 [[services.node.sidecars]]
@@ -523,8 +491,6 @@ from = ["gateway"]
 [services.node.env]
 # Cluster CIDRs: NATS, gateway, db-api's resolver and rabbit's private transport.
 KELVO_ALLOW_CIDRS = "10.42.0.0/16,10.43.0.0/16"
-# Must match the wireguard sidecar's WG_ENDPOINT.
-KELVO_WG_ENDPOINT = "100.87.80.113:51820"
 
 [services.node.secrets]
 KELVO_NATS_WORKER_PASSWORD = { ref = "kelvo-nats-worker-password" }
@@ -549,22 +515,21 @@ for t in iptables ip6tables; do
   "$t" -F KELVO_EGRESS 2>/dev/null || true
   "$t" -X KELVO_EGRESS 2>/dev/null || true
 done
-# Fail-closed egress for uid 65532 (the node and its query children): loopback,
-# the cluster CIDRs and the WireGuard interface only. IPv6 has no tunnel: reject.
+# Egress for uid 65532 (the node and its query children): loopback and the
+# cluster CIDRs it needs, then public internet only. Link-local (instance
+# metadata) and private ranges are refused, so a customer-supplied host cannot
+# reach the host's VPC, the cluster or cloud credentials. IPv6: loopback only.
 iptables -N KELVO_EGRESS
 iptables -A KELVO_EGRESS -o lo -j ACCEPT
-iptables -A KELVO_EGRESS -o wg0 -j ACCEPT
-# WireGuard sends the encrypted packet with the original socket's owner, so the
-# tunnel's own UDP to the endpoint must be allowed for 65532 too.
-iptables -A KELVO_EGRESS -d "${KELVO_WG_ENDPOINT%:*}" -p udp --dport "${KELVO_WG_ENDPOINT#*:}" -j ACCEPT
 for c in $(printf '%s' "$KELVO_ALLOW_CIDRS" | tr ',' ' '); do iptables -A KELVO_EGRESS -d "$c" -j ACCEPT; done
-iptables -A KELVO_EGRESS -j REJECT
+for c in 169.254.0.0/16 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 127.0.0.0/8 0.0.0.0/8 224.0.0.0/4 240.0.0.0/4; do iptables -A KELVO_EGRESS -d "$c" -j REJECT; done
+iptables -A KELVO_EGRESS -j ACCEPT
 iptables -I OUTPUT -m owner --uid-owner 65532 -j KELVO_EGRESS
 ip6tables -N KELVO_EGRESS
 ip6tables -A KELVO_EGRESS -o lo -j ACCEPT
 ip6tables -A KELVO_EGRESS -j REJECT
 ip6tables -I OUTPUT -m owner --uid-owner 65532 -j KELVO_EGRESS
-# The rules above replace the image entrypoint's (which allow tailscale0).
+# The rules above replace the image entrypoint's (which allow only tailscale0).
 KELVO_EGRESS=open exec /usr/local/bin/kelvo-node-entrypoint node --config /tmp/node.yml
 """
 
@@ -585,7 +550,7 @@ nats:
   password_env: KELVO_NATS_WORKER_PASSWORD
   ca_file: /run/kelvo/tls/nats-ca.crt
 resources:
-  max_concurrent: 12
+  max_concurrent: 36
   memory_mb: 1632
   baseline_mb: 96
   overhead_mb: 96
@@ -616,7 +581,7 @@ connection_resolvers:
     cert_file: /run/kelvo/tls/internal.crt
     key_file: /run/kelvo/tls/internal.key
     timeout: 15s
-    max_concurrent: 12
+    max_concurrent: 32
 operations:
   private_sources:
     dbapi:
@@ -644,20 +609,24 @@ operations:
     max_entries: 32
     max_stored_bytes: 16777216
   max_result_bytes: 1048576
-  max_concurrent: 10
+  max_concurrent: 32
   max_downloads: 10
   poll_interval: 250ms
+  # Warm workers keep an authorized database connection per source, so repeat
+  # reads skip the TCP, TLS and login round trips.
   warm_pool:
-    enabled: false
+    enabled: true
     idle_ttl: 30m
-    max_workers: 1
-    max_per_key: 1
-    queue_depth: 8
+    max_workers: 4
+    max_per_key: 2
+    # 8 reads x the default 8 MiB stream buffer must fit overhead_mb (96).
+    max_in_flight: 8
+    queue_depth: 64
     queue_timeout: 10s
     worker_memory_mb: 32
 policy:
   tenant_id: shared
-  max_queries: 56
+  max_queries: 256
   job_ttl: 3m
   lease_duration: 15s
   replicas: 1
@@ -669,7 +638,7 @@ policy:
     threads: 1
     max_temp_mb: 128
     result_compression: lz4_frame
-  workers: {local: 10}
+  workers: {local: 32}
   operations:
     shards: 8
     slots_per_shard: 4

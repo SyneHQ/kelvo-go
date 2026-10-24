@@ -14,7 +14,7 @@ Images come from `.github/workflows/hakopod-image.yml` (push to `cargo`, tags `v
 
 ## Requirements
 
-Hakopod 0.1.0-alpha.64 or later (node profiles with `run_as_root`, and sidecars). The `node` service relies on both: the binding in `node-profiles.toml` lets the node container start as root (to delegate its cgroup subtree and install the egress rules before dropping to 65532), and grants the `tailscale` sidecar `NET_ADMIN`, `NET_RAW`, `/dev/net/tun` and root.
+Hakopod 0.1.0-alpha.64 or later (node profiles with `run_as_root`, and sidecars). The `node` service relies on both: the binding in `node-profiles.toml` lets the node container start as root (to delegate its cgroup subtree and install the egress rules before dropping to 65532), and allows its sidecars.
 
 ## Runbook
 
@@ -31,19 +31,15 @@ Hakopod 0.1.0-alpha.64 or later (node profiles with `run_as_root`, and sidecars)
 4. Keep `kelvo` in an application of its own: its namespace becomes pod-security `privileged`. The node container runs privileged on `hakopod-server`, which also runs the control plane and other applications: a Kelvo escape would reach all of them. Kelvo's Landlock and cgroup containment are the boundary for query children.
 5. Create the virtual network from `network.toml` (Networks, Create network, import). The `syne` application must also declare a network with `virtual_network = "kelvo-net"` and `segment = "gateway"` on db-api.
 
-### 2. Fixed egress through Tailscale
+### 2. Egress from the Hakopod host
 
-The `tailscale` sidecar in `kelvo/hakopod.toml` joins the tailnet and uses the Oracle VM as its exit node. The route change happens in the pod's network namespace only; the host and other applications keep their own routes.
+Databases see the node's traffic from the Hakopod host's public address (production: the Elastic IP `34.195.2.234`), which customers allow-list. There is no tunnel. Until 2026-10-24 the node went through a WireGuard exit on an Oracle VM in Mumbai, which added about 200 ms to every database round trip (a `select 1` against an RDS in Ohio took 6 s, of which about 4.8 s were round trips; directly it is estimated at about 1 s).
 
-1. On the Oracle VM: `sudo tailscale set --advertise-exit-node`, enable `net.ipv4.ip_forward=1` (and IPv6 forwarding if used), and approve the exit node in the Tailscale admin console.
-2. No auth key is needed. On the first start the sidecar has no state, so `containerboot` prints a login URL in its logs (`To authenticate, visit: https://login.tailscale.com/a/...`). Read it with `hakopod logs kelvo --service node` or the sidecar terminal (`tailscale status`), open it while signed in to the tailnet, and approve the machine. The node state lives on the `tailscale-state` volume, so restarts stay logged in.
-3. In the Tailscale admin console, open the machine `kelvo-node-hakopod` and turn on "Disable key expiry", or it asks to log in again when the node key expires. Make sure the account that approved it may use the exit node.
-4. Replace `REPLACE_ORACLE_EXIT_NODE` in `TS_EXTRA_ARGS` with the exit node's tailnet IP or name, and pin the `tailscale/tailscale` image digest you have reviewed.
-5. `KELVO_ALLOW_CIDRS` in the node's env lists the cluster CIDRs that stay direct (k3s defaults `10.42.0.0/16` pods, `10.43.0.0/16` services). Check them on the server before deploying.
+1. Keep the host address fixed: use an Elastic IP, not an auto-assigned public IP, which changes when the instance stops.
+2. Changing it is a customer-visible change. Announce the new address one to two months ahead, and repeat the notice.
+3. `KELVO_ALLOW_CIDRS` in the node's env lists the cluster CIDRs the node must reach (k3s defaults `10.42.0.0/16` pods, `10.43.0.0/16` services).
 
-Until the login is approved, the node's database connections fail closed (below); Kelvo itself starts.
-
-Fail-closed: the node entrypoint installs iptables and ip6tables rules for uid 65532 (the node and its query children): loopback, `KELVO_ALLOW_CIDRS` and `tailscale0` only, everything else rejected. If the sidecar or the exit node is down, database connections fail instead of leaving from the server's own address.
+Egress rules: `start.sh` installs iptables rules for uid 65532 (the node and its query children): loopback and `KELVO_ALLOW_CIDRS` are accepted; link-local (instance metadata), private and reserved ranges are rejected; other (public) addresses are accepted. A customer-supplied host therefore cannot reach the host's VPC, the cluster or cloud credentials. IPv6 is loopback only.
 
 ### 3. Kelvo TLS material
 
@@ -76,8 +72,8 @@ The worker ID `n1` and tenant `kelvo-test` must match the URI SAN exactly. `crea
 ### 5. Verify
 
 1. Gateway `/ready` returns 200 and the node reports ready (sandbox probe, identity claim).
-2. After section 2 exists: from inside the node pod, run as uid 65532 a fetch of an IP echo service and require the Oracle VM's public IP. Also check the database sees the Oracle IP.
-3. Fail-closed: stop tailscaled in the sidecar (`hakopod terminal kelvo --service node --container tailscale`); new DB connections from the node must fail (REJECT), not leave from the host IP.
+2. From inside the node pod, as uid 65532, a fetch of an IP echo service returns the host's Elastic IP, and the database sees that address.
+3. As uid 65532, connections to `169.254.169.254`, the host's VPC range and other private ranges are rejected.
 4. Canary: point db-api (application `syne`, joined to `kelvo-net/gateway`) at `https://gateway:8443` using the test token and run one query on the `pg` source. Confirm `from_applications = ["syne/db-api"]` blocks other callers.
 
 ### 6. Rollback
@@ -90,5 +86,4 @@ Roll the application back to the previous revision in Hakopod (it creates a new 
 - The entrypoint is tested only with its dry-run mode and shellcheck; the actual cgroup/chown/setpriv calls and that `node` can manage `jobs` are untested.
 - Docker images were not built; the `hakopod-node` target and the workflow have not run.
 - The hakopod validator checks schema only. Single-file secret mount modes with `fs_group = 65532` and `containment.root` are assumptions.
-- Egress via Tailscale, fail-closed behaviour and the Oracle IP checks are design only.
 - NATS config (`accounts`, env-interpolated passwords), `cluster-init` against a single member, and `kelvo node --check-config` of the inline YAML were not run.
