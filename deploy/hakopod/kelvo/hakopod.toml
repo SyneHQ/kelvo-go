@@ -597,9 +597,11 @@ operations:
       ticket_public_key: CAp3b9q3V59Hzse81LbYfkbfJ94YFzmy5yPB9ciucRw=
       accepted_key_id: synehq-rabbit-receipt-20261009
       accepted_public_key: J7FoMx5/ADctWaV2ofUYmMMrorcguCYPS3jGhmmTUhc=
-      max_sessions: 1
-      max_data_connections: 1
-      max_data_per_session: 1
+      # Rabbit admits 100 connections per worker IP. The sum of max_sessions
+      # across principals must stay within operations max_concurrent (32).
+      max_sessions: 16
+      max_data_connections: 64
+      max_data_per_session: 4
   input_url: https://127.0.0.1:8444
   tls:
     cert_file: /run/kelvo/tls/internal.crt
