@@ -301,14 +301,18 @@ mounts = [{ volume = "gateway-state", mount_path = "/var/lib/kelvo/gateway" }]
 [[services.gateway.sidecars]]
 name = "relay"
 image = "alpine/socat:1.8.1.3@sha256:22d77becaeeea8ef56b8c4bb2312323acafe85354be6a85714ff5050e3537842"
-cpu = "20m"
-memory = "32Mi"
+cpu = "100m"
+memory = "64Mi"
 command = ["socat", "TCP-LISTEN:8445,bind=127.0.0.1,fork,reuseaddr", "TCP:node:8443"]
 
 # Small request so the app fits the single node's reservations; the
 # profile limit still allows bursts.
 [services.gateway.resources]
 cpu_request = "30m"
+# Bursts of schema calls throttled the 600m default: TLS, grant checks and
+# operation inputs all run here.
+cpu_limit = "2"
+memory_limit = "512Mi"
 
 [services.gateway.network_access]
 from = ["node"]
@@ -474,8 +478,8 @@ temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
 [[services.node.sidecars]]
 name = "relay"
 image = "alpine/socat:1.8.1.3@sha256:22d77becaeeea8ef56b8c4bb2312323acafe85354be6a85714ff5050e3537842"
-cpu = "20m"
-memory = "32Mi"
+cpu = "100m"
+memory = "64Mi"
 command = ["/bin/sh", "-c", "socat TCP-LISTEN:9443,bind=127.0.0.1,fork,reuseaddr TCP:db-api.hp-71b981e3dcd5a8c89c4934ed231efa3c.svc.cluster.local:9443 & exec socat TCP-LISTEN:8444,bind=127.0.0.1,fork,reuseaddr TCP:gateway:8444"]
 
 # Small request so the app fits the single node's reservations; the
