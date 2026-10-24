@@ -101,7 +101,7 @@ func (c ReadWorkersConfig) withDefaults() ReadWorkersConfig {
 }
 
 func (c ReadWorkersConfig) validate(resources *ResourceConfig) error {
-	if c.MaxWorkers < 1 || c.MaxWorkers > 64 || c.MaxInFlight < 1 || c.MaxInFlight > 64 || c.MaxPerKey < 1 || c.MaxPerKey > c.MaxWorkers || c.PoolSize < 0 || c.PoolSize > 32 || c.MaxSourceConnections < 1 || c.MaxSourceConnections > maxMaxSourceConns || c.StreamBufferMB < 1 || c.StreamBufferMB > 256 ||
+	if c.MaxWorkers < 1 || c.MaxWorkers > MaxConcurrency || c.MaxInFlight < 1 || c.MaxInFlight > 64 || c.MaxPerKey < 1 || c.MaxPerKey > c.MaxWorkers || c.PoolSize < 0 || c.PoolSize > maxMaxSourceConns || c.MaxSourceConnections < 1 || c.MaxSourceConnections > maxMaxSourceConns || c.StreamBufferMB < 1 || c.StreamBufferMB > 256 ||
 		c.EvictMinIdle < time.Millisecond || c.EvictMinIdle > 10*time.Minute || c.IdleTTL < 10*time.Millisecond || c.IdleTTL > 24*time.Hour || c.QueueWait < 10*time.Millisecond || c.QueueWait >= maxReadQueueWait {
 		return errReadWorkersConfig
 	}
