@@ -617,7 +617,8 @@ operations:
     max_stored_bytes: 1073741824
   max_result_bytes: 1048576
   max_concurrent: 32
-  max_downloads: 10
+  # db-api fetches each schema result once; 10 refused bursts with 429.
+  max_downloads: 64
   poll_interval: 250ms
   # Warm workers keep an authorized database connection per source, so repeat
   # reads skip the TCP, TLS and login round trips.
