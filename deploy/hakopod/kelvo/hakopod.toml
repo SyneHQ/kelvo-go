@@ -30,7 +30,7 @@ segment = "gateway"
 [networks.kelvo-egress]
 
 [services.nats]
-restart_nonce = "prod-2026-10-22a"
+restart_nonce = "prod-2026-10-24-p32"
 image = "nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4"
 port = 4222
 networks = ["kelvo-internal"]
@@ -66,13 +66,13 @@ tls {
   timeout: 3
 }
 jetstream {
-  store_dir: /data/jetstream
+  store_dir: /data/jetstream-p32
   max_memory_store: 16777216
-  max_file_store: 268435456
+  max_file_store: 536870912
 }
 accounts {
   shared_lz4 {
-    jetstream { max_memory: 4194304, max_file: 67108864, max_streams: 7, max_consumers: 4 }
+    jetstream { max_memory: 4194304, max_file: 268435456, max_streams: 7, max_consumers: 4 }
     users: [
       {
         user: gateway
@@ -124,7 +124,7 @@ secret = { ref = "kelvo-nats-key" }
 mode = 292
 
 [services.cluster-init]
-restart_nonce = "prod-2026-10-22a"
+restart_nonce = "prod-2026-10-24-p32"
 image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
 registry_credential = "ghcr"
 # A new pod's network policy is programmed a few seconds after it starts, and
@@ -160,7 +160,7 @@ worker_tls:
   cert_file: /run/kelvo/tls/internal.crt
   key_file: /run/kelvo/tls/internal.key
   ca_file: /run/kelvo/tls/internal-ca.crt
-max_queries: 56
+max_queries: 256
 max_concurrent: 32
 max_http_requests: 256
 authentication:
@@ -188,7 +188,7 @@ operations:
 tenants:
   - policy:
       tenant_id: shared
-      max_queries: 56
+      max_queries: 256
       job_ttl: 3m
       lease_duration: 15s
       replicas: 1
@@ -200,7 +200,7 @@ tenants:
         threads: 1
         max_temp_mb: 128
         result_compression: lz4_frame
-      workers: {local: 10}
+      workers: {local: 32}
       operations:
         shards: 8
         slots_per_shard: 4
@@ -278,7 +278,7 @@ secret = { ref = "kelvo-prod-service-keys" }
 mode = 288
 
 [services.gateway]
-restart_nonce = "prod-2026-10-22a"
+restart_nonce = "prod-2026-10-24-p32"
 image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
 registry_credential = "ghcr"
 # Kelvo reads its service keys only from a private 0600 file owned by its own
@@ -328,7 +328,7 @@ worker_tls:
   cert_file: /run/kelvo/tls/internal.crt
   key_file: /run/kelvo/tls/internal.key
   ca_file: /run/kelvo/tls/internal-ca.crt
-max_queries: 56
+max_queries: 256
 max_concurrent: 32
 max_http_requests: 256
 authentication:
@@ -356,7 +356,7 @@ operations:
 tenants:
   - policy:
       tenant_id: shared
-      max_queries: 56
+      max_queries: 256
       job_ttl: 3m
       lease_duration: 15s
       replicas: 1
@@ -368,7 +368,7 @@ tenants:
         threads: 1
         max_temp_mb: 128
         result_compression: lz4_frame
-      workers: {local: 10}
+      workers: {local: 32}
       operations:
         shards: 8
         slots_per_shard: 4
@@ -446,7 +446,7 @@ secret = { ref = "kelvo-prod-service-keys" }
 mode = 288
 
 [services.node]
-restart_nonce = "prod-2026-10-22a"
+restart_nonce = "prod-2026-10-24-p32"
 image = "ghcr.io/synehq/kelvo-go-node@sha256:fd7e29bb9e8819a3245b05810a802a0b1b40dab046990abf04491da49e403647"
 registry_credential = "ghcr"
 # start.sh (below) prepares what a container cannot know in advance, then runs
@@ -626,7 +626,7 @@ operations:
     worker_memory_mb: 32
 policy:
   tenant_id: shared
-  max_queries: 56
+  max_queries: 256
   job_ttl: 3m
   lease_duration: 15s
   replicas: 1
@@ -638,7 +638,7 @@ policy:
     threads: 1
     max_temp_mb: 128
     result_compression: lz4_frame
-  workers: {local: 10}
+  workers: {local: 32}
   operations:
     shards: 8
     slots_per_shard: 4
