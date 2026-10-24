@@ -30,7 +30,7 @@ segment = "gateway"
 [networks.kelvo-egress]
 
 [services.nats]
-restart_nonce = "prod-2026-10-24-p32"
+restart_nonce = "prod-2026-10-24-p32b"
 image = "nats:2.15.0-alpine@sha256:ac8f88a6494bffc2c2a5289a0ca61cb28a9145c11ba5677cf24265d07f46d8d4"
 port = 4222
 networks = ["kelvo-internal"]
@@ -66,7 +66,7 @@ tls {
   timeout: 3
 }
 jetstream {
-  store_dir: /data/jetstream-p32
+  store_dir: /data/jetstream-p32b
   max_memory_store: 16777216
   max_file_store: 536870912
 }
@@ -124,7 +124,7 @@ secret = { ref = "kelvo-nats-key" }
 mode = 292
 
 [services.cluster-init]
-restart_nonce = "prod-2026-10-24-p32"
+restart_nonce = "prod-2026-10-24-p32b"
 image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
 registry_credential = "ghcr"
 # A new pod's network policy is programmed a few seconds after it starts, and
@@ -202,9 +202,9 @@ tenants:
         result_compression: lz4_frame
       workers: {local: 32}
       operations:
-        shards: 8
-        slots_per_shard: 4
-        retention: 30m
+        shards: 64
+        slots_per_shard: 8
+        retention: 5m
         execution_timeout: 60s
       access:
         revision: 1
@@ -278,7 +278,7 @@ secret = { ref = "kelvo-prod-service-keys" }
 mode = 288
 
 [services.gateway]
-restart_nonce = "prod-2026-10-24-p32"
+restart_nonce = "prod-2026-10-24-p32b"
 image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
 registry_credential = "ghcr"
 # Kelvo reads its service keys only from a private 0600 file owned by its own
@@ -370,9 +370,9 @@ tenants:
         result_compression: lz4_frame
       workers: {local: 32}
       operations:
-        shards: 8
-        slots_per_shard: 4
-        retention: 30m
+        shards: 64
+        slots_per_shard: 8
+        retention: 5m
         execution_timeout: 60s
       access:
         revision: 1
@@ -446,7 +446,7 @@ secret = { ref = "kelvo-prod-service-keys" }
 mode = 288
 
 [services.node]
-restart_nonce = "prod-2026-10-24-p32"
+restart_nonce = "prod-2026-10-24-p32b"
 image = "ghcr.io/synehq/kelvo-go-node@sha256:fd7e29bb9e8819a3245b05810a802a0b1b40dab046990abf04491da49e403647"
 registry_credential = "ghcr"
 # start.sh (below) prepares what a container cannot know in advance, then runs
@@ -640,9 +640,9 @@ policy:
     result_compression: lz4_frame
   workers: {local: 32}
   operations:
-    shards: 8
-    slots_per_shard: 4
-    retention: 30m
+    shards: 64
+    slots_per_shard: 8
+    retention: 5m
     execution_timeout: 60s
   access:
     revision: 1
