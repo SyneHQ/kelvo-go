@@ -125,7 +125,7 @@ mode = 292
 
 [services.cluster-init]
 restart_nonce = "prod-2026-10-24-p32c"
-image = "ghcr.io/synehq/kelvo-go@sha256:db2e0c716058c9162217d310d81cee873d97720772f36f458381f2797f5ef0a0"
+image = "ghcr.io/synehq/kelvo-go@sha256:b5b0071e1c64383f695d92deb4c0f9f01ead2decfdad336b8af563689dfd552e"
 registry_credential = "ghcr"
 # A new pod's network policy is programmed a few seconds after it starts, and
 # cluster-init connects to NATS once, at once. Wait before connecting.
@@ -279,7 +279,7 @@ mode = 288
 
 [services.gateway]
 restart_nonce = "prod-2026-10-24-p32c"
-image = "ghcr.io/synehq/kelvo-go@sha256:db2e0c716058c9162217d310d81cee873d97720772f36f458381f2797f5ef0a0"
+image = "ghcr.io/synehq/kelvo-go@sha256:b5b0071e1c64383f695d92deb4c0f9f01ead2decfdad336b8af563689dfd552e"
 registry_credential = "ghcr"
 # Kelvo reads its service keys only from a private 0600 file owned by its own
 # user under trusted directories; mounted secrets are root-owned and
@@ -301,14 +301,18 @@ mounts = [{ volume = "gateway-state", mount_path = "/var/lib/kelvo/gateway" }]
 [[services.gateway.sidecars]]
 name = "relay"
 image = "alpine/socat:1.8.1.3@sha256:22d77becaeeea8ef56b8c4bb2312323acafe85354be6a85714ff5050e3537842"
-cpu = "20m"
-memory = "32Mi"
+cpu = "100m"
+memory = "64Mi"
 command = ["socat", "TCP-LISTEN:8445,bind=127.0.0.1,fork,reuseaddr", "TCP:node:8443"]
 
 # Small request so the app fits the single node's reservations; the
 # profile limit still allows bursts.
 [services.gateway.resources]
 cpu_request = "30m"
+# Bursts of schema calls throttled the 600m default: TLS, grant checks and
+# operation inputs all run here.
+cpu_limit = "2"
+memory_limit = "512Mi"
 
 [services.gateway.network_access]
 from = ["node"]
@@ -447,7 +451,7 @@ mode = 288
 
 [services.node]
 restart_nonce = "prod-2026-10-24-p32c"
-image = "ghcr.io/synehq/kelvo-go-node@sha256:4a46aae7b9daade73a1e032ae2a97bc67b1f432bc15be70f5190291bcfbad674"
+image = "ghcr.io/synehq/kelvo-go-node@sha256:989a83f7196a500e5cfd197d52ef2edaf80c1f991ae19badf4cc21f0c4b48b02"
 registry_credential = "ghcr"
 # start.sh (below) prepares what a container cannot know in advance, then runs
 # the image entrypoint.
@@ -474,8 +478,8 @@ temporary_mounts = [{ mount_path = "/tmp", size_mib = 64 }]
 [[services.node.sidecars]]
 name = "relay"
 image = "alpine/socat:1.8.1.3@sha256:22d77becaeeea8ef56b8c4bb2312323acafe85354be6a85714ff5050e3537842"
-cpu = "20m"
-memory = "32Mi"
+cpu = "100m"
+memory = "64Mi"
 command = ["/bin/sh", "-c", "socat TCP-LISTEN:9443,bind=127.0.0.1,fork,reuseaddr TCP:db-api.hp-71b981e3dcd5a8c89c4934ed231efa3c.svc.cluster.local:9443 & exec socat TCP-LISTEN:8444,bind=127.0.0.1,fork,reuseaddr TCP:gateway:8444"]
 
 # Small request so the app fits the single node's reservations; the
