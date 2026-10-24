@@ -160,7 +160,7 @@ worker_tls:
   cert_file: /run/kelvo/tls/internal.crt
   key_file: /run/kelvo/tls/internal.key
   ca_file: /run/kelvo/tls/internal-ca.crt
-max_queries: 256
+max_queries: 56
 max_concurrent: 32
 max_http_requests: 256
 authentication:
@@ -188,7 +188,7 @@ operations:
 tenants:
   - policy:
       tenant_id: shared
-      max_queries: 256
+      max_queries: 56
       job_ttl: 3m
       lease_duration: 15s
       replicas: 1
@@ -200,7 +200,7 @@ tenants:
         threads: 1
         max_temp_mb: 128
         result_compression: lz4_frame
-      workers: {local: 32}
+      workers: {local: 10}
       operations:
         shards: 8
         slots_per_shard: 4
@@ -328,7 +328,7 @@ worker_tls:
   cert_file: /run/kelvo/tls/internal.crt
   key_file: /run/kelvo/tls/internal.key
   ca_file: /run/kelvo/tls/internal-ca.crt
-max_queries: 256
+max_queries: 56
 max_concurrent: 32
 max_http_requests: 256
 authentication:
@@ -356,7 +356,7 @@ operations:
 tenants:
   - policy:
       tenant_id: shared
-      max_queries: 256
+      max_queries: 56
       job_ttl: 3m
       lease_duration: 15s
       replicas: 1
@@ -368,7 +368,7 @@ tenants:
         threads: 1
         max_temp_mb: 128
         result_compression: lz4_frame
-      workers: {local: 32}
+      workers: {local: 10}
       operations:
         shards: 8
         slots_per_shard: 4
@@ -626,7 +626,7 @@ operations:
     worker_memory_mb: 32
 policy:
   tenant_id: shared
-  max_queries: 256
+  max_queries: 56
   job_ttl: 3m
   lease_duration: 15s
   replicas: 1
@@ -638,7 +638,7 @@ policy:
     threads: 1
     max_temp_mb: 128
     result_compression: lz4_frame
-  workers: {local: 32}
+  workers: {local: 10}
   operations:
     shards: 8
     slots_per_shard: 4
