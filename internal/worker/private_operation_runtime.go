@@ -34,7 +34,8 @@ type privateOperationRuntime struct {
 	opener            func(sourceproof.Scope, func(context.Context) (sourceproof.Envelope, error)) (transportbroker.Opener, error)
 	channel           func(context.Context, adapter.ProcessRequest, *transportbroker.Session, transportbroker.Binding, int, func()) (*privateOperationChannel, error)
 	entries           map[transportbroker.Binding]*privateOperationEntry
-	pending           int
+	pending           int // resolving operations, public or private, for Close
+	reserved          int // private sessions resolved but not yet entered
 	closed, joined    bool
 	cleanupEnabled    bool
 	proxySetupTimeout time.Duration
@@ -168,10 +169,6 @@ func (r *privateOperationRuntime) prepareModeWithCleanup(ctx context.Context, e 
 		r.mu.Unlock()
 		return bad(transportbroker.ErrClosed)
 	}
-	if len(r.entries)+r.pending >= r.limits.MaxSessions {
-		r.mu.Unlock()
-		return bad(transportbroker.ErrCapacity)
-	}
 	r.pending++
 	r.mu.Unlock()
 	pending := true
@@ -213,6 +210,23 @@ func (r *privateOperationRuntime) prepareModeWithCleanup(ctx context.Context, e 
 		selection.input.Input = payload
 		return selection.input, nil, nil
 	}
+	// Only a private source takes a session. Reserving before resolution let
+	// any public operation in flight refuse every concurrent one.
+	r.mu.Lock()
+	if len(r.entries)+r.reserved >= r.limits.MaxSessions {
+		r.mu.Unlock()
+		return bad(transportbroker.ErrCapacity)
+	}
+	r.reserved++
+	r.mu.Unlock()
+	reserved := true
+	defer func() {
+		if reserved {
+			r.mu.Lock()
+			r.reserved--
+			r.mu.Unlock()
+		}
+	}()
 	sourceDigest, err := privateSourceDigest(selection.input)
 	if err != nil {
 		return bad(err)
@@ -248,6 +262,8 @@ func (r *privateOperationRuntime) prepareModeWithCleanup(ctx context.Context, e 
 	r.entries[selection.binding] = entry
 	r.pending--
 	pending = false
+	r.reserved--
+	reserved = false
 	r.mu.Unlock()
 	var once sync.Once
 	release := func() {
