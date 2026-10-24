@@ -138,8 +138,10 @@ func TestPrivateRuntimeCapacityAndConstructorFailureKeepOwnedCleanup(t *testing.
 		t.Fatal("constructor failure lost admitted session custody")
 	}
 	calls := f.calls.Load()
-	if _, other, err := r.prepare(context.Background(), f.executor, f.record, f.request, nil); !errors.Is(err, transportbroker.ErrCapacity) || other != nil || f.calls.Load() != calls {
-		t.Fatal("full runtime allowed another resolver request")
+	// A full runtime resolves once to learn whether the source is private, then
+	// refuses it without admitting another session.
+	if _, other, err := r.prepare(context.Background(), f.executor, f.record, f.request, nil); !errors.Is(err, transportbroker.ErrCapacity) || other != nil || f.calls.Load() != calls+1 || r.broker.Snapshot().Sessions != 1 || r.reserved != 0 {
+		t.Fatal("full runtime admitted another private session")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -394,5 +396,43 @@ func TestPrivateRuntimeDataOpenUsesOperationContextAndConfiguredBudget(t *testin
 	}
 	if state := r.broker.Snapshot(); state.Sessions != 0 || state.Opening != 0 || state.DataConnections != 0 || state.CleanupFailed {
 		t.Fatal("cleanup retained unexpected broker ownership", state)
+	}
+}
+
+func TestPrivateRuntimePublicResolutionDoesNotTakeASession(t *testing.T) {
+	release := make(chan struct{})
+	f := newPrivateResolutionFixtureWithOptions(t, privateResolutionFixtureOptions{BeforeResponse: func(ctx context.Context, call int32) error {
+		if call != 1 {
+			return nil
+		}
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}})
+	f.change = func(wire *resolver.OperationResponse) { wire.PrivateSource = nil }
+	r := privateRuntimeFixture(t, f) // MaxSessions: 1
+	first := make(chan error, 1)
+	go func() {
+		_, _, err := r.prepareMode(context.Background(), f.executor, f.record, f.request, nil, true, 0)
+		first <- err
+	}()
+	for f.calls.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	// The first public operation is still resolving. Public sources never use a
+	// private session, so a concurrent one must not be refused for capacity.
+	input, channel, err := r.prepareMode(context.Background(), f.executor, f.record, f.request, nil, true, 0)
+	close(release)
+	if err != nil || channel != nil || input.Source.Engine != "postgres" {
+		t.Fatal("public operation refused while another resolved", err)
+	}
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if r.broker.Snapshot().Sessions != 0 || r.reserved != 0 || r.pending != 0 {
+		t.Fatal("public operations held private session capacity")
 	}
 }
