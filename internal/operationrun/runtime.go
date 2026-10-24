@@ -7,6 +7,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"log"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -423,6 +426,8 @@ func (r *Runtime) heartbeat(ctx context.Context, cancel context.CancelFunc, done
 }
 
 func (r *Runtime) reject(record ledger.Record, binding ledger.Binding, code string) {
+	_, file, line, _ := runtime.Caller(1)
+	log.Printf("kelvo: operation %s rejected %s before start at %s:%d", record.ID, code, filepath.Base(file), line)
 	ctx, cancel := context.WithTimeout(context.Background(), r.store.Policy().StorageTimeout)
 	defer cancel()
 	_, _ = r.store.RejectBeforeStart(ctx, record.Scope, record.ID, binding, code)
