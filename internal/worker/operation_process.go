@@ -94,6 +94,12 @@ func rejectedOperation(input adapter.ProcessRequest, code string) operations.Rec
 	// refusing stage by source line; no request or source detail is logged.
 	_, file, line, _ := runtime.Caller(1)
 	log.Printf("kelvo: operation %s refused %s at %s:%d", input.OperationID, code, filepath.Base(file), line)
+	return rejectedReceipt(input, code)
+}
+
+// rejectedReceipt builds the receipt without logging, for defaults that are
+// replaced before an operation ends.
+func rejectedReceipt(input adapter.ProcessRequest, code string) operations.Receipt {
 	r := operations.Receipt{Version: operations.Version, OperationID: input.OperationID, RequestSHA256: input.RequestSHA256,
 		Outcome: operations.Rejected, Effect: operations.EffectNone, ErrorCode: code}
 	if r.Validate() != nil {
@@ -140,7 +146,7 @@ func (e *Executor) ExecuteResolvedOperation(parent context.Context, cfg Operatio
 // Public callbacks still supply only ProcessRequest and cannot choose fd7.
 func (e *Executor) executeResolvedOperation(parent context.Context, cfg OperationProcessConfig, operationID, requestSHA256 string, resolve func(context.Context) (adapter.ProcessRequest, *privateOperationChannel, error), sink query.Sink) (receipt operations.Receipt, resultErr error) {
 	input := adapter.ProcessRequest{OperationID: operationID, RequestSHA256: requestSHA256}
-	receipt = rejectedOperation(input, "INVALID_ARGUMENT")
+	receipt = rejectedReceipt(input, "INVALID_ARGUMENT")
 	var custody *containment.Custody
 	var commandIO *commandIO
 	var cleanup operationCleanupState

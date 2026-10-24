@@ -14,7 +14,7 @@ import (
 // Only parent-owned bytes can be published. The child never receives this file
 // descriptor or its pathname; it emits the candidate through stdout.
 func finishFileOperation(ctx context.Context, input adapter.ProcessRequest, read operationReceiptRead, file *os.File, bytes int64, digest string, delivered bool) (operations.Receipt, error) {
-	rejected := rejectedOperation(input, "SOURCE_FAILED")
+	rejected := rejectedReceipt(input, "SOURCE_FAILED")
 	var frame adapter.FileProcessReceipt
 	if read.err != nil || operations.DecodeStrict(read.raw, &frame, operations.MaxReceiptBytes) != nil || frame.Validate(input) != nil {
 		return rejected, operationFailure("SOURCE_FAILED")
