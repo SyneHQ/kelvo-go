@@ -483,3 +483,16 @@ func TestAuthorityIntegrityAndAssignedRejection(t *testing.T) {
 		t.Fatal("rejected operation started", err)
 	}
 }
+
+func TestPolicyRetentionCoversLongestRecordLifetime(t *testing.T) {
+	policy := Policy{Namespace: "shared", TenantID: "shared", Shards: 1, SlotsPerShard: 8, Retention: MinRetention, ExecutionTimeout: time.Minute, LeaseDuration: 10 * time.Second, StorageTimeout: time.Second, MaxCASAttempts: 32}
+	if err := policy.Validate(); err != nil {
+		t.Fatal("minimum retention rejected", err)
+	}
+	// Records live until authority expiry + grace; result stores use retention
+	// as their maximum TTL, so a shorter retention fails every operation.
+	policy.Retention = MinRetention - time.Second
+	if err := policy.Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatal("retention below the longest record lifetime accepted", err)
+	}
+}

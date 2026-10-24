@@ -29,6 +29,16 @@ const (
 	Cancelling = "cancelling"
 )
 
+// MaxAuthorityLifetime bounds a submitted grant. A record is retained until
+// at least its authority expiry plus AuthorityGrace, so a retention below
+// MinRetention would write receipts and results that outlive the retention
+// their stores were sized for.
+const (
+	MaxAuthorityLifetime = 330 * time.Second
+	AuthorityGrace       = 30 * time.Second
+	MinRetention         = MaxAuthorityLifetime + AuthorityGrace
+)
+
 var (
 	ErrNotFound    = errors.New("operation not found")
 	ErrConflict    = errors.New("operation identity or custody conflict")
@@ -68,7 +78,7 @@ type Policy struct {
 
 func (p Policy) Validate() error {
 	if !namespacePattern.MatchString(p.Namespace) || !safeText(p.TenantID, 128) || p.Shards < 1 || p.Shards > 65536 || p.SlotsPerShard < 1 || p.SlotsPerShard > 8 ||
-		p.ExecutionTimeout < time.Second || p.ExecutionTimeout > time.Hour || p.Retention <= p.ExecutionTimeout || p.Retention > 30*24*time.Hour ||
+		p.ExecutionTimeout < time.Second || p.ExecutionTimeout > time.Hour || p.Retention <= p.ExecutionTimeout || p.Retention < MinRetention || p.Retention > 30*24*time.Hour ||
 		p.LeaseDuration < time.Second || p.LeaseDuration > time.Minute || p.LeaseDuration > p.ExecutionTimeout || p.StorageTimeout <= 0 || p.StorageTimeout > 30*time.Second || p.MaxCASAttempts < 1 || p.MaxCASAttempts > 32 {
 		return ErrInvalid
 	}
@@ -281,7 +291,7 @@ func (s *Store) submitShard(ctx context.Context, input Submission, digest, ident
 	duplicate := false
 	out, err := s.update(ctx, shard, true, func(d *document, now time.Time) (*Record, bool, error) {
 		duplicate = false
-		if !now.Before(input.AuthorityUntil) || input.AuthorityUntil.After(now.Add(330*time.Second)) {
+		if !now.Before(input.AuthorityUntil) || input.AuthorityUntil.After(now.Add(MaxAuthorityLifetime)) {
 			return nil, false, ErrConflict
 		}
 		for i := range d.Records {
@@ -306,7 +316,7 @@ func (s *Store) submitShard(ctx context.Context, input Submission, digest, ident
 			return nil, changed, ErrCapacity
 		}
 		r := Record{ID: id, IdentitySHA256: identity, Scope: input.Scope, Kind: input.Request.Kind, RequestSHA256: digest, RequestRef: input.RequestRef, AuthoritySHA256: input.AuthoritySHA256, AuthorityToken: input.AuthorityToken,
-			CreatedAt: now, ExecuteBefore: minTime(now.Add(s.policy.ExecutionTimeout), input.AuthorityUntil), AuthorityUntil: input.AuthorityUntil, RetainUntil: maxTime(now.Add(s.policy.Retention), input.AuthorityUntil.Add(30*time.Second)), State: Queued}
+			CreatedAt: now, ExecuteBefore: minTime(now.Add(s.policy.ExecutionTimeout), input.AuthorityUntil), AuthorityUntil: input.AuthorityUntil, RetainUntil: maxTime(now.Add(s.policy.Retention), input.AuthorityUntil.Add(AuthorityGrace)), State: Queued}
 		d.Records = append(d.Records, r)
 		// Reserve the worst-case terminal receipt before source execution. A
 		// grant-heavy shard must reject admission, not lose a later outcome.
@@ -396,7 +406,7 @@ func (s *Store) Complete(ctx context.Context, scope Scope, id string, binding Bi
 		copy := cloneReceipt(receipt)
 		r.Receipt = &copy
 		r.State = string(receipt.Outcome)
-		r.RetainUntil = maxTime(now.Add(s.policy.Retention), r.AuthorityUntil.Add(30*time.Second))
+		r.RetainUntil = maxTime(now.Add(s.policy.Retention), r.AuthorityUntil.Add(AuthorityGrace))
 		return true, nil
 	})
 }
@@ -515,7 +525,7 @@ func (s *Store) change(ctx context.Context, scope Scope, id string, fn func(*Rec
 
 func (s *Store) terminal(r *Record, now time.Time, outcome api.Outcome, effect api.Effect, code string) {
 	r.State = string(outcome)
-	r.RetainUntil = maxTime(now.Add(s.policy.Retention), r.AuthorityUntil.Add(30*time.Second))
+	r.RetainUntil = maxTime(now.Add(s.policy.Retention), r.AuthorityUntil.Add(AuthorityGrace))
 	r.Receipt = &api.Receipt{Version: api.Version, OperationID: r.ID, RequestSHA256: r.RequestSHA256, Outcome: outcome, Effect: effect, ErrorCode: code}
 }
 func (s *Store) expire(d *document, now time.Time) bool {
@@ -631,7 +641,7 @@ func (s *Store) validateDocument(d document, shard int) error {
 	for _, r := range d.Records {
 		got, err := s.shard(r.ID)
 		if err != nil || got != shard || ids[r.ID] || identities[r.IdentitySHA256] || !api.ValidDigest(r.IdentitySHA256) || !api.ValidDigest(r.RequestSHA256) || !validAuthority(r.AuthorityToken, r.AuthoritySHA256) || !s.validScope(r.Scope) || !r.Kind.Valid() || r.RequestRef.Validate() != nil || r.RequestRef.Format != "operation_request_v1" || r.RequestRef.Bytes > api.MaxRequestBytes ||
-			r.CreatedAt.IsZero() || !r.ExecuteBefore.After(r.CreatedAt) || r.ExecuteBefore.Sub(r.CreatedAt) > s.policy.ExecutionTimeout || r.ExecuteBefore.After(r.AuthorityUntil) || !r.AuthorityUntil.After(r.CreatedAt) || r.AuthorityUntil.Sub(r.CreatedAt) > 330*time.Second || r.RetainUntil.Before(r.AuthorityUntil.Add(30*time.Second)) || !r.RetainUntil.After(r.ExecuteBefore) {
+			r.CreatedAt.IsZero() || !r.ExecuteBefore.After(r.CreatedAt) || r.ExecuteBefore.Sub(r.CreatedAt) > s.policy.ExecutionTimeout || r.ExecuteBefore.After(r.AuthorityUntil) || !r.AuthorityUntil.After(r.CreatedAt) || r.AuthorityUntil.Sub(r.CreatedAt) > MaxAuthorityLifetime || r.RetainUntil.Before(r.AuthorityUntil.Add(AuthorityGrace)) || !r.RetainUntil.After(r.ExecuteBefore) {
 			return ErrInvalid
 		}
 		ids[r.ID], identities[r.IdentitySHA256] = true, true
