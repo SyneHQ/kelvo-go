@@ -16,7 +16,9 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -313,6 +315,8 @@ type operationAuditedExecution struct {
 func (p *operationAuditedExecution) Close() error { return p.delegate.Close() }
 func (p *operationAuditedExecution) Execute(ctx context.Context) (operations.Receipt, error) {
 	rejected := func(code string) operations.Receipt {
+		_, file, line, _ := runtime.Caller(1)
+		log.Printf("kelvo: operation %s refused %s at %s:%d", p.record.ID, code, filepath.Base(file), line)
 		return operations.Receipt{Version: operations.Version, OperationID: p.record.ID, RequestSHA256: p.record.RequestSHA256, Outcome: operations.Rejected, Effect: operations.EffectNone, ErrorCode: code}
 	}
 	if err := p.worker.authorize(ctx, p.record, &p.request, p.binding); err != nil {
