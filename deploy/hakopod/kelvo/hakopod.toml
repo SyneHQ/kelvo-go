@@ -125,7 +125,7 @@ mode = 292
 
 [services.cluster-init]
 restart_nonce = "prod-2026-10-24-p32c"
-image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
+image = "ghcr.io/synehq/kelvo-go@sha256:db2e0c716058c9162217d310d81cee873d97720772f36f458381f2797f5ef0a0"
 registry_credential = "ghcr"
 # A new pod's network policy is programmed a few seconds after it starts, and
 # cluster-init connects to NATS once, at once. Wait before connecting.
@@ -279,7 +279,7 @@ mode = 288
 
 [services.gateway]
 restart_nonce = "prod-2026-10-24-p32c"
-image = "ghcr.io/synehq/kelvo-go@sha256:4c20925eab0fba3ccce1ebaf144b053cdabc58013a0a04c945aac4d57385b1b0"
+image = "ghcr.io/synehq/kelvo-go@sha256:db2e0c716058c9162217d310d81cee873d97720772f36f458381f2797f5ef0a0"
 registry_credential = "ghcr"
 # Kelvo reads its service keys only from a private 0600 file owned by its own
 # user under trusted directories; mounted secrets are root-owned and
@@ -447,7 +447,7 @@ mode = 288
 
 [services.node]
 restart_nonce = "prod-2026-10-24-p32c"
-image = "ghcr.io/synehq/kelvo-go-node@sha256:fd7e29bb9e8819a3245b05810a802a0b1b40dab046990abf04491da49e403647"
+image = "ghcr.io/synehq/kelvo-go-node@sha256:4a46aae7b9daade73a1e032ae2a97bc67b1f432bc15be70f5190291bcfbad674"
 registry_credential = "ghcr"
 # start.sh (below) prepares what a container cannot know in advance, then runs
 # the image entrypoint.
