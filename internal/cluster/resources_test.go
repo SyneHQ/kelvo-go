@@ -20,7 +20,7 @@ func validResources() ResourceConfig {
 func TestResourceBudgetsRejectInvalidConfiguration(t *testing.T) {
 	for name, mutate := range map[string]func(*ResourceConfig){
 		"zero slots":                         func(c *ResourceConfig) { c.MaxConcurrent = 0 },
-		"too many slots":                     func(c *ResourceConfig) { c.MaxConcurrent = 65 },
+		"too many slots":                     func(c *ResourceConfig) { c.MaxConcurrent = MaxConcurrency + 1 },
 		"zero memory":                        func(c *ResourceConfig) { c.MemoryMB = 0 },
 		"memory overflow":                    func(c *ResourceConfig) { c.MemoryMB = math.MaxInt64 },
 		"memory cap":                         func(c *ResourceConfig) { c.MemoryMB = (1 << 30) + 1 },

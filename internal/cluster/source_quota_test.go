@@ -103,7 +103,7 @@ func quotaDeadline(t *testing.T) (context.Context, context.CancelFunc) {
 }
 
 func TestSourceQuotasValidateBoundedIdentities(t *testing.T) {
-	for _, q := range []map[string]int{{"bad.id": 1}, {"source": 0}, {"source": 65}} {
+	for _, q := range []map[string]int{{"bad.id": 1}, {"source": 0}, {"source": MaxConcurrency + 1}} {
 		if ValidateSourceQuotas(q) == nil {
 			t.Fatal("invalid quotas accepted")
 		}

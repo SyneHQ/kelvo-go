@@ -239,14 +239,14 @@ func ValidatePolicy(p Policy) error {
 		return err
 	}
 
-	if !clusterID.MatchString(p.TenantID) || p.MaxQueries < 1 || p.MaxQueries > 512 || p.LeaseDuration < 5*time.Second || p.LeaseDuration > time.Minute || p.JobTTL < p.Limits.Timeout+2*p.LeaseDuration || p.JobTTL > 4*time.Hour || (p.Replicas != 1 && p.Replicas != 3) || len(p.Workers) == 0 || len(p.Workers) > 64 {
+	if !clusterID.MatchString(p.TenantID) || p.MaxQueries < 1 || p.MaxQueries > 65536 || p.LeaseDuration < 5*time.Second || p.LeaseDuration > time.Minute || p.JobTTL < p.Limits.Timeout+2*p.LeaseDuration || p.JobTTL > 4*time.Hour || (p.Replicas != 1 && p.Replicas != 3) || len(p.Workers) == 0 || len(p.Workers) > 64 {
 		return errors.New("invalid tenant scheduling policy")
 	}
 	if err := p.Limits.Validate(); err != nil {
 		return err
 	}
 	for id, count := range p.Workers {
-		if !clusterID.MatchString(id) || count < 1 || count > 64 {
+		if !clusterID.MatchString(id) || count < 1 || count > MaxConcurrency {
 			return errors.New("invalid worker capacity")
 		}
 	}

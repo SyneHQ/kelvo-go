@@ -44,7 +44,7 @@ type WarmPoolConfig struct {
 	// MaxPerTenant must exceed the largest burst one user makes, an explorer
 	// page open being about 42 reads, and may not exceed the pool's interactive
 	// capacity (max_workers x max_in_flight).
-	MaxPerTenant     int `yaml:"max_per_tenant"`     // default 64 reads in flight per tenant, capped at capacity
+	MaxPerTenant     int `yaml:"max_per_tenant"`     // default: the pool capacity (max_workers × max_in_flight)
 	MaxPerConnection int `yaml:"max_per_connection"` // default max_per_key × max_in_flight
 	// Dashboard result cache for native reads; 0 takes the default.
 	CacheDisabled      bool          `yaml:"cache_disabled"`
@@ -92,8 +92,8 @@ func (c WarmPoolConfig) Validate() error {
 	if c.IdleTTL < 10*time.Millisecond || c.IdleTTL > 24*time.Hour {
 		return errors.New("warm_pool: idle_ttl must be between 10ms and 24h")
 	}
-	if c.MaxWorkers < 1 || c.MaxWorkers > 256 {
-		return errors.New("warm_pool: max_workers must be between 1 and 256")
+	if c.MaxWorkers < 1 || c.MaxWorkers > 4096 {
+		return errors.New("warm_pool: max_workers must be between 1 and 4096")
 	}
 	if c.MaxPerKey < 1 || c.MaxPerKey > c.MaxWorkers {
 		return errors.New("warm_pool: max_per_key must be between 1 and max_workers")
@@ -191,7 +191,7 @@ func (c WarmPoolConfig) FitsOverhead(overheadBytes int64) error {
 func (c WarmPoolConfig) caps() *admission.Caps {
 	tenant, connection := c.MaxPerTenant, c.MaxPerConnection
 	if tenant == 0 {
-		tenant = min(64, c.MaxWorkers*c.maxInFlight())
+		tenant = c.MaxWorkers * c.maxInFlight()
 	}
 	if connection == 0 {
 		connection = c.MaxPerKey * c.maxInFlight()

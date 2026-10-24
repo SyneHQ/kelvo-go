@@ -106,7 +106,7 @@ func ValidateSourceQuotas(quotas map[string]int) error {
 		return errors.New("source quotas support at most 64 source identities")
 	}
 	for id, count := range quotas {
-		if !catalog.ValidID(id) || count < 1 || count > 64 {
+		if !catalog.ValidID(id) || count < 1 || count > MaxConcurrency {
 			return errors.New("invalid source quota identity or capacity")
 		}
 	}

@@ -69,7 +69,7 @@ func TestReadWorkersValidation(t *testing.T) {
 		"queue wait at the launch timeout":                 {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 30 * time.Second}, base, errReadWorkersConfig},
 		"queue wait just below it":                         {ReadWorkersConfig{MaxWorkers: 1, QueueWait: 29 * time.Second}, base, nil},
 		"no capacity":                                      {ReadWorkersConfig{}, base, errReadWorkersConfig},
-		"pool size":                                        {ReadWorkersConfig{MaxWorkers: 1, PoolSize: 33}, base, errReadWorkersConfig},
+		"pool size":                                        {ReadWorkersConfig{MaxWorkers: 1, PoolSize: maxMaxSourceConns + 1}, base, errReadWorkersConfig},
 		"in flight":                                        {ReadWorkersConfig{MaxWorkers: 1, MaxInFlight: 65}, base, errReadWorkersConfig},
 		"above admission":                                  {ReadWorkersConfig{MaxWorkers: 33}, base, errReadWorkersConfig},
 		"warm pool disabled":                               {ReadWorkersConfig{MaxWorkers: 1}, worker.WarmPoolConfig{}, errReadWorkersWarmPool},
@@ -119,9 +119,9 @@ func TestPoolSizeFlagIsSentOnlyWhenSet(t *testing.T) {
 	if n := readWorkersNode(nil, base).readPoolSize(); n != 0 {
 		t.Fatalf("no read_workers requests %d", n)
 	}
-	big := ReadWorkersConfig{MaxWorkers: 65}.withDefaults()
+	big := ReadWorkersConfig{MaxWorkers: MaxConcurrency + 1}.withDefaults()
 	if err := validateNodeReadWorkers(readWorkersNode(&big, base)); err == nil {
-		t.Fatal("65 workers accepted (at most 64)")
+		t.Fatalf("%d workers accepted (at most %d)", MaxConcurrency+1, MaxConcurrency)
 	}
 	negative := ReadWorkersConfig{MaxWorkers: 1, PoolSize: -1}.withDefaults()
 	if validateNodeReadWorkers(readWorkersNode(&negative, base)) == nil {

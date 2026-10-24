@@ -145,7 +145,7 @@ func TestWarmPool_ConfigValidation(t *testing.T) {
 		{"idle_ttl_too_low", func() WarmPoolConfig { c := valid; c.IdleTTL = 1 * time.Millisecond; return c }()},
 		{"idle_ttl_too_high", func() WarmPoolConfig { c := valid; c.IdleTTL = 48 * time.Hour; return c }()},
 		{"max_workers_zero", func() WarmPoolConfig { c := valid; c.MaxWorkers = 0; return c }()},
-		{"max_workers_excessive", func() WarmPoolConfig { c := valid; c.MaxWorkers = 1000; return c }()},
+		{"max_workers_excessive", func() WarmPoolConfig { c := valid; c.MaxWorkers = 4097; return c }()},
 		{"max_per_key_greater_than_max_workers", func() WarmPoolConfig { c := valid; c.MaxWorkers = 2; c.MaxPerKey = 5; return c }()},
 		{"queue_depth_zero", func() WarmPoolConfig { c := valid; c.QueueDepth = 0; return c }()},
 		{"worker_memory_too_low", func() WarmPoolConfig { c := valid; c.WorkerMemoryMB = 8; return c }()},

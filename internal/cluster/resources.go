@@ -28,13 +28,18 @@ type ResourceConfig struct {
 	ScratchMB     int64 `yaml:"scratch_mb"`
 }
 
+// MaxConcurrency bounds the concurrency an operator configures for a node,
+// a tenant or a pool. It only rejects nonsense; size real values to the host.
+// Settings tied to one child's IPC streams (max_in_flight) keep their own cap.
+const MaxConcurrency = 4096
+
 func (c ResourceConfig) NewPool() (*admission.Pool, error) {
-	if c.QueryReserveMemoryMB < 0 || c.QueryReserveMemoryMB > 1<<30 || c.QueryReserveScratchMB < 0 || c.QueryReserveScratchMB > 1<<30 || c.MemoryMB <= 0 || c.MemoryMB > 1<<30 || c.BaselineMB <= 0 || c.BaselineMB >= c.MemoryMB || c.OverheadMB <= 0 || c.OverheadMB > c.MemoryMB-c.BaselineMB || c.ScratchMB < 1 || c.ScratchMB > 1<<30 || c.MaxConcurrent < 1 || c.MaxConcurrent > 64 {
+	if c.QueryReserveMemoryMB < 0 || c.QueryReserveMemoryMB > 1<<30 || c.QueryReserveScratchMB < 0 || c.QueryReserveScratchMB > 1<<30 || c.MemoryMB <= 0 || c.MemoryMB > 1<<30 || c.BaselineMB <= 0 || c.BaselineMB >= c.MemoryMB || c.OverheadMB <= 0 || c.OverheadMB > c.MemoryMB-c.BaselineMB || c.ScratchMB < 1 || c.ScratchMB > 1<<30 || c.MaxConcurrent < 1 || c.MaxConcurrent > MaxConcurrency {
 		return nil, errors.New("invalid node resource budgets")
 	}
 	limits := admission.Limits{ReservedSlots: c.QueryReserveSlots, ReservedMemoryBytes: c.QueryReserveMemoryMB << 20, ReservedScratchBytes: c.QueryReserveScratchMB << 20, MaxConcurrent: c.MaxConcurrent, MemoryBytes: (c.MemoryMB - c.BaselineMB) << 20, ScratchBytes: c.ScratchMB << 20, SeparateClasses: c.SeparateClasses}
 	if c.Export != nil {
-		if c.Export.MaxConcurrent < 1 || c.Export.MaxConcurrent > 64 || c.Export.MemoryMB < 1 || c.Export.MemoryMB > 1<<30 || c.Export.ScratchMB < 0 || c.Export.ScratchMB > 1<<30 {
+		if c.Export.MaxConcurrent < 1 || c.Export.MaxConcurrent > MaxConcurrency || c.Export.MemoryMB < 1 || c.Export.MemoryMB > 1<<30 || c.Export.ScratchMB < 0 || c.Export.ScratchMB > 1<<30 {
 			return nil, errors.New("invalid export resource budgets")
 		}
 		limits.Classes = map[admission.Class]admission.ClassLimits{admission.ClassExport: {
