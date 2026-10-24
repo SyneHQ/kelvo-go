@@ -183,8 +183,8 @@ operations:
   inputs:
     shared:
       directory: /tmp/inputs
-      max_entries: 64
-      max_stored_bytes: 16777216
+      max_entries: 1024
+      max_stored_bytes: 268435456
 tenants:
   - policy:
       tenant_id: shared
@@ -351,8 +351,8 @@ operations:
   inputs:
     shared:
       directory: /var/lib/kelvo/gateway/inputs
-      max_entries: 64
-      max_stored_bytes: 16777216
+      max_entries: 1024
+      max_stored_bytes: 268435456
 tenants:
   - policy:
       tenant_id: shared
@@ -606,8 +606,8 @@ operations:
     sha256: 1386622757a2eaa5ff1acb1d81f90a555da889cc4c60e4cb7a39253b23575b0c
   results:
     directory: /var/lib/kelvo/results
-    max_entries: 32
-    max_stored_bytes: 16777216
+    max_entries: 512
+    max_stored_bytes: 536870912
   max_result_bytes: 1048576
   max_concurrent: 32
   max_downloads: 10
