@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"mime"
 	"net"
 	"net/http"
@@ -23,6 +24,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"github.com/SYNEHQ/kelvo-go/internal/operationrun"
 	operationstore "github.com/SYNEHQ/kelvo-go/internal/operations"
+	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
@@ -355,6 +357,11 @@ func (p *operationAuditedExecution) Execute(ctx context.Context) (operations.Rec
 		case operations.CancelledBeforeStart:
 			outcome, category = audit.Cancelled, audit.Cancellation
 		}
+	}
+	if executeErr != nil && outcome != audit.Succeeded {
+		// The receipt carries only the caller-facing code; record the bounded
+		// internal code so operators can tell which stage refused the work.
+		log.Printf("kelvo: operation %s %s ended %s %s: %s", p.record.ID, p.record.Kind, bound.Outcome, bound.ErrorCode, query.PublicError(executeErr).Code)
 	}
 	return receipt, errors.Join(executeErr, op.finish(outcome, category))
 }
