@@ -196,7 +196,7 @@ func TestNodeCheckConfigReadWorkersAreNodeSettings(t *testing.T) {
 		"read workers all settings":                                     {pool("") + "read_workers: {max_workers: 2, max_in_flight: 8, pool_size: 8, idle_ttl: 10m, queue_wait: 500ms, stream_buffer_mb: 4}\n", true},
 		"read workers without capacity":                                 {pool("") + "read_workers: {max_in_flight: 16}\n", false},
 		"read workers above admission":                                  {pool("") + "read_workers: {max_workers: 5}\n", false},
-		"read workers bad pool":                                         {pool("") + "read_workers: {max_workers: 1, pool_size: 33}\n", false},
+		"read workers bad pool":                                         {pool("") + "read_workers: {max_workers: 1, pool_size: 1025}\n", false},
 		"read workers bad in flight":                                    {pool("") + "read_workers: {max_workers: 1, max_in_flight: 65}\n", false},
 		"read workers unknown key":                                      {pool("") + "read_workers: {max_workers: 1, secret_canary: x}\n", false},
 		"read workers without a warm pool":                              {raised + "read_workers: {max_workers: 2}\n", false},
