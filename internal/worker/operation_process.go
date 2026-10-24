@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
@@ -88,6 +90,10 @@ func operationFailure(code string) error {
 }
 
 func rejectedOperation(input adapter.ProcessRequest, code string) operations.Receipt {
+	// The receipt carries only the code, and many stages share it. Record the
+	// refusing stage by source line; no request or source detail is logged.
+	_, file, line, _ := runtime.Caller(1)
+	log.Printf("kelvo: operation %s refused %s at %s:%d", input.OperationID, code, filepath.Base(file), line)
 	r := operations.Receipt{Version: operations.Version, OperationID: input.OperationID, RequestSHA256: input.RequestSHA256,
 		Outcome: operations.Rejected, Effect: operations.EffectNone, ErrorCode: code}
 	if r.Validate() != nil {
