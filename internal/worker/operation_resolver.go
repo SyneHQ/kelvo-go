@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"io"
+	"log"
 	"maps"
 	"mime"
 	"net"
@@ -281,12 +282,17 @@ func (r *ConnectionResolver) resolveOperationMode(ctx context.Context, record op
 	req.Header.Set("Accept-Encoding", "identity")
 	resp, err := r.client.Do(req)
 	if err != nil {
+		// Failure class only: never the URL, request, grant or secrets.
+		log.Printf("kelvo: operation %s resolve transport failed: deadline=%t", record.ID, ctx.Err() != nil)
 		if ctx.Err() != nil {
 			return out, ctx.Err()
 		}
 		return out, connectionUnavailable()
 	}
 	httpStatus = resp.StatusCode
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("kelvo: operation %s resolve returned %d", record.ID, resp.StatusCode)
+	}
 	defer resp.Body.Close()
 	media, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	if err != nil || media != "application/json" || resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Encoding") != "" || resp.ContentLength > maxConnectionResponseBytes {
@@ -310,6 +316,9 @@ func (r *ConnectionResolver) resolveOperationMode(ctx context.Context, record op
 	}
 	now := time.Now()
 	peerUntil, ok := resolverCertificateExpiry(resp.TLS, now)
+	if out.ValidUntil <= now.Unix() || out.ValidUntil > now.Unix()+5 {
+		log.Printf("kelvo: operation %s resolve window rejected: valid_until_in=%ds", record.ID, out.ValidUntil-now.Unix())
+	}
 	if !ok || ctx.Err() != nil || out.Version != resolver.Version || out.GrantSHA256 != record.AuthoritySHA256 || out.RequestSHA256 != record.RequestSHA256 || !operations.ValidDigest(out.SourceRevision) || out.ValidUntil <= now.Unix() || out.ValidUntil > now.Unix()+5 || out.ValidUntil > record.AuthorityUntil.Unix() {
 		return out, connectionUnavailable()
 	}
