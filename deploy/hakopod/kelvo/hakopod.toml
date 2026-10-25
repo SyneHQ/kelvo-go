@@ -184,7 +184,8 @@ operations:
     shared:
       directory: /tmp/inputs
       max_entries: 1024
-      max_stored_bytes: 268435456
+      # Each input reserves ~1.42 MiB (256 KiB request + 1.15 MiB metadata).
+      max_stored_bytes: 1610612736
 tenants:
   - policy:
       tenant_id: shared
@@ -356,7 +357,8 @@ operations:
     shared:
       directory: /var/lib/kelvo/gateway/inputs
       max_entries: 1024
-      max_stored_bytes: 268435456
+      # Each input reserves ~1.42 MiB (256 KiB request + 1.15 MiB metadata).
+      max_stored_bytes: 1610612736
 tenants:
   - policy:
       tenant_id: shared
@@ -614,7 +616,8 @@ operations:
   results:
     directory: /var/lib/kelvo/results
     max_entries: 1024
-    max_stored_bytes: 1073741824
+    # Each result reserves ~2.2 MiB (1 MiB result + 1.15 MiB metadata).
+    max_stored_bytes: 2684354560
   max_result_bytes: 1048576
   max_concurrent: 32
   # db-api fetches each schema result once; 10 refused bursts with 429.
