@@ -1,9 +1,10 @@
 name: Public application SDK
 on:
-  push:
-    branches: [cargo]
   pull_request:
   workflow_dispatch:
+concurrency:
+  group: public-sdk-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

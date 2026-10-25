@@ -1,11 +1,12 @@
 name: Go
 on:
-  push:
-    branches: [cargo]
   pull_request:
   workflow_dispatch:
   schedule:
     - cron: "17 2 * * *"
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
