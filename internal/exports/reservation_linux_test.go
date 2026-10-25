@@ -686,3 +686,37 @@ func TestUnboundEntriesRejectUnexpectedPayloads(t *testing.T) {
 		})
 	}
 }
+
+func TestScanReverifiesAChangedEntry(t *testing.T) {
+	s := openTestStore(t)
+	w, err := s.Reserve(context.Background(), testRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close() // fails after the deliberate corruption below
+	assertReservedCharge(t, s, w.ID())
+	s.verifiedMu.Lock()
+	_, cached := s.verified[w.ID()]
+	s.verifiedMu.Unlock()
+	if !cached {
+		t.Fatal("verified entry was not cached")
+	}
+	assertReservedCharge(t, s, w.ID()) // served from the cache
+	// Replace state.yml the way a writer does (new inode via rename), with
+	// content that fails validation. The cache must not hide it.
+	dir, err := childDir(s.root, w.ID(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	path := fmt.Sprintf("/proc/self/fd/%d", dir.Fd())
+	if err := os.WriteFile(filepath.Join(path, ".tmp-state"), []byte("version: 99\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(path, ".tmp-state"), filepath.Join(path, "state.yml")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.scan(); !errors.Is(err, ErrCorrupt) {
+		t.Fatal("changed entry was not re-verified", err)
+	}
+}

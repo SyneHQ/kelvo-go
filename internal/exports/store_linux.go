@@ -28,6 +28,31 @@ type Store struct {
 	references             atomic.Int64
 	fault                  func(string) error
 	encoderAllocationLimit int64
+	// verified caches each entry's fully checked state for scan. An entry is
+	// reused only while its directory and state.yml are unchanged; any
+	// create, rename or unlink in the entry changes the directory times.
+	verifiedMu sync.Mutex
+	verified   map[string]verifiedEntry
+}
+
+type verifiedEntry struct {
+	key   entryKey
+	state state
+}
+
+type entryKey struct {
+	dirIno, stateIno                     uint64
+	dirMtime, dirCtime, stateMtime, size int64
+	stateCtime                           int64
+}
+
+func currentEntryKey(dir *os.File) (entryKey, bool) {
+	var d, f unix.Stat_t
+	if unix.Fstat(int(dir.Fd()), &d) != nil || unix.Fstatat(int(dir.Fd()), "state.yml", &f, unix.AT_SYMLINK_NOFOLLOW) != nil {
+		return entryKey{}, false
+	}
+	return entryKey{dirIno: d.Ino, stateIno: f.Ino, dirMtime: d.Mtim.Nano(), dirCtime: d.Ctim.Nano(),
+		stateMtime: f.Mtim.Nano(), stateCtime: f.Ctim.Nano(), size: f.Size}, true
 }
 
 func (s *Store) point(stage string) error {
@@ -315,6 +340,23 @@ func (s *Store) scan() ([]string, int64, error) {
 			}
 		}
 		dir, e := childDir(s.root, id, false)
+		if e == nil && !markers[id] && !initials[id] {
+			if key, ok := currentEntryKey(dir); ok {
+				s.verifiedMu.Lock()
+				cached, hit := s.verified[id]
+				s.verifiedMu.Unlock()
+				if hit && cached.key == key {
+					dir.Close()
+					st = cached.state
+					if st.ReservedBytes > s.config.MaxStoredBytes-reserved {
+						return nil, 0, ErrLimit
+					}
+					reserved += st.ReservedBytes
+					ordered = append(ordered, id)
+					continue
+				}
+			}
+		}
 		if e == nil {
 			actual, e := s.loadState(dir, id)
 			if e == nil {
@@ -347,6 +389,17 @@ func (s *Store) scan() ([]string, int64, error) {
 				}
 			}
 			_, _, e = entryFiles(dir, st)
+			if e == nil && !markers[id] && !initials[id] {
+				// Key after loadState: its repair may have changed the directory.
+				if key, ok := currentEntryKey(dir); ok {
+					s.verifiedMu.Lock()
+					if s.verified == nil {
+						s.verified = map[string]verifiedEntry{}
+					}
+					s.verified[id] = verifiedEntry{key: key, state: st}
+					s.verifiedMu.Unlock()
+				}
+			}
 			dir.Close()
 			if e != nil {
 				return nil, 0, e
@@ -360,6 +413,13 @@ func (s *Store) scan() ([]string, int64, error) {
 		reserved += st.ReservedBytes
 		ordered = append(ordered, id)
 	}
+	s.verifiedMu.Lock()
+	for id := range s.verified {
+		if !ids[id] {
+			delete(s.verified, id)
+		}
+	}
+	s.verifiedMu.Unlock()
 	sort.Strings(ordered)
 	return ordered, reserved, nil
 }
