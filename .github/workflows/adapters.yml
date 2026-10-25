@@ -1,9 +1,10 @@
 name: Operation adapters
 on:
-  push:
-    branches: [cargo]
   pull_request:
   workflow_dispatch:
+concurrency:
+  group: adapters-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
