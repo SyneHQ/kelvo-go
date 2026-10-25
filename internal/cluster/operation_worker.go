@@ -277,9 +277,14 @@ func (c *operationInputClient) load(ctx context.Context, record operationstore.R
 	req.Header.Set("Accept", "application/json")
 	response, err := c.client.Do(req)
 	if err != nil {
+		// Only the failure class is logged: never the URL, body or peer detail.
+		log.Printf("kelvo: operation %s input fetch failed: deadline=%t", record.ID, errors.Is(err, context.DeadlineExceeded))
 		return operations.Request{}, operationstore.ErrUnavailable
 	}
 	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		log.Printf("kelvo: operation %s input fetch returned %d", record.ID, response.StatusCode)
+	}
 	media, _, mediaErr := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if response.StatusCode != http.StatusOK || mediaErr != nil || media != "application/json" || response.Header.Get("Content-Encoding") != "" || !operationGatewayResponsePeer(response.TLS, time.Now()) || (response.ContentLength != -1 && response.ContentLength != record.RequestRef.Bytes) {
 		return operations.Request{}, operationstore.ErrUnavailable
