@@ -291,21 +291,25 @@ func (p *preparedNodeOperation) Execute(ctx context.Context) (operations.Receipt
 	defer func() { clear(payload) }()
 	return p.state.executor.ExecuteDelegatedOperation(ctx, p.state.private, p.node.cfg.Operations.Adapter, p.record.ID, p.record.RequestSHA256,
 		func(admitted context.Context) (worker.OperationSourceRequest, error) {
+			fail := func(step string, err error) (worker.OperationSourceRequest, error) {
+				logOperationPrepareFailure(p.record.ID, step, err)
+				return worker.OperationSourceRequest{}, err
+			}
 			current, err := p.state.ledger.Get(admitted, p.record.Scope, p.record.ID)
 			if err != nil {
-				return worker.OperationSourceRequest{}, err
+				return fail("ledger", err)
 			}
 			record := current.Record
 			if record.State != operationstore.Running || record.Binding != p.record.Binding || record.RequestSHA256 != p.record.RequestSHA256 || record.AuthoritySHA256 != p.record.AuthoritySHA256 {
-				return worker.OperationSourceRequest{}, operationstore.ErrConflict
+				return fail("record", operationstore.ErrConflict)
 			}
 			trust, err := operationTrust(p.node.cfg.Policy, record.Scope.ServicePrincipal)
 			if err != nil {
-				return worker.OperationSourceRequest{}, err
+				return fail("trust", err)
 			}
 			claims, err := operations.VerifyGrant(record.AuthorityToken, trust, p.request, time.Now())
 			if err != nil || operationScope(claims) != record.Scope {
-				return worker.OperationSourceRequest{}, operationstore.ErrConflict
+				return fail("grant", operationstore.ErrConflict)
 			}
 			bindOperationCleanup(sink, claims, func(ctx context.Context) error {
 				return p.state.executor.CompleteOperationCleanup(ctx, record)
@@ -314,20 +318,20 @@ func (p *preparedNodeOperation) Execute(ctx context.Context) (operations.Receipt
 			// runner already holds shared process/memory/scratch admission here.
 			sink.stream, err = p.state.results.BeginStream(ctx, operationInputIdentity(record.Scope, record.AuthoritySHA256), record.RetainUntil, operationinput.ArrowIPC)
 			if err != nil {
-				return worker.OperationSourceRequest{}, err
+				return fail("results", err)
 			}
 			limits := p.node.cfg.Policy.Limits
 			limits.MaxBytes = min(limits.MaxBytes, p.node.cfg.Operations.MaxResultBytes)
 			sink.inner = worker.NewIPCSink(sink.stream, limits)
 			payload, err = p.state.worker.input.loadBulk(admitted, record, p.request)
 			if err != nil {
-				return worker.OperationSourceRequest{}, err
+				return fail("bulk-input", err)
 			}
 			if err := p.state.worker.authorize(admitted, record, &p.request, record.Binding); err != nil {
-				return worker.OperationSourceRequest{}, err
+				return fail("authorize", err)
 			}
 			if err := authorizeOperationIngestionRun(claims, p.request, payload); err != nil {
-				return worker.OperationSourceRequest{}, err
+				return fail("ingestion", err)
 			}
 			return worker.OperationSourceRequest{Record: record, Request: p.request, Payload: payload, MaxResultBytes: limits.MaxBytes, CleanupLedger: p.state.ledger}, nil
 		}, sink)
@@ -443,4 +447,25 @@ func (n *Node) writeReadAdapterMetrics(w io.Writer) {
 	}
 	_, _ = fmt.Fprintf(w, "# HELP kelvo_read_adapter_slim_active Whether read workers launch on the slim relational adapter (0 after it failed its launch check).\n# TYPE kelvo_read_adapter_slim_active gauge\nkelvo_read_adapter_slim_active %d\n"+
 		"# HELP kelvo_read_adapter_slim_fallbacks_total Read worker launches run on the full adapter because the slim one was not usable.\n# TYPE kelvo_read_adapter_slim_fallbacks_total counter\nkelvo_read_adapter_slim_fallbacks_total %d\n", active, l.Fallbacks())
+}
+
+// logOperationPrepareFailure records which preparation step refused an
+// operation and the class of its error; error text is never logged.
+func logOperationPrepareFailure(id, step string, err error) {
+	class := "other"
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		class = "deadline"
+	case errors.Is(err, context.Canceled):
+		class = "cancelled"
+	case errors.Is(err, operationstore.ErrConflict):
+		class = "conflict"
+	case errors.Is(err, operationstore.ErrUnavailable):
+		class = "unavailable"
+	case errors.Is(err, exports.ErrLimit), errors.Is(err, operationinput.ErrLimit):
+		class = "limit"
+	case errors.Is(err, exports.ErrUnavailable), errors.Is(err, exports.ErrBusy):
+		class = "store-unavailable"
+	}
+	log.Printf("kelvo: operation %s prepare failed at %s: %s", id, step, class)
 }
