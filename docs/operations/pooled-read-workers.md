@@ -147,6 +147,8 @@ operations:
     cache_max_total_bytes: 67108864
     cache_max_entries: 4096  # at most 65536
     cache_max_fills: 256     # concurrent shared executions, at most 4096; more run uncached
+    cache_max_bytes: 67108864  # decoded Arrow bytes of a kept result, at most 1 GiB
+    cache_snapshot_generations: false  # also cache federated reads over snapshot generations
 
 audit:                       # gateway and node, each its own journal directory
   max_entries: 524288        # see "Audit journal sizing"
