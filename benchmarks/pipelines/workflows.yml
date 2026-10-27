@@ -1,0 +1,153 @@
+# Pipeline-scale workflows. One DuckDB-dialect SQL per workflow with {table}
+# placeholders; scripts/pipeline_load.py binds them per mode:
+#   federated  orders,customers -> pg.*   shipments,sellers,warehouses -> my.*
+#              order_items,events_hot -> ch.*   events_cold -> cold (Parquet)
+#   snapshot   <table> -> <table>_snap (accelerated Parquet), events_cold -> cold
+#   reference  read_parquet(<generator output>/<table>.parquet) in DuckDB
+# `native` is source-dialect SQL run with mode: native where one source holds
+# every table ({db} is the ClickHouse/MySQL database, PostgreSQL uses schema
+# acceptance). Every output column is BIGINT, VARCHAR or DATE so answers
+# compare exactly. Extra predicates on shipments.promised_at / order_id are
+# implied by the order-date filter (promise >= creation; ids are time ordered)
+# and only give the source a pushdown handle; they never change the answer.
+workflows:
+  gmv_daily_by_tenant:
+    pattern: Shiprocket-style per-tenant daily GMV tile over the last quarter
+    sql: >-
+      SELECT tenant_id, CAST(created_at AS DATE) AS day, CAST(COUNT(*) AS BIGINT) AS orders,
+             CAST(SUM(amount_cents) AS BIGINT) AS gmv_cents
+      FROM {orders}
+      WHERE created_at >= TIMESTAMP '2025-10-01' AND created_at < TIMESTAMP '2026-01-01' AND status = 'completed'
+      GROUP BY 1, 2 ORDER BY 1, 2
+    native:
+      source: pg
+      sql: >-
+        SELECT tenant_id, CAST(created_at AS DATE) AS day, CAST(COUNT(*) AS BIGINT) AS orders,
+               CAST(SUM(amount_cents) AS BIGINT) AS gmv_cents
+        FROM acceptance.orders
+        WHERE created_at >= TIMESTAMP '2025-10-01' AND created_at < TIMESTAMP '2026-01-01' AND status = 'completed'
+        GROUP BY 1, 2 ORDER BY 1, 2
+  sla_breach_by_carrier_week:
+    pattern: Swiggy/Zepto-style promise-vs-actual SLA breach rate (MySQL shipments x PostgreSQL orders)
+    sql: >-
+      WITH s AS (
+        SELECT s.carrier_id, date_trunc('week', o.created_at) AS wk, s.delivered_at, s.promised_at
+        FROM {shipments} s JOIN {orders} o ON o.order_id = s.order_id
+        WHERE o.created_at >= TIMESTAMP '2025-10-01' AND o.created_at < TIMESTAMP '2026-01-01'
+          AND s.promised_at >= TIMESTAMP '2025-10-01' AND o.status <> 'cancelled')
+      SELECT carrier_id, CAST(wk AS DATE) AS week, CAST(COUNT(*) AS BIGINT) AS shipments,
+             CAST(COUNT(*) FILTER (WHERE delivered_at IS NULL OR delivered_at > promised_at) AS BIGINT) AS breached
+      FROM s GROUP BY 1, 2 ORDER BY 1, 2
+  top_sellers_by_city:
+    pattern: Top-N with window rank; PostgreSQL orders x MySQL warehouses and sellers
+    sql: >-
+      WITH rev AS (
+        SELECT w.city_id, o.seller_id, SUM(o.amount_cents) AS rev, COUNT(*) AS n
+        FROM {orders} o JOIN {warehouses} w ON w.warehouse_id = o.warehouse_id
+        WHERE o.created_at >= TIMESTAMP '2025-11-01' AND o.created_at < TIMESTAMP '2025-12-01' AND o.status = 'completed'
+        GROUP BY 1, 2),
+      ranked AS (
+        SELECT r.city_id, r.seller_id, r.rev, r.n, s.category,
+               ROW_NUMBER() OVER (PARTITION BY r.city_id ORDER BY r.rev DESC, r.seller_id) AS rk
+        FROM rev r JOIN {sellers} s ON s.seller_id = r.seller_id)
+      SELECT city_id, CAST(rk AS BIGINT) AS rk, seller_id, category, CAST(rev AS BIGINT) AS rev_cents, CAST(n AS BIGINT) AS orders
+      FROM ranked WHERE rk <= 5 ORDER BY city_id, rk
+  cohort_retention:
+    pattern: Monthly acquisition cohort retention (CTEs, DISTINCT, 10M-row scan)
+    sql: >-
+      WITH act AS (
+        SELECT DISTINCT customer_id, date_trunc('month', created_at) AS m
+        FROM {orders} WHERE created_at < TIMESTAMP '2025-01-01'),
+      first AS (SELECT customer_id, MIN(m) AS m0 FROM act GROUP BY 1)
+      SELECT CAST(f.m0 AS DATE) AS cohort, c.segment,
+             CAST((EXTRACT(YEAR FROM a.m) - EXTRACT(YEAR FROM f.m0)) * 12 + EXTRACT(MONTH FROM a.m) - EXTRACT(MONTH FROM f.m0) AS BIGINT) AS month_offset,
+             CAST(COUNT(*) AS BIGINT) AS customers
+      FROM first f JOIN act a ON a.customer_id = f.customer_id JOIN {customers} c ON c.customer_id = f.customer_id
+      WHERE a.m < f.m0 + INTERVAL 7 MONTH
+      GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
+    native:
+      source: pg
+      sql: >-
+        WITH act AS (
+          SELECT DISTINCT customer_id, date_trunc('month', created_at) AS m
+          FROM acceptance.orders WHERE created_at < TIMESTAMP '2025-01-01'),
+        first AS (SELECT customer_id, MIN(m) AS m0 FROM act GROUP BY 1)
+        SELECT CAST(f.m0 AS DATE) AS cohort, c.segment,
+               CAST((EXTRACT(YEAR FROM a.m) - EXTRACT(YEAR FROM f.m0)) * 12 + EXTRACT(MONTH FROM a.m) - EXTRACT(MONTH FROM f.m0) AS BIGINT) AS month_offset,
+               CAST(COUNT(*) AS BIGINT) AS customers
+        FROM first f JOIN act a ON a.customer_id = f.customer_id JOIN acceptance.customers c ON c.customer_id = f.customer_id
+        WHERE a.m < f.m0 + INTERVAL '7 months'
+        GROUP BY 1, 2, 3 ORDER BY 1, 2, 3
+  rider_on_time:
+    pattern: Rider leaderboard from tracking events (ClickHouse hot events x MySQL shipments)
+    sql: >-
+      WITH d AS (
+        SELECT shipment_id, rider_id, MIN(event_time) AS ping
+        FROM {events_hot} WHERE event_type = 'delivered' AND event_time >= TIMESTAMP '2025-12-01'
+        GROUP BY 1, 2)
+      SELECT d.rider_id, CAST(COUNT(*) AS BIGINT) AS deliveries,
+             CAST(COUNT(*) FILTER (WHERE d.ping <= s.promised_at) AS BIGINT) AS on_time
+      FROM d JOIN {shipments} s ON s.shipment_id = d.shipment_id
+      WHERE s.promised_at >= TIMESTAMP '2025-11-25'
+      GROUP BY 1 ORDER BY deliveries DESC, d.rider_id LIMIT 20
+  hot_cold_daily_events:
+    pattern: Meesho-style hot (ClickHouse, recent) UNION ALL cold (Parquet, historical) dashboard
+    sql: >-
+      SELECT CAST(event_time AS DATE) AS day, event_type, CAST(COUNT(*) AS BIGINT) AS events
+      FROM (SELECT event_time, event_type FROM {events_cold} WHERE event_time >= TIMESTAMP '2025-11-01'
+            UNION ALL SELECT event_time, event_type FROM {events_hot}) e
+      GROUP BY 1, 2 ORDER BY 1, 2
+  basket_mix:
+    pattern: Category basket mix by payment method (ClickHouse order_items x PostgreSQL orders)
+    sql: >-
+      SELECT i.category, o.payment_method, CAST(COUNT(DISTINCT o.order_id) AS BIGINT) AS orders,
+             CAST(SUM(i.qty) AS BIGINT) AS units, CAST(SUM(i.qty * i.price_cents) AS BIGINT) AS item_cents
+      FROM {order_items} i JOIN {orders} o ON o.order_id = i.order_id
+      WHERE o.created_at >= TIMESTAMP '2025-11-01' AND o.created_at < TIMESTAMP '2025-12-01'
+        AND i.order_id BETWEEN 18356000 AND 19179000
+      GROUP BY 1, 2 ORDER BY 1, 2
+  cod_rto_by_segment:
+    pattern: Cash-on-delivery return-to-origin rate; three-way PostgreSQL x MySQL join over six months
+    sql: >-
+      SELECT o.payment_method, c.segment, CAST(COUNT(*) AS BIGINT) AS shipments,
+             CAST(COUNT(*) FILTER (WHERE s.status = 'rto') AS BIGINT) AS rto,
+             CAST(COUNT(*) FILTER (WHERE s.status = 'lost') AS BIGINT) AS lost
+      FROM {orders} o JOIN {shipments} s ON s.order_id = o.order_id JOIN {customers} c ON c.customer_id = o.customer_id
+      WHERE o.created_at >= TIMESTAMP '2025-07-01' AND o.created_at < TIMESTAMP '2026-01-01'
+        AND s.promised_at >= TIMESTAMP '2025-07-01'
+      GROUP BY 1, 2 ORDER BY 1, 2
+  live_rider_pings_hourly:
+    pattern: Live ops tile over the hot ClickHouse table
+    sql: >-
+      SELECT CAST(EXTRACT(HOUR FROM event_time) AS BIGINT) AS hr, CAST(COUNT(DISTINCT rider_id) AS BIGINT) AS riders,
+             CAST(COUNT(*) AS BIGINT) AS pings
+      FROM {events_hot} WHERE event_time >= TIMESTAMP '2025-12-24'
+      GROUP BY 1 ORDER BY 1
+    native:
+      source: ch
+      sql: >-
+        SELECT toInt64(toHour(event_time)) AS hr, toInt64(uniqExact(rider_id)) AS riders, toInt64(count()) AS pings
+        FROM {db}.events_hot WHERE event_time >= '2025-12-24 00:00:00'
+        GROUP BY hr ORDER BY hr
+  seller3_portal:
+    pattern: Seller portal for one tenant through the row/column-restricted principal a/seller3
+    principal: seller3
+    snapshot: false
+    # The policy, not the SQL, removes other tenants; the reference applies it explicitly.
+    reference_filter: {orders: tenant_id = 3}
+    sql: >-
+      SELECT CAST(o.created_at AS DATE) AS day, CAST(COUNT(*) AS BIGINT) AS orders, CAST(SUM(o.amount_cents) AS BIGINT) AS gmv_cents,
+             CAST(COUNT(*) FILTER (WHERE s.delivered_at IS NULL OR s.delivered_at > s.promised_at) AS BIGINT) AS late
+      FROM {orders} o JOIN {shipments} s ON s.order_id = o.order_id
+      WHERE o.created_at >= TIMESTAMP '2025-12-01' AND s.promised_at >= TIMESTAMP '2025-12-01'
+      GROUP BY 1 ORDER BY 1
+# Negative isolation checks: each must be refused, never answered.
+denials:
+  seller3_hidden_column: {principal: seller3, sources: [pg], sql: "SELECT customer_id FROM pg.orders LIMIT 1"}
+  seller3_unlisted_source: {principal: seller3, sources: [ch], sql: "SELECT count(*) FROM ch.events_hot"}
+  tenant_b_cannot_see_orders: {tenant: b, principal: ops, sources: [pg], sql: "SELECT count(*) FROM pg.orders"}
+# Dashboard: one load = 50 tiles. Tiles are the workflows above plus cheap
+# filtered variants, mirroring a BI page that fires ~30-60 queries per view.
+dashboard:
+  tiles: 50
+  mode: snapshot
