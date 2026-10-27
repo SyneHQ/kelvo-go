@@ -252,14 +252,20 @@ def run_contained(argv, workdir, memory_gib, cpus, timeout, env=None):
     process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
     sampler = Sampler(cgroup, spill)
     sampler.start()
-    timed_out = False
-    try:
-        returncode = process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        timed_out = True
+    # Popen.wait(timeout=...) polls with sleeps of up to 50 ms, which quantizes
+    # sub-second timings; block in waitpid and kill from a timer instead.
+    fired = threading.Event()
+
+    def kill():
+        fired.set()
         subprocess.run(["sudo", "-n", "systemctl", "kill", "--signal=KILL", unit + ".scope"], check=False)
-        returncode = process.wait()
+
+    timer = threading.Timer(timeout, kill)
+    timer.start()
+    returncode = process.wait()
     elapsed = time.monotonic() - started
+    timer.cancel()
+    timed_out = fired.is_set()
     sampler.sample()
     sampler.stop_event.set()
     sampler.join()
