@@ -184,7 +184,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		if err := validateReadOnly(ctx, raw, req.SQL); err != nil {
 			return err
 		}
-		if err := enforceRelationAllowlist(ctx, raw, req.SQL); err != nil {
+		if err := enforceRelationAllowlist(ctx, raw, req.SQL, req.Sources); err != nil {
 			return err
 		}
 		bounded, err := boundedSelect(normalizeValidatedSelect(req.SQL), e.limits.MaxRows)

@@ -38,7 +38,7 @@ func referencesDeniedByParser(tree string) bool {
 		switch tv := v.(type) {
 		case map[string]any:
 			if kind, _ := tv["type"].(string); kind == "BASE_TABLE" {
-				if name, _ := tv["table_name"].(string); checkBaseTable(stringOf(tv["schema_name"]), name) != nil {
+				if name, _ := tv["table_name"].(string); checkBaseTable(stringOf(tv["catalog_name"]), stringOf(tv["schema_name"]), name, map[string]struct{}{"events": {}}) != nil {
 					found = true
 				}
 			}
@@ -100,7 +100,7 @@ func TestRelationGuardDifferentialFuzz(t *testing.T) {
 			}
 			denials++
 			// enforceRelationAllowlist must reject exactly these.
-			if err := enforceRelationAllowlist(context.Background(), q, candidate); err == nil {
+			if err := enforceRelationAllowlist(context.Background(), q, candidate, []string{"events"}); err == nil {
 				t.Fatalf("guard accepted %q, whose parse tree references a denied relation/function", candidate)
 			}
 		}
