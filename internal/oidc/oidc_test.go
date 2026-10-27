@@ -19,6 +19,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -31,11 +32,18 @@ type provider struct {
 	mu   sync.Mutex
 	keys []map[string]string
 	down bool
+	gate func()
 }
 
 func newProvider(t *testing.T) *provider {
 	p := &provider{}
 	p.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p.mu.Lock()
+		gate := p.gate
+		p.mu.Unlock()
+		if gate != nil && r.URL.Path == "/.well-known/openid-configuration" {
+			gate()
+		}
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		if p.down {
@@ -166,6 +174,8 @@ func TestVerifyClaimsAndAlgorithms(t *testing.T) {
 		{"unmapped identity", sign(t, "RS256", "k1", k, with(ok, "sub", "mallory")), ""},
 		{"ambiguous mapping", sign(t, "RS256", "k1", k, with(ok, "groups", []string{"ops"})), ""},
 		{"garbage", "a.b.c", ""},
+		{"case-variant Exp cannot replace exp", sign(t, "RS256", "k1", k, with(with(ok, "exp", now.Add(-time.Minute).Unix()), "Exp", now.Add(time.Hour).Unix())), ""},
+		{"case-variant Aud ignored", sign(t, "RS256", "k1", k, with(with(ok, "aud", "other"), "Aud", "kelvo")), ""},
 	} {
 		got, _, err := v.Verify(context.Background(), tt.token, now)
 		if got != tt.want || (tt.want == "") != (err != nil) {
@@ -184,8 +194,21 @@ func TestRotationAndKidRequirement(t *testing.T) {
 	v.mu.Lock()
 	v.lastTry = time.Time{}
 	v.mu.Unlock()
-	if got, _, err := v.Verify(context.Background(), sign(t, "RS256", "k2", k2, claims), now); err != nil || got != "analyst" {
-		t.Fatalf("rotated key rejected: %v", err)
+	// The first unknown-kid token is rejected without waiting on the provider;
+	// the background refresh it starts makes the new key usable.
+	rotated := sign(t, "RS256", "k2", k2, claims)
+	if _, _, err := v.Verify(context.Background(), rotated, now); err == nil {
+		t.Fatal("unknown kid accepted before refresh")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if got, _, err := v.Verify(context.Background(), rotated, now); err == nil && got == "analyst" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("rotated key never accepted")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	// More than one key: kid is mandatory.
 	if _, _, err := v.Verify(context.Background(), sign(t, "RS256", "", k1, claims), now); err == nil {
@@ -254,11 +277,128 @@ func TestConfigFailsClosed(t *testing.T) {
 		"skew too large":       func(c *Config) { c.ClockSkew = time.Hour },
 		"ttl too small":        func(c *Config) { c.CacheTTL = time.Second },
 		"secret without HS256": func(c *Config) { c.HMACSecretFile = "/nonexistent" },
+		"ttl above 1h":         func(c *Config) { c.CacheTTL = 2 * time.Hour },
 	} {
 		c := good
 		mutate(&c)
 		if _, err := New(context.Background(), c); err == nil {
 			t.Errorf("%s accepted", name)
 		}
+	}
+}
+
+func rawToken(t *testing.T, k *rsa.PrivateKey, payload string) string {
+	hb, _ := json.Marshal(map[string]string{"alg": "RS256", "kid": "k1"})
+	in := enc.EncodeToString(hb) + "." + enc.EncodeToString([]byte(payload))
+	sum := sha256.Sum256([]byte(in))
+	sig, err := rsa.SignPKCS1v15(rand.Reader, k, crypto.SHA256, sum[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return in + "." + enc.EncodeToString(sig)
+}
+
+func TestDuplicateClaimKeysReject(t *testing.T) {
+	p, v, k := setup(t, nil)
+	now := time.Now()
+	body := func(exp string) string {
+		return `{"iss":"` + p.srv.URL + `","aud":"kelvo","sub":"alice",` + exp + `}`
+	}
+	good := rawToken(t, k, body(`"exp":`+strconv.FormatInt(now.Add(time.Hour).Unix(), 10)))
+	if _, _, err := v.Verify(context.Background(), good, now); err != nil {
+		t.Fatalf("baseline rejected: %v", err)
+	}
+	dup := rawToken(t, k, body(`"exp":1,"exp":`+strconv.FormatInt(now.Add(time.Hour).Unix(), 10)))
+	if _, _, err := v.Verify(context.Background(), dup, now); err == nil {
+		t.Fatal("duplicate exp accepted")
+	}
+}
+
+func TestEmailClaimRequiresVerifiedEmail(t *testing.T) {
+	p, v, k := setup(t, func(c *Config) {
+		c.Claim = "email"
+		c.Principals = map[string]string{"alice@example.com": "analyst"}
+		c.Groups = nil
+	})
+	now := time.Now()
+	c := with(base(p.srv.URL, now), "email", "alice@example.com")
+	for name, tt := range map[string]struct {
+		verified any
+		want     bool
+	}{"verified": {true, true}, "missing": {nil, false}, "false": {false, false}, "string true": {"true", false}} {
+		got, _, err := v.Verify(context.Background(), sign(t, "RS256", "k1", k, with(c, "email_verified", tt.verified)), now)
+		if (err == nil) != tt.want || (tt.want && got != "analyst") {
+			t.Errorf("%s: got %q, %v", name, got, err)
+		}
+	}
+}
+
+func TestProviderRedirectsAreNotFollowed(t *testing.T) {
+	k, _ := rsa.GenerateKey(rand.Reader, 2048)
+	target := newProvider(t)
+	target.set(rsaJWK("k1", k))
+	var srv *httptest.Server
+	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/openid-configuration" {
+			json.NewEncoder(w).Encode(map[string]string{"issuer": srv.URL, "jwks_uri": srv.URL + "/jwks"})
+			return
+		}
+		http.Redirect(w, r, target.srv.URL+"/jwks", http.StatusFound)
+	}))
+	defer srv.Close()
+	client := srv.Client()
+	client.Transport.(*http.Transport).TLSClientConfig.RootCAs.AddCert(target.srv.Certificate())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	v, err := New(ctx, Config{Issuer: srv.URL, Audiences: []string{"kelvo"}, Tenant: "a", Principals: map[string]string{"alice": "analyst"}, HTTPClient: client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if _, _, err := v.Verify(context.Background(), sign(t, "RS256", "k1", k, base(srv.URL, now)), now); err == nil {
+		t.Fatal("key fetched through a redirect")
+	}
+}
+
+func TestUnknownKidBurstStartsOneRefresh(t *testing.T) {
+	p, v, k := setup(t, nil)
+	release := make(chan struct{})
+	var mu sync.Mutex
+	fetches := 0
+	p.mu.Lock()
+	p.gate = func() {
+		mu.Lock()
+		fetches++
+		mu.Unlock()
+		<-release
+	}
+	p.mu.Unlock()
+	v.mu.Lock()
+	v.lastTry = time.Time{}
+	v.mu.Unlock()
+	now := time.Now()
+	tok := sign(t, "RS256", "unknown", k, base(p.srv.URL, now))
+	start := time.Now()
+	var wg sync.WaitGroup
+	for range 50 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, _, err := v.Verify(context.Background(), tok, now); err == nil {
+				t.Error("unknown kid accepted")
+			}
+		}()
+	}
+	wg.Wait()
+	if time.Since(start) > time.Second {
+		t.Fatalf("unknown-kid requests waited on the provider: %v", time.Since(start))
+	}
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	n := fetches
+	mu.Unlock()
+	close(release)
+	if n > 1 {
+		t.Fatalf("%d concurrent refreshes", n)
 	}
 }
