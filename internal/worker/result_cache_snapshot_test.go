@@ -3,7 +3,9 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -135,5 +137,94 @@ func TestSnapshotReadQualification(t *testing.T) {
 		if e.snapshotReadFor(context.Background(), delegation.Execution{}, false, req, versions) != nil {
 			t.Fatal("cached", name)
 		}
+	}
+}
+
+// Review #1: a parameter whose value is not valid JSON (a null type with an
+// empty value passes request validation) is never keyed, so tenants cannot
+// collide on one fallback key.
+func TestResultCacheKeyRefusesUnencodableParameters(t *testing.T) {
+	r := query.Request{Mode: "native", SQL: "SELECT $1", Parameters: []query.Parameter{{Type: "null", Value: json.RawMessage{}}}}
+	a := resultCacheKey(cacheKey{Tenant: "a", Policy: "p"}, r, query.DefaultLimits())
+	b := resultCacheKey(cacheKey{Tenant: "b", Policy: "p"}, r, query.DefaultLimits())
+	if a != "" || b != "" {
+		t.Fatal("unencodable parameter produced a key", a, b)
+	}
+	null := r
+	null.Parameters = []query.Parameter{{Type: "null", Value: json.RawMessage("null")}}
+	if x, y := resultCacheKey(cacheKey{Tenant: "a"}, null, query.DefaultLimits()), resultCacheKey(cacheKey{Tenant: "b"}, null, query.DefaultLimits()); x == "" || x == y {
+		t.Fatal("valid null parameter not keyed per tenant")
+	}
+}
+
+// Review #2: SQL bytes are hashed raw; invalid UTF-8 does not collapse.
+func TestResultCacheKeyRawSQLBytes(t *testing.T) {
+	k, l := cacheKey{Tenant: "a"}, query.DefaultLimits()
+	if resultCacheKey(k, query.Request{SQL: "SELECT '\xff'"}, l) == resultCacheKey(k, query.Request{SQL: "SELECT '\xfe'"}, l) {
+		t.Fatal("invalid UTF-8 SQL collided")
+	}
+	// Field boundaries are length-prefixed: moving bytes between fields changes the key.
+	if resultCacheKey(cacheKey{Tenant: "ab", Team: "c"}, query.Request{}, l) == resultCacheKey(cacheKey{Tenant: "a", Team: "bc"}, query.Request{}, l) {
+		t.Fatal("field boundary collision")
+	}
+}
+
+// Review #3: a refresh replacing a running flight still counts against cache_max_fills.
+func TestResultCacheFillBoundSurvivesRefreshOverwrite(t *testing.T) {
+	c := newResultCache(time.Minute, 64, 1<<20)
+	c.maxFills = 1
+	slow := &fakeRead{data: "slow", block: make(chan struct{})}
+	done := make(chan struct{})
+	go func() { _, _ = c.do(context.Background(), "k", "t", false, nil, slow.execute, noReplay); close(done) }()
+	for slow.runs.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	var teed atomic.Bool
+	refresh := func(ctx context.Context, s query.Sink, tee *cappedBuffer) (query.Stats, error) {
+		teed.Store(tee != nil)
+		return query.Stats{}, nil
+	}
+	_, _ = c.do(context.Background(), "k", "t", true, nil, refresh, noReplay)
+	c.mu.Lock()
+	fills := c.fills
+	c.mu.Unlock()
+	close(slow.block)
+	<-done
+	if teed.Load() || fills != 1 {
+		t.Fatal("refresh started a fill beyond the bound", teed.Load(), fills)
+	}
+	if c.fills != 0 {
+		t.Fatal("fill count leaked", c.fills)
+	}
+}
+
+// Review #4/#5: an incomplete read (cleanup error, panic, early return) is never kept.
+func TestSnapshotCacheIncompleteNotKept(t *testing.T) {
+	c := newResultCache(time.Minute, 1<<10, 1<<20)
+	current := "g1"
+	s := snapshotFixture(c, "g1", &current)
+	s.serve(nil)
+	_, _ = s.tee(strings.NewReader("x")).Read(make([]byte, 1))
+	s.finish(query.Stats{}, errCacheIncomplete)
+	if len(c.entries) != 0 || c.fills != 0 || c.total != 0 {
+		t.Fatal("incomplete fill kept or leaked")
+	}
+	var none *snapshotRead
+	none.finish(query.Stats{}, nil) // reads that never qualified
+}
+
+// Review #6: X-Refresh skips the kept snapshot result and refills it.
+func TestSnapshotCacheBypassRefills(t *testing.T) {
+	c := newResultCache(time.Minute, 1<<10, 1<<20)
+	current, runs := "g1", 0
+	runSnapshot(t, snapshotFixture(c, "g1", &current), "old", 3, &runs)
+	refresh := snapshotFixture(c, "g1", &current)
+	refresh.bypass = true
+	if runSnapshot(t, refresh, "new", 3, &runs) || runs != 2 {
+		t.Fatal("refresh served the kept result")
+	}
+	var got string
+	if _, _, hit := snapshotFixture(c, "g1", &current).serve(func(d []byte) (query.Stats, error) { got = string(d); return query.Stats{}, nil }); !hit || got != "new" {
+		t.Fatal("refresh did not replace the entry", got)
 	}
 }
