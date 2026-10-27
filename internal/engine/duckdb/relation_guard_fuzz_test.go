@@ -27,7 +27,7 @@ func serialize(t *testing.T, db *sql.DB, sqlText string) string {
 
 // referencesDeniedByParser reports whether DuckDB's tree contains a denied
 // function call or a base table that is not a plain identifier.
-func referencesDeniedByParser(tree string) bool {
+func referencesDeniedByParser(tree string, index *relationIndex) bool {
 	var node any
 	if json.Unmarshal([]byte(tree), &node) != nil {
 		return false
@@ -38,7 +38,7 @@ func referencesDeniedByParser(tree string) bool {
 		switch tv := v.(type) {
 		case map[string]any:
 			if kind, _ := tv["type"].(string); kind == "BASE_TABLE" {
-				if name, _ := tv["table_name"].(string); checkBaseTable(stringOf(tv["catalog_name"]), stringOf(tv["schema_name"]), name, map[string]struct{}{"events": {}}) != nil {
+				if name, _ := tv["table_name"].(string); checkBaseTable(index, nil, stringOf(tv["catalog_name"]), stringOf(tv["schema_name"]), name) != nil {
 					found = true
 				}
 			}
@@ -79,11 +79,15 @@ func TestRelationGuardDifferentialFuzz(t *testing.T) {
 	fragments := []string{"SELECT ", "* ", "FROM ", "--", "\r", "\n", "'", "''", `"`, "$$", "$é$", "$t$", "$日$", "/*", "*/",
 		"'/etc/hosts'", "'/tmp/kelvo_1.csv'", `"/tmp/x.csv"`, "'*.csv'", "read_csv('/x')", "glob('*')", "READ_PARQUET('x')",
 		`"read_text"('x')`, "range(3)", "1", ",", "(", ")", "AS x ", `E'\\'`, ";", " ", "query('SELECT 1')", "sales",
-		"information_schema.views", "duckdb_tables()", "enable_profiling()", "x", "re", "ad_csv('x')", "events"}
+		"information_schema.views", "duckdb_tables()", "pg.csv", `pg."d/../x.csv"`, "nosuch", "enable_profiling()", "x", "re", "ad_csv('x')", "events"}
 	rng := rand.New(rand.NewPCG(7, 11))
 	denials := 0
 	err = conn.Raw(func(raw any) error {
 		q := raw.(driver.QueryerContext)
+		index, err := loadRelationIndex(context.Background(), q)
+		if err != nil {
+			return err
+		}
 		for i := 0; i < 5000; i++ {
 			var b strings.Builder
 			b.WriteString("SELECT ")
@@ -95,12 +99,12 @@ func TestRelationGuardDifferentialFuzz(t *testing.T) {
 			if tree == "" {
 				continue
 			}
-			if !referencesDeniedByParser(tree) {
+			if !referencesDeniedByParser(tree, index) {
 				continue
 			}
 			denials++
 			// enforceRelationAllowlist must reject exactly these.
-			if err := enforceRelationAllowlist(context.Background(), q, candidate, []string{"events"}); err == nil {
+			if err := enforceRelationAllowlist(context.Background(), q, candidate); err == nil {
 				t.Fatalf("guard accepted %q, whose parse tree references a denied relation/function", candidate)
 			}
 		}
