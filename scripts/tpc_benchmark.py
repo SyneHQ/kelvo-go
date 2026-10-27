@@ -608,7 +608,7 @@ def cmd_concurrency(args):
               "host": host_facts(), "kelvo_sha256": sha256(args.kelvo), "harness_sha256": sha256(__file__),
               "admission": {"concurrency": args.admission, "max_queries": 128, "engine_memory_mb_per_query": args.engine_memory_mb,
                             "threads_per_query": args.threads, "cgroup_memory_gib": args.memory_gib},
-              "refusal_policy": "HTTP 429 on results claim is counted, client sleeps 0.25 s and retries the same query; latency includes waits",
+              "refusal_policy": "HTTP 429 on results claim is counted, client sleeps 0.25 s and retries the claim on the same handle; latency (create to last byte) includes waits",
               "levels": {}}
     tables = ",".join(tables_in(data))
     for streams in [int(s) for s in args.streams.split(",")]:
@@ -634,12 +634,16 @@ def cmd_concurrency(args):
         headers = {"Authorization": "Bearer " + token, "Content-Type": "application/json"}
 
         def one(qfile):
-            refusals, started = 0, time.monotonic()
+            # A 429 on the results claim leaves the handle queued: retry the claim on the
+            # same handle (never create a new one, which would fill max-queries).
+            refusals, started, qid = 0, time.monotonic(), None
             body = json.dumps({"sql": qfile.read_text(), "mode": "federated", "sources": tables.split(",")}).encode()
             while True:
                 try:
-                    created = json.loads(urllib.request.urlopen(urllib.request.Request(base + "/v1/queries", body, headers), timeout=60).read())
-                    payload = urllib.request.urlopen(urllib.request.Request(f"{base}/v1/queries/{created['id']}/results", headers=headers),
+                    if qid is None:
+                        qid = json.loads(urllib.request.urlopen(urllib.request.Request(base + "/v1/queries", body, headers),
+                                                                timeout=60).read())["id"]
+                    payload = urllib.request.urlopen(urllib.request.Request(f"{base}/v1/queries/{qid}/results", headers=headers),
                                                      timeout=args.timeout).read()
                     import pyarrow as pa
                     rows = pa.ipc.open_stream(payload).read_all().num_rows
