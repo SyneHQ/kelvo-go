@@ -240,8 +240,23 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 		}
 		return stats, err, true
 	}
-	key := resultCacheKey(id.tenant, id.team, id.saved, auth.database, id.schema, auth.revision, r, e.Limits)
-	stats, err := pool.cache.doTTL(ctx, key, id.tenant, pool.cache.ttlFor(id.tenant, id.team, id.saved), r.BypassCache, sink, execute, func(entry *cacheEntry, sink query.Sink) (query.Stats, error) {
+	// The key binds the principal and its effective authorization; the fence
+	// re-checks the authorization before a result is kept or served, so a
+	// revocation or credential rotation during a fill is never cached.
+	binding := ""
+	if e.catalogBinding != nil {
+		binding = e.catalogBinding.digest
+	}
+	policy := policyFingerprint(ctx, binding, auth.revision)
+	key := resultCacheKey(cacheKey{Tenant: id.tenant, Team: id.team, Principal: principal, Connection: id.saved, Database: auth.database, Schema: id.schema, Revision: auth.revision, Policy: policy}, r, e.Limits)
+	fence := func() string {
+		current := pool.currentAuthorization(authKey)
+		if current == nil {
+			return "" // revoked or retired: keep and serve nothing
+		}
+		return current.revision
+	}
+	stats, err := pool.cache.doFenced(ctx, key, id.tenant, pool.cache.ttlFor(id.tenant, id.team, id.saved), r.BypassCache, fence, sink, execute, func(entry *cacheEntry, sink query.Sink) (query.Stats, error) {
 		observed, err := e.readIPC(ctx, bytes.NewReader(entry.data), e.Limits, sink)
 		stats := entry.stats
 		stats.Rows, stats.WireBytes, stats.Bytes, stats.Batches = observed.Rows, observed.WireBytes, observed.Bytes, observed.Batches
