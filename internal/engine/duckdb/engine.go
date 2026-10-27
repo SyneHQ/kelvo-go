@@ -104,7 +104,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	if err := validateObjectCombination(sources); err != nil {
 		return stats, err
 	}
-	if containsDeniedCapability(req.SQL) {
+	if preflightDenied(req.SQL) {
 		return stats, query.NewError("PERMISSION_DENIED", "Query uses a capability unavailable to this execution")
 	}
 	values, valueErr := req.Values()
@@ -182,6 +182,9 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 			return err
 		}
 		if err := validateReadOnly(ctx, raw, req.SQL); err != nil {
+			return err
+		}
+		if err := enforceRelationAllowlist(ctx, raw, req.SQL); err != nil {
 			return err
 		}
 		bounded, err := boundedSelect(normalizeValidatedSelect(req.SQL), e.limits.MaxRows)
@@ -451,42 +454,6 @@ func validateReadOnly(ctx context.Context, raw any, sqlText string) error {
 		return query.NewError("PERMISSION_DENIED", "Only one read-only SELECT statement is permitted")
 	}
 	return nil
-}
-
-// This conservative preflight guard blocks user-invoked file/network/extension
-// entry points before source setup. It is defense in depth; SQL classification
-// and this denylist do not sandbox native code or every table-function alias.
-// Shared deployments must execute workers inside an OS sandbox.
-func containsDeniedCapability(sqlText string) bool {
-	denied := map[string]struct{}{
-		"attach": {}, "detach": {}, "install": {}, "load": {}, "pragma": {},
-		"insert": {}, "update": {}, "delete": {}, "merge": {}, "create": {},
-		"drop": {}, "alter": {}, "copy": {}, "vacuum": {}, "call": {},
-		"set": {}, "reset": {}, "begin": {}, "commit": {}, "rollback": {},
-		"read_csv": {}, "read_csv_auto": {}, "read_parquet": {}, "read_json": {},
-		"glob": {}, "http_get": {}, "load_extension": {}, "query": {}, "query_table": {},
-		"read_blob": {}, "read_text": {}, "postgres_query": {}, "mysql_query": {},
-		"duckdb_secrets": {}, "getenv": {}, "postgres_scan": {}, "mysql_scan": {}, "sqlite_scan": {},
-		"duckdb_logs": {}, "duckdb_logs_parsed": {}, "write_log": {},
-		"read_json_auto": {}, "read_ndjson": {}, "read_ndjson_auto": {},
-		"read_json_objects": {}, "read_json_objects_auto": {}, "read_ndjson_objects": {},
-		"arrow_scan": {}, "arrow_scan_dumb": {},
-		"parquet_scan": {}, "csv_scan": {}, "json_scan": {}, "sniff_csv": {},
-		"postgres_scan_pushdown": {}, "postgres_execute": {}, "mysql_execute": {},
-		"mysql_bind_params": {}, "mysql_create_params": {}, "mysql_pin_connection": {},
-		"mysql_close_pinned_connection": {}, "mysql_configure_pool": {},
-		"postgres_attach": {}, "postgres_clear_cache": {}, "mysql_clear_cache": {},
-		"sqlite_attach": {}, "sqlite_query": {}, "sqlite_execute": {},
-	}
-	for _, token := range strings.FieldsFunc(strings.ToLower(sqlText), func(r rune) bool { return !(r == '_' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9') }) {
-		if strings.HasPrefix(token, "kelvo_arrow_scan_") {
-			return true
-		}
-		if _, found := denied[token]; found {
-			return true
-		}
-	}
-	return false
 }
 
 // normalizeValidatedSelect removes only an exact terminal semicolon after the

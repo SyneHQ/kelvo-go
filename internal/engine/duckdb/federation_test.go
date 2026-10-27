@@ -24,13 +24,20 @@ func (federationDiscardSink) Schema(*arrow.Schema) error    { return nil }
 func (federationDiscardSink) Write(arrow.RecordBatch) error { return nil }
 
 func TestRawArrowEntryPointsRemainPrivate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "events.csv")
+	if err := os.WriteFile(path, []byte("id\n1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	e := makeEngine(t, path)
 	for _, sql := range []string{
 		"SELECT * FROM arrow_scan(1,2,3)", "SELECT * FROM ARROW_SCAN_DUMB(1,2,3)",
 		"SELECT * FROM kelvo_arrow_scan_12(NULL,NULL,NULL)",
 		`SELECT * FROM main."KELVO_ARROW_SCAN_12"(NULL,NULL,NULL)`,
 	} {
-		if !containsDeniedCapability(sql) {
-			t.Fatal("raw pointer table function allowed")
+		_, err := e.Execute(context.Background(), query.Request{Sources: []string{"events"}, SQL: sql}, new(captureSink))
+		if err == nil || query.PublicError(err).Code != "PERMISSION_DENIED" {
+			t.Fatalf("raw pointer table function allowed: %s (%v)", sql, err)
 		}
 	}
 }

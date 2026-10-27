@@ -317,6 +317,12 @@ func TestNativeParserRejectsMultipleStatementsBeforeAnyExecution(t *testing.T) {
 }
 
 func TestDeniedNativeCapabilityAliases(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "events.csv")
+	if err := os.WriteFile(path, []byte("id\n1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	e := makeEngine(t, path)
 	for _, sql := range []string{
 		"SELECT * FROM read_json_auto('/tmp/data.json')",
 		"SELECT * FROM read_ndjson_auto('/tmp/data.json')",
@@ -325,8 +331,9 @@ func TestDeniedNativeCapabilityAliases(t *testing.T) {
 		"SELECT * FROM mysql_execute('my', 'DELETE FROM data')",
 		`SELECT * FROM "read_json_objects"('/tmp/data.json')`,
 	} {
-		if !containsDeniedCapability(sql) {
-			t.Errorf("native capability was not denied: %s", sql)
+		_, err := e.Execute(context.Background(), query.Request{Sources: []string{"events"}, SQL: sql}, new(captureSink))
+		if err == nil || query.PublicError(err).Code != "PERMISSION_DENIED" {
+			t.Errorf("native capability was not denied: %s (%v)", sql, err)
 		}
 	}
 }
