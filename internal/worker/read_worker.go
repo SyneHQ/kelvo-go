@@ -243,12 +243,16 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 	// The key binds the principal and its effective authorization; the fence
 	// re-checks the authorization before a result is kept or served, so a
 	// revocation or credential rotation during a fill is never cached.
-	binding := ""
-	if e.catalogBinding != nil {
-		binding = e.catalogBinding.digest
-	}
-	policy := policyFingerprint(ctx, binding, auth.revision)
+	policy := policyFingerprint(ctx, catalogBindingDigest(e), auth.revision)
 	key := resultCacheKey(cacheKey{Tenant: id.tenant, Team: id.team, Principal: principal, Connection: id.saved, Database: auth.database, Schema: id.schema, Revision: auth.revision, Policy: policy}, r, e.Limits)
+	if policy == "" || key == "" {
+		// Unencodable key or policy: never cache, never share.
+		stats, err := execute(ctx, sink, nil)
+		if errors.Is(err, errWarmUnavailable) || errors.Is(err, errNeedsCredentials) || errors.Is(err, errCredentialsExpired) {
+			return stats, nil, false
+		}
+		return stats, err, true
+	}
 	fence := func() string {
 		current := pool.currentAuthorization(authKey)
 		if current == nil {

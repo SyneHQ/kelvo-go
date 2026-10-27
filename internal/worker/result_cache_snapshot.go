@@ -4,6 +4,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"time"
@@ -12,6 +13,9 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
+
+// errCacheIncomplete ends a fill whose read did not reach its normal return.
+var errCacheIncomplete = errors.New("result cache: read did not complete")
 
 // snapshotRead is one federated read over immutable snapshot generations that
 // may be served from, or kept in, the result cache. The key holds every
@@ -26,6 +30,7 @@ type snapshotRead struct {
 	token       string // the resolved generations; the fence must still report them
 	started     time.Time
 	buffer      *cappedBuffer // nil: not filling
+	bypass      bool          // X-Refresh: never served, still filled
 }
 
 // snapshotReadFor returns the cache handle of a read, or nil when the read
@@ -47,13 +52,16 @@ func (e *Executor) snapshotReadFor(ctx context.Context, execution delegation.Exe
 		generations[i], fingerprints[i] = datasetGeneration{v.Dataset, v.Generation}, fingerprint
 	}
 	id, _, principal := readPrincipal(execution, dynamic, r.ConnectionID)
-	binding := ""
-	if e.catalogBinding != nil {
-		binding = e.catalogBinding.digest
+	policy := policyFingerprint(ctx, catalogBindingDigest(e), "")
+	if policy == "" {
+		return nil
 	}
 	key := resultCacheKey(cacheKey{Tenant: id.tenant, Team: id.team, Principal: principal, Revision: strings.Join(fingerprints, ","),
-		Policy: policyFingerprint(ctx, binding, ""), Generations: generations}, r, e.Limits)
-	return &snapshotRead{cache: pool.cache, key: key, tenant: id.tenant, ttl: pool.cache.ttlFor(id.tenant, id.team, ""), fence: e.generationFence(generations), token: generationToken(generations)}
+		Policy: policy, Generations: generations}, r, e.Limits)
+	if key == "" {
+		return nil
+	}
+	return &snapshotRead{bypass: r.BypassCache, cache: pool.cache, key: key, tenant: id.tenant, ttl: pool.cache.ttlFor(id.tenant, id.team, ""), fence: e.generationFence(generations), token: generationToken(generations)}
 }
 
 // generationFence reports the current generation of each dataset; "" when
@@ -109,7 +117,7 @@ func (s *snapshotRead) serve(replay func(data []byte) (query.Stats, error)) (que
 		c.mu.Unlock()
 		return query.Stats{}, nil, false
 	}
-	if entry := c.freshLocked(s.key); entry != nil {
+	if entry := c.freshLocked(s.key); entry != nil && !s.bypass {
 		if entry.token == s.token {
 			c.hits++
 			c.mu.Unlock()
@@ -121,7 +129,7 @@ func (s *snapshotRead) serve(replay func(data []byte) (query.Stats, error)) (que
 		c.removeLocked(c.entries[s.key]) // a refresh published a newer generation
 		c.fenced++
 	}
-	if len(c.flights)+c.fills < c.maxFills {
+	if c.fills < c.maxFills {
 		c.fills++
 		s.started, s.buffer = time.Now(), &cappedBuffer{cache: c, tenant: s.tenant}
 	}
