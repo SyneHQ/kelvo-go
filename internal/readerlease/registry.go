@@ -100,6 +100,12 @@ type state struct {
 }
 
 func (r *Registry) read(parent context.Context, ref Reference) (state, error) {
+	return r.readBound(parent, ref, true)
+}
+
+// readBound with bound=false is used only to discover an orphan's incarnation;
+// the returned document still matches tenant, dataset and generation.
+func (r *Registry) readBound(parent context.Context, ref Reference, bound bool) (state, error) {
 	key, err := r.key(ref)
 	if err != nil {
 		return state{}, err
@@ -144,7 +150,7 @@ func (r *Registry) read(parent context.Context, ref Reference) (state, error) {
 	if err != nil {
 		return state{}, err
 	}
-	if doc.Reference != ref {
+	if doc.Reference != ref && (bound || doc.Tenant != ref.Tenant || doc.Dataset != ref.Dataset || doc.Generation != ref.Generation) {
 		return state{}, ErrBinding
 	}
 	return state{document: doc, version: info.Version, clock: clock}, nil
@@ -246,6 +252,9 @@ func (r *Registry) Seal(ctx context.Context, binding Binding, writerOwner string
 		}
 		if old.document.WriterOwner != writerOwner {
 			return ErrFence
+		}
+		if old.document.Retired {
+			return ErrRetired
 		}
 		if old.document.Sealed {
 			if old.document.ContentSHA256 != binding.ContentSHA256 {
@@ -366,6 +375,9 @@ func (r *Registry) AcquireWithLifetime(acquireCtx, custodyCtx context.Context, b
 		}
 		if err = bindingMatches(old.document, binding); err != nil {
 			return nil, err
+		}
+		if old.document.Retired {
+			return nil, ErrRetired
 		}
 		lower, _, err := old.clock.at(r.now())
 		if err != nil {

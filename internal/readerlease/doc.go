@@ -4,7 +4,9 @@
 // generation-specific CAS registry. It is groundwork: storage credentials,
 // manifest publication and all reader lifetimes must be integrated separately.
 // A pin is not authorization and the absence of pins never authorizes deletion.
-// There is deliberately no retirement, object listing or garbage collection API.
+// Retire permanently blocks new acquisitions for an unreferenced generation and
+// Inspect reports whether any reader might still be live; collection itself
+// lives in the acceleration package and never infers safety from absence.
 //
 // Callers must hold their existing writer fence during Stage and Seal. Store
 // must use a dedicated registry-only identity, remain alive until all leases

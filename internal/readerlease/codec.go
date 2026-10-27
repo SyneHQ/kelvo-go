@@ -24,6 +24,7 @@ type document struct {
 	Sequence      uint64  `yaml:"sequence"`
 	WriterOwner   string  `yaml:"writer_owner"`
 	Sealed        bool    `yaml:"sealed"`
+	Retired       bool    `yaml:"retired,omitempty"`
 	ContentSHA256 string  `yaml:"content_sha256,omitempty"`
 	Readers       []entry `yaml:"readers,omitempty"`
 }
@@ -95,7 +96,7 @@ func typedMapping(n *yaml.Node, reader bool) bool {
 			valid = reader && value.Kind == yaml.ScalarNode && value.Tag == "!!str"
 		case "tenant", "dataset", "generation", "incarnation", "writer_owner", "content_sha256":
 			valid = !reader && value.Kind == yaml.ScalarNode && value.Tag == "!!str"
-		case "sealed":
+		case "sealed", "retired":
 			valid = !reader && value.Kind == yaml.ScalarNode && value.Tag == "!!bool" && (value.Value == "true" || value.Value == "false")
 		case "renewed_at", "expires_at":
 			parsed, err := time.Parse(time.RFC3339Nano, value.Value)
