@@ -38,7 +38,7 @@ spec:
         app.kubernetes.io/component: node
         kelvo.synehq.com/worker-id: {{ .id }}
       annotations:
-        checksum/config: {{ include "kelvo.policy" $ | cat (toYaml $.Values.catalog) | sha256sum | trunc 16 }}
+        checksum/config: {{ list (include "kelvo.policy" $) (include "kelvo.natsURL" $) (toYaml .) (toYaml $d.admission) (toYaml $.Values.catalog) | toJson | sha256sum | trunc 16 }}
     spec:
       {{- with $.Values.imagePullSecrets }}
       imagePullSecrets: {{- toYaml . | nindent 8 }}

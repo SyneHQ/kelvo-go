@@ -10,7 +10,8 @@ data:
   nats.conf: |
     server_name: {{ $name }}-nats
     listen: 0.0.0.0:4222
-    http: 0.0.0.0:8222
+    # Monitoring stays on loopback; probes exec inside the pod.
+    http: 127.0.0.1:8222
     max_payload: 1048576
     tls {
       cert_file: /run/nats/tls/nats.crt
@@ -74,6 +75,18 @@ spec:
   ports:
     - {name: client, port: 4222, targetPort: client}
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-nats-headless
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {{- include "kelvo.selector" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+  ports:
+    - {name: client, port: 4222, targetPort: client}
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -81,7 +94,7 @@ metadata:
   labels: {{- include "kelvo.labels" . | nindent 4 }}
     app.kubernetes.io/component: nats
 spec:
-  serviceName: {{ $name }}-nats
+  serviceName: {{ $name }}-nats-headless
   replicas: 1
   selector:
     matchLabels: {{- include "kelvo.selector" . | nindent 6 }}
@@ -106,7 +119,6 @@ spec:
           args: ["-c", "/etc/nats/nats.conf"]
           ports:
             - {name: client, containerPort: 4222}
-            - {name: monitor, containerPort: 8222}
           env:
             {{- range $k, $v := dict "KELVO_NATS_GATEWAY_PASSWORD" "nats-gateway-password" "KELVO_NATS_WORKER_PASSWORD" "nats-worker-password" "KELVO_NATS_PROVISIONER_PASSWORD" "nats-provisioner-password" }}
             - name: {{ $k }}
@@ -117,10 +129,10 @@ spec:
           resources:
 {{ toYaml .Values.nats.resources | indent 12 }}
           readinessProbe:
-            httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}
+            exec: {command: [wget, -q, -O, /dev/null, "http://127.0.0.1:8222/healthz?js-enabled-only=true"]}
             periodSeconds: 5
           livenessProbe:
-            httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}
+            exec: {command: [wget, -q, -O, /dev/null, "http://127.0.0.1:8222/healthz"]}
             initialDelaySeconds: 10
             periodSeconds: 20
           volumeMounts:

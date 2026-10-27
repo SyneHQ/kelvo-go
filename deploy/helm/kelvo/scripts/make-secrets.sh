@@ -29,13 +29,15 @@ done
 # NATS parses an interpolated $VAR as a config value: a password starting with
 # a digit is read as a number and fails. Prefix a letter.
 rand() { printf 'k%s' "$(openssl rand -hex 32)"; }
-[ -f tenant-token ] || rand > tenant-token
+# Generate each credential once and keep it in $DIR, so a re-run does not
+# rotate passwords under a running NATS.
+for f in tenant-token nats-provisioner-password nats-gateway-password nats-worker-password; do
+  [ -f "$f" ] || rand > "$f"
+done
 # shellcheck disable=SC2086
 kubectl -n "$ns" create secret generic "${TLS_SECRET:-kelvo-tls}" $files --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n "$ns" create secret generic "${SECRET:-kelvo-secrets}" \
-  --from-file=tenant-token \
-  --from-literal=nats-provisioner-password="$(rand)" \
-  --from-literal=nats-gateway-password="$(rand)" \
-  --from-literal=nats-worker-password="$(rand)" \
+  --from-file=tenant-token --from-file=nats-provisioner-password \
+  --from-file=nats-gateway-password --from-file=nats-worker-password \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 echo "created secrets ${TLS_SECRET:-kelvo-tls} and ${SECRET:-kelvo-secrets} in $ns; tenant token in $dir/tenant-token, CA in $dir/ca.crt"
