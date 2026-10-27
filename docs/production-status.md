@@ -49,7 +49,7 @@ The [protected runtime](protected-object-readers.md), [verification and inventor
 | Eight database adapters and Flight SQL federation | Available; live Oracle/warehouse gates remain open; Flight SQL compatibility is service-specific |
 | Automatic remote joins/aggregates | Pending bound-plan integration and parity checks |
 | Flight SQL | Client available; read-only server pending |
-| PostgreSQL/MySQL CDC | Pending checkpoint/publication and replay contracts |
+| PostgreSQL/MySQL CDC | PostgreSQL core: [`internal/cdc` capture with durable checkpoints](design/postgres-cdc.md), tested against PostgreSQL 17 for handoff, crash boundaries and bootstrap-required cursors; not yet wired into snapshots or workers. MySQL pending |
 | Principal access | [Keys and handle ownership](principal-access.md), opt-in [catalog authority](catalog-authority.md), [callback](row-column-access.md), [local/object snapshot policies](guarded-snapshots.md) and [federated exports](exports.md); native row policies, cache and coordinated revocation remain open |
 | Single-query distribution | Outside this design; workers distribute independent queries |
 
