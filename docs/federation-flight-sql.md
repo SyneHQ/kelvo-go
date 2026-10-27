@@ -53,4 +53,4 @@ No remote predicate, aggregate or join pushdown is advertised. A required source
 
 The [Linux acceptance record](evidence/flight-sql-federation.json) verifies two SQL-backed TLS fixture services, exact CTE/cross-source joins, policies, limits and cancellation. Regular, race, native, strict-cgo race, vet and CLI build passed on `a6a11b1`; the earlier test-collector failure and expected skips remain recorded.
 
-The adapter reuses Kelvo's outgoing [Flight SQL connector](sources-adapters.md) and public [federation contract](../federation/federation.go). It does not provide an incoming Flight SQL server. Provider-specific acceptance and performance require separate measurements; a protocol fixture cannot certify all Flight SQL services.
+The adapter reuses Kelvo's outgoing [Flight SQL connector](sources-adapters.md) and public [federation contract](../federation/federation.go). To serve Kelvo itself to Flight SQL clients, see the [Flight SQL server](flight-sql-server.md). Provider-specific acceptance and performance require separate measurements; a protocol fixture cannot certify all Flight SQL services.
