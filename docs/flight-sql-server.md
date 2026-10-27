@@ -1,6 +1,6 @@
 # Flight SQL server
 
-`kelvo serve` can expose a read-only [Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html) endpoint next to the HTTP API. It is disabled by default.
+`kelvo serve` and the cluster gateway can expose a read-only [Arrow Flight SQL](https://arrow.apache.org/docs/format/FlightSql.html) endpoint next to the HTTP API. It is disabled by default.
 
 Each Flight SQL call is an in-process request to the same HTTP query handler, made with the caller's own key. Admission, concurrency, query limits, authorization and execution are the HTTP API's. Flight SQL adds no second policy engine and cannot reach sources the HTTP API would refuse.
 
@@ -19,6 +19,22 @@ bin/kelvo serve --config examples/kelvo.yml --flight-sql-listen 127.0.0.1:50051
 | `--flight-sql-ticket-ttl` | `1m` | Lifetime of an unclaimed ticket and an idle prepared statement |
 
 HTTP flags such as `--concurrency`, `--max-queries`, `--result-ttl`, `--max-rows`, `--max-bytes` and `--timeout` also bound Flight SQL. Keep `--flight-sql-ticket-ttl` at or below `--result-ttl`.
+
+## Cluster gateway
+
+Add an optional `flight_sql` block to the gateway configuration. When the block is absent, the listener is disabled:
+
+```yaml
+flight_sql:
+  listen: 0.0.0.0:50051
+  tls_cert_file: /etc/kelvo/flight.pem   # required
+  tls_key_file: /etc/kelvo/flight.key    # required
+  max_sessions: 64                       # default 64
+  ticket_ttl: 1m                         # default 1m
+  catalog_file: /etc/kelvo/kelvo.yml     # optional, names tables for metadata only
+```
+
+The listener wraps the gateway's own query handler. Principal keys, source grants, [row and column policy](row-column-access.md), owner-bound handles and revocation all apply unchanged. The gateway has no source catalog of its own, so set `catalog_file` to the workers' catalog if clients need metadata. Without it, GetTables and GetDbSchemas are empty, and statements attach only the sources named in `x-kelvo-sources`. The file gives no access: each listed table is still probed with the caller's key.
 
 ## Authenticate
 
@@ -93,6 +109,6 @@ On a loopback listener without TLS, use `useEncryption=false`. JDBC basic authen
 
 ## Limits
 
-- Only standalone `serve` is wired. Its single token authorizes the whole catalog, as for the HTTP API. The server accepts any `http.Handler` that implements the HTTP query API. Gateway wiring, which brings per-principal grants and row and column policy, is not done yet.
-- Unit tests use the arrow-go Flight SQL client against the real HTTP API handler. A test gateway in front of it models per-key grants, owner-bound handles and a column policy. That models the gateway's contract; it does not test the cluster gateway itself.
-- The ADBC end-to-end run covered Python ADBC 1.13.0 and pyarrow 26.0.0 on Linux. JDBC, the `grpc+tls` path and slow-reader behavior were not run.
+- A Linux gate (`TestFlightSQLThroughGatewayPrincipals`) runs the arrow-go Flight SQL client over TLS against a production gateway with file-key principals, a real node and a real sandboxed worker. The worker reads a guarded snapshot under a row and column policy. It checks the policy-shaped schema and rows, a hidden column, a principal denied a source, an unknown key, a foreign ticket and per-principal metadata. Job coordination in that gate uses the in-memory store, not a NATS broker. The gate needs the DuckDB bridge build and `KELVO_TEST_SNAPSHOT_BINARY`/`KELVO_TEST_SNAPSHOT_SANDBOX`; otherwise it is skipped.
+- The package unit tests use the real HTTP API handler, with a test gateway in front of it.
+- The ADBC end-to-end run covered Python ADBC 1.13.0 and pyarrow 26.0.0 on Linux against `serve`. JDBC, ADBC against the gateway and slow-reader behavior were not run.
