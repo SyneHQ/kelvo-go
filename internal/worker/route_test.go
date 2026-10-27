@@ -63,3 +63,40 @@ func TestPlanRouteStaysOnTheSnapshotWhenLiveAccessIsNotDirect(t *testing.T) {
 		t.Fatal("node without a router routed")
 	}
 }
+
+// A read that would route beyond covered_until passes the principal's grants
+// and row policy exactly as a direct read: a principal without a dataset grant
+// is denied before any routing, and a row-restricted principal never reaches
+// the live source, so its row predicate is applied on the guarded snapshot.
+func TestRoutedReadsHonourPrincipalPolicy(t *testing.T) {
+	e, r := routeExecutor(t)
+	e.Limits = query.DefaultLimits()
+	consulted := false
+	status := e.Router.Status
+	e.Router.Status = func(ctx context.Context, id string) (acceleration.Snapshot, error) {
+		consulted = true
+		return status(ctx, id)
+	}
+	// Granted only the live source, not the dataset: a direct read of the dataset
+	// is denied, so the routed read must be denied too, without data.
+	liveOnly, err := access.WithPolicy(context.Background(), access.Policy{Sources: map[string]access.SourcePolicy{
+		"live": {Tables: map[string]access.TablePolicy{"orders": {Columns: []string{"id"}, AllRows: true}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sink workerTestSink
+	_, err = e.Execute(liveOnly, r, &sink)
+	if public := query.PublicError(err); public == nil || public.Code != "PERMISSION_DENIED" || sink.rows != 0 || consulted {
+		t.Fatalf("denied principal: err=%v rows=%d routed=%v", err, sink.rows, consulted)
+	}
+	// Row-restricted principal with the dataset grant: not routed.
+	rows, err := access.WithPolicy(context.Background(), access.Policy{Sources: map[string]access.SourcePolicy{
+		"orders": {Tables: map[string]access.TablePolicy{"orders": {Columns: []string{"id"},
+			Rows: &access.Predicate{Kind: "comparison", Column: "id", Type: "int64", Op: "eq", Value: "7"}}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if routed, live := e.planRoute(rows, r, false); routed != nil || live.Sources[0] != "orders" {
+		t.Fatalf("row-restricted read routed: %v %v", routed, live.Sources)
+	}
+}
