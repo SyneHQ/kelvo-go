@@ -53,9 +53,10 @@ curl -sS http://127.0.0.1:8080/v1/queries \
 | `GET /v1/queries/{id}/results` | Claim and consume Arrow results once |
 | `GET /v1/queries/{id}` | Inspect status |
 | `POST /v1/queries/{id}/cancel` | Cancel the worker |
+| `DELETE /v1/queries/{id}` | Release a finished handle: succeeded (results consumed), failed or cancelled. Returns `204`, `409` while the query is queued or running, and `404` for an unknown handle or another caller's handle. |
 | `GET /health` | Liveness, without a token |
 
-Submission creates a TTL handle; execution starts on the first result request. HTTP 429 leaves the handle unconsumed. All query operations require the token.
+Submission creates a TTL handle; execution starts on the first result request. A handle counts against `--max-queries` until it expires or is released. On a cluster gateway, release checks ownership and state; terminal job records are kept until expiry, and their slots are already reused when no other slot is free. HTTP 429 leaves the handle unconsumed. All query operations require the token.
 
 Check terminal status and complete transport/Arrow framing. HTTP 200 can still end in execution failure; partial data is not a successful result. Exposing the service requires TLS termination and deployment isolation. One `serve` token authorizes the whole catalog.
 

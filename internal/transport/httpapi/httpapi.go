@@ -144,6 +144,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.status(w, parts[2])
 		return
 	}
+	if len(parts) == 3 && r.Method == http.MethodDelete {
+		s.release(w, parts[2])
+		return
+	}
 	if len(parts) == 4 && parts[3] == "results" && r.Method == http.MethodGet {
 		s.results(w, r, parts[2])
 		return
@@ -249,6 +253,34 @@ func (s *Server) cancel(w http.ResponseWriter, id string) {
 	current := e.state
 	s.mu.Unlock()
 	s.writeJSON(w, http.StatusOK, map[string]string{"id": id, "state": string(current)})
+}
+
+// release removes a finished handle so it stops counting against MaxQueries.
+// Only succeeded (results consumed), failed, cancelled or expired handles
+// whose execution has returned are released; others get 409.
+func (s *Server) release(w http.ResponseWriter, id string) {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		s.writeError(w, http.StatusServiceUnavailable, &query.Error{Code: "UNAVAILABLE", Message: "Service unavailable"})
+		return
+	}
+	e, ok := s.queries[id]
+	if !ok {
+		s.mu.Unlock()
+		s.writeError(w, http.StatusNotFound, &query.Error{Code: "NOT_FOUND", Message: "Query not found"})
+		return
+	}
+	terminal := e.state == succeeded || e.state == failed || e.state == cancelled || e.state == expired
+	if !terminal || e.cancel != nil {
+		s.mu.Unlock()
+		s.writeError(w, http.StatusConflict, &query.Error{Code: "QUERY_ACTIVE", Message: "Query is not finished; cancel it first"})
+		return
+	}
+	delete(s.queries, id)
+	s.mu.Unlock()
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) results(w http.ResponseWriter, r *http.Request, id string) {

@@ -467,3 +467,51 @@ func TestFailedHTTPResultReleasesDictionariesWithoutEOS(t *testing.T) {
 		}
 	}
 }
+
+func TestReleaseFreesHandleSlot(t *testing.T) {
+	s, err := New(&fakeExecutor{rows: 1}, Options{Token: "test-token", TTL: time.Minute, MaxQueries: 1, MaxConcurrent: 1, Limits: testLimits()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	id := create(t, s)
+	if got := request(t, s, http.MethodDelete, "/v1/queries/"+id, "", true).Code; got != http.StatusConflict {
+		t.Fatalf("queued release=%d", got)
+	}
+	if got := request(t, s, http.MethodPost, "/v1/queries", `{"sql":"SELECT 1","mode":"federated","sources":["orders"]}`, true).Code; got != http.StatusTooManyRequests {
+		t.Fatalf("second handle admitted before release: %d", got)
+	}
+	if got := request(t, s, http.MethodGet, "/v1/queries/"+id+"/results", "", true).Code; got != http.StatusOK {
+		t.Fatalf("results=%d", got)
+	}
+	if got := request(t, s, http.MethodDelete, "/v1/queries/"+id, "", false).Code; got != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated release=%d", got)
+	}
+	if got := request(t, s, http.MethodDelete, "/v1/queries/"+id, "", true).Code; got != http.StatusNoContent {
+		t.Fatalf("release=%d", got)
+	}
+	if got := request(t, s, http.MethodDelete, "/v1/queries/"+id, "", true).Code; got != http.StatusNotFound {
+		t.Fatalf("second release=%d", got)
+	}
+	if got := request(t, s, http.MethodDelete, "/v1/queries/ffffffffffffffffffffffffffffffff", "", true).Code; got != http.StatusNotFound {
+		t.Fatalf("unknown release=%d", got)
+	}
+	create(t, s) // the freed slot admits the next handle
+}
+
+func TestReleaseRejectsRunningQuery(t *testing.T) {
+	exec := &blockingExecutor{started: make(chan struct{})}
+	s := newTestServer(t, exec, time.Second, testLimits())
+	id := create(t, s)
+	done := make(chan struct{})
+	go func() { _ = request(t, s, http.MethodGet, "/v1/queries/"+id+"/results", "", true); close(done) }()
+	<-exec.started
+	if got := request(t, s, http.MethodDelete, "/v1/queries/"+id, "", true).Code; got != http.StatusConflict {
+		t.Fatalf("running release=%d", got)
+	}
+	request(t, s, http.MethodPost, "/v1/queries/"+id+"/cancel", "", true)
+	<-done
+	if got := request(t, s, http.MethodDelete, "/v1/queries/"+id, "", true).Code; got != http.StatusNoContent {
+		t.Fatalf("cancelled release=%d", got)
+	}
+}
