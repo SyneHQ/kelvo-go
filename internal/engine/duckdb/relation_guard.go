@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
@@ -214,8 +215,11 @@ func (x *relationIndex) resolves(catalogName, schema, name string) bool {
 func walkPlan(v any, index *relationIndex, ctes map[string]struct{}) error {
 	switch t := v.(type) {
 	case map[string]any:
-		// CTEs are visible to later CTEs of the same WITH, to themselves
-		// (recursive), and to the query body, but not outside this node.
+		// A CTE body sees only earlier CTEs of the same WITH. A recursive CTE
+		// may also see itself, but only in the right-hand side of its
+		// top-level UNION; a non-recursive or left-hand self-reference does
+		// not bind to the CTE and would fall back to a replacement scan.
+		// The query body then sees every CTE of the WITH.
 		if cm, ok := t["cte_map"].(map[string]any); ok {
 			scope := make(map[string]struct{}, len(ctes)+4)
 			for k := range ctes {
@@ -225,10 +229,14 @@ func walkPlan(v any, index *relationIndex, ctes map[string]struct{}) error {
 			for _, e := range entries {
 				entry, _ := e.(map[string]any)
 				key, _ := entry["key"].(string)
-				scope[strings.ToLower(key)] = struct{}{}
-				if err := walkPlan(entry["value"], index, scope); err != nil {
+				if !catalog.ValidID(key) {
+					return query.NewError("PERMISSION_DENIED", "Relation not found or not permitted")
+				}
+				name := strings.ToLower(key)
+				if err := walkCTEBody(entry["value"], index, scope, name); err != nil {
 					return err
 				}
+				scope[name] = struct{}{}
 			}
 			ctes = scope
 		}
@@ -261,8 +269,56 @@ func walkPlan(v any, index *relationIndex, ctes map[string]struct{}) error {
 	return nil
 }
 
+// walkCTEBody walks one CTE definition with only earlier CTEs in scope. DuckDB
+// serializes a genuinely recursive CTE as RECURSIVE_CTE_NODE; only its right
+// side may reference the CTE itself. A self-reference anywhere else (a plain
+// WITH, WITH RECURSIVE without a UNION, the left side of the UNION) does not
+// bind to the CTE and falls back to a replacement scan, so it must resolve
+// like any other name.
+func walkCTEBody(value any, index *relationIndex, earlier map[string]struct{}, self string) error {
+	info, _ := value.(map[string]any)
+	node := cteNode(info)
+	if node == nil {
+		return walkPlan(value, index, earlier)
+	}
+	if kind, _ := node["type"].(string); kind != "RECURSIVE_CTE_NODE" {
+		return walkPlan(value, index, earlier)
+	}
+	withSelf := make(map[string]struct{}, len(earlier)+1)
+	for k := range earlier {
+		withSelf[k] = struct{}{}
+	}
+	withSelf[self] = struct{}{}
+	for key, child := range node {
+		scope := earlier
+		if key == "right" {
+			scope = withSelf
+		}
+		if err := walkPlan(child, index, scope); err != nil {
+			return err
+		}
+	}
+	for key, child := range info {
+		if key != "query" {
+			if err := walkPlan(child, index, earlier); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// cteNode returns the query node of a serialized CTE definition.
+func cteNode(info map[string]any) map[string]any {
+	q, _ := info["query"].(map[string]any)
+	n, _ := q["node"].(map[string]any)
+	return n
+}
+
 func checkBaseTable(index *relationIndex, ctes map[string]struct{}, catalogName, schema, table string) error {
-	denied := query.NewError("PERMISSION_DENIED", "Query references a relation unavailable to this execution")
+	// One message for "missing" and "not granted", so a denial never reveals
+	// whether a relation exists outside the caller's grants.
+	denied := query.NewError("PERMISSION_DENIED", "Relation not found or not permitted")
 	low := strings.ToLower(table)
 	if _, bad := deniedRelations[low]; bad {
 		return denied

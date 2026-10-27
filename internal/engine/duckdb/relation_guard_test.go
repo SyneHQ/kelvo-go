@@ -180,7 +180,7 @@ func TestUnresolvedNamesNeverReachReplacementScans(t *testing.T) {
 		`WITH a AS (SELECT * FROM nosuch) SELECT * FROM a`,
 	} {
 		rows, err := run(sql)
-		if err == nil || rows != 0 || !strings.Contains(err.Error(), "relation unavailable") {
+		if err == nil || rows != 0 || !strings.Contains(err.Error(), "not found or not permitted") {
 			t.Fatalf("unresolved name not denied by the guard: %s (rows=%d err=%v)", sql, rows, err)
 		}
 	}
@@ -198,5 +198,40 @@ func TestUnresolvedNamesNeverReachReplacementScans(t *testing.T) {
 		if rows, err := run(sql); err != nil || rows != want {
 			t.Fatalf("existing relation rejected: %s rows=%d err=%v", sql, rows, err)
 		}
+	}
+}
+
+// A CTE that references its own name where the reference cannot bind to the
+// CTE (non-recursive body, or the left side of a recursive UNION) falls back
+// to a replacement scan and reads the file. The CTE name must not shadow it.
+func TestCTESelfReferenceCannotReachReplacementScans(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "x.csv")
+	if err := os.WriteFile(file, []byte("leak\n1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(dir, "events.csv")
+	if err := os.WriteFile(src, []byte("id\n1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	e := makeEngine(t, src)
+	q := `"` + file + `"`
+	for _, sql := range []string{
+		"WITH " + q + " AS (SELECT * FROM " + q + ") SELECT * FROM " + q,
+		"WITH " + q + " AS MATERIALIZED (SELECT * FROM " + q + ") SELECT * FROM " + q,
+		"WITH RECURSIVE " + q + " AS (SELECT * FROM " + q + ") SELECT * FROM " + q,
+		"WITH RECURSIVE " + q + " AS (SELECT * FROM " + q + " UNION ALL SELECT * FROM " + q + " WHERE false) SELECT * FROM " + q,
+		"WITH x AS (SELECT * FROM x) SELECT * FROM x",
+		"WITH RECURSIVE r(n) AS (SELECT * FROM r UNION ALL SELECT 1) SELECT * FROM r",
+	} {
+		sink := new(captureSink)
+		_, err := e.Execute(context.Background(), query.Request{Sources: []string{"events"}, SQL: sql}, sink)
+		if err == nil || sink.rows != 0 || !strings.Contains(err.Error(), "not found or not permitted") {
+			t.Fatalf("CTE self-reference not denied by the guard: %s (rows=%d err=%v)", sql, sink.rows, err)
+		}
+	}
+	sink := new(captureSink)
+	if _, err := e.Execute(context.Background(), query.Request{Sources: []string{"events"}, SQL: "WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM r WHERE n<3) SELECT * FROM r"}, sink); err != nil || sink.rows != 3 {
+		t.Fatalf("legitimate recursive CTE broken: rows=%d err=%v", sink.rows, err)
 	}
 }
