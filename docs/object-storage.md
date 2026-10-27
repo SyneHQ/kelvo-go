@@ -149,7 +149,7 @@ Request headers/read/idle times are bounded. Excess concurrency/ranges fail. The
 
 Object/local snapshots can join each other. Legacy PostgreSQL/MySQL extensions require broader external access and cannot share object queries; use [custom Go adapters](federation.md) or snapshots instead.
 
-Legacy namespaces have no distributed reader lease. [Protected namespaces](protected-object-readers.md) add durable leases, but **neither mode enables remote garbage collection**. Prune never lists/deletes payloads. Keep retired/orphaned objects; age-only lifecycle deletion can remove committed/readable data.
+Legacy namespaces have no distributed reader lease. [Protected namespaces](protected-object-readers.md) add durable leases, and neither mode deletes anything automatically. Prune never lists or deletes payloads. [`accelerate gc`](remote-gc.md) reports current/retained/staging/orphan bytes, and with explicit `--delete` in a protected namespace it quarantines, retires and later deletes unreferenced generations. Age-only lifecycle deletion can remove committed/readable data; do not use it.
 
 Changing provider, bucket, prefix or dataset definition does not migrate data. Refresh the new configuration or use an explicit [remote-to-local migration](snapshot-backup.md#migrate-a-current-object-snapshot-to-local-storage).
 
