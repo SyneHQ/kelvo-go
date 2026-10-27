@@ -4,7 +4,9 @@ package acceleration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -71,7 +73,7 @@ type incrementalPlan struct {
 
 // planIncremental returns nil, with the reason logged, when the refresh must be
 // full. It runs under the writer lock so the previous generation cannot change.
-func (m *Manager) planIncremental(ctx context.Context, d catalog.Dataset, fingerprint string, forceFull bool) (*incrementalPlan, string) {
+func (m *Manager) planIncremental(ctx context.Context, d catalog.Dataset, fingerprint string, forceFull string) (*incrementalPlan, string) {
 	if d.Incremental == nil {
 		return nil, ""
 	}
@@ -79,8 +81,8 @@ func (m *Manager) planIncremental(ctx context.Context, d catalog.Dataset, finger
 		m.logLine("acceleration %s: full refresh instead of incremental: %s", d.ID, why)
 		return nil, why
 	}
-	if forceFull {
-		return fallback("delta schema differs from the previous generation")
+	if forceFull != "" {
+		return nil, forceFull
 	}
 	reader, ok := m.store.(PreviousReader)
 	if !ok {
@@ -90,7 +92,7 @@ func (m *Manager) planIncremental(ctx context.Context, d catalog.Dataset, finger
 	if ok, why := incrementalDecision(d, current, err == nil, current.LastFullAt, fingerprint, m.clock()); !ok {
 		return fallback(why)
 	}
-	request, why := incrementalRequest(d.Query, d.Incremental.Column, current.CoveredUntil)
+	request, why := incrementalRequest(d.Query, d.Incremental.Column, current.CoveredUntil, d.Incremental.LateWindow)
 	if why != "" {
 		return fallback(why)
 	}
@@ -117,14 +119,20 @@ type refreshSink interface {
 func (m *Manager) execute(ctx context.Context, d catalog.Dataset, executor query.Executor, sink refreshSink, plan *incrementalPlan, previous *arrow.Schema) (appended int64, err error) {
 	var target query.Sink = sink
 	request := d.Query
-	var preload *preloadSink
+	var merge *mergeSink
 	if plan != nil {
-		preload = &preloadSink{ctx: ctx, inner: sink, prev: plan.prev, schema: previous}
-		target, request = preload, plan.request
+		merge = &mergeSink{ctx: ctx, inner: sink, prev: plan.prev, schema: previous,
+			key: d.Incremental.Key, watermark: d.Incremental.Column, maxBytes: d.Limits.MaxBytes}
+		defer merge.release()
+		target, request = merge, plan.request
 	}
 	_, err = executor.Execute(ctx, request, target)
-	if preload != nil && (preload.fallback || (err == nil && !preload.loaded)) {
-		return 0, errIncrementalFallback
+	if err == nil && merge != nil {
+		err = merge.finish()
+	}
+	if merge != nil && merge.fallback != "" {
+		m.logLine("acceleration %s: full refresh instead of incremental: %s", d.ID, merge.fallback)
+		return 0, fmt.Errorf("%w: %s", errIncrementalFallback, merge.fallback)
 	}
 	if err != nil {
 		return 0, err
@@ -135,8 +143,8 @@ func (m *Manager) execute(ctx context.Context, d catalog.Dataset, executor query
 	if err = sink.Finish(); err != nil {
 		return 0, err
 	}
-	if preload != nil {
-		appended = preload.appended
+	if merge != nil {
+		appended = merge.appended
 	}
 	return appended, ctx.Err()
 }
@@ -195,14 +203,14 @@ func (m *Manager) Close() error { return m.store.Close() }
 // Refresh publishes only after a complete successful source result and Parquet
 // footer. A redelivered scheduled job rechecks freshness under the writer lock.
 func (m *Manager) Refresh(ctx context.Context, id string, onlyIfDue bool) (Snapshot, error) {
-	snapshot, err := m.refresh(ctx, id, onlyIfDue, false)
+	snapshot, err := m.refresh(ctx, id, onlyIfDue, "")
 	if errors.Is(err, errIncrementalFallback) {
-		return m.refresh(ctx, id, onlyIfDue, true)
+		return m.refresh(ctx, id, onlyIfDue, strings.TrimPrefix(err.Error(), errIncrementalFallback.Error()+": "))
 	}
 	return snapshot, err
 }
 
-func (m *Manager) refresh(ctx context.Context, id string, onlyIfDue, forceFull bool) (_ Snapshot, resultErr error) {
+func (m *Manager) refresh(ctx context.Context, id string, onlyIfDue bool, forceFull string) (_ Snapshot, resultErr error) {
 	started := m.clock()
 	d, ok := m.config.Dataset(id)
 	if !ok {
@@ -285,7 +293,7 @@ func (m *Manager) refresh(ctx context.Context, id string, onlyIfDue, forceFull b
 // refreshMultipart retains one writer transaction across every part. Nothing
 // becomes visible until source execution, all footers and the schema contract
 // have completed successfully.
-func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, fingerprint string, onlyIfDue, forceFull bool, started time.Time) (_ Snapshot, resultErr error) {
+func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, fingerprint string, onlyIfDue bool, forceFull string, started time.Time) (_ Snapshot, resultErr error) {
 	backend, ok := m.store.(MultipartBackend)
 	if !ok {
 		return Snapshot{}, query.NewError("CONFIGURATION_ERROR", "Snapshot backend does not support multipart refresh")

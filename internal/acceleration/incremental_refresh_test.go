@@ -18,7 +18,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
-// deltaSource serves ids, honouring the wrapped `"id" > N` predicate the way a
+// deltaSource serves ids, honouring the wrapped `"id" >= N` predicate the way a
 // real source would, and records every SQL it received.
 type deltaSource struct {
 	ids      []int64
@@ -37,8 +37,9 @@ func (f *deltaSource) Execute(_ context.Context, r query.Request, sink query.Sin
 		return query.Stats{}, err
 	}
 	floor := int64(-1 << 62)
-	if i := strings.LastIndex(r.SQL, `"id" > `); i >= 0 {
-		floor, _ = strconv.ParseInt(strings.TrimSpace(r.SQL[i+len(`"id" > `):]), 10, 64)
+	if i := strings.LastIndex(r.SQL, `"id" >= `); i >= 0 {
+		floor, _ = strconv.ParseInt(strings.TrimSpace(r.SQL[i+len(`"id" >= `):]), 10, 64)
+		floor--
 	}
 	builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
 	defer builder.Release()
@@ -107,7 +108,7 @@ func firstSchema(t *testing.T, prev PreviousGeneration) *arrow.Schema {
 func incrementalDataset(multipart bool, request query.Request) catalog.Dataset {
 	d := catalog.Dataset{ID: "events", Query: request, RefreshInterval: time.Minute, MaxAge: time.Hour, AuthorizationVersion: "v1", Limits: query.DefaultLimits(),
 		SchemaEvolution: &catalog.SchemaEvolution{AddNullableColumns: true},
-		Incremental:     &catalog.Incremental{Column: "id", FullEvery: time.Hour}}
+		Incremental:     &catalog.Incremental{Column: "id", Key: []string{"id"}, Deletes: "soft", FullEvery: time.Hour}}
 	if multipart {
 		d.Multipart = &catalog.MultipartConfig{MaxParts: 2, MaxPartBytes: 1 << 20}
 	}
@@ -137,22 +138,22 @@ func runIncrementalScenario(t *testing.T, m *Manager, source *deltaSource) {
 	if err != nil || second.Rows != 5 || second.CoveredUntil != "5" || second.LastFullAt != first.LastFullAt || second.Generation == first.Generation {
 		t.Fatalf("incremental refresh %+v %v", second, err)
 	}
-	if last := source.requests[len(source.requests)-1]; !strings.Contains(last, `"id" > 3`) {
+	if last := source.requests[len(source.requests)-1]; !strings.Contains(last, `"id" >= 3`) {
 		t.Fatalf("delta predicate missing: %q", last)
 	}
-	if info, ok := m.LastRefresh("events"); !ok || !info.Incremental || info.AppendedRows != 2 {
+	if info, ok := m.LastRefresh("events"); !ok || !info.Incremental || info.AppendedRows != 3 {
 		t.Fatalf("status info %+v", info)
 	}
 	if got := storedIDs(t, m); !slices.Equal(got, []int64{1, 2, 3, 4, 5}) {
 		t.Fatalf("old rows lost or new rows missing: %v", got)
 	}
 
-	// Nothing new: still incremental, watermark unchanged, rows kept.
+	// Nothing new: still incremental, watermark unchanged, the boundary row re-read.
 	third, err := m.Refresh(ctx, "events", false)
 	if err != nil || third.Rows != 5 || third.CoveredUntil != "5" {
 		t.Fatalf("empty delta %+v %v", third, err)
 	}
-	if info, _ := m.LastRefresh("events"); !info.Incremental || info.AppendedRows != 0 {
+	if info, _ := m.LastRefresh("events"); !info.Incremental || info.AppendedRows != 1 {
 		t.Fatalf("empty delta info %+v", info)
 	}
 
