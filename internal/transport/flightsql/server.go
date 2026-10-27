@@ -77,6 +77,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	sessions map[[32]byte]*session
+	filling  map[[32]byte]chan struct{}
 }
 
 type tableRef struct{ source, schema, name, sql string }
@@ -115,7 +116,7 @@ func New(opts Options) (*Server, error) {
 	if opts.Handler == nil || opts.MaxSessions <= 0 || opts.TicketTTL <= 0 {
 		return nil, errors.New("flightsql: handler, positive max sessions and ticket TTL are required")
 	}
-	s := &Server{opts: opts, sessions: map[[32]byte]*session{}}
+	s := &Server{opts: opts, sessions: map[[32]byte]*session{}, filling: map[[32]byte]chan struct{}{}}
 	for _, src := range opts.Catalog.Sources {
 		if src.Federation == nil {
 			// Only file sources are a single queryable table; native-only
@@ -544,6 +545,14 @@ func (s *Server) evictLocked() bool {
 	return true
 }
 
+// releaseQuery deletes a finished handle (DELETE /v1/queries/{id}). A 409 for
+// a still-active query is ignored; the handle then expires with result-ttl.
+func (s *Server) releaseQuery(key, id string) {
+	ctx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stop()
+	_, _, _ = s.call(ctx, key, http.MethodDelete, "/v1/queries/"+id, nil)
+}
+
 func (s *Server) cancelLater(key, id string) {
 	go func() {
 		ctx, stop := context.WithTimeout(context.Background(), 5*time.Second)
@@ -633,12 +642,15 @@ func (s *Server) DoGetStatement(ctx context.Context, cmd flightsql.StatementQuer
 	t.claimed = true
 	id := t.queryID
 	s.mu.Unlock()
+	// release runs once the handler has returned: it drops the ticket and
+	// releases the finished HTTP handle so it stops counting against max-queries.
 	release := func() {
 		s.mu.Lock()
 		if se, _ := s.sessionLocked(key, false); se != nil {
 			delete(se.tickets, handle)
 		}
 		s.mu.Unlock()
+		s.releaseQuery(key, id)
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	code, body, done, err := s.open(ctx, key, http.MethodGet, "/v1/queries/"+id+"/results", nil)
@@ -990,19 +1002,48 @@ type grantedTable struct {
 // caller may read are returned, with the policy-shaped schema the API itself
 // produces. A denied table (PermissionDenied/NotFound) is omitted; any other
 // probe failure fails the call, so a list is never silently partial.
-// Probe handles stay in the HTTP API until its result TTL: it has no release path.
+// Each probe handle is released as soon as its result is read. Cached names
+// and schemas can outlive a revocation by one ticket TTL; queries cannot.
 func (s *Server) granted(ctx context.Context, schemaPattern, tablePattern *string) ([]grantedTable, error) {
 	key := keyFrom(ctx)
-	s.mu.Lock()
-	se, err := s.sessionLocked(key, true)
+	id := sha256.Sum256([]byte(key))
 	var all []grantedTable
-	cached := err == nil && time.Now().Before(se.grantsEnd)
-	if cached {
-		all = se.grants
+	var cached bool
+	var fill chan struct{}
+	// One fill per key at a time; concurrent callers wait for it and reuse it.
+	for {
+		s.mu.Lock()
+		se, err := s.sessionLocked(key, true)
+		if err != nil {
+			s.mu.Unlock()
+			return nil, err
+		}
+		if cached = time.Now().Before(se.grantsEnd); cached {
+			all = se.grants
+			s.mu.Unlock()
+			break
+		}
+		wait := s.filling[id]
+		if wait == nil {
+			fill = make(chan struct{})
+			s.filling[id] = fill
+			s.mu.Unlock()
+			break
+		}
+		s.mu.Unlock()
+		select {
+		case <-wait:
+		case <-ctx.Done():
+			return nil, contextError(ctx.Err())
+		}
 	}
-	s.mu.Unlock()
-	if err != nil {
-		return nil, err
+	if fill != nil {
+		defer func() {
+			s.mu.Lock()
+			delete(s.filling, id)
+			s.mu.Unlock()
+			close(fill)
+		}()
 	}
 	if !cached {
 		if len(s.tables) > maxProbesPerCall {
@@ -1018,7 +1059,7 @@ func (s *Server) granted(ctx context.Context, schemaPattern, tablePattern *strin
 			}
 		}
 		s.mu.Lock()
-		if se, err = s.sessionLocked(key, true); err == nil {
+		if se, err := s.sessionLocked(key, true); err == nil {
 			se.grants, se.grantsEnd = all, time.Now().Add(s.opts.TicketTTL)
 		}
 		s.mu.Unlock()

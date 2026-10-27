@@ -44,7 +44,10 @@ type principalKey struct{}
 // row/column policy on sales the way a guarded execution path would apply it.
 type fakeExecutor struct{}
 
-var probes atomic.Int64
+var (
+	probes         atomic.Int64
+	testMaxQueries = 64
+)
 
 func typedBatch() arrow.RecordBatch {
 	schema := arrow.NewSchema([]arrow.Field{
@@ -155,7 +158,7 @@ func (g *fakeGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var req query.Request
 		_ = json.Unmarshal(raw, &req)
 		for _, src := range req.Sources {
-			if !g.grants[who][src] {
+			if who != "admin" && !g.grants[who][src] { // admin may read every source
 				w.WriteHeader(http.StatusForbidden)
 				_, _ = io.WriteString(w, `{"error":{"code":"PERMISSION_DENIED","message":"Query access denied"}}`)
 				return
@@ -197,7 +200,7 @@ type fixture struct {
 
 func start(t *testing.T, maxSessions int, ttl time.Duration, extra ...catalog.Source) fixture {
 	t.Helper()
-	api, err := httpapi.New(fakeExecutor{}, httpapi.Options{Token: innerToken, Limits: query.DefaultLimits(), MaxQueries: 64, MaxConcurrent: 4, TTL: time.Minute})
+	api, err := httpapi.New(fakeExecutor{}, httpapi.Options{Token: innerToken, Limits: query.DefaultLimits(), MaxQueries: testMaxQueries, MaxConcurrent: 4, TTL: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -606,5 +609,54 @@ func TestCancellationAndTruncation(t *testing.T) {
 	_, _, err = readAll(ctx, f.client, info)
 	if err == nil || errors.Is(err, io.EOF) {
 		t.Fatal("truncated result reported success")
+	}
+}
+
+func TestMetadataPollingReleasesHandles(t *testing.T) {
+	testMaxQueries = 4
+	t.Cleanup(func() { testMaxQueries = 64 })
+	var many []catalog.Source
+	for i := 0; i < maxProbesPerCall-2; i++ { // 64 tables with sales and orders
+		many = append(many, catalog.Source{ID: fmt.Sprintf("s%d", i), Type: "csv"})
+	}
+	f := start(t, 8, 20*time.Millisecond, many...)
+	for poll := 0; poll < 10; poll++ {
+		time.Sleep(30 * time.Millisecond) // past the cache TTL: every poll probes all 64
+		info, err := f.client.GetTables(as(adminKey), &fsql.GetTablesOpts{})
+		if err == nil {
+			_, _, err = readAll(as(adminKey), f.client, info)
+		}
+		if err != nil {
+			t.Fatalf("poll %d: %v", poll, err)
+		}
+	}
+	if probes.Load() < 640 {
+		t.Fatalf("polls did not probe: %d", probes.Load())
+	}
+	info, err := f.client.Execute(as(adminKey), "SELECT * FROM sales")
+	if err != nil {
+		t.Fatal("no free handle after polling:", err)
+	}
+	if _, _, err = readAll(as(adminKey), f.client, info); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestConcurrentMetadataFillsOnce(t *testing.T) {
+	f := start(t, 8, time.Minute)
+	before := probes.Load()
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if info, err := f.client.GetTables(as(analystKey), &fsql.GetTablesOpts{}); err == nil {
+				_, _, _ = readAll(as(analystKey), f.client, info)
+			}
+		}()
+	}
+	wg.Wait()
+	if n := probes.Load() - before; n != 1 { // analyst may probe only sales
+		t.Fatalf("concurrent fills probed %d times", n)
 	}
 }
