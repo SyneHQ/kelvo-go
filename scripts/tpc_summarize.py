@@ -33,23 +33,22 @@ def per_query(report):
 
 
 def totals(report):
-    systems = report["systems"]
-    queries = report["queries"]
-    common = [q for q, e in queries.items() if all(e["systems"].get(s, {}).get("state") == "passed" for s in systems)]
-    out = ["| System | Queries passed (all trials exact) | Mismatch trials | Failed trials | Sum of medians on the "
-           f"{len(common)} queries every system passed, s | Geomean ratio vs DuckDB on those queries |",
-           "| --- | ---: | ---: | ---: | ---: | ---: |"]
+    """Each system is compared with DuckDB only on queries where both passed every trial."""
+    systems, queries = report["systems"], report["queries"]
+    out = ["| System | Queries passed (all trials) | Mismatch trials | Failed trials | Queries shared with DuckDB | "
+           "Sum of medians, s (system / DuckDB) | Geomean ratio vs DuckDB |",
+           "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"]
     for s in systems:
         recs = [e["systems"][s] for e in queries.values() if s in e["systems"]]
         trials = [t for r in recs for t in r["trials"]]
-        passed = sum(r["state"] == "passed" for r in recs)
-        mism = sum(t["verdict"] == "mismatch" for t in trials)
-        failed = sum(t["verdict"] == "failed" for t in trials)
-        total = sum(queries[q]["systems"][s]["seconds"]["median"] for q in common)
-        ratios = [queries[q]["systems"][s]["seconds"]["median"] / queries[q]["systems"]["duckdb"]["seconds"]["median"]
-                  for q in common if "duckdb" in systems]
-        geo = math.exp(sum(map(math.log, ratios)) / len(ratios)) if ratios else float("nan")
-        out.append(f"| {NAMES[s]} | {passed}/{len(recs)} | {mism} | {failed} | {total:.2f} | {geo:.2f} |")
+        both = [e["systems"] for e in queries.values()
+                if e["systems"].get(s, {}).get("state") == "passed" and e["systems"].get("duckdb", {}).get("state") == "passed"]
+        mine = [b[s]["seconds"]["median"] for b in both]
+        base = [b["duckdb"]["seconds"]["median"] for b in both]
+        geo = math.exp(sum(math.log(x / y) for x, y in zip(mine, base)) / len(both)) if both else float("nan")
+        out.append(f"| {NAMES[s]} | {sum(r['state'] == 'passed' for r in recs)}/{len(recs)} | "
+                   f"{sum(t['verdict'] == 'mismatch' for t in trials)} | {sum(t['verdict'] == 'failed' for t in trials)} | "
+                   f"{len(both)} | {sum(mine):.2f} / {sum(base):.2f} | {geo:.2f} |")
     return "\n".join(out)
 
 
