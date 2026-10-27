@@ -1,0 +1,11 @@
+order_id,order_date,region,product,quantity,amount
+1,2026-01-03,west,widget,3,37.50
+2,2026-01-04,east,gadget,1,20.00
+3,2026-01-04,west,gizmo,2,14.50
+4,2026-01-05,north,widget,5,62.50
+5,2026-01-06,east,widget,2,25.00
+6,2026-01-07,south,gadget,4,80.00
+7,2026-01-07,north,gizmo,1,7.25
+8,2026-01-08,west,gadget,2,40.00
+9,2026-01-09,south,widget,1,12.50
+10,2026-01-10,east,gizmo,6,43.50
