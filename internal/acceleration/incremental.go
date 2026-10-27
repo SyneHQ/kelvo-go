@@ -8,6 +8,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/apache/arrow-go/v18/arrow"
 )
 
 // incrementalRequest wraps the dataset query as
@@ -19,7 +20,7 @@ import (
 // literal is covered_until minus lateWindow, rendered only from the snapshot's
 // own metadata (a decimal integer or RFC3339Nano time), never from caller input. A non-empty reason
 // means the request cannot be wrapped safely and the caller must refresh fully.
-func incrementalRequest(request query.Request, column, coveredUntil string, lateWindow time.Duration) (query.Request, string) {
+func incrementalRequest(request query.Request, column, coveredUntil string, lateWindow time.Duration, zoned bool) (query.Request, string) {
 	if request.Mode != "federated" || request.Mongo != nil || len(request.Parameters) != 0 {
 		return request, "only federated SQL refreshes can be wrapped"
 	}
@@ -27,7 +28,7 @@ func incrementalRequest(request query.Request, column, coveredUntil string, late
 	if sql == "" || strings.Contains(sql, ";") {
 		return request, "refresh SQL is not a single statement"
 	}
-	literal, reason := incrementalLiteral(coveredUntil, lateWindow)
+	literal, reason := incrementalLiteral(coveredUntil, lateWindow, zoned)
 	if reason != "" {
 		return request, reason
 	}
@@ -39,7 +40,24 @@ func incrementalRequest(request query.Request, column, coveredUntil string, late
 	return request, ""
 }
 
-func incrementalLiteral(coveredUntil string, lateWindow time.Duration) (string, string) {
+// zonedTimestamp reports a time-zone-aware timestamp watermark in schema.
+func zonedTimestamp(schema *arrow.Schema, column string) bool {
+	if schema == nil {
+		return false
+	}
+	i := fieldIndex(schema, column)
+	if i < 0 {
+		return false
+	}
+	t, ok := schema.Field(i).Type.(*arrow.TimestampType)
+	return ok && t.TimeZone != ""
+}
+
+// incrementalLiteral renders covered_until. A zoned watermark gets an explicit
+// UTC offset (TIMESTAMPTZ), so the engine's session time zone cannot shift the
+// bound; a naive watermark is compared wall-clock against a naive literal in
+// the UTC wall time coverage recorded it with.
+func incrementalLiteral(coveredUntil string, lateWindow time.Duration, zoned bool) (string, string) {
 	if v, err := strconv.ParseInt(coveredUntil, 10, 64); err == nil {
 		if lateWindow != 0 {
 			return "", "late_window needs a timestamp watermark"
@@ -54,7 +72,9 @@ func incrementalLiteral(coveredUntil string, lateWindow time.Duration) (string, 
 		return "", "covered_until is finer than microseconds"
 	}
 	t = t.Add(-lateWindow)
-	// ponytail: naive TIMESTAMP literal assumes a UTC session for tz-aware columns.
+	if zoned {
+		return "TIMESTAMPTZ '" + t.UTC().Format("2006-01-02 15:04:05.000000") + "+00:00'", ""
+	}
 	return "TIMESTAMP '" + t.UTC().Format("2006-01-02 15:04:05.000000") + "'", ""
 }
 
