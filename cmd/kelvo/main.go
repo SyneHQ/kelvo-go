@@ -91,6 +91,7 @@ func run(args []string) error {
 	params := f.String("parameters", "[]", "Typed parameter array as JSON")
 	mongoCollection := f.String("mongo-collection", "", "MongoDB collection for a native aggregation")
 	mongoPipeline := f.String("mongo-pipeline", "", "MongoDB aggregation pipeline as a JSON array (defaults to [])")
+	postgresWire := f.String("postgres-wire-config", "", "Optional YAML file with a postgres_wire block (serve only; disabled by default)")
 	tokenEnv := f.String("token-env", "KELVO_TOKEN", "Environment variable holding the server bearer token")
 	maxConcurrent := f.Int("concurrency", 2, "Maximum concurrent workers")
 	maxQueries := f.Int("max-queries", 128, "Maximum retained query handles")
@@ -184,6 +185,11 @@ func run(args []string) error {
 		return e
 	}
 	defer stopFlightSQL()
+	stopPostgresWire, e := startPostgresWireFile(*postgresWire, handler)
+	if e != nil {
+		return e
+	}
+	defer stopPostgresWire()
 	server := &http.Server{Addr: *listen, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	done := make(chan error, 1)
 	go func() { fmt.Fprintln(os.Stderr, "Kelvo Go listening on "+*listen); done <- server.ListenAndServe() }()

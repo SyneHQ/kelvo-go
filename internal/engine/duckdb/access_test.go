@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -207,5 +208,45 @@ func TestAccessPoliciesHideColumnsMetadataAndDirectReaders(t *testing.T) {
 	defer accessFixture.mu.Unlock()
 	if accessFixture.opens["hidden"] != 0 {
 		t.Fatal("hidden table discovered")
+	}
+}
+
+type accessTextSink struct{ rows []string }
+
+func (*accessTextSink) Schema(*arrow.Schema) error { return nil }
+func (s *accessTextSink) Write(record arrow.RecordBatch) error {
+	for row := 0; row < int(record.NumRows()); row++ {
+		var parts []string
+		for _, column := range record.Columns() {
+			parts = append(parts, column.ValueStr(row))
+		}
+		s.rows = append(s.rows, strings.Join(parts, "."))
+	}
+	return nil
+}
+
+// Catalog emulation (pgwire, BI tools) reads these relations; policy-hidden
+// columns and tables must not appear in any of them.
+func TestAccessPoliciesHideColumnsFromCatalogRelations(t *testing.T) {
+	engine, ctx := accessEngine(t)
+	for _, sql := range []string{
+		"SELECT c.relname, a.attname FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_class c ON c.oid = a.attrelid",
+		"SELECT table_name, column_name FROM information_schema.columns",
+		"SELECT table_name, column_name FROM duckdb_columns()",
+		"SELECT relname, 'table' FROM pg_catalog.pg_class",
+		"SELECT table_name, 'table' FROM information_schema.tables",
+	} {
+		sink := &accessTextSink{}
+		if _, err := engine.Execute(ctx, query.Request{Mode: "federated", Sources: []string{"warehouse"}, SQL: sql}, sink); err != nil {
+			t.Fatal(sql, err)
+		}
+		for _, row := range sink.rows {
+			if strings.HasPrefix(row, "hidden.") || slices.Contains([]string{"orders.tenant_id", "orders.secret", "customers.tenant_id", "customers.amount"}, row) {
+				t.Errorf("%s exposed %s", sql, row)
+			}
+		}
+		if strings.Contains(sql, "column_name") && (!slices.Contains(sink.rows, "orders.amount") || !slices.Contains(sink.rows, "customers.secret")) {
+			t.Errorf("%s lost visible columns: %v", sql, sink.rows)
+		}
 	}
 }

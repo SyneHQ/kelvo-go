@@ -130,11 +130,13 @@ func runCluster(args []string) error {
 	}
 	defer stopOperationInputs()
 	stopFlightSQL, err := startGatewayFlightSQL(cfg.FlightSQL, gateway)
+	stopPostgresWire, err := startPostgresWire(cfg.PostgresWire, gateway)
 	if err != nil {
 		_ = gateway.Close()
 		return err
 	}
 	defer stopFlightSQL()
+	defer stopPostgresWire()
 
 	var closeErr error
 	closed := make(chan struct{})
