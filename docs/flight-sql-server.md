@@ -15,7 +15,7 @@ bin/kelvo serve --config examples/kelvo.yml --flight-sql-listen 127.0.0.1:50051
 | --- | --- | --- |
 | `--flight-sql-listen` | empty (disabled) | gRPC listen address |
 | `--flight-sql-tls-cert`, `--flight-sql-tls-key` | empty | PEM certificate and key. Required unless the address is a loopback IP. |
-| `--flight-sql-max-sessions` | `64` | Credentials that may hold tickets or prepared statements at once |
+| `--flight-sql-max-sessions` | `64` | Keys that may hold tickets, prepared statements or cached metadata at once. At the limit, the least recently used key with no active stream is evicted and its queries are cancelled. |
 | `--flight-sql-ticket-ttl` | `1m` | Lifetime of an unclaimed ticket and an idle prepared statement |
 
 HTTP flags such as `--concurrency`, `--max-queries`, `--result-ttl`, `--max-rows`, `--max-bytes` and `--timeout` also bound Flight SQL. Keep `--flight-sql-ticket-ttl` at or below `--result-ttl`.
@@ -43,7 +43,7 @@ Use the key the HTTP API accepts:
 - bearer: `authorization: Bearer <key>`
 - Flight basic authentication: any username, with the key as the password. The handshake returns the same key as a bearer token.
 
-A wrong or missing key returns `UNAUTHENTICATED`.
+Every call, including GetSqlInfo and GetCatalogs, first validates the key through the HTTP API, before any state is created. A wrong or missing key returns `UNAUTHENTICATED`.
 
 ## Connect
 
@@ -73,7 +73,7 @@ On a loopback listener without TLS, use `useEncryption=false`. JDBC basic authen
 ## Statements
 
 - A statement is a federated query. By default it attaches the catalog sources whose IDs appear as identifiers in the SQL. Set the `x-kelvo-sources` call header, for example `sales,orders`, to choose them explicitly. For ADBC, use the `adbc.flight.sql.rpc.call_header.x-kelvo-sources` option.
-- Only one statement is accepted. It must start with `SELECT`, `WITH`, `VALUES`, `TABLE`, `FROM`, `DESCRIBE`, `SHOW` or `SUMMARIZE`. Write, DDL, `COPY`, `ATTACH`, `INSTALL`, `LOAD`, `SET`, `PRAGMA` and transaction keywords outside quotes and comments return `PERMISSION_DENIED`, as do update and ingest commands. This lexical guard is deliberately conservative: double-quote an identifier that is spelled like one of these keywords. A `;` inside a string literal followed by more text is also rejected.
+- Only one statement is accepted. It must start with `SELECT`, `WITH`, `VALUES`, `TABLE` or `FROM`, and be at most 64 KiB. Write, DDL, `COPY`, `ATTACH`, `INSTALL`, `LOAD`, `SET`, `PRAGMA` and transaction keywords outside quotes and comments return `PERMISSION_DENIED`, as do update and ingest commands. This lexical guard is deliberately conservative: double-quote an identifier that is spelled like one of these keywords. Also rejected: a `;` inside a string literal followed by more text, any `$` outside a literal (dollar quoting and `$n` parameters; use `?`), and any string literal containing a backslash.
 - Native mode, Substrait, transactions and savepoints return `UNIMPLEMENTED`.
 - Prepared statements bind one row of parameters. Integer, unsigned integer, float, string, boolean and NULL parameters map to the HTTP API's typed parameters. Other types return `INVALID_ARGUMENT`.
 
@@ -86,11 +86,11 @@ On a loopback listener without TLS, use `useEncryption=false`. JDBC basic authen
 
 `DoGet` re-authorizes because it requests the results with the caller's key. The stream succeeds only if the query's terminal status is `succeeded`. A failed, cancelled, expired or truncated result ends the stream with an error, never with a short successful result. Results are decoded and re-sent batch by batch with gRPC flow control. The engine may still materialize the result first; see the [architecture notes](architecture.md).
 
-`CancelFlightInfo` and client cancellation or deadlines cancel the HTTP query. Each credential holds at most 64 tickets and 64 prepared statements. When `--flight-sql-max-sessions` credentials already hold state, new ones get `RESOURCE_EXHAUSTED`.
+`CancelFlightInfo` and client cancellation or deadlines cancel the HTTP query. Each key holds at most 64 tickets. It also holds at most 64 prepared statements and 1 MiB of prepared SQL and parameters; past either limit, its least recently used statement is evicted. A prepared statement expires after one ticket TTL idle, and after ten TTLs regardless of use. An unclaimed ticket that expires cancels its HTTP query. gRPC limits: 2 MiB per received message, 64 concurrent streams per connection, a 10 s connection handshake, and keepalive pings at most every 10 s.
 
 ## Metadata
 
-`GetCatalogs` returns `kelvo`. `GetDbSchemas` and `GetTables` list a table only if a `SELECT * FROM <table> LIMIT 0` probe succeeds through the HTTP API with the caller's key. The column list in `include_schema` is the schema that probe returns. File sources appear as `main.<source>`; federation tables appear as `<source>.<name>`. Each metadata call runs one bounded probe per matching catalog table, without caching. `GetSqlInfo` reports read-only, no transactions and cancellation support. Key, cross-reference and type-info commands return `UNIMPLEMENTED`.
+`GetCatalogs` returns `kelvo`. `GetDbSchemas` and `GetTables` list a table only if a `SELECT * FROM <table> LIMIT 0` probe succeeds through the HTTP API with the caller's key. The column list in `include_schema` is the schema that probe returns. File sources appear as `main.<source>`; federation tables appear as `<source>.<name>`. Only file sources (CSV, Parquet, JSON), federation tables and snapshot datasets are listed. The first metadata call for a key runs one probe per listed table and caches the result for one ticket TTL. A catalog with more than 64 such tables returns `RESOURCE_EXHAUSTED`. A table that is denied (`PERMISSION_DENIED` or `NOT_FOUND`) is omitted; any other probe failure fails the whole call with `UNAVAILABLE`, never a partial list. Each probe uses one HTTP query handle, which remains until `--result-ttl`: the HTTP API has no early release path. `GetSqlInfo` reports read-only, no transactions and cancellation support. Key, cross-reference and type-info commands return `UNIMPLEMENTED`.
 
 ## Errors
 
