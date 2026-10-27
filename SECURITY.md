@@ -23,6 +23,7 @@ See the [deployment checklist](deploy/README.md) and [cluster model](docs/cluste
 | Cloud secrets | Optional [AWS, Azure and GCP mappings](docs/cloud-secrets.md) keep expiring provider credentials in the trusted parent. Live IAM/rotation acceptance is unrun. |
 | Audit | Optional [durable local receipts](docs/durable-audit.md) protect specified cluster operations. No SQL/row retention, replication or cross-service atomicity guarantee. |
 | Credential files | Optional [private files](docs/operations.md#file-based-source-credential-rotation) rotate credentials for new processes. Paths stay in the parent; file errors never fall back to environment values. |
+| OIDC tokens | Optional [OIDC/JWT bearer tokens](docs/oidc.md) map to existing principals only; unknown, ambiguous, expired or unverifiable tokens are rejected, and provider outages fail closed after the key cache TTL. Tokens are never logged. |
 | API keys | Optional [revisioned key files](docs/gateway-key-rotation.md) fail closed. Update every replica and restart floor; revocation is not globally atomic. |
 | TLS | [Identity](docs/tls-identity-rotation.md) and [trust](docs/tls-trust-rotation.md) rotation require operator propagation; trust policy also needs a configured restart floor. |
 
