@@ -95,6 +95,7 @@ func run(args []string) error {
 	maxConcurrent := f.Int("concurrency", 2, "Maximum concurrent workers")
 	maxQueries := f.Int("max-queries", 128, "Maximum retained query handles")
 	ttl := f.Duration("result-ttl", 5*time.Minute, "Query handle lifetime")
+	flightSQL := flightSQLFlags(f)
 	limits := query.DefaultLimits()
 	f.Int64Var(&limits.MaxRows, "max-rows", limits.MaxRows, "Maximum returned rows")
 	f.Int64Var(&limits.MaxBytes, "max-bytes", limits.MaxBytes, "Maximum result bytes")
@@ -178,6 +179,11 @@ func run(args []string) error {
 		return e
 	}
 	defer handler.Close()
+	stopFlightSQL, e := startFlightSQL(*flightSQL, handler, c)
+	if e != nil {
+		return e
+	}
+	defer stopFlightSQL()
 	server := &http.Server{Addr: *listen, Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	done := make(chan error, 1)
 	go func() { fmt.Fprintln(os.Stderr, "Kelvo Go listening on "+*listen); done <- server.ListenAndServe() }()
