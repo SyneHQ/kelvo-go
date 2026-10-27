@@ -1,0 +1,6 @@
+# Quickstart source catalog. Add sources here; keep credentials in kelvo.env
+# and reference them by variable name (docs/usage.md#configuration).
+sources:
+  - id: sales
+    type: csv
+    path: /data/sales.csv

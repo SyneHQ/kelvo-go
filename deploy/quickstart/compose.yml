@@ -1,0 +1,35 @@
+# Kelvo quickstart: one standalone `kelvo serve` with a sample CSV source.
+# Steps: docs/install.md#run-with-docker. Loopback only; not a production layout.
+name: kelvo-quickstart
+
+services:
+  kelvo:
+    image: ${KELVO_IMAGE:-ghcr.io/synehq/kelvo:latest}
+    # `docker compose up --build` builds the image from this checkout instead.
+    build:
+      context: ../..
+      target: runtime
+    command:
+      - serve
+      - --config=/etc/kelvo/kelvo.yml
+      - --listen=0.0.0.0:8080
+      - --sandbox=/usr/local/bin/kelvo-landlock
+    # KELVO_TOKEN (>= 32 characters) is the API key clients send as a Bearer token.
+    env_file:
+      - path: kelvo.env
+        required: true
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: "2.0"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=256m,uid=65532,gid=65532,mode=0700
+    volumes:
+      - ./kelvo.yml:/etc/kelvo/kelvo.yml:ro
+      - ./data:/data:ro
+    ports:
+      - "127.0.0.1:${KELVO_PORT:-8080}:8080"
+    restart: unless-stopped

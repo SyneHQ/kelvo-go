@@ -33,6 +33,10 @@ bin/kelvo query --config examples/kelvo.yml --sources sales \
 
 3. Open the result with [PyArrow](docs/usage.md#quick-start), or [serve the HTTP API](docs/usage.md#http-api).
 
+**Run with Docker:** `docker compose -f deploy/quickstart/compose.yml up` serves a sample dataset with an API key from an env file ([steps](docs/install.md#run-with-docker)).
+
+**Install with Helm:** `helm install kelvo deploy/helm/kelvo` runs cluster mode with a gateway, nodes and NATS JetStream ([steps](docs/install.md#install-with-helm)).
+
 ## Try it in a notebook
 
 The [15 Colab and Jupyter lessons](notebooks/README.md) include public data, setup, answer checks and cleanup. No database account or GPU is needed for the default examples.
