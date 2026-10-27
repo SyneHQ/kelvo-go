@@ -12,12 +12,14 @@ import (
 
 // incrementalRequest wraps the dataset query as
 //
-//	SELECT * FROM (<query>) AS kelvo_incr WHERE "<column>" > <literal>
+//	SELECT * FROM (<query>) AS kelvo_incr WHERE "<column>" >= <literal>
 //
-// The literal is rendered only from the snapshot's own covered_until (a decimal
-// integer or RFC3339Nano time), never from caller input. A non-empty reason
+// The bound is inclusive so rows that share covered_until but committed after
+// the previous refresh are re-read; the key merge drops the duplicates. The
+// literal is covered_until minus lateWindow, rendered only from the snapshot's
+// own metadata (a decimal integer or RFC3339Nano time), never from caller input. A non-empty reason
 // means the request cannot be wrapped safely and the caller must refresh fully.
-func incrementalRequest(request query.Request, column, coveredUntil string) (query.Request, string) {
+func incrementalRequest(request query.Request, column, coveredUntil string, lateWindow time.Duration) (query.Request, string) {
 	if request.Mode != "federated" || request.Mongo != nil || len(request.Parameters) != 0 {
 		return request, "only federated SQL refreshes can be wrapped"
 	}
@@ -25,20 +27,23 @@ func incrementalRequest(request query.Request, column, coveredUntil string) (que
 	if sql == "" || strings.Contains(sql, ";") {
 		return request, "refresh SQL is not a single statement"
 	}
-	literal, reason := incrementalLiteral(coveredUntil)
+	literal, reason := incrementalLiteral(coveredUntil, lateWindow)
 	if reason != "" {
 		return request, reason
 	}
 	quoted := `"` + strings.ReplaceAll(column, `"`, `""`) + `"`
-	request.SQL = "SELECT * FROM (\n" + sql + "\n) AS kelvo_incr WHERE " + quoted + " > " + literal
+	request.SQL = "SELECT * FROM (\n" + sql + "\n) AS kelvo_incr WHERE " + quoted + " >= " + literal
 	if err := query.ValidateRequest(request); err != nil {
 		return request, "wrapped refresh query is not valid"
 	}
 	return request, ""
 }
 
-func incrementalLiteral(coveredUntil string) (string, string) {
+func incrementalLiteral(coveredUntil string, lateWindow time.Duration) (string, string) {
 	if v, err := strconv.ParseInt(coveredUntil, 10, 64); err == nil {
+		if lateWindow != 0 {
+			return "", "late_window needs a timestamp watermark"
+		}
 		return strconv.FormatInt(v, 10), ""
 	}
 	t, err := time.Parse(time.RFC3339Nano, coveredUntil)
@@ -48,6 +53,7 @@ func incrementalLiteral(coveredUntil string) (string, string) {
 	if t.Nanosecond()%1000 != 0 {
 		return "", "covered_until is finer than microseconds"
 	}
+	t = t.Add(-lateWindow)
 	// ponytail: naive TIMESTAMP literal assumes a UTC session for tz-aware columns.
 	return "TIMESTAMP '" + t.UTC().Format("2006-01-02 15:04:05.000000") + "'", ""
 }

@@ -199,7 +199,7 @@ func incrementalStatus(m *acceleration.Manager, d catalog.Dataset) string {
 	case !ok:
 		return "unknown (tracked since process start)"
 	case info.Incremental:
-		return fmt.Sprintf("incremental, appended %d rows (since process start)", info.AppendedRows)
+		return fmt.Sprintf("incremental, merged %d delta rows (since process start)", info.AppendedRows)
 	case info.Fallback != "":
 		return "full: " + info.Fallback + " (since process start)"
 	}
