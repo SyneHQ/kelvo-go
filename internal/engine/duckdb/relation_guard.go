@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
 
@@ -95,13 +94,14 @@ func preflightDenied(sqlText string) bool {
 }
 
 // enforceRelationAllowlist validates the parsed statement tree, not the text.
-// Every table reference must be a plain identifier that is not a denied
-// catalog relation (so a file path, glob or URL used as a table is rejected),
-// and every function/table-function name must not be denied. It fails closed
-// if the tree cannot be obtained. It runs after the single-SELECT check, on a
-// connection already locked down, and json_serialize_sql only parses: it never
-// opens a file or binds a relation.
-func enforceRelationAllowlist(ctx context.Context, raw any, sqlText string, aliases []string) error {
+// Every table reference that is not a CTE in scope must resolve to a relation
+// that already exists in this connection's catalog, using the same lookup
+// locations DuckDB's binder uses. A name that does not resolve would fall back
+// to a replacement scan, which reads it as a file path, so it is denied
+// regardless of quoting. Denied catalog relations and denied functions are
+// rejected on top. The catalog is read by engine-authored SQL before the
+// user's statement runs; json_serialize_sql only parses. Fails closed.
+func enforceRelationAllowlist(ctx context.Context, raw any, sqlText string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -109,53 +109,151 @@ func enforceRelationAllowlist(ctx context.Context, raw any, sqlText string, alia
 	if !ok {
 		return errors.New("DuckDB parse introspection is unavailable")
 	}
+	unvalidated := query.NewError("PERMISSION_DENIED", "SQL could not be validated for read-only access")
+	index, err := loadRelationIndex(ctx, q)
+	if err != nil {
+		return unvalidated
+	}
 	tree, err := queryOneString(ctx, q, "SELECT CAST(json_serialize_sql('"+quoteLiteral(sqlText)+"') AS VARCHAR)")
 	if err != nil {
-		return query.NewError("PERMISSION_DENIED", "SQL could not be validated for read-only access")
+		return unvalidated
 	}
 	var parsed struct {
 		Error any             `json:"error"`
 		Stmts json.RawMessage `json:"statements"`
 	}
 	if json.Unmarshal([]byte(tree), &parsed) != nil {
-		return query.NewError("PERMISSION_DENIED", "SQL could not be validated for read-only access")
+		return unvalidated
 	}
 	if b, ok := parsed.Error.(bool); !ok || b {
-		return query.NewError("PERMISSION_DENIED", "SQL could not be validated for read-only access")
+		return unvalidated
 	}
 	var node any
 	if json.Unmarshal(parsed.Stmts, &node) != nil {
-		return query.NewError("PERMISSION_DENIED", "SQL could not be validated for read-only access")
+		return unvalidated
 	}
-	allowed := make(map[string]struct{}, len(aliases))
-	for _, a := range aliases {
-		allowed[strings.ToLower(a)] = struct{}{}
-	}
-	return walkPlan(node, allowed)
+	return walkPlan(node, index, nil)
 }
 
-func walkPlan(v any, aliases map[string]struct{}) error {
+// relationIndex is the connection's existing relations plus DuckDB's lookup
+// locations. Lookups are case-insensitive, as DuckDB's are by default.
+type relationIndex struct {
+	relations     map[[3]string]struct{} // database, schema, name
+	defaultSchema map[string]string      // database -> schema used for "db.name"
+	search        [][2]string            // locations for unqualified names
+	current       string
+}
+
+func loadRelationIndex(ctx context.Context, q driver.QueryerContext) (*relationIndex, error) {
+	index := &relationIndex{relations: map[[3]string]struct{}{}, defaultSchema: map[string]string{}}
+	rows, err := queryStrings(ctx, q, "SELECT database_name, schema_name, table_name FROM duckdb_tables() UNION ALL SELECT database_name, schema_name, view_name FROM duckdb_views()", 3)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		index.relations[[3]string{strings.ToLower(r[0]), strings.ToLower(r[1]), strings.ToLower(r[2])}] = struct{}{}
+	}
+	databases, err := queryStrings(ctx, q, "SELECT database_name, type FROM duckdb_databases()", 2)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range databases {
+		switch strings.ToLower(d[1]) {
+		case "duckdb", "sqlite":
+			index.defaultSchema[strings.ToLower(d[0])] = "main"
+		case "postgres", "postgres_scanner":
+			index.defaultSchema[strings.ToLower(d[0])] = "public"
+		}
+	}
+	current, err := queryStrings(ctx, q, "SELECT current_database(), current_schema()", 2)
+	if err != nil || len(current) != 1 {
+		return nil, errors.New("current catalog is unavailable")
+	}
+	db, schema := strings.ToLower(current[0][0]), strings.ToLower(current[0][1])
+	index.current = db
+	// A subset of DuckDB's default search path: a name found here binds to an
+	// existing relation and never reaches a replacement scan.
+	index.search = [][2]string{{"temp", "main"}, {db, schema}, {"system", "main"}, {"system", "pg_catalog"}}
+	return index, nil
+}
+
+func (x *relationIndex) has(db, schema, name string) bool {
+	_, ok := x.relations[[3]string{db, schema, name}]
+	return ok
+}
+
+// resolves mirrors the binder: db.schema.name exactly; "a.name" as catalog a
+// with its default schema, or as schema a in the current, temp or system
+// catalog; an unqualified name along the search path.
+func (x *relationIndex) resolves(catalogName, schema, name string) bool {
+	c, s, n := strings.ToLower(catalogName), strings.ToLower(schema), strings.ToLower(name)
+	switch {
+	case n == "":
+		return false
+	case c != "":
+		return x.has(c, s, n)
+	case s != "":
+		if def, ok := x.defaultSchema[s]; ok && x.has(s, def, n) {
+			return true
+		}
+		for _, db := range []string{x.current, "temp", "system"} {
+			if x.has(db, s, n) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, loc := range x.search {
+		if x.has(loc[0], loc[1], n) {
+			return true
+		}
+	}
+	return false
+}
+
+func walkPlan(v any, index *relationIndex, ctes map[string]struct{}) error {
 	switch t := v.(type) {
 	case map[string]any:
+		// CTEs are visible to later CTEs of the same WITH, to themselves
+		// (recursive), and to the query body, but not outside this node.
+		if cm, ok := t["cte_map"].(map[string]any); ok {
+			scope := make(map[string]struct{}, len(ctes)+4)
+			for k := range ctes {
+				scope[k] = struct{}{}
+			}
+			entries, _ := cm["map"].([]any)
+			for _, e := range entries {
+				entry, _ := e.(map[string]any)
+				key, _ := entry["key"].(string)
+				scope[strings.ToLower(key)] = struct{}{}
+				if err := walkPlan(entry["value"], index, scope); err != nil {
+					return err
+				}
+			}
+			ctes = scope
+		}
 		if kind, _ := t["type"].(string); kind == "BASE_TABLE" {
 			table, _ := t["table_name"].(string)
 			schema, _ := t["schema_name"].(string)
 			catalogName, _ := t["catalog_name"].(string)
-			if err := checkBaseTable(catalogName, schema, table, aliases); err != nil {
+			if err := checkBaseTable(index, ctes, catalogName, schema, table); err != nil {
 				return err
 			}
 		}
 		if name, ok := t["function_name"].(string); ok && deniedFunction(name) {
 			return query.NewError("PERMISSION_DENIED", "Query uses a capability unavailable to this execution")
 		}
-		for _, child := range t {
-			if err := walkPlan(child, aliases); err != nil {
+		for key, child := range t {
+			if key == "cte_map" {
+				continue
+			}
+			if err := walkPlan(child, index, ctes); err != nil {
 				return err
 			}
 		}
 	case []any:
 		for _, child := range t {
-			if err := walkPlan(child, aliases); err != nil {
+			if err := walkPlan(child, index, ctes); err != nil {
 				return err
 			}
 		}
@@ -163,28 +261,8 @@ func walkPlan(v any, aliases map[string]struct{}) error {
 	return nil
 }
 
-// checkBaseTable allows (a) a plain-identifier relation, or (b) a name
-// qualified by one of this request's source aliases (an attached database),
-// whose upstream schema/table parts may be any quoted identifier such as
-// "Order Items". The serializer reports an unqualified string or path used as
-// a table (a replacement scan, which reads files) with no catalog or schema,
-// so it can never take path (b). A qualified name never triggers a
-// replacement scan; it only resolves inside the attached catalog.
-func checkBaseTable(catalogName, schema, table string, aliases map[string]struct{}) error {
+func checkBaseTable(index *relationIndex, ctes map[string]struct{}, catalogName, schema, table string) error {
 	denied := query.NewError("PERMISSION_DENIED", "Query references a relation unavailable to this execution")
-	qualifier := strings.ToLower(catalogName)
-	if qualifier == "" {
-		qualifier = strings.ToLower(schema)
-	}
-	if _, attached := aliases[qualifier]; attached && qualifier != "" {
-		if table == "" {
-			return denied
-		}
-		return nil
-	}
-	if !catalog.ValidID(table) {
-		return denied
-	}
 	low := strings.ToLower(table)
 	if _, bad := deniedRelations[low]; bad {
 		return denied
@@ -192,7 +270,48 @@ func checkBaseTable(catalogName, schema, table string, aliases map[string]struct
 	if strings.ToLower(schema) == "information_schema" && low == "views" {
 		return denied
 	}
+	if catalogName == "" && schema == "" {
+		if _, cte := ctes[low]; cte {
+			return nil
+		}
+	}
+	if !index.resolves(catalogName, schema, table) {
+		return denied
+	}
 	return nil
+}
+
+func queryStrings(ctx context.Context, q driver.QueryerContext, sql string, columns int) ([][]string, error) {
+	rows, err := q.QueryContext(ctx, sql, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out [][]string
+	dest := make([]driver.Value, len(rows.Columns()))
+	if len(dest) != columns {
+		return nil, errors.New("unexpected catalog shape")
+	}
+	for {
+		if err := rows.Next(dest); err == io.EOF {
+			return out, nil
+		} else if err != nil {
+			return nil, err
+		}
+		row := make([]string, columns)
+		for i, v := range dest {
+			switch tv := v.(type) {
+			case string:
+				row[i] = tv
+			case []byte:
+				row[i] = string(tv)
+			case nil:
+			default:
+				return nil, errors.New("unexpected catalog value")
+			}
+		}
+		out = append(out, row)
+	}
 }
 
 func queryOneString(ctx context.Context, q driver.QueryerContext, sql string) (string, error) {

@@ -105,7 +105,7 @@ Source SQL, one connection:
 {"mode":"native","connection_id":"events","sql":"SELECT count() FROM events"}
 ```
 
-Federated SQL must be one read-only `SELECT`. Kelvo validates DuckDB's parsed statement: table references must be registered relations or names qualified by a requested source alias (quoted upstream names such as `pg."public"."Order Items"` are fine there); a string, path or glob used as a table, file/network/settings/definition functions (`read_*`, `glob`, `pg_get_*`, `duckdb_tables()`, ...) and `PRAGMA`/`EXPORT` are rejected. `PIVOT`/`UNPIVOT` are unsupported and fail closed.
+Federated SQL must be one read-only `SELECT`. Kelvo validates DuckDB's parsed statement: every table reference must name a relation that exists in the query's catalog (or a CTE in scope); quoted upstream names such as `pg."public"."Order Items"` work because they exist. A name that does not resolve, including any string, path or glob used as a table, file/network/settings/definition functions (`read_*`, `glob`, `pg_get_*`, `duckdb_tables()`, ...) and `PRAGMA`/`EXPORT` are rejected. `PIVOT`/`UNPIVOT` are unsupported and fail closed.
 
 The [optional bridge](federation.md) supports eight database adapters and [Flight SQL](federation-flight-sql.md) for live joins. Other native results can become [accelerated Parquet aliases](acceleration.md). Native availability alone does not imply federation; independent sources have no shared transaction snapshot.
 

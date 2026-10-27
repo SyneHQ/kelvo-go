@@ -181,10 +181,12 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		if err := lockSourceAccess(ctx, raw, sources, tempDir); err != nil {
 			return err
 		}
-		if err := validateReadOnly(ctx, raw, req.SQL); err != nil {
+		// Validate the parsed tree before preparing: binding a name that does
+		// not resolve runs a replacement scan, which already opens the file.
+		if err := enforceRelationAllowlist(ctx, raw, req.SQL); err != nil {
 			return err
 		}
-		if err := enforceRelationAllowlist(ctx, raw, req.SQL, req.Sources); err != nil {
+		if err := validateReadOnly(ctx, raw, req.SQL); err != nil {
 			return err
 		}
 		bounded, err := boundedSelect(normalizeValidatedSelect(req.SQL), e.limits.MaxRows)
