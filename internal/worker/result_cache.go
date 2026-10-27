@@ -16,7 +16,8 @@ import (
 const (
 	cacheMaxEntries    = 4096
 	cacheEntryOverhead = 512 // bytes charged per entry beyond its data: key, list and map
-	cacheMaxFills      = 256 // default concurrent shared executions
+	cacheMaxFills      = 256      // default concurrent fills
+	cacheMaxDecoded    = 64 << 20 // default decoded bytes of a kept result
 )
 
 // resultCache serves identical dashboard reads once. Concurrent identical
@@ -32,7 +33,8 @@ type resultCache struct {
 	maxEntry, maxTotal int64
 	perTenant          int64 // a quarter of maxTotal
 	maxEntries         int
-	maxFills           int // shared executions collecting a result; more run uncached
+	maxFills           int   // fills collecting a result (shared or snapshot); more run uncached
+	maxDecoded         int64 // decoded Arrow bytes a kept result may hold
 
 	mu       sync.Mutex
 	lru      *list.List // of *cacheEntry, most recent at the front
@@ -42,6 +44,7 @@ type resultCache struct {
 	flights  map[string]*cacheFlight
 	hits     int64
 	fenced   int64 // results not kept or not served because their fence moved
+	fills    int   // snapshot fills running; shared fills are flights
 }
 
 type cacheEntry struct {
@@ -81,7 +84,7 @@ type cacheFlight struct {
 }
 
 func newResultCache(ttl time.Duration, maxEntry, maxTotal int64) *resultCache {
-	return &resultCache{ttl: ttl, maxEntry: maxEntry, maxTotal: maxTotal, perTenant: maxTotal / 4, maxEntries: cacheMaxEntries, maxFills: cacheMaxFills,
+	return &resultCache{ttl: ttl, maxEntry: maxEntry, maxTotal: maxTotal, perTenant: maxTotal / 4, maxEntries: cacheMaxEntries, maxFills: cacheMaxFills, maxDecoded: cacheMaxDecoded,
 		lru: list.New(), entries: map[string]*list.Element{}, byTenant: map[string]int64{}, flights: map[string]*cacheFlight{}}
 }
 
@@ -179,7 +182,7 @@ func (c *resultCache) doFenced(ctx context.Context, key, tenant string, ttl time
 			return f.stats, f.err
 		}
 	}
-	if c.flights[key] == nil && len(c.flights) >= c.maxFills {
+	if c.flights[key] == nil && len(c.flights)+c.fills >= c.maxFills {
 		c.mu.Unlock()
 		return execute(ctx, sink, nil) // fill bound reached: run uncached
 	}
@@ -316,7 +319,7 @@ func (c *resultCache) finish(key, tenant string, ttl time.Duration, f *cacheFlig
 		if moved {
 			f.fenced = true
 			c.fenced++
-		} else if buffer.over {
+		} else if buffer.over || stats.Bytes > c.maxDecoded {
 			f.oversize = true
 		} else {
 			// Waiters replay a complete result even when it is not kept (a newer

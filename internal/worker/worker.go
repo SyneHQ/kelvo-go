@@ -398,6 +398,17 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	if err := access.ValidateResolvedRequest(ctx, cfg, r); err != nil {
 		return stats, err
 	}
+	// Reads over snapshot generations only, when enabled: served from a kept
+	// result whose generations are still current, else filled below.
+	cached := e.snapshotReadFor(ctx, execution, dynamic, r, versions)
+	if cached != nil {
+		if hit, err, ok := cached.serve(replayIPC(ctx, e, sink)); ok {
+			hit.Accelerations = versions
+			return hit, err
+		}
+	}
+	// Every return below ends the fill; only a complete result is kept.
+	defer func() { cached.finish(stats, resultErr) }()
 	snapshotScratch, err := resolution.HoldConsumer()
 	if err != nil {
 		return stats, err
@@ -554,7 +565,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	var observed query.Stats
 	readErr := commandIO.Consume(func(stdout io.Reader) error {
 		var err error
-		observed, err = e.readIPC(ctx, stdout, e.Limits, phases.sink(sink))
+		observed, err = e.readIPC(ctx, cached.tee(stdout), e.Limits, phases.sink(sink))
 		return err
 	})
 	phases.enter(telemetry.PhaseCleanup)
