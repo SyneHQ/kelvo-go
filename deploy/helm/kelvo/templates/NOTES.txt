@@ -1,0 +1,8 @@
+Kelvo {{ .Chart.AppVersion }} installed as {{ include "kelvo.name" . }} (tenant {{ .Values.tenant.id }}, nodes: {{ range .Values.nodes }}{{ .id }} {{ end }}).
+
+Wait for the gateway (its /ready includes broker reconciliation and every node):
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "kelvo.name" . }}-gateway
+
+Query the sample source through the gateway:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "kelvo.name" . }}-gateway 8443:{{ .Values.gateway.service.port }}
+  See docs/install.md#query-through-the-gateway for the curl / pyarrow steps.

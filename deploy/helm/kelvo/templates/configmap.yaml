@@ -1,0 +1,48 @@
+{{- if .Values.containment.enabled }}
+{{- fail "containment.enabled is not supported by this chart; see docs/process-containment.md" }}
+{{- end }}
+{{- $name := include "kelvo.name" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-config
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+data:
+  gateway.yml: |
+{{ include "kelvo.gatewayConfig" (list . "gateway" "KELVO_NATS_GATEWAY_PASSWORD") | indent 4 }}
+  bootstrap.yml: |
+{{ include "kelvo.gatewayConfig" (list . "provisioner" "KELVO_NATS_PROVISIONER_PASSWORD") | indent 4 }}
+  catalog.yml: |
+{{ toYaml (dict "sources" .Values.catalog.sources) | indent 4 }}
+{{- range .Values.nodes }}
+  node-{{ .id }}.yml: |
+    listen: ":8443"
+    worker_id: {{ .id }}
+    catalog_file: /etc/kelvo/catalog.yml
+    sandbox_path: /usr/local/bin/kelvo-landlock
+    tls:
+      cert_file: /run/kelvo/tls/node.crt
+      key_file: /run/kelvo/tls/node.key
+      ca_file: /run/kelvo/tls/ca.crt
+    nats:
+      url: {{ include "kelvo.natsURL" $ }}
+      username: worker
+      password_env: KELVO_NATS_WORKER_PASSWORD
+      ca_file: /run/kelvo/tls/ca.crt
+    {{- with (.admission | default $.Values.nodeDefaults.admission) }}
+    resources:
+{{ toYaml . | indent 6 }}
+    {{- end }}
+    policy:
+{{ include "kelvo.policy" $ | indent 6 }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-data
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+data:
+{{- range $k, $v := .Values.catalog.dataFiles }}
+  {{ $k }}: {{ $v | quote }}
+{{- end }}
