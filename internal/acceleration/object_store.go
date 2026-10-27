@@ -867,3 +867,5 @@ func sameObjectDescriptor(left, right *objectDescriptorRef) bool {
 	}
 	return *left == *right
 }
+
+func (tx *objectTransaction) NewSpill() (*os.File, error) { return tx.local.NewSpill() }

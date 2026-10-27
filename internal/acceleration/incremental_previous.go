@@ -223,6 +223,8 @@ type mergeSink struct {
 	key       []string
 	watermark string
 	maxBytes  int64 // spill cap: min(max_bytes, memory budget minus headroom)
+	newSpill  func() (*os.File, error)
+	rows      int64
 
 	loaded   bool
 	fallback string
@@ -274,13 +276,16 @@ func (s *mergeSink) Schema(schema *arrow.Schema) error {
 			return s.fail("key or watermark column is missing from the delta")
 		}
 	}
-	spill, err := os.CreateTemp("", "kelvo-delta-*.arrow")
+	if s.newSpill == nil {
+		return s.fail("backend has no transaction spill area")
+	}
+	spill, err := s.newSpill()
 	if err != nil {
-		return err
+		return s.fail("delta spill cannot be created")
 	}
 	s.spill = spill
 	if s.writer, err = ipc.NewFileWriter(spill, ipc.WithSchema(schema)); err != nil {
-		return err
+		return s.fail("delta spill cannot be written")
 	}
 	s.loaded = true
 	return s.inner.Schema(schema)
@@ -291,16 +296,25 @@ func (s *mergeSink) Write(record arrow.RecordBatch) error {
 		return s.fail("delta wrote rows before its schema")
 	}
 	s.bytes += int64(util.TotalRecordSize(record))
+	s.rows += record.NumRows()
 	if s.maxBytes > 0 && s.bytes > s.maxBytes {
 		return s.fail("delta exceeds the incremental merge cap (max_bytes or half of memory_mb)")
 	}
-	return s.writer.Write(record)
+	// ponytail: the key map costs well under 64 bytes per row for short keys.
+	if s.maxBytes > 0 && s.rows > s.maxBytes/64 {
+		return s.fail("delta exceeds the incremental merge row cap (cap/64 rows)")
+	}
+	// Write or dictionary-change failures only lose this attempt: fall back.
+	if err := s.writer.Write(record); err != nil {
+		return s.fail("delta spill cannot be written")
+	}
+	return nil
 }
 
 func (s *mergeSink) release() {
+	// The transaction owns the spill's directory entry and removes it.
 	if s.spill != nil {
 		_ = s.spill.Close()
-		_ = os.Remove(s.spill.Name())
 		s.spill = nil
 	}
 }
@@ -312,11 +326,11 @@ func (s *mergeSink) finish() error {
 		return s.fail("delta returned no schema")
 	}
 	if err := s.writer.Close(); err != nil {
-		return err
+		return s.fail("delta spill cannot be written")
 	}
 	delta, err := ipc.NewFileReader(s.spill)
 	if err != nil {
-		return err
+		return s.fail("delta spill cannot be read")
 	}
 	defer delta.Close()
 	keyIdx := make([]int, len(s.key))
@@ -456,12 +470,14 @@ func watermarkOf(col arrow.Array, row int) (watermark, bool) {
 		if v := a.Value(row); v <= math.MaxInt64 {
 			return watermark{n: int64(v)}, true
 		}
+	// Delta and previous share one schema, so raw values compare exactly and
+	// never overflow (unlike UnixNano past 2262, e.g. 9999-12-31 sentinels).
 	case *array.Timestamp:
-		return watermark{n: a.Value(row).ToTime(a.DataType().(*arrow.TimestampType).Unit).UnixNano()}, true
+		return watermark{n: int64(a.Value(row))}, true
 	case *array.Date32:
-		return watermark{n: a.Value(row).ToTime().UnixNano()}, true
+		return watermark{n: int64(a.Value(row))}, true
 	case *array.Date64:
-		return watermark{n: a.Value(row).ToTime().UnixNano()}, true
+		return watermark{n: int64(a.Value(row))}, true
 	}
 	return watermark{}, false
 }

@@ -184,6 +184,7 @@ type Transaction struct {
 	dataset      string
 	generation   string
 	stage        string
+	spills       []string
 	done         bool
 }
 
@@ -222,6 +223,27 @@ func (s *Store) Begin(ctx context.Context, dataset string) (_ *Transaction, resu
 	tx.stage = stage
 	ok = true
 	return tx, nil
+}
+
+// spillStageName matches an incremental delta spill left by a crashed refresh.
+var spillStageName = regexp.MustCompile(`^\.stage-[0-9a-f]{32}-delta\.arrow$`)
+
+// NewSpill creates the incremental delta spill inside the dataset directory,
+// private (0600), on the same filesystem as the Parquet stage. Abort and
+// commit remove it; storeCleanStages removes one left by a crash.
+func (tx *Transaction) NewSpill() (*os.File, error) {
+	tx.mu.Lock()
+	defer tx.mu.Unlock()
+	if tx.done || tx.dir == nil {
+		return nil, errors.New("acceleration transaction is already finished")
+	}
+	name := ".stage-" + tx.generation + "-delta.arrow"
+	f, err := storeOpenFile(tx.dir, name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return nil, err
+	}
+	tx.spills = append(tx.spills, name)
+	return f, nil
 }
 
 func (tx *Transaction) File() *os.File {
@@ -367,6 +389,14 @@ func (tx *Transaction) Abort() error {
 
 func (tx *Transaction) cleanup() error {
 	var errs []error
+	for _, name := range tx.spills {
+		if tx.dir != nil {
+			if err := storeRemove(tx.dir, name); err != nil && !errors.Is(err, os.ErrNotExist) {
+				errs = append(errs, err)
+			}
+		}
+	}
+	tx.spills = nil
 	if tx.file != nil {
 		errs = append(errs, tx.file.Close())
 		tx.file = nil
@@ -683,7 +713,7 @@ func storeCleanStages(ctx context.Context, dir *os.File) error {
 		stage := name == ".stage-"+id+".parquet" && storeGenerationID.MatchString(id)
 		id = strings.TrimSuffix(strings.TrimPrefix(name, ".manifest-"), ".yaml")
 		manifest := name == ".manifest-"+id+".yaml" && storeGenerationID.MatchString(id)
-		if !stage && !manifest && !multipartStageName.MatchString(name) {
+		if !stage && !manifest && !multipartStageName.MatchString(name) && !spillStageName.MatchString(name) {
 			continue
 		}
 		file, err := storeOpenFile(dir, name, os.O_RDONLY, 0)

@@ -720,3 +720,5 @@ func recoverOrphanParts(ctx context.Context, dir *os.File, current storeManifest
 	}
 	return nil
 }
+
+func (t *multipartTransaction) NewSpill() (*os.File, error) { return t.tx.NewSpill() }

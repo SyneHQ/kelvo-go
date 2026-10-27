@@ -255,3 +255,5 @@ func (tx *objectMultipartTransaction) Abort() error             { return tx.base
 
 var _ MultipartBackend = (*objectBackend)(nil)
 var _ MultipartRefreshWriter = (*objectMultipartTransaction)(nil)
+
+func (t *objectMultipartTransaction) NewSpill() (*os.File, error) { return t.base.NewSpill() }
