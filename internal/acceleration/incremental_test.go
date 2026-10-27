@@ -12,19 +12,23 @@ import (
 
 func TestIncrementalRequestBuildsTypedPredicate(t *testing.T) {
 	base := query.Request{SQL: "SELECT id, ts FROM events;\n", Mode: "federated", Sources: []string{"pg"}}
-	got, reason := incrementalRequest(base, `t"s`, "42", 0)
+	got, reason := incrementalRequest(base, `t"s`, "42", 0, false)
 	if reason != "" || got.SQL != "SELECT * FROM (\nSELECT id, ts FROM events\n) AS kelvo_incr WHERE \"t\"\"s\" >= 42" {
 		t.Fatalf("int: %q %q", got.SQL, reason)
 	}
-	got, reason = incrementalRequest(base, "ts", "2026-03-01T10:20:30.123456Z", 0)
+	got, reason = incrementalRequest(base, "ts", "2026-03-01T10:20:30.123456Z", 0, false)
 	if reason != "" || !strings.HasSuffix(got.SQL, `"ts" >= TIMESTAMP '2026-03-01 10:20:30.123456'`) {
 		t.Fatalf("time: %q %q", got.SQL, reason)
 	}
-	got, reason = incrementalRequest(base, "ts", "2026-03-01T10:20:30.123456Z", 10*time.Minute)
+	got, reason = incrementalRequest(base, "ts", "2026-03-01T10:20:30.123456Z", 10*time.Minute, false)
 	if reason != "" || !strings.HasSuffix(got.SQL, `"ts" >= TIMESTAMP '2026-03-01 10:10:30.123456'`) {
 		t.Fatalf("late window: %q %q", got.SQL, reason)
 	}
-	if _, reason := incrementalRequest(base, "id", "42", time.Minute); reason == "" {
+	got, reason = incrementalRequest(base, "ts", "2026-03-01T10:20:30.123456Z", 0, true)
+	if reason != "" || !strings.HasSuffix(got.SQL, `"ts" >= TIMESTAMPTZ '2026-03-01 10:20:30.123456+00:00'`) {
+		t.Fatalf("zoned: %q %q", got.SQL, reason)
+	}
+	if _, reason := incrementalRequest(base, "id", "42", time.Minute, false); reason == "" {
 		t.Fatal("late_window on an integer watermark must fall back")
 	}
 	for name, c := range map[string]struct {
@@ -38,7 +42,7 @@ func TestIncrementalRequestBuildsTypedPredicate(t *testing.T) {
 		"multi":    {query.Request{SQL: "SELECT 1; SELECT 2", Mode: "federated", Sources: []string{"pg"}}, "1"},
 		"emptysql": {query.Request{SQL: " ; ", Mode: "federated"}, "1"},
 	} {
-		if _, reason := incrementalRequest(c.r, "ts", c.cu, 0); reason == "" {
+		if _, reason := incrementalRequest(c.r, "ts", c.cu, 0, false); reason == "" {
 			t.Errorf("%s must fall back", name)
 		}
 	}

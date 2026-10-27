@@ -60,6 +60,11 @@ func (m *Manager) recordRefresh(id string, info RefreshInfo) {
 	if m.last == nil {
 		m.last = map[string]RefreshInfo{}
 	}
+	prev := m.last[id]
+	info.EverIncremental = prev.EverIncremental || info.Incremental
+	if !info.Incremental && info.Fallback != "" {
+		info.Fallbacks = prev.Fallbacks + 1
+	}
 	m.last[id] = info
 }
 
@@ -73,7 +78,7 @@ type incrementalPlan struct {
 
 // planIncremental returns nil, with the reason logged, when the refresh must be
 // full. It runs under the writer lock so the previous generation cannot change.
-func (m *Manager) planIncremental(ctx context.Context, d catalog.Dataset, fingerprint string, forceFull string) (*incrementalPlan, string) {
+func (m *Manager) planIncremental(ctx context.Context, d catalog.Dataset, fingerprint string, forceFull string, previous *arrow.Schema) (*incrementalPlan, string) {
 	if d.Incremental == nil {
 		return nil, ""
 	}
@@ -92,7 +97,7 @@ func (m *Manager) planIncremental(ctx context.Context, d catalog.Dataset, finger
 	if ok, why := incrementalDecision(d, current, err == nil, current.LastFullAt, fingerprint, m.clock()); !ok {
 		return fallback(why)
 	}
-	request, why := incrementalRequest(d.Query, d.Incremental.Column, current.CoveredUntil, d.Incremental.LateWindow)
+	request, why := incrementalRequest(d.Query, d.Incremental.Column, current.CoveredUntil, d.Incremental.LateWindow, zonedTimestamp(previous, d.Incremental.Column))
 	if why != "" {
 		return fallback(why)
 	}
@@ -122,7 +127,7 @@ func (m *Manager) execute(ctx context.Context, d catalog.Dataset, executor query
 	var merge *mergeSink
 	if plan != nil {
 		merge = &mergeSink{ctx: ctx, inner: sink, prev: plan.prev, schema: previous,
-			key: d.Incremental.Key, watermark: d.Incremental.Column, maxBytes: d.Limits.MaxBytes}
+			key: d.Incremental.Key, watermark: d.Incremental.Column, maxBytes: mergeCap(d.Limits)}
 		defer merge.release()
 		target, request = merge, plan.request
 	}
@@ -261,7 +266,7 @@ func (m *Manager) refresh(ctx context.Context, id string, onlyIfDue bool, forceF
 	if err != nil {
 		return Snapshot{}, err
 	}
-	plan, why := m.planIncremental(ctx, d, fingerprint, forceFull)
+	plan, why := m.planIncremental(ctx, d, fingerprint, forceFull, previous)
 	if plan != nil {
 		defer plan.prev.Release()
 	}
@@ -321,7 +326,7 @@ func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, finge
 	if err != nil {
 		return Snapshot{}, err
 	}
-	plan, why := m.planIncremental(ctx, d, fingerprint, forceFull)
+	plan, why := m.planIncremental(ctx, d, fingerprint, forceFull, previous)
 	if plan != nil {
 		defer plan.prev.Release()
 	}
