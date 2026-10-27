@@ -1,0 +1,63 @@
+name: Scratch runner
+# Maintainer-only Linux build/test hosts for kelvo-go work, reachable over the
+# maintainers' tailnet with OpenSSH key auth. Never triggered by pull requests.
+on:
+  workflow_dispatch:
+    inputs:
+      slots:
+        description: JSON list of slot ids, one runner each (max 8)
+        default: '[1]'
+        required: true
+      hours:
+        description: Hours to stay up (1-5)
+        default: '5'
+        required: true
+      ssh_pubkey:
+        description: ed25519 public key allowed to log in as runner
+        required: true
+permissions:
+  contents: read
+jobs:
+  host:
+    if: github.repository == 'SyneHQ/kelvo-go'
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        slot: ${{ fromJSON(inputs.slots) }}
+    steps:
+      - name: Validate inputs
+        env:
+          HOURS: ${{ inputs.hours }}
+          PUBKEY: ${{ inputs.ssh_pubkey }}
+        run: |
+          case "$HOURS" in 1|2|3|4|5) ;; *) echo "hours must be 1-5" >&2; exit 1 ;; esac
+          printf '%s\n' "$PUBKEY" | grep -Eq '^ssh-ed25519 [A-Za-z0-9+/=]+( [A-Za-z0-9._@-]+)?$' || { echo "ssh_pubkey must be one ed25519 key" >&2; exit 1; }
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.8'
+          cache: false
+      - name: Join tailnet
+        uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4.3.0
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          hostname: kelvo-scratch-${{ matrix.slot }}
+      - name: Open SSH on the tailnet address only
+        env:
+          PUBKEY: ${{ inputs.ssh_pubkey }}
+        run: |
+          sudo apt-get install -y -qq openssh-server >/dev/null
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$PUBKEY" > ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          ip=$(tailscale ip -4)
+          printf 'ListenAddress %s\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nPermitRootLogin no\nAllowUsers %s\n' "$ip" "$USER" | sudo tee /etc/ssh/sshd_config.d/kelvo-scratch.conf >/dev/null
+          sudo systemctl restart ssh
+          echo "ssh $USER@$ip  (kelvo-scratch-${{ matrix.slot }})"
+      - name: Stay up until the deadline or ~/stop exists
+        env:
+          HOURS: ${{ inputs.hours }}
+        run: |
+          end=$(( $(date +%s) + HOURS * 3600 ))
+          while [ "$(date +%s)" -lt "$end" ] && [ ! -e ~/stop ]; do sleep 30; done
