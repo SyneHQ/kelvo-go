@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/oidc"
 	"github.com/SYNEHQ/kelvo-go/internal/secrets"
 	"go.yaml.in/yaml/v3"
 )
@@ -29,6 +30,7 @@ type GatewayAuthenticationConfig struct {
 	MinRevision    uint64                            `yaml:"min_revision,omitempty"`
 	State          *GatewayAuthenticationStateConfig `yaml:"state,omitempty"`
 	Authority      *GatewayKeyAuthorityConfig        `yaml:"authority,omitempty"`
+	OIDC           *oidc.Config                      `yaml:"oidc,omitempty"`
 }
 
 func (c GatewayAuthenticationConfig) normalized() (GatewayAuthenticationConfig, error) {
