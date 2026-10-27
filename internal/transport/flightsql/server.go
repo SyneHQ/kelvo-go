@@ -37,14 +37,20 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
 const (
-	// Per-session bounds; sessions themselves are bounded by Options.MaxSessions.
+	// Per-key bounds; distinct keys are bounded by Options.MaxSessions.
 	maxTicketsPerSession  = 64
 	maxPreparedPerSession = 64
+	maxSQLBytes           = 64 << 10 // the HTTP API's own request SQL limit
+	maxPreparedBytes      = 1 << 20  // prepared SQL plus parameters per key
+	maxPreparedLifetime   = 10       // prepared statements live at most this many ticket TTLs
+	maxProbesPerCall      = 64       // metadata probes per call; more fails, never truncates
+	maxRecvBytes          = 2 << 20
 	maxJSONBytes          = 1 << 20
 	// CatalogName is the single Flight SQL catalog Kelvo reports.
 	CatalogName = "kelvo"
@@ -75,9 +81,15 @@ type Server struct {
 
 type tableRef struct{ source, schema, name, sql string }
 
+// session is the state one key holds. key is kept only to cancel the
+// key's own HTTP queries when its tickets expire or are evicted.
 type session struct {
-	tickets  map[string]*ticket
-	prepared map[string]*prepared
+	key       string
+	lastUsed  time.Time
+	tickets   map[string]*ticket
+	prepared  map[string]*prepared
+	grants    []grantedTable
+	grantsEnd time.Time
 }
 
 type ticket struct {
@@ -88,10 +100,12 @@ type ticket struct {
 }
 
 type prepared struct {
-	sql     string
-	sources []string
-	params  []query.Parameter
-	expires time.Time
+	sql      string
+	sources  []string
+	params   []query.Parameter
+	bytes    int
+	expires  time.Time
+	deadline time.Time // absolute; idle renewal never passes it
 }
 
 type keyContext struct{}
@@ -104,7 +118,12 @@ func New(opts Options) (*Server, error) {
 	s := &Server{opts: opts, sessions: map[[32]byte]*session{}}
 	for _, src := range opts.Catalog.Sources {
 		if src.Federation == nil {
-			s.tables = append(s.tables, tableRef{src.ID, "main", src.ID, src.ID})
+			// Only file sources are a single queryable table; native-only
+			// connections are not listed.
+			switch catalog.CanonicalType(src.Type) {
+			case "csv", "parquet", "json", "jsonl":
+				s.tables = append(s.tables, tableRef{src.ID, "main", src.ID, src.ID})
+			}
 			continue
 		}
 		for _, t := range src.Federation.Tables {
@@ -135,7 +154,14 @@ func New(opts Options) (*Server, error) {
 // NewGRPC returns a Flight server with Kelvo authentication. A nil TLS config
 // serves plaintext; callers restrict that to loopback.
 func (s *Server) NewGRPC(tc *tls.Config) flight.Server {
-	var opts []grpc.ServerOption
+	opts := []grpc.ServerOption{
+		grpc.MaxRecvMsgSize(maxRecvBytes),
+		grpc.MaxSendMsgSize(1 << 28),
+		grpc.MaxConcurrentStreams(64),
+		grpc.ConnectionTimeout(10 * time.Second),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 10 * time.Second}),
+		grpc.KeepaliveParams(keepalive.ServerParameters{MaxConnectionIdle: 5 * time.Minute}),
+	}
 	if tc != nil {
 		opts = append(opts, grpc.Creds(credentials.NewTLS(tc)))
 	}
@@ -167,10 +193,27 @@ func callerKey(ctx context.Context) (string, bool) {
 	return "", false
 }
 
-func (s *Server) unaryAuth(ctx context.Context, req any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
+// validate authenticates a key through the HTTP API before any state is
+// created for it: an unknown handle is 404 only after authentication.
+func (s *Server) validate(ctx context.Context) (string, error) {
 	key, ok := callerKey(ctx)
 	if !ok {
-		return nil, status.Error(codes.Unauthenticated, "Authentication required")
+		return "", status.Error(codes.Unauthenticated, "Authentication required")
+	}
+	code, body, err := s.call(ctx, key, http.MethodGet, "/v1/queries/00000000000000000000000000000000", nil)
+	if err != nil {
+		return "", err
+	}
+	if code != http.StatusNotFound {
+		return "", httpError(code, body)
+	}
+	return key, nil
+}
+
+func (s *Server) unaryAuth(ctx context.Context, req any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
+	key, err := s.validate(ctx)
+	if err != nil {
+		return nil, err
 	}
 	return h(context.WithValue(ctx, keyContext{}, key), req)
 }
@@ -183,20 +226,12 @@ type authStream struct {
 func (a authStream) Context() context.Context { return a.ctx }
 
 func (s *Server) streamAuth(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, h grpc.StreamHandler) error {
-	key, ok := callerKey(ss.Context())
-	if !ok {
-		return status.Error(codes.Unauthenticated, "Authentication required")
+	key, err := s.validate(ss.Context())
+	if err != nil {
+		return err
 	}
 	if strings.HasSuffix(info.FullMethod, "/Handshake") {
-		// Validate through the HTTP API: an unknown handle is 404 only after
-		// authentication. The client then sends the key back as a bearer token.
-		code, body, err := s.call(ss.Context(), key, http.MethodGet, "/v1/queries/00000000000000000000000000000000", nil)
-		if err != nil {
-			return err
-		}
-		if code != http.StatusNotFound {
-			return httpError(code, body)
-		}
+		// The client sends the validated key back as a bearer token.
 		return ss.SetHeader(metadata.Pairs("authorization", "Bearer "+key))
 	}
 	return h(srv, authStream{ss, context.WithValue(ss.Context(), keyContext{}, key)})
@@ -227,7 +262,7 @@ func (p *pipeResponse) Flush() {}
 
 // open starts one handler request and returns its status and body. The body
 // must be drained or ctx cancelled; done closes when the handler returns.
-func (s *Server) open(ctx context.Context, key, method, path string, body any) (int, io.Reader, <-chan struct{}, error) {
+func (s *Server) open(ctx context.Context, key, method, path string, body any) (int, *io.PipeReader, <-chan struct{}, error) {
 	var payload io.Reader = http.NoBody
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -268,10 +303,15 @@ func (s *Server) call(ctx context.Context, key, method, path string, body any) (
 	if err != nil {
 		return 0, nil, err
 	}
-	raw, err := io.ReadAll(io.LimitReader(r, maxJSONBytes))
+	raw, err := io.ReadAll(io.LimitReader(r, maxJSONBytes+1))
+	// Closing the pipe unblocks a handler still writing an oversized body.
+	r.CloseWithError(errors.New("response limit reached"))
 	<-done
 	if err != nil {
 		return 0, nil, contextError(err)
+	}
+	if len(raw) > maxJSONBytes {
+		return 0, nil, status.Error(codes.Internal, "HTTP API response exceeds its limit")
 	}
 	return code, raw, nil
 }
@@ -332,7 +372,7 @@ func contextError(err error) error {
 // --- read-only statements -------------------------------------------------
 
 var (
-	readStart = map[string]bool{"SELECT": true, "WITH": true, "VALUES": true, "TABLE": true, "FROM": true, "DESCRIBE": true, "SHOW": true, "SUMMARIZE": true}
+	readStart = map[string]bool{"SELECT": true, "WITH": true, "VALUES": true, "TABLE": true, "FROM": true}
 	writeWord = map[string]bool{"INSERT": true, "UPDATE": true, "DELETE": true, "MERGE": true, "UPSERT": true, "COPY": true, "CREATE": true, "DROP": true, "ALTER": true, "ATTACH": true, "DETACH": true, "INSTALL": true, "LOAD": true, "PRAGMA": true, "SET": true, "RESET": true, "CALL": true, "EXPORT": true, "IMPORT": true, "VACUUM": true, "CHECKPOINT": true, "TRUNCATE": true, "GRANT": true, "REVOKE": true, "BEGIN": true, "COMMIT": true, "ROLLBACK": true, "USE": true}
 )
 
@@ -354,8 +394,8 @@ func scanSQL(sql string) (words, idents []string, multi bool) {
 					break
 				}
 			}
-			if j >= len(sql) {
-				return words, idents, true // unterminated literal: fail closed
+			if j >= len(sql) || strings.ContainsRune(sql[i:j], '\\') {
+				return words, idents, true // unterminated or escape-bearing literal: fail closed
 			}
 			if c == '"' {
 				idents = append(idents, strings.ToLower(sql[i+1:j]))
@@ -372,12 +412,14 @@ func scanSQL(sql string) (words, idents []string, multi bool) {
 				return words, idents, true // unterminated comment: fail closed
 			}
 			i += end + 4
+		case c == '$':
+			return words, idents, true // dollar quoting and $n parameters: fail closed
 		case c == ';':
 			semicolon = true
 			i++
 		case c == '_' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z':
 			j := i
-			for j < len(sql) && (sql[j] == '_' || sql[j] == '$' || sql[j] >= '0' && sql[j] <= '9' || sql[j] >= 'A' && sql[j] <= 'Z' || sql[j] >= 'a' && sql[j] <= 'z') {
+			for j < len(sql) && (sql[j] == '_' || sql[j] >= '0' && sql[j] <= '9' || sql[j] >= 'A' && sql[j] <= 'Z' || sql[j] >= 'a' && sql[j] <= 'z') {
 				j++
 			}
 			words = append(words, strings.ToUpper(sql[i:j]))
@@ -443,13 +485,16 @@ func newHandle() (string, error) {
 }
 
 // sessionLocked returns the caller's session, pruning expired state. create
-// admits a new session only below MaxSessions.
+// admits a new key; at the MaxSessions ceiling it evicts the least recently
+// used key that is not streaming, so no set of keys can lock others out.
+// Queries behind dropped tickets are cancelled through the HTTP API.
 func (s *Server) sessionLocked(key string, create bool) (*session, error) {
 	now := time.Now()
 	for id, se := range s.sessions {
 		for h, t := range se.tickets {
 			if !t.claimed && now.After(t.expires) {
 				delete(se.tickets, h)
+				s.cancelLater(se.key, t.queryID)
 			}
 		}
 		for h, p := range se.prepared {
@@ -457,20 +502,54 @@ func (s *Server) sessionLocked(key string, create bool) (*session, error) {
 				delete(se.prepared, h)
 			}
 		}
-		if len(se.tickets) == 0 && len(se.prepared) == 0 {
+		if len(se.tickets) == 0 && len(se.prepared) == 0 && now.After(se.grantsEnd) {
 			delete(s.sessions, id)
 		}
 	}
 	id := sha256.Sum256([]byte(key))
 	se := s.sessions[id]
 	if se == nil && create {
-		if len(s.sessions) >= s.opts.MaxSessions {
+		if len(s.sessions) >= s.opts.MaxSessions && !s.evictLocked() {
 			return nil, status.Error(codes.ResourceExhausted, "Flight SQL session limit reached")
 		}
-		se = &session{tickets: map[string]*ticket{}, prepared: map[string]*prepared{}}
+		se = &session{key: key, tickets: map[string]*ticket{}, prepared: map[string]*prepared{}}
 		s.sessions[id] = se
 	}
+	if se != nil {
+		se.lastUsed = now
+	}
 	return se, nil
+}
+
+// evictLocked drops the least recently used session with no active stream.
+func (s *Server) evictLocked() bool {
+	var oldest [32]byte
+	var found *session
+	for id, se := range s.sessions {
+		busy := false
+		for _, t := range se.tickets {
+			busy = busy || t.claimed
+		}
+		if !busy && (found == nil || se.lastUsed.Before(found.lastUsed)) {
+			oldest, found = id, se
+		}
+	}
+	if found == nil {
+		return false
+	}
+	for _, t := range found.tickets {
+		s.cancelLater(found.key, t.queryID)
+	}
+	delete(s.sessions, oldest)
+	return true
+}
+
+func (s *Server) cancelLater(key, id string) {
+	go func() {
+		ctx, stop := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stop()
+		_, _, _ = s.call(ctx, key, http.MethodPost, "/v1/queries/"+id+"/cancel", nil)
+	}()
 }
 
 // submit admits a query through the HTTP API and binds a ticket to the caller.
@@ -525,6 +604,9 @@ func (s *Server) submitHandle(ctx context.Context, desc *flight.FlightDescriptor
 func (s *Server) GetFlightInfoStatement(ctx context.Context, cmd flightsql.StatementQuery, desc *flight.FlightDescriptor) (*flight.FlightInfo, error) {
 	if len(cmd.GetTransactionId()) != 0 {
 		return nil, status.Error(codes.Unimplemented, "Transactions are not supported")
+	}
+	if len(cmd.GetQuery()) > maxSQLBytes {
+		return nil, status.Error(codes.InvalidArgument, "Statement exceeds 64 KiB")
 	}
 	sources, err := s.statement(ctx, cmd.GetQuery())
 	if err != nil {
@@ -692,6 +774,9 @@ func (s *Server) CreatePreparedStatement(ctx context.Context, req flightsql.Acti
 	if len(req.GetTransactionId()) != 0 {
 		return out, status.Error(codes.Unimplemented, "Transactions are not supported")
 	}
+	if len(req.GetQuery()) > maxSQLBytes {
+		return out, status.Error(codes.InvalidArgument, "Statement exceeds 64 KiB")
+	}
 	sources, err := s.statement(ctx, req.GetQuery())
 	if err != nil {
 		return out, err
@@ -706,22 +791,49 @@ func (s *Server) CreatePreparedStatement(ctx context.Context, req flightsql.Acti
 	if err != nil {
 		return out, err
 	}
-	if len(se.prepared) >= maxPreparedPerSession {
-		return out, status.Error(codes.ResourceExhausted, "Too many prepared statements")
+	// Evict the key's own least recently used statements to stay within bounds.
+	for len(se.prepared) >= maxPreparedPerSession || preparedBytes(se)+len(req.GetQuery()) > maxPreparedBytes {
+		var oldest string
+		for h, p := range se.prepared {
+			if oldest == "" || p.expires.Before(se.prepared[oldest].expires) {
+				oldest = h
+			}
+		}
+		if oldest == "" {
+			return out, status.Error(codes.ResourceExhausted, "Prepared statement bytes exhausted")
+		}
+		delete(se.prepared, oldest)
 	}
-	se.prepared[handle] = &prepared{sql: req.GetQuery(), sources: sources, expires: time.Now().Add(s.opts.TicketTTL)}
+	now := time.Now()
+	se.prepared[handle] = &prepared{sql: req.GetQuery(), sources: sources, bytes: len(req.GetQuery()), expires: now.Add(s.opts.TicketTTL), deadline: now.Add(maxPreparedLifetime * s.opts.TicketTTL)}
 	out.Handle = []byte(handle)
 	return out, nil
 }
 
+func preparedBytes(se *session) int {
+	n := 0
+	for _, p := range se.prepared {
+		n += p.bytes
+	}
+	return n
+}
+
+// preparedFor renews an idle statement, never past its absolute deadline.
 func (s *Server) preparedFor(ctx context.Context, handle []byte) (*prepared, error) {
 	se, _ := s.sessionLocked(keyFrom(ctx), false)
 	if se == nil || se.prepared[string(handle)] == nil {
 		return nil, status.Error(codes.NotFound, "Prepared statement not found or expired")
 	}
 	p := se.prepared[string(handle)]
-	p.expires = time.Now().Add(s.opts.TicketTTL)
+	p.expires = minTime(time.Now().Add(s.opts.TicketTTL), p.deadline)
 	return p, nil
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
 }
 
 func (s *Server) ClosePreparedStatement(ctx context.Context, req flightsql.ActionClosePreparedStatementRequest) error {
@@ -764,7 +876,15 @@ func (s *Server) DoPutPreparedStatementQuery(ctx context.Context, cmd flightsql.
 	if err != nil {
 		return nil, err
 	}
-	p.params = params
+	size := len(p.sql)
+	for _, v := range params {
+		size += len(v.Value) + len(v.Type)
+	}
+	se, _ := s.sessionLocked(keyFrom(ctx), false)
+	if preparedBytes(se)-p.bytes+size > maxPreparedBytes {
+		return nil, status.Error(codes.ResourceExhausted, "Prepared statement bytes exhausted")
+	}
+	p.params, p.bytes = params, size
 	return cmd.GetPreparedStatementHandle(), nil
 }
 
@@ -866,41 +986,83 @@ type grantedTable struct {
 }
 
 // granted probes each catalog table with the caller's key through the HTTP
-// API. Only tables the caller may read are returned, with the policy-shaped
-// schema the API itself produces. Authentication failure fails the call.
-// ponytail: one bounded LIMIT 0 execution per catalog table, uncached; cache per session if catalogs grow.
+// API and caches the result for the key for one ticket TTL. Only tables the
+// caller may read are returned, with the policy-shaped schema the API itself
+// produces. A denied table (PermissionDenied/NotFound) is omitted; any other
+// probe failure fails the call, so a list is never silently partial.
+// Probe handles stay in the HTTP API until its result TTL: it has no release path.
 func (s *Server) granted(ctx context.Context, schemaPattern, tablePattern *string) ([]grantedTable, error) {
+	key := keyFrom(ctx)
+	s.mu.Lock()
+	se, err := s.sessionLocked(key, true)
+	var all []grantedTable
+	cached := err == nil && time.Now().Before(se.grantsEnd)
+	if cached {
+		all = se.grants
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	if !cached {
+		if len(s.tables) > maxProbesPerCall {
+			return nil, status.Errorf(codes.ResourceExhausted, "Catalog exceeds %d metadata tables", maxProbesPerCall)
+		}
+		for _, t := range s.tables {
+			g, ok, err := s.probe(ctx, t)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				all = append(all, g)
+			}
+		}
+		s.mu.Lock()
+		if se, err = s.sessionLocked(key, true); err == nil {
+			se.grants, se.grantsEnd = all, time.Now().Add(s.opts.TicketTTL)
+		}
+		s.mu.Unlock()
+	}
 	var out []grantedTable
-	for _, t := range s.tables {
-		if !like(schemaPattern, t.schema) || !like(tablePattern, t.name) {
-			continue
-		}
-		_, handle, err := s.submitHandle(ctx, nil, "SELECT * FROM "+t.sql+" LIMIT 0", []string{t.source}, nil)
-		if err != nil {
-			if status.Code(err) == codes.Unauthenticated || status.Code(err) == codes.ResourceExhausted || ctx.Err() != nil {
-				return nil, err
-			}
-			continue
-		}
-		schema, ch, err := s.DoGetStatement(ctx, statementTicket(handle))
-		if err != nil {
-			if status.Code(err) == codes.Unauthenticated || ctx.Err() != nil {
-				return nil, err
-			}
-			continue
-		}
-		ok := true
-		for c := range ch {
-			if c.Data != nil {
-				c.Data.Release()
-			}
-			ok = ok && c.Err == nil
-		}
-		if ok {
-			out = append(out, grantedTable{t, schema})
+	for _, g := range all {
+		if like(schemaPattern, g.tableRef.schema) && like(tablePattern, g.name) {
+			out = append(out, g)
 		}
 	}
 	return out, nil
+}
+
+func (s *Server) probe(ctx context.Context, t tableRef) (grantedTable, bool, error) {
+	denied := func(err error) (grantedTable, bool, error) {
+		if c := status.Code(err); (c == codes.PermissionDenied || c == codes.NotFound) && ctx.Err() == nil {
+			return grantedTable{}, false, nil
+		}
+		if c := status.Code(err); c == codes.Unauthenticated || c == codes.ResourceExhausted || c == codes.DeadlineExceeded || c == codes.Canceled {
+			return grantedTable{}, false, err
+		}
+		return grantedTable{}, false, status.Errorf(codes.Unavailable, "Metadata probe for %s failed", t.name)
+	}
+	_, handle, err := s.submitHandle(ctx, nil, "SELECT * FROM "+t.sql+" LIMIT 0", []string{t.source}, nil)
+	if err != nil {
+		return denied(err)
+	}
+	schema, ch, err := s.DoGetStatement(ctx, statementTicket(handle))
+	if err != nil {
+		return denied(err)
+	}
+	var streamErr error
+	for c := range ch {
+		if c.Data != nil {
+			c.Data.Release()
+		}
+		if c.Err != nil {
+			streamErr = c.Err
+		}
+	}
+	if streamErr != nil {
+		return denied(streamErr)
+	}
+	return grantedTable{t, schema}, true, nil
 }
 
 type statementTicket []byte
