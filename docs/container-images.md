@@ -12,6 +12,20 @@ docker build --target worker -t kelvo:worker .
 | `runtime` (default) | Kelvo and the Landlock launcher |
 | `worker` | Runtime plus the optional Go database-operation adapter |
 
+## Published images
+
+Tags `v*` run `.github/workflows/release.yml`: both targets are built natively
+for linux/amd64 and linux/arm64 and pushed as `ghcr.io/synehq/kelvo` (`runtime`)
+and `ghcr.io/synehq/kelvo-worker` (`worker`), tagged with the version
+(`latest` too for non-prerelease tags). Each image is cosign-signed (keyless),
+has an SPDX SBOM attestation and a GitHub build-provenance attestation; the
+`kelvo` and `kelvo-landlock` binaries and `SHA256SUMS` are attached to the
+GitHub release. Verification steps: [install](install.md#verify-a-release).
+A manual run of the workflow builds everything and pushes nothing.
+
+The `ghcr.io/synehq/kelvo-go` and `kelvo-go-node` images come from the separate
+Hakopod workflow for SYNEHQ's own deployment; do not use them for self-hosting.
+
 The worker target builds its adapter against the same SDK source. JDBC runtimes
 and vendor JARs remain separately provisioned. Add `--build-arg DUCKBRIDGE=1`
 when the Kelvo binary needs the native federation bridge.
