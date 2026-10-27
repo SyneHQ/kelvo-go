@@ -145,6 +145,8 @@ operations:
     cache_rules: []          # optional, at most 64; see "Cache rules"
     cache_max_entry_bytes: 4194304
     cache_max_total_bytes: 67108864
+    cache_max_entries: 4096  # at most 65536
+    cache_max_fills: 256     # concurrent shared executions, at most 4096; more run uncached
 
 audit:                       # gateway and node, each its own journal directory
   max_entries: 524288        # see "Audit journal sizing"
@@ -171,6 +173,10 @@ The two states are separate on purpose: `separate_classes` and `query_reserve_*`
 
 **CPU weights** (cgroup v2 `cpu.weight`, #234): a read worker 100 (the kernel default), a one-shot read child 50, a background operation 20 (`containment.CPUWeightReadWorker`, `CPUWeightOneShot`, `CPUWeightBackground`). Under CPU contention the long analysis operations yield to reads
 without a quota; with spare CPU they use it. The load matrix above ran before this weighting merged, so the CPU numbers for the analysis job are not comparable to a release build.
+
+### Cache keys and fencing
+
+Entries are keyed by tenant, app team, principal, effective policy fingerprint, connection, database, schema, source revision, normalized SQL, typed parameters and result limits; two principals never share an entry. A result is kept only if the read's authorization is unchanged when it completes, and served only while it still is. See [Result cache](../result-cache.md).
 
 ### Cache rules
 
