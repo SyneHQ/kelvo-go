@@ -22,10 +22,13 @@ import (
 // KELVO_TEST_PG_CDC_DSN. They run sequentially; each uses its own schema,
 // publication and slot.
 
+type batchKey struct{ lsn, seq uint64 }
+
 type memSink struct {
 	mu      sync.Mutex
 	rows    map[string]map[string][]any
-	applies map[uint64]int
+	applies map[batchKey]int // documented idempotency key (LSN, Seq)
+	version map[uint32]int
 	batches []Batch
 	failN   atomic.Int32 // fail the next N applies before applying
 }
@@ -37,9 +40,24 @@ func (s *memSink) Apply(_ context.Context, b Batch) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if b.Reset || s.rows == nil {
-		s.rows, s.applies = map[string]map[string][]any{}, map[uint64]int{}
+		s.rows, s.applies, s.version = map[string]map[string][]any{}, map[batchKey]int{}, map[uint32]int{}
 	}
+	bk := batchKey{b.LSN, b.Seq}
+	replay := s.applies[bk] > 0
 	for _, c := range b.Changes {
+		if c.Op == OpSchema {
+			if cur := s.version[c.Relation]; c.SchemaVersion != cur+1 && !(replay && c.SchemaVersion <= cur) {
+				return fmt.Errorf("%s: schema version %d after %d", c.Table, c.SchemaVersion, cur)
+			}
+			s.version[c.Relation] = c.SchemaVersion
+			for k, row := range s.rows[c.Table] { // added columns are NULL in existing rows
+				s.rows[c.Table][k] = append(row, make([]any, len(c.Schema.Columns)-len(row))...)
+			}
+			continue
+		}
+		if c.SchemaVersion != s.version[c.Relation] {
+			return fmt.Errorf("%s: change in schema version %d, sink has %d", c.Table, c.SchemaVersion, s.version[c.Relation])
+		}
 		t := s.rows[c.Table]
 		if t == nil {
 			t = map[string][]any{}
@@ -65,9 +83,7 @@ func (s *memSink) Apply(_ context.Context, b Batch) error {
 			delete(s.rows, c.Table)
 		}
 	}
-	if !b.Snapshot {
-		s.applies[b.LSN]++
-	}
+	s.applies[bk]++
 	s.batches = append(s.batches, b)
 	return nil
 }
@@ -278,6 +294,21 @@ func (e *env) assertMatches() {
 	}
 }
 
+func (e *env) snapshotBatches() int {
+	e.sink.mu.Lock()
+	defer e.sink.mu.Unlock()
+	n := 0
+	for _, b := range e.sink.batches {
+		if b.Snapshot && b.Seq != uint64(n+1) {
+			e.t.Fatalf("snapshot batch seq %d at position %d", b.Seq, n+1)
+		}
+		if b.Snapshot {
+			n++
+		}
+	}
+	return n
+}
+
 func (e *env) duplicates() int {
 	e.sink.mu.Lock()
 	defer e.sink.mu.Unlock()
@@ -329,7 +360,11 @@ func TestPGCDCSnapshotHandoffConcurrentWrites(t *testing.T) {
 		}()
 	}
 	time.Sleep(300 * time.Millisecond)
+	e.p.SnapshotChunk = 100
 	e.bootstrap()
+	if n := e.snapshotBatches(); n < 20 {
+		t.Fatalf("snapshot batches = %d, want >= 20 distinct (LSN, Seq)", n)
+	}
 	before := written.Load()
 	time.Sleep(time.Second)
 	close(stop)
@@ -412,9 +447,13 @@ func TestPGCDCLargeTransaction(t *testing.T) {
 		t.Fatalf("large transaction batch has %d changes", n)
 	}
 	e.assertMatches()
-	e.p.MaxTxnChanges = 1000
+	e.p.MaxTxnBytes = 1 << 20
 	e.exec("UPDATE " + e.schema + ".big SET v = 'y'")
-	if err := e.runToError(); !errors.Is(err, ErrUnsupported) {
+	if err := e.runToError(); !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "bytes") {
+		t.Fatalf("over-byte-budget transaction: %v", err)
+	}
+	e.p.MaxTxnBytes, e.p.MaxTxnChanges = 0, 1000
+	if err := e.runToError(); !errors.Is(err, ErrUnsupported) || !strings.Contains(err.Error(), "changes") {
 		t.Fatalf("over-limit transaction: %v", err)
 	}
 }
@@ -422,7 +461,9 @@ func TestPGCDCLargeTransaction(t *testing.T) {
 func TestPGCDCCrashBoundaries(t *testing.T) {
 	e := newEnv(t, "CREATE TABLE acct (id int PRIMARY KEY, bal numeric)", "INSERT INTO acct SELECT g, 100 FROM generate_series(1, 10) g")
 	e.bootstrap()
-	tx := func(i int) { e.exec(fmt.Sprintf("UPDATE %s.acct SET bal = bal + %d WHERE id = %d", e.schema, i, i%10+1)) }
+	tx := func(i int) {
+		e.exec(fmt.Sprintf("UPDATE %s.acct SET bal = bal + %d WHERE id = %d", e.schema, i, i%10+1))
+	}
 
 	// Crash inside apply: nothing applied, nothing checkpointed.
 	tx(1)
@@ -479,33 +520,55 @@ func TestPGCDCCrashBoundaries(t *testing.T) {
 func TestPGCDCSchemaChange(t *testing.T) {
 	e := newEnv(t, "CREATE TABLE evo (id int PRIMARY KEY, a text)")
 	e.bootstrap()
-	e.exec("ALTER TABLE " + e.schema + ".evo ADD COLUMN b numeric")
-	e.exec("INSERT INTO " + e.schema + ".evo VALUES (1, 'x', 2.50)")
+	// Two additive changes inside one transaction, rows written under each version.
+	tx, err := e.db.Begin(e.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"INSERT INTO evo VALUES (1, 'v1')", "ALTER TABLE evo ADD COLUMN b numeric",
+		"INSERT INTO evo VALUES (2, 'v2', 2.50)", "ALTER TABLE evo ADD COLUMN c bigint", "INSERT INTO evo VALUES (3, 'v3', 3, 3)"} {
+		if _, err := tx.Exec(e.ctx, strings.ReplaceAll(q, "evo", e.schema+".evo")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(e.ctx); err != nil {
+		t.Fatal(err)
+	}
 	e.drain()
-	var version int
+	var seq []string
 	for _, b := range e.sink.batches {
-		for _, s := range b.Schemas {
-			if s.Name == "evo" {
-				version = s.Version
+		for _, c := range b.Changes {
+			if c.Table == e.schema+".evo" && !b.Snapshot {
+				seq = append(seq, fmt.Sprintf("%s@%d", c.Op, c.SchemaVersion))
 			}
 		}
 	}
-	if version != 2 {
-		t.Fatalf("schema version event = %d, want 2", version)
+	want := []string{"insert@1", "schema@2", "insert@2", "schema@3", "insert@3"}
+	if !slices.Equal(seq, want) {
+		t.Fatalf("ordered changes = %v, want %v", seq, want)
 	}
-	e.exec("INSERT INTO " + e.schema + ".evo VALUES (2, 'y', 3)")
+	e.exec("INSERT INTO " + e.schema + ".evo VALUES (4, 'y', 4, 4)")
 	n := len(e.sink.batches)
 	e.drain()
 	for _, b := range e.sink.batches[n:] {
-		for _, s := range b.Schemas {
-			if s.Name == "evo" {
-				t.Fatalf("schema event repeated after restart: %+v", s)
+		for _, c := range b.Changes {
+			if c.Op == OpSchema {
+				t.Fatalf("schema event repeated after restart: %+v", c.Schema)
 			}
 		}
 	}
 	e.assertMatches()
+	e.exec("ALTER TABLE " + e.schema + ".evo ADD COLUMN d int DEFAULT 7")
+	e.exec("INSERT INTO " + e.schema + ".evo VALUES (5, 'z', 5, 5, 5)")
+	if err := e.runToError(); !errors.Is(err, ErrIncompatibleSchema) {
+		t.Fatalf("added column with default: %v", err)
+	} else {
+		t.Logf("added column with default: %v", err)
+	}
+	e.exec("ALTER TABLE " + e.schema + ".evo DROP COLUMN d")
+	e.bootstrap()
 	e.exec("ALTER TABLE " + e.schema + ".evo ALTER COLUMN a TYPE varchar(10)")
-	e.exec("INSERT INTO " + e.schema + ".evo VALUES (3, 'z', 4)")
+	e.exec("INSERT INTO " + e.schema + ".evo VALUES (6, 'z', 6, 6)")
 	if err := e.runToError(); !errors.Is(err, ErrIncompatibleSchema) {
 		t.Fatalf("incompatible change: %v", err)
 	}
@@ -520,6 +583,21 @@ func TestPGCDCBootstrapRequired(t *testing.T) {
 	stale, _, _ := e.store.Load(e.ctx)
 	e.exec("INSERT INTO " + e.schema + ".t VALUES (1)")
 	e.drain()
+	good, _, _ := e.store.Load(e.ctx)
+	for name, cp := range map[string]Checkpoint{
+		"other system":   func() Checkpoint { c := good; c.SystemID = "1"; return c }(),
+		"other timeline": func() Checkpoint { c := good; c.Timeline++; return c }(),
+		"future lsn":     func() Checkpoint { c := good; c.LSN = 1 << 60; return c }(),
+	} {
+		if err := e.store.FileStore.Save(e.ctx, cp); err != nil {
+			t.Fatal(err)
+		}
+		err := e.p.Run(e.ctx, e.sink, e.store)
+		t.Logf("%s: %v", name, err)
+		if !errors.Is(err, ErrBootstrapRequired) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
 	if err := e.store.FileStore.Save(e.ctx, stale); err != nil {
 		t.Fatal(err)
 	}
@@ -581,6 +659,15 @@ func TestPGCDCValidation(t *testing.T) {
 			}
 		})
 	}
+	t.Run("column_list", func(t *testing.T) {
+		e := newEnv(t, "CREATE TABLE x (id int PRIMARY KEY, secret text)")
+		e.exec("ALTER PUBLICATION " + e.schema + " SET TABLE " + e.schema + ".x (id), " + e.schema + ".marker")
+		err := e.p.Bootstrap(e.ctx, e.sink, e.store)
+		t.Logf("%v", err)
+		if !errors.Is(err, ErrUnsupported) {
+			t.Fatalf("bootstrap: %v", err)
+		}
+	})
 	t.Run("no_truncate", func(t *testing.T) {
 		e := newEnv(t, "CREATE TABLE x (id int PRIMARY KEY)")
 		e.exec("ALTER PUBLICATION " + e.schema + " SET (publish = 'insert, update, delete')")
@@ -588,4 +675,48 @@ func TestPGCDCValidation(t *testing.T) {
 			t.Fatalf("validate: %v", err)
 		}
 	})
+}
+
+func TestPGCDCInheritanceChildExcluded(t *testing.T) {
+	e := newEnv(t, "CREATE TABLE parent (id int PRIMARY KEY, v text)", "INSERT INTO parent VALUES (1, 'p')")
+	child := "public." + e.schema + "_child"
+	e.exec("CREATE TABLE " + child + " () INHERITS (" + e.schema + ".parent)")
+	t.Cleanup(func() { e.db.Exec(e.ctx, "DROP TABLE IF EXISTS "+child) })
+	e.exec("INSERT INTO " + child + " VALUES (2, 'phantom')")
+	e.bootstrap()
+	if e.sink.has(e.schema+".parent", int32(2)) || !e.sink.has(e.schema+".parent", int32(1)) {
+		t.Fatalf("snapshot rows = %v", e.sink.rows[e.schema+".parent"])
+	}
+	e.drain()
+	e.assertMatches()
+}
+
+func TestPGCDCHeartbeatAdvancesIdleSlot(t *testing.T) {
+	e := newEnv(t, "CREATE TABLE t (id int PRIMARY KEY)")
+	e.bootstrap()
+	e.drain()
+	before, _, _ := e.store.Load(e.ctx)
+	batches := len(e.sink.batches)
+	fill := "public." + e.schema + "_fill"
+	e.exec("CREATE TABLE " + fill + " (v text)")
+	t.Cleanup(func() { e.db.Exec(e.ctx, "DROP TABLE IF EXISTS "+fill) })
+	e.exec("INSERT INTO " + fill + " SELECT repeat('x', 100) FROM generate_series(1, 20000)")
+	var walAfterFill string
+	e.db.QueryRow(e.ctx, "SELECT pg_current_wal_lsn()::text").Scan(&walAfterFill)
+	fillLSN, _ := pglogrepl.ParseLSN(walAfterFill)
+	e.p.HeartbeatInterval = 100 * time.Millisecond
+	ctx, cancel := context.WithTimeout(e.ctx, 3*time.Second)
+	defer cancel()
+	if err := e.run(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Run: %v", err)
+	}
+	cp, _, _ := e.store.Load(e.ctx)
+	t.Logf("heartbeat: checkpoint %s -> %s (unpublished WAL end %s), confirmed %s",
+		pglogrepl.LSN(before.LSN), pglogrepl.LSN(cp.LSN), fillLSN, pglogrepl.LSN(e.confirmed()))
+	if cp.LSN <= uint64(fillLSN) || e.confirmed() > cp.LSN || e.confirmed() <= before.LSN {
+		t.Fatal("heartbeat did not advance checkpoint and acknowledgement past idle WAL")
+	}
+	if len(e.sink.batches) != batches {
+		t.Fatal("heartbeat reached the sink")
+	}
 }

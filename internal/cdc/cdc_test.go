@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pglogrepl"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestDecodeTextExactTypes(t *testing.T) {
@@ -59,6 +60,17 @@ func TestFileStoreRoundTrip(t *testing.T) {
 	}
 	if m, _ := filepath.Glob(filepath.Join(filepath.Dir(f.Path), ".checkpoint-*")); len(m) != 0 {
 		t.Fatalf("temp files left: %v", m)
+	}
+}
+
+func TestSlotErrorBootstrapRequired(t *testing.T) {
+	for _, code := range []string{"55000", "42704", "58P01"} {
+		if err := slotError(&pgconn.PgError{Code: code}); !errors.Is(err, ErrBootstrapRequired) {
+			t.Errorf("%s: %v", code, err)
+		}
+	}
+	if err := slotError(&pgconn.PgError{Code: "08006"}); errors.Is(err, ErrBootstrapRequired) {
+		t.Error("connection failure mapped to bootstrap required")
 	}
 }
 
