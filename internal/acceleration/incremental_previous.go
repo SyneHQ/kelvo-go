@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/ipc"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/util"
 	"github.com/apache/arrow-go/v18/parquet/file"
@@ -27,6 +29,10 @@ type RefreshInfo struct {
 	Incremental  bool   `yaml:"incremental"`
 	AppendedRows int64  `yaml:"appended_rows,omitempty"` // delta rows merged, including replacements
 	Fallback     string `yaml:"fallback,omitempty"`
+	// Fallbacks counts consecutive full fallbacks; EverIncremental reports that
+	// some run since process start merged incrementally.
+	Fallbacks       int  `yaml:"fallbacks,omitempty"`
+	EverIncremental bool `yaml:"ever_incremental,omitempty"`
 }
 
 // PreviousGeneration exposes the current generation's Parquet parts as local
@@ -109,19 +115,14 @@ func (backend *objectBackend) downloadPart(ctx context.Context, part SnapshotPar
 // copyPreviousRows streams every previous part into sink using the delta's
 // schema. The sink applies the usual row, byte and coverage handling. The row
 // total must match the committed metadata.
-func copyPreviousRows(ctx context.Context, prev PreviousGeneration, schema *arrow.Schema, sink query.Sink) (err error) {
-	defer func() {
-		if recover() != nil {
-			err = fmt.Errorf("%w: malformed previous Parquet part", ErrCorrupt)
-		}
-	}()
+func copyPreviousRows(ctx context.Context, prev PreviousGeneration, schema *arrow.Schema, sink query.Sink) error {
 	var total int64
 	for i := 0; i < prev.Parts; i++ {
 		f, closeFile, err := prev.Open(i)
 		if err != nil {
 			return err
 		}
-		n, err := copyPart(ctx, f, schema, sink)
+		n, err := eachPartBatch(ctx, f, schema, sink.Write)
 		if err = errors.Join(err, closeFile()); err != nil {
 			return err
 		}
@@ -133,42 +134,65 @@ func copyPreviousRows(ctx context.Context, prev PreviousGeneration, schema *arro
 	return nil
 }
 
-func copyPart(ctx context.Context, f *os.File, schema *arrow.Schema, sink query.Sink) (int64, error) {
-	return eachPartBatch(ctx, f, schema, sink.Write)
-}
-
-// eachPartBatch hands every batch of one part, rebuilt on schema, to write.
-func eachPartBatch(ctx context.Context, f *os.File, schema *arrow.Schema, write func(arrow.RecordBatch) error) (_ int64, err error) {
+// decode reports a panic inside Parquet decoding as corruption. Only decoder
+// calls run under it; sink and merge panics propagate unchanged.
+func decode(f func() error) (err error) {
 	defer func() {
 		if recover() != nil {
 			err = fmt.Errorf("%w: malformed previous Parquet part", ErrCorrupt)
 		}
 	}()
+	return f()
+}
+
+// eachPartBatch hands every batch of one part, rebuilt on schema, to write.
+func eachPartBatch(ctx context.Context, f *os.File, schema *arrow.Schema, write func(arrow.RecordBatch) error) (int64, error) {
 	info, err := f.Stat()
 	if err != nil {
 		return 0, err
 	}
-	// A section reader keeps the lease or temp file open for its owner to close.
-	parquet, err := file.NewParquetReader(io.NewSectionReader(f, 0, info.Size()))
-	if err != nil {
-		return 0, fmt.Errorf("%w: unreadable previous Parquet part", ErrCorrupt)
+	var records pqarrow.RecordReader
+	var parquet *file.Reader
+	err = decode(func() error {
+		// A section reader keeps the lease or temp file open for its owner to close.
+		p, err := file.NewParquetReader(io.NewSectionReader(f, 0, info.Size()))
+		if err != nil {
+			return fmt.Errorf("%w: unreadable previous Parquet part", ErrCorrupt)
+		}
+		parquet = p
+		reader, err := pqarrow.NewFileReader(p, pqarrow.ArrowReadProperties{BatchSize: 1024}, memory.DefaultAllocator)
+		if err != nil {
+			return fmt.Errorf("%w: unreadable previous Parquet part", ErrCorrupt)
+		}
+		if records, err = reader.GetRecordReader(ctx, nil, nil); err != nil {
+			return fmt.Errorf("%w: unreadable previous Parquet part", ErrCorrupt)
+		}
+		return nil
+	})
+	if parquet != nil {
+		defer parquet.Close()
 	}
-	defer parquet.Close()
-	reader, err := pqarrow.NewFileReader(parquet, pqarrow.ArrowReadProperties{BatchSize: 1024}, memory.DefaultAllocator)
 	if err != nil {
-		return 0, fmt.Errorf("%w: unreadable previous Parquet part", ErrCorrupt)
-	}
-	records, err := reader.GetRecordReader(ctx, nil, nil)
-	if err != nil {
-		return 0, fmt.Errorf("%w: unreadable previous Parquet part", ErrCorrupt)
+		return 0, err
 	}
 	defer records.Release()
 	var rows int64
-	for records.Next() {
+	for {
 		if err := ctx.Err(); err != nil {
 			return 0, err
 		}
-		batch := records.RecordBatch()
+		var batch arrow.RecordBatch
+		if err := decode(func() error {
+			if records.Next() {
+				batch = records.RecordBatch()
+			}
+			return records.Err()
+		}); err != nil {
+			return 0, err
+		}
+		if batch == nil {
+			return rows, nil
+		}
 		// Rebuild on the delta's schema object so the sink's exact check passes.
 		out := array.NewRecordBatch(schema, batch.Columns(), batch.NumRows())
 		err := write(out)
@@ -178,18 +202,19 @@ func eachPartBatch(ctx context.Context, f *os.File, schema *arrow.Schema, write 
 		}
 		rows += batch.NumRows()
 	}
-	return rows, records.Err()
 }
 
 // errIncrementalFallback never reaches callers; Refresh retries with a full run.
 var errIncrementalFallback = errors.New("incremental refresh falls back to full")
 
-// mergeSink buffers the delta, then writes the previous generation's rows whose
-// key the delta does not carry, then the delta. The new generation therefore
-// equals a full refresh provided the key is unique and deletes are soft. Any
-// case it cannot prove (schema drift, missing or null key column, duplicate key
-// in the delta, watermark moving backwards for a key, delta over the byte
-// limit) sets fallback and the whole transaction is retried fully.
+// mergeSink spills the delta to a temporary Arrow IPC file, then writes the
+// previous generation's rows whose key the delta does not carry, then the
+// delta. The new generation therefore equals a full refresh provided the key is
+// unique and immutable and deletes are soft. Any case it cannot prove (schema
+// drift, missing or null key column, duplicate key in the delta, watermark
+// moving backwards for a key, delta over its cap) sets fallback and the whole
+// transaction is retried fully. Spilling keeps only the key map in memory and
+// never holds executor-owned buffers past Write.
 type mergeSink struct {
 	ctx       context.Context
 	inner     query.Sink
@@ -197,13 +222,24 @@ type mergeSink struct {
 	schema    *arrow.Schema
 	key       []string
 	watermark string
-	maxBytes  int64
+	maxBytes  int64 // spill cap: min(max_bytes, memory budget minus headroom)
 
 	loaded   bool
 	fallback string
-	delta    []arrow.RecordBatch
+	spill    *os.File
+	writer   *ipc.FileWriter
 	bytes    int64
 	appended int64
+}
+
+// mergeCap bounds the spilled delta and, through it, the key map.
+// ponytail: half of memory_mb leaves headroom for the key map and Parquet writer.
+func mergeCap(limits query.Limits) int64 {
+	budget := int64(limits.MemoryMB) << 19
+	if limits.MaxBytes > 0 && (budget <= 0 || limits.MaxBytes < budget) {
+		return limits.MaxBytes
+	}
+	return budget
 }
 
 func (s *mergeSink) fail(why string) error {
@@ -211,6 +247,19 @@ func (s *mergeSink) fail(why string) error {
 		s.fallback = why
 	}
 	return errIncrementalFallback
+}
+
+func fieldIndex(schema *arrow.Schema, name string) int {
+	found := -1
+	for i, f := range schema.Fields() {
+		if strings.EqualFold(f.Name, name) {
+			if found >= 0 {
+				return -1
+			}
+			found = i
+		}
+	}
+	return found
 }
 
 func (s *mergeSink) Schema(schema *arrow.Schema) error {
@@ -221,9 +270,17 @@ func (s *mergeSink) Schema(schema *arrow.Schema) error {
 		return s.fail("delta schema differs from the previous generation")
 	}
 	for _, name := range append([]string{s.watermark}, s.key...) {
-		if len(schema.FieldIndices(name)) != 1 {
+		if fieldIndex(schema, name) < 0 {
 			return s.fail("key or watermark column is missing from the delta")
 		}
+	}
+	spill, err := os.CreateTemp("", "kelvo-delta-*.arrow")
+	if err != nil {
+		return err
+	}
+	s.spill = spill
+	if s.writer, err = ipc.NewFileWriter(spill, ipc.WithSchema(schema)); err != nil {
+		return err
 	}
 	s.loaded = true
 	return s.inner.Schema(schema)
@@ -233,21 +290,19 @@ func (s *mergeSink) Write(record arrow.RecordBatch) error {
 	if !s.loaded {
 		return s.fail("delta wrote rows before its schema")
 	}
-	// ponytail: the delta is held in memory, bounded by the dataset max_bytes.
 	s.bytes += int64(util.TotalRecordSize(record))
 	if s.maxBytes > 0 && s.bytes > s.maxBytes {
-		return s.fail("delta exceeds max_bytes")
+		return s.fail("delta exceeds the incremental merge cap (max_bytes or half of memory_mb)")
 	}
-	record.Retain()
-	s.delta = append(s.delta, record)
-	return nil
+	return s.writer.Write(record)
 }
 
 func (s *mergeSink) release() {
-	for _, r := range s.delta {
-		r.Release()
+	if s.spill != nil {
+		_ = s.spill.Close()
+		_ = os.Remove(s.spill.Name())
+		s.spill = nil
 	}
-	s.delta = nil
 }
 
 // finish runs the merge once the delta query has completed successfully.
@@ -256,13 +311,25 @@ func (s *mergeSink) finish() error {
 	if !s.loaded {
 		return s.fail("delta returned no schema")
 	}
+	if err := s.writer.Close(); err != nil {
+		return err
+	}
+	delta, err := ipc.NewFileReader(s.spill)
+	if err != nil {
+		return err
+	}
+	defer delta.Close()
 	keyIdx := make([]int, len(s.key))
 	for i, name := range s.key {
-		keyIdx[i] = s.schema.FieldIndices(name)[0]
+		keyIdx[i] = fieldIndex(s.schema, name)
 	}
-	wmIdx := s.schema.FieldIndices(s.watermark)[0]
+	wmIdx := fieldIndex(s.schema, s.watermark)
 	marks := map[string]watermark{}
-	for _, r := range s.delta {
+	for i := 0; i < delta.NumRecords(); i++ {
+		r, err := delta.RecordBatch(i)
+		if err != nil {
+			return err
+		}
 		for row := 0; row < int(r.NumRows()); row++ {
 			k, ok := rowKey(r, keyIdx, row)
 			if !ok {
@@ -322,8 +389,15 @@ func (s *mergeSink) finish() error {
 	if copied != s.prev.Snapshot.Rows {
 		return fmt.Errorf("%w: previous generation row count differs from its manifest", ErrCorrupt)
 	}
-	for _, r := range s.delta {
-		if err := s.inner.Write(r); err != nil {
+	for i := 0; i < delta.NumRecords(); i++ {
+		r, err := delta.RecordBatch(i)
+		if err != nil {
+			return err
+		}
+		out := array.NewRecordBatch(s.schema, r.Columns(), r.NumRows())
+		err = s.inner.Write(out)
+		out.Release()
+		if err != nil {
 			return err
 		}
 		s.appended += r.NumRows()
@@ -358,21 +432,36 @@ func (w watermark) less(o watermark) bool {
 	return w.s < o.s
 }
 
+// watermarkOf accepts the types coverage records covered_until for.
 func watermarkOf(col arrow.Array, row int) (watermark, bool) {
 	if col.IsNull(row) {
 		return watermark{}, false
 	}
 	switch a := col.(type) {
-	case *array.Int64:
-		return watermark{n: a.Value(row)}, true
+	case *array.Int8:
+		return watermark{n: int64(a.Value(row))}, true
+	case *array.Int16:
+		return watermark{n: int64(a.Value(row))}, true
 	case *array.Int32:
 		return watermark{n: int64(a.Value(row))}, true
+	case *array.Int64:
+		return watermark{n: a.Value(row)}, true
+	case *array.Uint8:
+		return watermark{n: int64(a.Value(row))}, true
+	case *array.Uint16:
+		return watermark{n: int64(a.Value(row))}, true
+	case *array.Uint32:
+		return watermark{n: int64(a.Value(row))}, true
+	case *array.Uint64:
+		if v := a.Value(row); v <= math.MaxInt64 {
+			return watermark{n: int64(v)}, true
+		}
 	case *array.Timestamp:
-		return watermark{n: int64(a.Value(row))}, true
+		return watermark{n: a.Value(row).ToTime(a.DataType().(*arrow.TimestampType).Unit).UnixNano()}, true
 	case *array.Date32:
-		return watermark{n: int64(a.Value(row))}, true
-	case *array.String:
-		return watermark{s: a.Value(row)}, true
+		return watermark{n: a.Value(row).ToTime().UnixNano()}, true
+	case *array.Date64:
+		return watermark{n: a.Value(row).ToTime().UnixNano()}, true
 	}
 	return watermark{}, false
 }

@@ -46,9 +46,12 @@ func (f *tsSource) Execute(_ context.Context, r query.Request, sink query.Sink) 
 		return query.Stats{}, err
 	}
 	var floor time.Time
-	if i := strings.LastIndex(r.SQL, `"ts" >= TIMESTAMP '`); i >= 0 {
-		v := strings.TrimSuffix(r.SQL[i+len(`"ts" >= TIMESTAMP '`):], "'")
-		floor, _ = time.Parse("2006-01-02 15:04:05.000000", v)
+	// The ts column is zoned, so the bound must carry an explicit UTC offset.
+	if i := strings.LastIndex(r.SQL, `"ts" >= TIMESTAMPTZ '`); i >= 0 {
+		v := strings.TrimSuffix(r.SQL[i+len(`"ts" >= TIMESTAMPTZ '`):], "'")
+		floor, _ = time.Parse("2006-01-02 15:04:05.000000-07:00", v)
+	} else if strings.Contains(r.SQL, "kelvo_incr") {
+		return query.Stats{}, errors.New("zoned watermark bounded without an offset")
 	}
 	b := array.NewRecordBuilder(memory.DefaultAllocator, tsSchema)
 	defer b.Release()
@@ -200,4 +203,95 @@ func runMergeScenario(t *testing.T, multipart bool) {
 	source.failAfterWrite = false
 	refresh("1=regressed", "2=deleted", "3=late-in", "4=late-out", "5=new")
 	incremental(true)
+}
+
+// A delta above the merge cap (half of memory_mb here) falls back to a full
+// refresh that succeeds, instead of failing the refresh.
+func TestIncrementalDeltaOverCapFallsBackToFull(t *testing.T) {
+	_, m, _ := managerFixture(t)
+	source := &tsSource{}
+	m.factory = func(catalog.Config, query.Limits) (query.Executor, error) { return source, nil }
+	d := incrementalDataset(false, query.Request{Mode: "federated", Sources: []string{"source"}, SQL: "SELECT id, ts, note FROM events"})
+	d.SchemaEvolution = nil
+	d.Limits.MemoryMB = 1
+	d.Incremental = &catalog.Incremental{Column: "ts", Key: []string{"id"}, Deletes: "soft", FullEvery: time.Hour}
+	m.config.Acceleration.Datasets[0] = d
+	m.logf = func(string, ...any) {}
+	t0 := time.Date(2026, 3, 1, 11, 0, 0, 0, time.UTC)
+	for i := int64(0); i < 40000; i++ {
+		source.rows = append(source.rows, mergeRow{i, t0, "row-payload-0123456789"})
+	}
+	if _, err := m.Refresh(context.Background(), "events", false); err != nil {
+		t.Fatal(err)
+	}
+	s, err := m.Refresh(context.Background(), "events", false)
+	if err != nil || s.Rows != 40000 {
+		t.Fatalf("full fallback %+v %v", s, err)
+	}
+	if info, _ := m.LastRefresh("events"); info.Incremental || !strings.Contains(info.Fallback, "cap") {
+		t.Fatalf("expected cap fallback: %+v", info)
+	}
+	if info, _ := m.LastRefresh("events"); info.Fallbacks != 2 || info.EverIncremental {
+		t.Fatalf("fallback streak %+v", info)
+	}
+}
+
+func TestMergeCapAndFieldLookup(t *testing.T) {
+	if got := mergeCap(query.Limits{MaxBytes: 1 << 30, MemoryMB: 64}); got != 32<<20 {
+		t.Fatalf("memory-bound cap %d", got)
+	}
+	if got := mergeCap(query.Limits{MaxBytes: 1 << 10, MemoryMB: 64}); got != 1<<10 {
+		t.Fatalf("max_bytes cap %d", got)
+	}
+	if fieldIndex(tsSchema, "TS") != 1 || fieldIndex(tsSchema, "missing") != -1 {
+		t.Fatal("key and watermark columns must match case-insensitively, like coverage")
+	}
+	for _, typ := range []arrow.DataType{arrow.PrimitiveTypes.Int8, arrow.PrimitiveTypes.Uint32, arrow.FixedWidthTypes.Date64} {
+		b := array.NewBuilder(memory.DefaultAllocator, typ)
+		switch bb := b.(type) {
+		case *array.Int8Builder:
+			bb.Append(1)
+		case *array.Uint32Builder:
+			bb.Append(1)
+		case *array.Date64Builder:
+			bb.Append(86400000)
+		}
+		a := b.NewArray()
+		if _, ok := watermarkOf(a, 0); !ok {
+			t.Errorf("%s watermark rejected though coverage accepts it", typ)
+		}
+		a.Release()
+		b.Release()
+	}
+}
+
+// Panics outside Parquet decoding are not corruption.
+func TestEachPartBatchDoesNotMaskSinkPanics(t *testing.T) {
+	_, m, _ := managerFixture(t)
+	source := &tsSource{rows: []mergeRow{{1, time.Now().UTC().Truncate(time.Microsecond), "a"}}}
+	m.factory = func(catalog.Config, query.Limits) (query.Executor, error) { return source, nil }
+	d := incrementalDataset(false, query.Request{Mode: "federated", Sources: []string{"source"}, SQL: "SELECT id, ts, note FROM events"})
+	d.SchemaEvolution = nil
+	d.Incremental = &catalog.Incremental{Column: "ts", Key: []string{"id"}, Deletes: "soft", FullEvery: time.Hour}
+	m.config.Acceleration.Datasets[0] = d
+	if _, err := m.Refresh(context.Background(), "events", false); err != nil {
+		t.Fatal(err)
+	}
+	prev, err := m.store.(PreviousReader).OpenPrevious(context.Background(), "events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prev.Release()
+	schema := firstSchema(t, prev)
+	f, closeFile, err := prev.Open(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeFile()
+	defer func() {
+		if recover() == nil {
+			t.Fatal("sink panic was swallowed")
+		}
+	}()
+	_, _ = eachPartBatch(context.Background(), f, schema, func(arrow.RecordBatch) error { panic("sink bug") })
 }
