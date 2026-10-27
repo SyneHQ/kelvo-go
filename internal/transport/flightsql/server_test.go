@@ -6,11 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,6 +43,8 @@ type principalKey struct{}
 // fakeExecutor stands in for the worker; the analyst principal gets a
 // row/column policy on sales the way a guarded execution path would apply it.
 type fakeExecutor struct{}
+
+var probes atomic.Int64
 
 func typedBatch() arrow.RecordBatch {
 	schema := arrow.NewSchema([]arrow.Field{
@@ -78,7 +82,12 @@ func (fakeExecutor) Execute(ctx context.Context, r query.Request, sink query.Sin
 		}
 		return sink.Write(rec)
 	}
+	if strings.Contains(r.SQL, "LIMIT 0") {
+		probes.Add(1)
+	}
 	switch {
+	case strings.Contains(r.SQL, "broken"):
+		return query.Stats{}, query.NewError("QUERY_FAILED", "source unavailable")
 	case strings.Contains(r.SQL, "typed"):
 		return query.Stats{}, emit(typedBatch())
 	case strings.Contains(r.SQL, "slow"):
@@ -124,10 +133,11 @@ func (fakeExecutor) Execute(ctx context.Context, r query.Request, sink query.Sin
 // the real HTTP API: per-key source grants, owner-bound handles and a
 // principal on the execution context.
 type fakeGateway struct {
-	inner  http.Handler
-	grants map[string]map[string]bool
-	mu     sync.Mutex
-	owner  map[string]string
+	inner     http.Handler
+	grants    map[string]map[string]bool
+	mu        sync.Mutex
+	owner     map[string]string
+	cancelled atomic.Int64
 }
 
 func (g *fakeGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +173,9 @@ func (g *fakeGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write(rec.Body.Bytes())
 		return
 	}
+	if len(parts) == 4 && parts[3] == "cancel" {
+		g.cancelled.Add(1)
+	}
 	if len(parts) >= 3 {
 		g.mu.Lock()
 		owner := g.owner[parts[2]]
@@ -177,11 +190,12 @@ func (g *fakeGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type fixture struct {
-	client *fsql.Client
-	server *Server
+	client  *fsql.Client
+	server  *Server
+	gateway *fakeGateway
 }
 
-func start(t *testing.T, maxSessions int, ttl time.Duration) fixture {
+func start(t *testing.T, maxSessions int, ttl time.Duration, extra ...catalog.Source) fixture {
 	t.Helper()
 	api, err := httpapi.New(fakeExecutor{}, httpapi.Options{Token: innerToken, Limits: query.DefaultLimits(), MaxQueries: 64, MaxConcurrent: 4, TTL: time.Minute})
 	if err != nil {
@@ -189,10 +203,10 @@ func start(t *testing.T, maxSessions int, ttl time.Duration) fixture {
 	}
 	t.Cleanup(func() { _ = api.Close() })
 	gw := &fakeGateway{inner: api, owner: map[string]string{}, grants: map[string]map[string]bool{
-		"admin":   {"sales": true, "orders": true},
+		"admin":   {"sales": true, "orders": true, "broken": true},
 		"analyst": {"sales": true},
 	}}
-	cat := catalog.Config{Sources: []catalog.Source{{ID: "sales", Type: "csv"}, {ID: "orders", Type: "csv"}}}
+	cat := catalog.Config{Sources: append([]catalog.Source{{ID: "sales", Type: "csv"}, {ID: "orders", Type: "csv"}, {ID: "native_only", Type: "postgres"}}, extra...)}
 	s, err := New(Options{Handler: gw, Catalog: cat, MaxSessions: maxSessions, TicketTTL: ttl})
 	if err != nil {
 		t.Fatal(err)
@@ -208,7 +222,7 @@ func start(t *testing.T, maxSessions int, ttl time.Duration) fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
-	return fixture{client: c, server: s}
+	return fixture{client: c, server: s, gateway: gw}
 }
 
 func as(key string) context.Context {
@@ -340,19 +354,184 @@ func TestTicketsBoundToCallerAndExpire(t *testing.T) {
 	code(t, err, codes.NotFound)
 }
 
-func TestMaxSessions(t *testing.T) {
+func TestMaxSessionsEvictsIdleKey(t *testing.T) {
 	f := start(t, 1, time.Minute)
+	held, err := f.client.Execute(as(adminKey), "SELECT * FROM sales")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A second key is not locked out: the idle key is evicted and its query cancelled.
+	if _, err := f.client.Execute(as(analystKey), "SELECT * FROM sales"); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = readAll(as(adminKey), f.client, held)
+	code(t, err, codes.NotFound)
+	eventually(t, func() bool { return f.gateway.cancelled.Load() > 0 })
+}
+
+func eventually(t *testing.T, ok func() bool) {
+	t.Helper()
+	for end := time.Now().Add(5 * time.Second); !ok(); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatal("condition not reached")
+		}
+	}
+}
+
+func TestUnauthenticatedCallsCreateNoState(t *testing.T) {
+	f := start(t, 8, time.Minute)
+	bad := as(strings.Repeat("x", 40))
+	_, err := f.client.Prepare(bad, "SELECT * FROM sales")
+	code(t, err, codes.Unauthenticated)
+	_, err = f.client.GetSqlInfo(bad, []fsql.SqlInfo{fsql.SqlInfoFlightSqlServerName})
+	code(t, err, codes.Unauthenticated)
+	_, err = f.client.GetCatalogs(bad)
+	code(t, err, codes.Unauthenticated)
+	_, err = f.client.GetTableTypes(bad)
+	code(t, err, codes.Unauthenticated)
+	f.server.mu.Lock()
+	n := len(f.server.sessions)
+	f.server.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("unauthenticated calls created %d sessions", n)
+	}
+}
+
+func TestPreparedStatementBounds(t *testing.T) {
+	f := start(t, 8, time.Minute)
+	ctx := as(adminKey)
+	_, err := f.client.Prepare(ctx, "SELECT * FROM sales WHERE region = '"+strings.Repeat("a", maxSQLBytes)+"'")
+	code(t, err, codes.InvalidArgument)
+	_, err = f.client.Prepare(ctx, "SELECT '"+strings.Repeat("a", 3<<20)+"'")
+	code(t, err, codes.ResourceExhausted) // gRPC receive limit
+	first, err := f.client.Prepare(ctx, "SELECT * FROM sales")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < maxPreparedPerSession; i++ {
+		if _, err := f.client.Prepare(ctx, "SELECT * FROM sales"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err = first.Execute(ctx)
+	code(t, err, codes.NotFound) // oldest evicted, count stays bounded
+	f.server.mu.Lock()
+	se, _ := f.server.sessionLocked(adminKey, false)
+	n := len(se.prepared)
+	f.server.mu.Unlock()
+	if n != maxPreparedPerSession {
+		t.Fatalf("prepared statements = %d", n)
+	}
+}
+
+func TestPreparedAbsoluteLifetime(t *testing.T) {
+	f := start(t, 8, 20*time.Millisecond)
+	ctx := context.WithValue(context.Background(), keyContext{}, adminKey)
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs())
+	res, err := f.server.CreatePreparedStatement(ctx, prepareRequest("SELECT * FROM sales"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	end := time.Now().Add(maxPreparedLifetime*20*time.Millisecond + 100*time.Millisecond)
+	for time.Now().Before(end) {
+		f.server.mu.Lock()
+		_, err = f.server.preparedFor(ctx, res.Handle)
+		f.server.mu.Unlock()
+		if err != nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	code(t, err, codes.NotFound)
+}
+
+type prepareRequest string
+
+func (p prepareRequest) GetQuery() string         { return string(p) }
+func (p prepareRequest) GetTransactionId() []byte { return nil }
+
+func TestMetadataProbesCachedBoundedAndFailClosed(t *testing.T) {
+	f := start(t, 8, time.Minute)
+	ctx := as(analystKey)
+	tables := func(ctx context.Context) error {
+		info, err := f.client.GetTables(ctx, &fsql.GetTablesOpts{})
+		if err != nil {
+			return err
+		}
+		_, _, err = readAll(ctx, f.client, info)
+		return err
+	}
+	if err := tables(ctx); err != nil {
+		t.Fatal(err)
+	}
+	before := probes.Load()
+	if err := tables(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if probes.Load() != before {
+		t.Fatal("metadata probes were not cached per key")
+	}
+	// admin may read "broken", whose probe fails: the list fails, never drops it.
+	g := start(t, 8, time.Minute, catalog.Source{ID: "broken", Type: "csv"})
+	info, err := g.client.GetTables(as(adminKey), &fsql.GetTablesOpts{})
+	if err == nil {
+		_, _, err = readAll(as(adminKey), g.client, info)
+	}
+	code(t, err, codes.Unavailable)
+	var many []catalog.Source
+	for i := 0; i < maxProbesPerCall; i++ {
+		many = append(many, catalog.Source{ID: fmt.Sprintf("s%d", i), Type: "csv"})
+	}
+	h := start(t, 8, time.Minute, many...)
+	info, err = h.client.GetTables(as(adminKey), &fsql.GetTablesOpts{})
+	if err == nil {
+		_, _, err = readAll(as(adminKey), h.client, info)
+	}
+	code(t, err, codes.ResourceExhausted)
+}
+
+func TestExpiredTicketCancelsQuery(t *testing.T) {
+	f := start(t, 8, 50*time.Millisecond)
 	if _, err := f.client.Execute(as(adminKey), "SELECT * FROM sales"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := f.client.Execute(as(analystKey), "SELECT * FROM sales")
-	code(t, err, codes.ResourceExhausted)
+	time.Sleep(100 * time.Millisecond)
+	if _, err := f.client.Execute(as(adminKey), "SELECT * FROM sales"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, func() bool { return f.gateway.cancelled.Load() > 0 })
+}
+
+type bigHandler struct{}
+
+func (bigHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+	w.WriteHeader(http.StatusNotFound)
+	_, _ = w.Write(make([]byte, 3<<20))
+}
+
+func TestOversizedHandlerResponseDoesNotHang(t *testing.T) {
+	s, err := New(Options{Handler: bigHandler{}, MaxSessions: 1, TicketTTL: time.Minute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := s.call(context.Background(), "k", http.MethodGet, "/v1/queries/x", nil)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		code(t, err, codes.Internal)
+	case <-time.After(5 * time.Second):
+		t.Fatal("call hung on an oversized response")
+	}
 }
 
 func TestWritesRejected(t *testing.T) {
 	f := start(t, 8, time.Minute)
 	ctx := as(adminKey)
-	for _, sql := range []string{"INSERT INTO sales VALUES (1)", "SELECT 1; DROP TABLE sales", "WITH x AS (SELECT 1) DELETE FROM sales", "COPY sales TO 'x.csv'", "ATTACH 'x.db'", "SELECT 'unterminated"} {
+	for _, sql := range []string{"INSERT INTO sales VALUES (1)", "SELECT 1; DROP TABLE sales", "WITH x AS (SELECT 1) DELETE FROM sales", "COPY sales TO 'x.csv'", "ATTACH 'x.db'", "SELECT 'unterminated",
+		"SELECT $$x; DROP TABLE sales$$", "SELECT $1 FROM sales", "DESCRIBE sales", "SHOW TABLES", "SUMMARIZE sales", `SELECT E'\\'; DROP TABLE sales; --' FROM sales`} {
 		_, err := f.client.Execute(ctx, sql)
 		code(t, err, codes.PermissionDenied)
 		_, err = f.client.Prepare(ctx, sql)
