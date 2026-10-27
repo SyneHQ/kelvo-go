@@ -1,0 +1,58 @@
+{{- if .Values.clusterInit.enabled }}
+{{- $name := include "kelvo.name" . }}
+{{- $secret := include "kelvo.secret" . }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Revision in the name: every install/upgrade validates the policy again.
+  name: {{ $name }}-cluster-init-{{ .Release.Revision }}
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cluster-init
+spec:
+  backoffLimit: {{ .Values.clusterInit.backoffLimit }}
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels: {{- include "kelvo.labels" . | nindent 8 }}
+        app.kubernetes.io/component: cluster-init
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- include "kelvo.podSecurity" . | nindent 6 }}
+      containers:
+        - name: cluster-init
+          image: {{ include "kelvo.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [cluster-init, --config, /etc/kelvo/bootstrap.yml]
+          env:
+            - name: KELVO_TENANT_TOKEN
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: tenant-token}}
+            - name: KELVO_NATS_PROVISIONER_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: nats-provisioner-password}}
+          securityContext:
+{{ toYaml .Values.securityContext | indent 12 }}
+          resources:
+{{ toYaml .Values.clusterInit.resources | indent 12 }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/kelvo/bootstrap.yml, subPath: bootstrap.yml, readOnly: true}
+            - {name: tls, mountPath: /run/kelvo/tls, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          configMap: {name: {{ $name }}-config}
+        - name: tls
+          secret:
+            secretName: {{ include "kelvo.tlsSecret" . }}
+            defaultMode: 0440
+            items:
+              - {key: ca.crt, path: ca.crt}
+              - {key: api.crt, path: api.crt}
+              - {key: api.key, path: api.key}
+              - {key: gateway-client.crt, path: gateway-client.crt}
+              - {key: gateway-client.key, path: gateway-client.key}
+        - name: tmp
+          emptyDir: {medium: Memory, sizeLimit: 16Mi}
+{{- end }}

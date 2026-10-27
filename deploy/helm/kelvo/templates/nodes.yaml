@@ -1,0 +1,106 @@
+{{- $name := include "kelvo.name" . }}
+{{- $secret := include "kelvo.secret" . }}
+{{- $d := .Values.nodeDefaults }}
+{{- range .Values.nodes }}
+{{- if not (regexMatch "^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$" .id) }}
+{{- fail (printf "nodes[].id %q must be a short DNS label" .id) }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-node-{{ .id }}
+  labels: {{- include "kelvo.labels" $ | nindent 4 }}
+spec:
+  selector: {{- include "kelvo.selector" $ | nindent 4 }}
+    app.kubernetes.io/component: node
+    kelvo.synehq.com/worker-id: {{ .id }}
+  ports:
+    - {name: https, port: 8443, targetPort: https}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-node-{{ .id }}
+  labels: {{- include "kelvo.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: node
+spec:
+  # One identity, one pod: a worker ID is reused only after its lease expires.
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {{- include "kelvo.selector" $ | nindent 6 }}
+      app.kubernetes.io/component: node
+      kelvo.synehq.com/worker-id: {{ .id }}
+  template:
+    metadata:
+      labels: {{- include "kelvo.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: node
+        kelvo.synehq.com/worker-id: {{ .id }}
+      annotations:
+        checksum/config: {{ include "kelvo.policy" $ | cat (toYaml $.Values.catalog) | sha256sum | trunc 16 }}
+    spec:
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      {{- include "kelvo.podSecurity" $ | nindent 6 }}
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: node
+          image: {{ include "kelvo.image" $ }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args: [node, --config, /etc/kelvo/node.yml]
+          ports:
+            - {name: https, containerPort: 8443}
+          env:
+            - name: KELVO_NATS_WORKER_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: nats-worker-password}}
+          {{- with (.extraEnvFrom | default $d.extraEnvFrom) }}
+          envFrom: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+{{ toYaml $.Values.securityContext | indent 12 }}
+          resources:
+{{ toYaml (.resources | default $d.resources) | indent 12 }}
+          # The node listener is mTLS-only (gateway client certificate), so the
+          # kubelet cannot call /ready; the gateway's /ready aggregates every
+          # node's /ready instead. These probes check the listener only.
+          readinessProbe:
+            tcpSocket: {port: https}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: https}
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          volumeMounts:
+            - {name: config, mountPath: /etc/kelvo/node.yml, subPath: node-{{ .id }}.yml, readOnly: true}
+            - {name: config, mountPath: /etc/kelvo/catalog.yml, subPath: catalog.yml, readOnly: true}
+            - {name: data, mountPath: /etc/kelvo/data, readOnly: true}
+            - {name: tls, mountPath: /run/kelvo/tls, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          configMap: {name: {{ $name }}-config}
+        - name: data
+          configMap: {name: {{ $name }}-data}
+        - name: tls
+          secret:
+            secretName: {{ include "kelvo.tlsSecret" $ }}
+            defaultMode: 0440
+            items:
+              - {key: ca.crt, path: ca.crt}
+              - {key: node-{{ .id }}.crt, path: node.crt}
+              - {key: node-{{ .id }}.key, path: node.key}
+        - name: tmp
+          emptyDir: {medium: Memory, sizeLimit: {{ $d.scratchSizeLimit }}}
+      {{- with (.nodeSelector | default $d.nodeSelector) }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (.tolerations | default $d.tolerations) }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (.affinity | default $d.affinity) }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

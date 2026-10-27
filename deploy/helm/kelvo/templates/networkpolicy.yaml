@@ -1,0 +1,66 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $sel := include "kelvo.selector" . }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kelvo.name" . }}-gateway
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- $sel | nindent 6 }}
+      app.kubernetes.io/component: gateway
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{port: 8443}]
+      {{- with .Values.networkPolicy.gatewayIngressFrom }}
+      from: {{- toYaml . | nindent 8 }}
+      {{- else }}
+      from: [{podSelector: {}}]
+      {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kelvo.name" . }}-node
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- $sel | nindent 6 }}
+      app.kubernetes.io/component: node
+  policyTypes: [Ingress{{ if .Values.networkPolicy.nodeEgressTo }}, Egress{{ end }}]
+  ingress:
+    - ports: [{port: 8443}]
+      from:
+        - podSelector:
+            matchLabels: {{- $sel | nindent 14 }}
+              app.kubernetes.io/component: gateway
+  {{- with .Values.networkPolicy.nodeEgressTo }}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {{- $sel | nindent 14 }}
+      ports: [{port: 4222}, {port: 8443}]
+    - ports: [{port: 53, protocol: UDP}, {port: 53, protocol: TCP}]
+    - to: {{- toYaml . | nindent 8 }}
+  {{- end }}
+{{- if .Values.nats.bundled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kelvo.name" . }}-nats
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- $sel | nindent 6 }}
+      app.kubernetes.io/component: nats
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{port: 4222}]
+      from:
+        - podSelector:
+            matchLabels: {{- $sel | nindent 14 }}
+    # kubelet probes
+    - ports: [{port: 8222}]
+{{- end }}
+{{- end }}
