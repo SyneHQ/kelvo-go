@@ -106,6 +106,8 @@ nats:
   bundled: true
   image: nats:2.15.0-alpine
   storage:
+    # Immutable after install (StatefulSet volumeClaimTemplates); resize the
+    # PVC directly if your storage class allows expansion.
     size: 2Gi
     storageClassName: ""
   resources:
@@ -133,7 +135,10 @@ networkPolicy:
   # Peers allowed to reach the gateway API (NetworkPolicy `from` entries).
   # Empty allows any pod in the namespace.
   gatewayIngressFrom: []
-  # Node egress for databases. Empty allows all egress (DNS + sources).
+  # Node egress for databases. Empty allows all egress. When set, node egress
+  # is limited to Kelvo pods (bundled NATS, gateway), DNS and these peers; with
+  # an external NATS (nats.bundled: false) include its address here too, e.g.
+  #   - ipBlock: {cidr: 10.0.40.0/24}
   nodeEgressTo: []
 
 podSecurityContext:

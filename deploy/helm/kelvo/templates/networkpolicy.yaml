@@ -60,7 +60,5 @@ spec:
       from:
         - podSelector:
             matchLabels: {{- $sel | nindent 14 }}
-    # kubelet probes
-    - ports: [{port: 8222}]
 {{- end }}
 {{- end }}
