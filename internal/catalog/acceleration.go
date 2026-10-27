@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"time"
@@ -89,6 +90,9 @@ type Route struct {
 // sharing the boundary value are re-read) and replaces previous rows with the
 // same key. Deletes must be "soft": a delete is an update that advances the
 // watermark (tombstone or deleted_at row). Hard deletes are not supported.
+// The key must be immutable, and the dataset query must not filter on columns
+// that change: a row that stops matching the WHERE is not in the delta and
+// stays in the snapshot until the next full refresh.
 type Incremental struct {
 	Column     string        `json:"column" yaml:"column"`
 	Key        []string      `json:"key" yaml:"key"`
@@ -231,18 +235,18 @@ func (c *Config) validateAcceleration(base string) error {
 				return errors.New("dataset incremental requires a column identifier and a positive full_every")
 			}
 			if len(d.Incremental.Key) == 0 {
-				return errors.New("dataset incremental requires a key; without one, rows sharing a watermark value or updated in place are missed")
+				return fmt.Errorf("dataset %s: incremental now requires a row key; add `key: [<unique immutable column>]` under incremental (without one, rows sharing a watermark value or updated in place are missed)", d.ID)
 			}
 			for _, k := range d.Incremental.Key {
 				if !ValidID(k) {
-					return errors.New("dataset incremental key must list column identifiers")
+					return fmt.Errorf("dataset %s: incremental key must list column identifiers", d.ID)
 				}
 			}
 			if d.Incremental.Deletes != "soft" {
-				return errors.New("dataset incremental deletes must be soft; hard deletes are invisible to a delta and need full refresh (omit incremental)")
+				return fmt.Errorf("dataset %s: incremental now requires `deletes: soft` under incremental (deletes advance the watermark); hard deletes are invisible to a delta, so remove incremental for such sources", d.ID)
 			}
 			if d.Incremental.LateWindow < 0 || d.Incremental.LateWindow >= d.Incremental.FullEvery {
-				return errors.New("dataset incremental late_window must be non-negative and shorter than full_every")
+				return fmt.Errorf("dataset %s: incremental late_window must be non-negative and shorter than full_every", d.ID)
 			}
 			if d.Route != nil && d.Route.TimeColumn != d.Incremental.Column {
 				return errors.New("dataset incremental column must equal route time_column")
