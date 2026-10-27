@@ -102,8 +102,8 @@ func TestSnapshotPolicyPrecedesCTEsJoinsWindowsAndExpressions(t *testing.T) {
 		{"SELECT id::BIGINT,row_number() OVER(ORDER BY id)::BIGINT FROM orders_fast ORDER BY id", [][]int64{{1, 1}, {2, 2}, {4, 3}}},
 		{"SELECT count(*)::BIGINT FROM orders_fast WHERE amount IS NULL", [][]int64{{1}}},
 		{"SELECT count(*)::BIGINT FROM information_schema.columns WHERE column_name IN ('tenant_id','secret')", [][]int64{{0}}},
-		{"SELECT count(*)::BIGINT FROM duckdb_views() WHERE sql LIKE '%" + quoteLiteral(source.Path) + "%'", [][]int64{{0}}},
 	}
+	_ = source.Path // duckdb_views()/information_schema.views leaks are rejected in the direct-reader test below.
 	for _, tc := range cases {
 		sink := &accessValueSink{}
 		stats, err := engine.Execute(ctx, query.Request{Sources: []string{"orders_fast"}, SQL: tc.sql}, sink)
@@ -145,6 +145,17 @@ func TestSnapshotPolicyRejectsDirectReadersAndHiddenColumns(t *testing.T) {
 		"SELECT * FROM read_blob('" + quoteLiteral(source.Path) + "')",
 		"SELECT * FROM parquet_metadata('" + quoteLiteral(source.Path) + "')",
 		"SELECT * FROM parquet_schema('" + quoteLiteral(source.Path) + "')", "SELECT * FROM kelvo_arrow_scan_1(NULL,NULL,NULL)",
+		// A bare file path as a table reads the snapshot directly, skipping the
+		// row/column policy. No function name is involved.
+		"SELECT * FROM '" + quoteLiteral(source.Path) + "'",
+		`SELECT * FROM "` + quoteLiteral(source.Path) + `"`,
+		"WITH x AS (SELECT * FROM '" + quoteLiteral(source.Path) + "') SELECT * FROM x",
+		"SELECT secret FROM (SELECT * FROM '" + quoteLiteral(source.Path) + "') y",
+		// Definition columns leak the snapshot path.
+		"SELECT view_definition FROM information_schema.views",
+		"SELECT sql FROM duckdb_tables()",
+		"SELECT sql FROM duckdb_views()",
+		"SELECT macro_definition FROM duckdb_functions()",
 	} {
 		sink := &accessValueSink{}
 		_, err := engine.Execute(ctx, query.Request{Sources: []string{"orders_fast"}, SQL: sql}, sink)
