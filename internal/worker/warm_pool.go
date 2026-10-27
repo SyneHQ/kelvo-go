@@ -53,9 +53,9 @@ type WarmPoolConfig struct {
 	CacheMaxTotalBytes int64         `yaml:"cache_max_total_bytes"` // default 64 MiB
 	// CacheRules give matching reads their own TTL; the first match wins and
 	// no match takes cache_ttl. A ttl of 0 keeps nothing for matching reads.
-	CacheRules []CacheRule `yaml:"cache_rules"` // at most 64
-	CacheMaxEntries int `yaml:"cache_max_entries"` // default 4096, at most 65536
-	CacheMaxFills   int `yaml:"cache_max_fills"`   // concurrent shared executions; default 256, at most 4096; more run uncached
+	CacheRules      []CacheRule `yaml:"cache_rules"`       // at most 64
+	CacheMaxEntries int         `yaml:"cache_max_entries"` // default 4096, at most 65536
+	CacheMaxFills   int         `yaml:"cache_max_fills"`   // concurrent shared executions; default 256, at most 4096; more run uncached
 	// ReauthorizeEvery bounds how long a worker serves secretless reads on
 	// one authorization of its source; 0 takes the default of 60s.
 	ReauthorizeEvery time.Duration `yaml:"reauthorize_every"`

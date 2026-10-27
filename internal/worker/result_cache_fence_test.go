@@ -188,7 +188,9 @@ func TestResultCacheRechecksFenceBeforeServing(t *testing.T) {
 	state := "rev1"
 	fence := func() string { return state }
 	read := &fakeRead{data: "x"}
-	run := func() { _, _ = c.doFenced(context.Background(), "k", "t", time.Minute, false, fence, nil, read.execute, noReplay) }
+	run := func() {
+		_, _ = c.doFenced(context.Background(), "k", "t", time.Minute, false, fence, nil, read.execute, noReplay)
+	}
 	run()
 	run()
 	state = "rev2"
@@ -229,7 +231,10 @@ func TestResultCacheEntryAndFillBounds(t *testing.T) {
 	c.maxFills = 1
 	block := &fakeRead{data: "slow", block: make(chan struct{})}
 	done := make(chan struct{})
-	go func() { _, _ = c.do(context.Background(), "slow", "t", false, nil, block.execute, noReplay); close(done) }()
+	go func() {
+		_, _ = c.do(context.Background(), "slow", "t", false, nil, block.execute, noReplay)
+		close(done)
+	}()
 	for block.runs.Load() == 0 {
 		time.Sleep(time.Millisecond)
 	}
