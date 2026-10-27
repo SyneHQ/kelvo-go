@@ -100,26 +100,34 @@ Upgrade every node before configuring `route`: only datasets with `route` write 
 
 ## Incremental refresh
 
-An append-only dataset can read only new rows:
+A keyed dataset whose rows carry an increasing watermark can read only recent rows:
 
 ```yaml
   incremental:
-    column: created_at
+    column: updated_at
+    key: [id]
+    deletes: soft
+    late_window: 10m
     full_every: 24h
 ```
 
 | Key | Meaning |
 |---|---|
-| `incremental.column` | Increasing identifier (integer, date or timestamp); must equal `route.time_column` when `route` is set |
+| `incremental.column` | Watermark: integer, date or timestamp that every insert, update and soft delete advances; must equal `route.time_column` when `route` is set |
+| `incremental.key` | Required. Columns that identify one row of the dataset query result; must be unique and non-null |
+| `incremental.deletes` | Required. Only `soft` is accepted: a delete is an update that advances the watermark (a tombstone flag or `deleted_at` row the query still returns). Hard deletes are invisible to a delta; such datasets must not set `incremental` |
+| `incremental.late_window` | Optional duration subtracted from `covered_until` before reading, so rows committed late with an older watermark are still read. Timestamp watermarks only; must be shorter than `full_every` |
 | `incremental.full_every` | Positive duration after which a refresh re-reads the whole source |
 
-An incremental refresh runs the source query wrapped as `SELECT * FROM (<query>) AS kelvo_incr WHERE "<column>" > <literal>`, where the literal is the previous snapshot's `covered_until`, then publishes a new generation holding the previous generation's rows followed by the new rows. The previous generation is never changed and stays pinned for its readers. `covered_until` is recorded whenever `incremental` or `route` is set.
+An incremental refresh runs the source query wrapped as `SELECT * FROM (<query>) AS kelvo_incr WHERE "<column>" >= <literal>`, where the literal is the previous snapshot's `covered_until` minus `late_window`. The bound is inclusive, so a row committed after the previous refresh with the same watermark value as `covered_until` is read; the key is the tie-breaker that makes the re-read rows harmless. The delta is buffered in memory (bounded by `limits.max_bytes`), then the new generation is written as every previous row whose key is not in the delta, followed by the delta. An updated or soft-deleted row therefore replaces its previous version. The previous generation is never changed and stays pinned for its readers; every publication, incremental or full, gets a new generation identity. `covered_until` is recorded whenever `incremental` or `route` is set.
 
-It falls back to a full refresh, logging the reason, when there is no previous generation, no `covered_until` or `last_full_at`, the fingerprint or schema changed (the delta must have exactly the previous schema), `full_every` has elapsed, or the query cannot be wrapped safely. Only federated SQL queries are wrapped; native queries, Mongo pipelines, several statements, and timestamps finer than microseconds always refresh fully. Timestamp literals are naive UTC, so use UTC columns.
+Guarantee: with a unique key, soft deletes and every change landing inside `late_window`, the incremental generation holds the same rows as a full refresh would. When Kelvo cannot prove that, it never publishes a partial merge: it aborts the transaction and refreshes fully, logging the reason (also in `last_refresh.fallback`). Fallback cases: no previous generation, no `covered_until` or `last_full_at`, the fingerprint changed, `full_every` elapsed, the query cannot be wrapped safely, the delta schema differs from the previous one (schema drift, including additive changes, is adopted by the full refresh under the dataset's `schema_evolution` policy), a key or watermark column is missing, a key is null, the delta repeats a key, a key's watermark moved backwards (non-monotonic watermark), the watermark type is unsupported, `late_window` on an integer watermark, or the delta exceeds `limits.max_bytes`. Only federated SQL queries are wrapped; native queries, Mongo pipelines, several statements, and timestamps finer than microseconds always refresh fully. Timestamp literals are naive UTC, so use UTC columns. A refresh that fails or crashes before commit publishes nothing and the previous generation stays current.
 
-Limits: rows inserted, changed or deleted at or below the watermark (including late rows that share the maximum value) are not seen until the next full refresh. The new generation copies all previous rows, so each run still reads and writes the whole snapshot locally; only the source read shrinks. Object backends download each previous part to a temporary file under the system temp directory and verify its checksum. Protected object backends always refresh fully. Row, byte and part limits apply to the whole generation.
+Explicit limits, checked by nobody but the operator: rows that change with a watermark older than `covered_until - late_window`, hard-deleted rows, rows whose watermark is NULL, and duplicate keys outside the delta are not seen or not detected until the next full refresh, so `full_every` bounds that staleness. Key uniqueness is only checked within the delta. The new generation copies all previous rows, so each run still reads and writes the whole snapshot locally; only the source read shrinks. Object backends download each previous part to a temporary file under the system temp directory and verify its checksum. Protected object backends always refresh fully. Row, byte and part limits apply to the whole generation. This is whole-dataset refresh with a watermark, not partition-level replacement: parts are not reused across generations.
 
-`accelerate status` shows `last_refresh` (incremental or full, rows appended), tracked in memory since process start and unknown after a restart. `last_full_at` is stored in the snapshot metadata; upgrade every node before configuring `incremental`, as older nodes reject a manifest that carries it.
+Upgrading: `key` and `deletes` are now required, so a dataset configured with only `column` and `full_every` is rejected at load and must be updated; the changed configuration changes the fingerprint, so its first refresh is full.
+
+`accelerate status` shows `last_refresh` (incremental or full, delta rows merged), tracked in memory since process start and unknown after a restart. `last_full_at` is stored in the snapshot metadata; upgrade every node before configuring `incremental`, as older nodes reject a manifest that carries it.
 
 ## MongoDB pipeline refresh
 
@@ -189,7 +197,7 @@ Row-group and footer limits bound encoding work, not total RSS. Wide schemas or 
 
 ## Current scope and industry standards
 
-Available: full refresh, explicit freshness, local/cluster scheduling, strict schema policy, multipart snapshots, incremental append-only refresh and verified recovery. Pending: CDC, result caching, live-source fallback, background (stale-while-revalidate) refresh and distributed single-query execution. Independent datasets have no global transactional snapshot.
+Available: full refresh, explicit freshness, local/cluster scheduling, strict schema policy, multipart snapshots, keyed incremental refresh with soft deletes and verified recovery. Pending: CDC, result caching, live-source fallback, background (stale-while-revalidate) refresh and distributed single-query execution. Independent datasets have no global transactional snapshot.
 
 ### Lifecycle priorities
 
