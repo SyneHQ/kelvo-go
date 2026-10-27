@@ -44,7 +44,7 @@ type resultCache struct {
 	flights  map[string]*cacheFlight
 	hits     int64
 	fenced   int64 // results not kept or not served because their fence moved
-	fills    int   // snapshot fills running; shared fills are flights
+	fills    int   // fills running, shared and snapshot, dead flights included
 }
 
 type cacheEntry struct {
@@ -182,12 +182,13 @@ func (c *resultCache) doFenced(ctx context.Context, key, tenant string, ttl time
 			return f.stats, f.err
 		}
 	}
-	if c.flights[key] == nil && len(c.flights)+c.fills >= c.maxFills {
+	if c.fills >= c.maxFills {
 		c.mu.Unlock()
 		return execute(ctx, sink, nil) // fill bound reached: run uncached
 	}
 	f := &cacheFlight{started: time.Now(), token: token, done: make(chan struct{}), participants: map[int]time.Time{}}
 	c.flights[key] = f
+	c.fills++ // until finish, even if a refresh replaces f in flights
 	id := c.joinLocked(f, ctx)
 	c.mu.Unlock()
 	return c.lead(ctx, key, tenant, ttl, fence, f, id, sink, execute)
@@ -314,6 +315,7 @@ func (c *resultCache) finish(key, tenant string, ttl time.Duration, f *cacheFlig
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	buffer.releaseLocked()
+	c.fills--
 	f.stats, f.err = stats, err
 	if err == nil {
 		if moved {

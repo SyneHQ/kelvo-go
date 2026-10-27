@@ -381,6 +381,18 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	if err != nil {
 		return stats, err
 	}
+	// The snapshot cache fill ends after the resolution closes, so a cleanup
+	// error joined there refuses the result; only the normal return below
+	// marks it complete, and a panic never does.
+	var cached *snapshotRead
+	complete := false
+	defer func() {
+		err := resultErr
+		if !complete {
+			err = errCacheIncomplete
+		}
+		cached.finish(stats, err)
+	}()
 	defer func() {
 		cleanup, cancelCleanup := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancelCleanup()
@@ -400,15 +412,13 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	}
 	// Reads over snapshot generations only, when enabled: served from a kept
 	// result whose generations are still current, else filled below.
-	cached := e.snapshotReadFor(ctx, execution, dynamic, r, versions)
+	cached = e.snapshotReadFor(ctx, execution, dynamic, r, versions)
 	if cached != nil {
 		if hit, err, ok := cached.serve(replayIPC(ctx, e, sink)); ok {
 			hit.Accelerations = versions
 			return hit, err
 		}
 	}
-	// Every return below ends the fill; only a complete result is kept.
-	defer func() { cached.finish(stats, resultErr) }()
 	snapshotScratch, err := resolution.HoldConsumer()
 	if err != nil {
 		return stats, err
@@ -618,6 +628,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	stats.DurationNS = time.Since(start).Nanoseconds()
 	resultErr = workerResultError(parent, executionCtx, ctx, readErr, waitErr, decodeErr, cleanupErr, outcome.Error)
 	recordSourceHealth(e.SourceHealth, r, outcome.Error, resultErr, decodeErr == nil)
+	complete = true
 	return stats, resultErr
 }
 
