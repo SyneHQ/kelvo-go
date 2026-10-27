@@ -138,7 +138,7 @@ Oracle used a burstable Always Free E2.1.Micro (951 MiB RAM, 1/8 OCPU entitlemen
 - **Latest pinned worker-only trial (`b1a0ea5`):** Five metrics on/off pairs and 130 exact workload queries through one execution slot, plus a separate three-query preflight. Gateway, NATS, source and SSH memory are excluded. [Results and scope](docs/node-capacity.md)
 - **Pipeline scale (one 4-vCPU VM):** 10 exact-checked e-commerce/logistics workflows over 251M synthetic rows in PostgreSQL, MySQL, ClickHouse and Parquet; 50-tile dashboards saturate near 3.5 queries/s; soak with injected faults. [Results and breaking points](docs/pipeline-scale-evidence.md)
 
-These are measurements of recorded binaries and workloads, not throughput guarantees. Result caching, incremental snapshot refresh, a Flight SQL server and production HA certification remain open work.
+These are measurements of recorded binaries and workloads, not throughput guarantees. Result caching, incremental snapshot refresh and production HA certification remain open work. `serve` can expose an opt-in, read-only [Flight SQL server](docs/flight-sql-server.md).
 
 ## Documentation
 
