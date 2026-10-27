@@ -25,6 +25,7 @@ import (
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
+	"github.com/SYNEHQ/kelvo-go/internal/oidc"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/tracing"
@@ -52,6 +53,7 @@ type Gateway struct {
 	tenants                map[string]gatewayTenant
 	tokens                 map[[32]byte]string
 	auth                   *gatewayAuthenticator
+	oidc                   *oidc.Verifier
 	workerIdentity         *tlsIdentity
 	workerTrust            *tlsTrust
 	workerCertificateUntil time.Time
@@ -211,6 +213,9 @@ func NewGateway(cfg GatewayConfig, stores map[string]Store) (*Gateway, error) {
 		}
 		var err error
 		g.auth, err = newGatewayAuthenticatorWithAuthority(*cfg.Authentication, identities, nil, openGatewayAuthState, authority)
+		if err == nil {
+			g.oidc, err = newGatewayOIDC(gctx, cfg)
+		}
 		if err != nil {
 			cancel()
 			for _, tenant := range g.tenants {
@@ -432,7 +437,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if authContext != nil {
+	if authContext != nil && !isOIDCAuthority(authContext) {
 		r = r.WithContext(context.WithValue(r.Context(), keyAuthorizationContext{}, keyAuthorization{g.auth, authContext}))
 	}
 	principalID := ""
@@ -541,7 +546,11 @@ func (g *Gateway) authenticate(r *http.Request) (string, context.Context, bool) 
 	}
 	token := strings.TrimPrefix(values[0], "Bearer ")
 	if g.auth != nil {
-		return g.auth.lookup(token)
+		tenant, ctx, ok := g.auth.lookup(token)
+		if !ok && g.oidc != nil {
+			return g.oidcAuthenticate(r, token)
+		}
+		return tenant, ctx, ok
 	}
 	h := sha256.Sum256([]byte(token))
 	t, ok := g.tokens[h]
