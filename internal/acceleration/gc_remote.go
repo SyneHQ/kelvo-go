@@ -97,6 +97,10 @@ type gcMarker struct {
 	Generation    string    `yaml:"generation"`
 	Incarnation   string    `yaml:"incarnation"`
 	QuarantinedAt time.Time `yaml:"quarantined_at"`
+	// QuiescentSince is the provider time of the first quiescent inspection.
+	// Grace runs from here, not from quarantine, so a long-lived reader that
+	// expires late still gets the full grace before deletion.
+	QuiescentSince time.Time `yaml:"quiescent_since,omitempty"`
 }
 
 func (c *remoteCollector) run(ctx context.Context, dataset string) (RemoteGCReport, error) {
@@ -264,9 +268,15 @@ func (c *remoteCollector) collect(ctx context.Context, dataset, generation strin
 	if err != nil {
 		return "kept: registry unreadable"
 	}
-	marker, err := c.readMarker(ctx, markerKey, generation)
+	marker, markerVersion, err := c.readMarker(ctx, markerKey, generation)
 	if errors.Is(err, objectstore.ErrNotFound) {
-		marker, err = c.writeMarker(ctx, dataset, markerKey, ref)
+		marker, err = c.writeMarker(ctx, dataset, markerKey, generation, ref)
+		if errors.Is(err, errGCRecheck) {
+			return "kept: referenced or writer active"
+		}
+		if errors.Is(err, readerlease.ErrClock) {
+			return "kept: clock"
+		}
 		if err != nil {
 			return "kept: quarantine write failed"
 		}
@@ -287,18 +297,25 @@ func (c *remoteCollector) collect(ctx context.Context, dataset, generation strin
 	if err != nil {
 		return "kept: manifest unreadable"
 	}
-	if referencedGenerations(state.manifest)[generation] != "" {
-		return "kept: referenced"
+	if state.info.ServerTime.IsZero() {
+		return "kept: clock"
 	}
-	if w := state.manifest.Writer; w != nil && !w.ExpiresAt.Add(remoteGCWriterMargin).Before(state.now()) {
-		return "kept: writer active"
-	}
-	if state.now().Sub(marker.QuarantinedAt) < c.options.Grace {
-		return "quarantined"
+	if gcBlocked(state, generation) {
+		return "kept: referenced or writer active"
 	}
 	inspection, err := c.registry.Inspect(ctx, ref)
 	if err != nil || !inspection.Quiescent() {
 		return "kept: readers may be live"
+	}
+	if marker.QuiescentSince.IsZero() {
+		marker.QuiescentSince = state.now()
+		if c.putMarker(ctx, markerKey, marker, objectstore.Condition{Version: markerVersion}) != nil {
+			return "kept: quarantine write failed"
+		}
+		return "quarantined"
+	}
+	if state.now().Sub(marker.QuiescentSince) < c.options.Grace {
+		return "quarantined"
 	}
 	for _, entry := range g.data {
 		if c.deleteExact(ctx, c.list, c.data, entry.Key) != nil {
@@ -334,30 +351,49 @@ func (c *remoteCollector) deleteExact(ctx context.Context, del objectstore.Colle
 	return nil
 }
 
-func (c *remoteCollector) readMarker(ctx context.Context, key, generation string) (gcMarker, error) {
+var errGCRecheck = errors.New("generation became referenced or a writer is active")
+
+// gcBlocked is true when the generation is referenced or a writer lease is
+// not provably expired by the margin on the given provider-clock state.
+func gcBlocked(state objectState, generation string) bool {
+	if referencedGenerations(state.manifest)[generation] != "" {
+		return true
+	}
+	w := state.manifest.Writer
+	return w != nil && !w.ExpiresAt.Add(remoteGCWriterMargin).Before(state.now())
+}
+
+func (c *remoteCollector) readMarker(ctx context.Context, key, generation string) (gcMarker, string, error) {
+	marker, info, err := c.readMarkerInfo(ctx, key, generation)
+	return marker, info.Version, err
+}
+
+func (c *remoteCollector) readMarkerInfo(ctx context.Context, key, generation string) (gcMarker, objectstore.Info, error) {
 	body, info, err := c.data.Get(ctx, key, "")
 	if err != nil {
-		return gcMarker{}, err
+		return gcMarker{}, info, err
 	}
 	defer body.Close()
 	if info.Size <= 0 || info.Size > remoteGCMarkerLimit {
-		return gcMarker{}, ErrCorrupt
+		return gcMarker{}, info, ErrCorrupt
 	}
 	raw, err := io.ReadAll(io.LimitReader(body, remoteGCMarkerLimit+1))
 	if err != nil || int64(len(raw)) != info.Size || (info.SHA256 != "" && info.SHA256 != objectSHA256(raw)) {
-		return gcMarker{}, ErrCorrupt
+		return gcMarker{}, info, ErrCorrupt
 	}
 	var marker gcMarker
 	decoder := yaml.NewDecoder(bytes.NewReader(raw))
 	decoder.KnownFields(true)
 	if decoder.Decode(&marker) != nil || marker.Version != 1 || marker.Generation != generation || marker.QuarantinedAt.IsZero() {
-		return gcMarker{}, ErrCorrupt
+		return gcMarker{}, info, ErrCorrupt
 	}
-	return marker, nil
+	return marker, info, nil
 }
 
 // The quarantine time comes from the provider clock observed with the manifest.
-func (c *remoteCollector) writeMarker(ctx context.Context, dataset, key string, ref readerlease.Reference) (gcMarker, error) {
+// It re-checks the fresh manifest so a writer CAS that landed after
+// classification stops quarantine before Retire.
+func (c *remoteCollector) writeMarker(ctx context.Context, dataset, key, generation string, ref readerlease.Reference) (gcMarker, error) {
 	state, err := c.backend.readState(ctx, dataset, c.data)
 	if err != nil {
 		return gcMarker{}, err
@@ -365,15 +401,22 @@ func (c *remoteCollector) writeMarker(ctx context.Context, dataset, key string, 
 	if state.info.ServerTime.IsZero() {
 		return gcMarker{}, readerlease.ErrClock
 	}
+	if gcBlocked(state, generation) {
+		return gcMarker{}, errGCRecheck
+	}
 	marker := gcMarker{Version: 1, Generation: ref.Generation, Incarnation: ref.Incarnation, QuarantinedAt: state.now()}
+	return marker, c.putMarker(ctx, key, marker, objectstore.Condition{Absent: true})
+}
+
+func (c *remoteCollector) putMarker(ctx context.Context, key string, marker gcMarker, condition objectstore.Condition) error {
 	raw, err := yaml.Marshal(marker)
 	if err != nil {
-		return gcMarker{}, err
+		return err
 	}
-	if _, err := c.data.Put(ctx, key, bytes.NewReader(raw), int64(len(raw)), objectSHA256(raw), objectstore.Condition{Absent: true}); err != nil {
-		return gcMarker{}, fmt.Errorf("quarantine marker: %w", err)
+	if _, err := c.data.Put(ctx, key, bytes.NewReader(raw), int64(len(raw)), objectSHA256(raw), condition); err != nil {
+		return fmt.Errorf("quarantine marker: %w", err)
 	}
-	return marker, nil
+	return nil
 }
 
 // RunRemoteGC reconciles one dataset and, only with options.Delete in a
