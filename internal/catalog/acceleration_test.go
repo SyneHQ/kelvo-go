@@ -161,3 +161,14 @@ func TestAccelerationIncrementalValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestAccelerationIncrementalMigrationErrorNamesDatasetAndFix(t *testing.T) {
+	_, err := loadAccelerationFixture(t, acceleratedYAML+"      incremental:\n        column: created_at\n        full_every: 1h\n")
+	if err == nil || !strings.Contains(err.Error(), "key: [") || !strings.Contains(err.Error(), "dataset ") {
+		t.Fatalf("migration error %v", err)
+	}
+	_, err = loadAccelerationFixture(t, acceleratedYAML+"      incremental:\n        column: created_at\n        key: [id]\n        full_every: 1h\n")
+	if err == nil || !strings.Contains(err.Error(), "deletes: soft") {
+		t.Fatalf("migration error %v", err)
+	}
+}
