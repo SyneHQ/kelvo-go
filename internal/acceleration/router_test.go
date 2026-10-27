@@ -84,3 +84,20 @@ func TestRouterPlan(t *testing.T) {
 		}
 	}
 }
+
+func TestRouteCoveredHonoursLateWindow(t *testing.T) {
+	d := catalog.Dataset{Incremental: &catalog.Incremental{LateWindow: 10 * time.Minute}}
+	if got := routeCovered(d, "2026-03-01T12:00:00Z"); got != "2026-03-01T11:50:00Z" {
+		t.Fatalf("late window bound %q", got)
+	}
+	if got := routeCovered(catalog.Dataset{}, "2026-03-01T12:00:00Z"); got != "2026-03-01T12:00:00Z" {
+		t.Fatalf("plain bound %q", got)
+	}
+	if got := routeCovered(d, "42"); got != "42" {
+		t.Fatalf("integer bound %q", got)
+	}
+	// A read ending inside the window must go live.
+	if RouteReason("SELECT * FROM orders WHERE ts <= '2026-03-01 11:55:00'", "orders", "ts", routeCovered(d, "2026-03-01T12:00:00Z")) == "" {
+		t.Fatal("read inside late_window served from the snapshot")
+	}
+}
