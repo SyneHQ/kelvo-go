@@ -1,0 +1,83 @@
+{
+  "binary_sha256": "394b4cc72501b4e91de4b194402836a07e25a2ba9d824b7da1f7141d4f81441d",
+  "started_utc": "2026-10-27T20:44:01.824839+00:00",
+  "finished_utc": "2026-10-27T20:56:17.946667+00:00",
+  "levels": [
+    {
+      "viewers": 1,
+      "tiles_per_dashboard": 50,
+      "per_viewer_parallel_tiles": 6,
+      "retry_budget_on_429": 3,
+      "queries": 50,
+      "succeeded": 50,
+      "failed": 0,
+      "error_classes": {},
+      "admission_refusals_retried": 0,
+      "elapsed_seconds": 13.123,
+      "queries_per_second": 3.81,
+      "tile_p50_seconds": 1.458042711500184,
+      "tile_p95_seconds": 2.4496500760999425,
+      "tile_p99_seconds": 2.5462549223399855,
+      "dashboard_load_p50_seconds": 13.122313142000166,
+      "dashboard_load_max_seconds": 13.122313142000166
+    },
+    {
+      "viewers": 5,
+      "tiles_per_dashboard": 50,
+      "per_viewer_parallel_tiles": 6,
+      "retry_budget_on_429": 3,
+      "queries": 250,
+      "succeeded": 250,
+      "failed": 0,
+      "error_classes": {},
+      "admission_refusals_retried": 0,
+      "elapsed_seconds": 71.46,
+      "queries_per_second": 3.498,
+      "tile_p50_seconds": 9.068296139000267,
+      "tile_p95_seconds": 11.524089550850203,
+      "tile_p99_seconds": 11.886156956889481,
+      "dashboard_load_p50_seconds": 71.29146868799944,
+      "dashboard_load_max_seconds": 71.45974912400015
+    },
+    {
+      "viewers": 20,
+      "tiles_per_dashboard": 50,
+      "per_viewer_parallel_tiles": 6,
+      "retry_budget_on_429": 3,
+      "queries": 1000,
+      "succeeded": 389,
+      "failed": 611,
+      "error_classes": {
+        "RESOURCE_EXHAUSTED": 611
+      },
+      "admission_refusals_retried": 2299,
+      "elapsed_seconds": 234.371,
+      "queries_per_second": 1.66,
+      "tile_p50_seconds": 47.87585362899972,
+      "tile_p95_seconds": 63.62774415740022,
+      "tile_p99_seconds": 67.93495216467974,
+      "dashboard_load_p50_seconds": 232.44442933599976,
+      "dashboard_load_max_seconds": 234.36786316399957
+    },
+    {
+      "viewers": 50,
+      "tiles_per_dashboard": 50,
+      "per_viewer_parallel_tiles": 6,
+      "retry_budget_on_429": 3,
+      "queries": 2500,
+      "succeeded": 661,
+      "failed": 1839,
+      "error_classes": {
+        "RESOURCE_EXHAUSTED": 1839
+      },
+      "admission_refusals_retried": 6400,
+      "elapsed_seconds": 417.162,
+      "queries_per_second": 1.585,
+      "tile_p50_seconds": 63.013506186000086,
+      "tile_p95_seconds": 92.17988530000002,
+      "tile_p99_seconds": 97.28965804179988,
+      "dashboard_load_p50_seconds": 413.26169991100005,
+      "dashboard_load_max_seconds": 417.15574703700076
+    }
+  ]
+}

@@ -1,0 +1,316 @@
+{
+  "engine": "duckdb 1.4.1",
+  "scope": "Direct DuckDB over the generator Parquet, the same rows loaded into each source; outside all timings.",
+  "answers": {
+    "gmv_daily_by_tenant": {
+      "rows": 728,
+      "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27",
+      "reference_seconds": 0.104
+    },
+    "sla_breach_by_carrier_week": {
+      "rows": 168,
+      "sha256": "20d06d9f7090a024fa91d13478aaff71eef96c490ae244f2dd8b0e6f64ab5b82",
+      "reference_seconds": 0.288
+    },
+    "top_sellers_by_city": {
+      "rows": 200,
+      "sha256": "1f2d5573ff07dbeec52b19d285c1490942923cd6c7cac85d416d7192f6d4af14",
+      "reference_seconds": 0.202
+    },
+    "cohort_retention": {
+      "rows": 189,
+      "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8",
+      "reference_seconds": 1.374
+    },
+    "rider_on_time": {
+      "rows": 20,
+      "sha256": "d121fc89cd67411ae82a6ddd83a01f3c4cc4cb7978a5c1d47b0e22ad6d3196d0",
+      "reference_seconds": 0.223
+    },
+    "hot_cold_daily_events": {
+      "rows": 431,
+      "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad",
+      "reference_seconds": 0.308
+    },
+    "basket_mix": {
+      "rows": 18,
+      "sha256": "268367ba655410f3c9313e48c8babee8c0fc16341c23292a51ed2991e71e1cd5",
+      "reference_seconds": 0.357
+    },
+    "cod_rto_by_segment": {
+      "rows": 9,
+      "sha256": "9e4345e4750f6e15a9e9a97bcd25910b361fb47d1086def1eeaa07b7034f0721",
+      "reference_seconds": 1.004
+    },
+    "live_rider_pings_hourly": {
+      "rows": 24,
+      "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3",
+      "reference_seconds": 0.13
+    },
+    "seller3_portal": {
+      "rows": 30,
+      "sha256": "f5c6939091ee51ab438ec90c99fcf850bebf3da367bde81baf20dc5a8a18effc",
+      "reference_seconds": 0.139
+    },
+    "tile:tenant1_daily_gmv": {
+      "rows": 30,
+      "sha256": "28cdb433e670d83f79bc1fd309251f15808b706e5867b3992380e7c1fdc22578",
+      "reference_seconds": 0.049
+    },
+    "tile:tenant2_daily_gmv": {
+      "rows": 30,
+      "sha256": "f2568bc80b17bbb895d53a97dbe31e313485b1a3522d929ad54a6b34c3483d06",
+      "reference_seconds": 0.042
+    },
+    "tile:tenant3_daily_gmv": {
+      "rows": 30,
+      "sha256": "f6ac0e16dc491a85b108944f94062b6661f66c316bf5725024e49136abe46bc6",
+      "reference_seconds": 0.034
+    },
+    "tile:tenant4_daily_gmv": {
+      "rows": 30,
+      "sha256": "ecb3e0f0ef8aee8e26cd9018da2d1c094eda67f843b7ccf9644dba67a3ad1101",
+      "reference_seconds": 0.035
+    },
+    "tile:tenant5_daily_gmv": {
+      "rows": 30,
+      "sha256": "7e18e04b8c2680e694ea9d1082525f64ddb8a5fd7aa930dadcd2e726fda70edd",
+      "reference_seconds": 0.047
+    },
+    "tile:tenant6_daily_gmv": {
+      "rows": 30,
+      "sha256": "7c53cc50d3159d700bfd66c489f72988de80423ddc35bafdd4e407186fc47839",
+      "reference_seconds": 0.036
+    },
+    "tile:tenant7_daily_gmv": {
+      "rows": 30,
+      "sha256": "30759645a2f67e4776b535fcea4cf435177925d42f290a3659021d7eaa3a3768",
+      "reference_seconds": 0.049
+    },
+    "tile:tenant8_daily_gmv": {
+      "rows": 30,
+      "sha256": "a2ca6299485880e8f9fd606e40bcb64a05c014a8d41328d858c9a70fa4f18300",
+      "reference_seconds": 0.037
+    },
+    "tile:carrier1_weekly_breach": {
+      "rows": 14,
+      "sha256": "94dbb977fa15ed0680c6797f550ba1ffb5a7b299f93a8e1c97cc082499494001",
+      "reference_seconds": 0.082
+    },
+    "tile:carrier2_weekly_breach": {
+      "rows": 14,
+      "sha256": "47817e0cd0d97cb7ec0c717992e4a74bf47efcacc741c412f887b2ad8f2a2f4e",
+      "reference_seconds": 0.067
+    },
+    "tile:carrier3_weekly_breach": {
+      "rows": 14,
+      "sha256": "27970a7630fd4394e2a004bb7fe61b4381db3a9389ef7f0c4f58d91894c82998",
+      "reference_seconds": 0.069
+    },
+    "tile:carrier4_weekly_breach": {
+      "rows": 14,
+      "sha256": "7e9e8476f81decb4fd3aaf23374772419930d05b428c3ee20331be655ad811a1",
+      "reference_seconds": 0.079
+    },
+    "tile:carrier5_weekly_breach": {
+      "rows": 14,
+      "sha256": "b357d7d5c2276afcd5ada12071dcca58a2fb925e9dccdecb05fb8fdf395c5f6d",
+      "reference_seconds": 0.067
+    },
+    "tile:carrier6_weekly_breach": {
+      "rows": 14,
+      "sha256": "d7e3ab1e53e7e86717dc630bff5429ab24de43cf89430c6f01294bc15e7263f7",
+      "reference_seconds": 0.067
+    },
+    "tile:carrier7_weekly_breach": {
+      "rows": 14,
+      "sha256": "23659efe717a9941c49c17daaf900a82816d24ecad94e52254342bb0ccb0b754",
+      "reference_seconds": 0.065
+    },
+    "tile:carrier8_weekly_breach": {
+      "rows": 14,
+      "sha256": "2af0f72da4686bd4fb4bc47019d57345bb96487ae4b6b1dda91c81246c28af1b",
+      "reference_seconds": 0.061
+    },
+    "tile:carrier9_weekly_breach": {
+      "rows": 14,
+      "sha256": "1cc69314d24e08841ab8da7109ece5082b43f7e365955750ff76a3ec8e71d9e6",
+      "reference_seconds": 0.062
+    },
+    "tile:carrier10_weekly_breach": {
+      "rows": 14,
+      "sha256": "772b39dcfdf0f930e7f84fab030cad610a306da24ff1d24b81842dd93115a0c4",
+      "reference_seconds": 0.071
+    },
+    "tile:carrier11_weekly_breach": {
+      "rows": 14,
+      "sha256": "77d84b85cd04a326e3b42e98ea8caceab7567a5ac6f02cd75d3e8e86f8d0a774",
+      "reference_seconds": 0.064
+    },
+    "tile:carrier12_weekly_breach": {
+      "rows": 14,
+      "sha256": "150ff1f7b091ee1c83ba7631a84c5c1d433b1e5647c7a63bd2944036e58aa1fc",
+      "reference_seconds": 0.065
+    },
+    "tile:hot_created_hourly": {
+      "rows": 24,
+      "sha256": "9775fe3b467d6a9dbfa3cb9b97c68d1b159c3d51f38fed9ddfdff41a9398cbc4",
+      "reference_seconds": 0.017
+    },
+    "tile:hot_assigned_hourly": {
+      "rows": 24,
+      "sha256": "ea187d4f9f3d874d29e6d8898e043578633744c5c08012ce3c2100c55442baab",
+      "reference_seconds": 0.018
+    },
+    "tile:hot_picked_hourly": {
+      "rows": 24,
+      "sha256": "8e60b51a5c093c25c038893e3c57b445371f2695e3c83d4686a88f44cbc97e2a",
+      "reference_seconds": 0.017
+    },
+    "tile:hot_in_transit_hourly": {
+      "rows": 24,
+      "sha256": "14cdeee0fd95a04f0a215056339b9d6616809ddf8104521cf7eba0505d580084",
+      "reference_seconds": 0.018
+    },
+    "tile:hot_out_for_delivery_hourly": {
+      "rows": 24,
+      "sha256": "982a032f6d43d6be8cbdf5aa9ee7939338a4db396dcafc7f26b2c2c77f4ec32e",
+      "reference_seconds": 0.023
+    },
+    "tile:hot_attempted_hourly": {
+      "rows": 24,
+      "sha256": "93800ad391f485575b80e92382715e24497d24c6d8263c8e0d3d741502c0bec9",
+      "reference_seconds": 0.017
+    },
+    "tile:hot_delivered_hourly": {
+      "rows": 24,
+      "sha256": "da7fabeb60b66d8540540d40535c6f3448dcbf7f49e1ed70870c6b60267ca6c2",
+      "reference_seconds": 0.027
+    },
+    "tile:cod_completed_nov": {
+      "rows": 1,
+      "sha256": "2e133c093782a84ce39215745d861d78501b5644fef4302a31d9aaf01aee22bd",
+      "reference_seconds": 0.045
+    },
+    "tile:cod_returned_nov": {
+      "rows": 1,
+      "sha256": "cec55829f58a63a09b622227a982f378c612741f4369895343d56609e0ee20f8",
+      "reference_seconds": 0.039
+    },
+    "tile:cod_cancelled_nov": {
+      "rows": 1,
+      "sha256": "02b488bc604f1dd6ae01245f76af01d5abd0350282ad11f9a2ca018a77f60fb8",
+      "reference_seconds": 0.065
+    },
+    "tile:upi_completed_nov": {
+      "rows": 1,
+      "sha256": "1fe26f9bcb3e54832fefbdb4edbdcd595ec70d1316801abf1912880ff23c5c21",
+      "reference_seconds": 0.058
+    },
+    "tile:upi_returned_nov": {
+      "rows": 1,
+      "sha256": "bb13d0c506dc06a9845e82e5df14060346443f421f8f4a3cdece7a703a22159d",
+      "reference_seconds": 0.052
+    },
+    "tile:upi_cancelled_nov": {
+      "rows": 1,
+      "sha256": "11086bd9f9e0f036487711a28fd4bbe76cf8e86da3275e8d298bc430a67a904b",
+      "reference_seconds": 0.043
+    },
+    "tile:card_completed_nov": {
+      "rows": 1,
+      "sha256": "123f3282e7c180365b8f37c3b17e29362c40c0ccbccd372ea23028dec15a459b",
+      "reference_seconds": 0.054
+    },
+    "tile:card_returned_nov": {
+      "rows": 1,
+      "sha256": "2944d26bf107c47a0fbbc20b237b7e1f7ba3011ce16fc414ba4b95c1def2c456",
+      "reference_seconds": 0.049
+    },
+    "tile:card_cancelled_nov": {
+      "rows": 1,
+      "sha256": "4b27ced292dba1eae7b9ef5a2097471184c5eedf63d3d45e74a025567cef4708",
+      "reference_seconds": 0.051
+    },
+    "tile:fashion_top_skus": {
+      "rows": 5,
+      "sha256": "5a74cbdf57fa0f201a66a1a16e8b0d094873431eaf4bb37e7c63718f4148ddc4",
+      "reference_seconds": 0.057
+    },
+    "tile:grocery_top_skus": {
+      "rows": 5,
+      "sha256": "ce625d4604fc29ad7449e0f0269e64589aadc1850113c5faff398a6af2d41ad4",
+      "reference_seconds": 0.065
+    },
+    "tile:electronics_top_skus": {
+      "rows": 5,
+      "sha256": "6168f8699d9688e05f065e52414f2cab37d195057995c9fccc29338e362aafa1",
+      "reference_seconds": 0.063
+    },
+    "tile:home_top_skus": {
+      "rows": 5,
+      "sha256": "6f5edd793cf659ca30e31cfdec4f0bd7b0442f2056e5733552826e4f7e46ff17",
+      "reference_seconds": 0.063
+    },
+    "tile:beauty_top_skus": {
+      "rows": 5,
+      "sha256": "9f11f241603de7ef74dee33a4e3ac6a8a2ca6639fba496da11962f47016147c8",
+      "reference_seconds": 0.057
+    },
+    "tile:books_top_skus": {
+      "rows": 5,
+      "sha256": "6b20b4c5d271c7aae1644224a693217931f0fde84c7ceef8f80b898f6baf10d7",
+      "reference_seconds": 0.057
+    },
+    "tile:zone_north_orders_dec": {
+      "rows": 31,
+      "sha256": "1dc0303b617a286cb638013148ca5eb6bfca032143e07c2ca69ca4664470fcc9",
+      "reference_seconds": 0.033
+    },
+    "tile:zone_south_orders_dec": {
+      "rows": 32,
+      "sha256": "c2bf46f2909d106580953e52784f11cf650515c2d9e399e47c42b68989956b21",
+      "reference_seconds": 0.034
+    },
+    "tile:zone_east_orders_dec": {
+      "rows": 28,
+      "sha256": "25b42a34de52a54325dbc2b1e2d470475cb3a9383a1fae8e0eebbfe00bbcf843",
+      "reference_seconds": 0.029
+    },
+    "tile:zone_west_orders_dec": {
+      "rows": 31,
+      "sha256": "f2f9a86d9f56ac17c5c1367908b6371dac0944505263fd43ac712083877809db",
+      "reference_seconds": 0.031
+    },
+    "tile:segment_retail_customers": {
+      "rows": 40,
+      "sha256": "26a8c5ed2718b8f6464faa4483919c4648077583f96ed16ef796eb606101402a",
+      "reference_seconds": 0.011
+    },
+    "tile:segment_prime_customers": {
+      "rows": 40,
+      "sha256": "8be77e2bfaf1ff073bc8cf5b0efe1f119717492eaf473d9622f0d6465860363d",
+      "reference_seconds": 0.01
+    },
+    "tile:segment_b2b_customers": {
+      "rows": 40,
+      "sha256": "e7032b6ce5366837269a18b91d2bced33db1d3c18b22bbaefde3a470cb34d90c",
+      "reference_seconds": 0.013
+    },
+    "tile:kpi_sellers_by_category": {
+      "rows": 6,
+      "sha256": "c00330ad6f401ece95a5ff8eea21a1cc65dffdea743fd16b49b7f48669f1283c",
+      "reference_seconds": 0.002
+    },
+    "export:shipments_week": {
+      "rows": 191858,
+      "sha256": "e4115e118778129bdb99abec83fc6816d31dc4fdc14f62bccbdf11cdbec3cb99",
+      "reference_seconds": 1.223
+    },
+    "probe:tenant_b": {
+      "rows": 12,
+      "sha256": "242b2f378714602ef7df3706367ea539dc8303e673907ec9830cafd869dce889",
+      "reference_seconds": 0.038
+    }
+  }
+}

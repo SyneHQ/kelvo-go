@@ -1,0 +1,1107 @@
+{
+  "binary_sha256": "394b4cc72501b4e91de4b194402836a07e25a2ba9d824b7da1f7141d4f81441d",
+  "started_utc": "2026-10-27T20:41:48.756123+00:00",
+  "finished_utc": "2026-10-27T20:43:48.447515+00:00",
+  "runs_per_mode": 2,
+  "results": [
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.6220423220001976,
+      "result_bytes": 18064,
+      "answer": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      },
+      "state": "succeeded",
+      "workflow": "gmv_daily_by_tenant",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows": 728,
+        "batches": 1,
+        "arrow_bytes": 17472,
+        "wire_bytes": 18064,
+        "backend": "duckdb",
+        "prepare_ns": 36891260,
+        "duration_ns": 601197593,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 201281536,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.03,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 143671296,
+        "node": 316256256,
+        "gateway": 203431936,
+        "load_client": 79081472,
+        "source_clickhouse": 1356341248,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 201281536
+      },
+      "expected": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.5835879879996355,
+      "result_bytes": 18064,
+      "answer": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      },
+      "state": "succeeded",
+      "workflow": "gmv_daily_by_tenant",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows": 728,
+        "batches": 1,
+        "arrow_bytes": 17472,
+        "wire_bytes": 18064,
+        "backend": "duckdb",
+        "prepare_ns": 34740784,
+        "duration_ns": 565082036,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 206368768,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.05,
+        "source_postgres": 0.0,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 143671296,
+        "node": 316256256,
+        "gateway": 203431936,
+        "load_client": 79212544,
+        "source_clickhouse": 1354149888,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 206368768
+      },
+      "expected": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 64.2496629430002,
+      "result_bytes": 4632,
+      "answer": {
+        "rows": 168,
+        "sha256": "20d06d9f7090a024fa91d13478aaff71eef96c490ae244f2dd8b0e6f64ab5b82"
+      },
+      "state": "succeeded",
+      "workflow": "sla_breach_by_carrier_week",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows": 168,
+        "batches": 1,
+        "arrow_bytes": 4032,
+        "wire_bytes": 4632,
+        "backend": "duckdb",
+        "prepare_ns": 66559246,
+        "duration_ns": 64231042759,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          },
+          {
+            "dataset": "shipments_snap",
+            "generation": "465835e25eb3f8912d110248f399446b",
+            "refreshed_at": "2026-10-27T20:42:52.500535876Z",
+            "refreshed_on_demand": true
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3048800256,
+      "source_cpu_seconds": {
+        "source_clickhouse": 6.14,
+        "source_postgres": 0.0,
+        "source_mysql": 18.02
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 147488768,
+        "node": 330526720,
+        "gateway": 203431936,
+        "load_client": 79212544,
+        "source_clickhouse": 1389572096,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 3048800256
+      },
+      "expected": {
+        "rows": 168,
+        "sha256": "20d06d9f7090a024fa91d13478aaff71eef96c490ae244f2dd8b0e6f64ab5b82"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 1.2491604910001115,
+      "result_bytes": 4632,
+      "answer": {
+        "rows": 168,
+        "sha256": "20d06d9f7090a024fa91d13478aaff71eef96c490ae244f2dd8b0e6f64ab5b82"
+      },
+      "state": "succeeded",
+      "workflow": "sla_breach_by_carrier_week",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows": 168,
+        "batches": 1,
+        "arrow_bytes": 4032,
+        "wire_bytes": 4632,
+        "backend": "duckdb",
+        "prepare_ns": 71563179,
+        "duration_ns": 1230482261,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          },
+          {
+            "dataset": "shipments_snap",
+            "generation": "465835e25eb3f8912d110248f399446b",
+            "refreshed_at": "2026-10-27T20:42:52.500535876Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 421154816,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.06,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 145793024,
+        "node": 308228096,
+        "gateway": 203563008,
+        "load_client": 79343616,
+        "source_clickhouse": 1310568448,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 421154816
+      },
+      "expected": {
+        "rows": 168,
+        "sha256": "20d06d9f7090a024fa91d13478aaff71eef96c490ae244f2dd8b0e6f64ab5b82"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.8686640819996683,
+      "result_bytes": 9360,
+      "answer": {
+        "rows": 200,
+        "sha256": "1f2d5573ff07dbeec52b19d285c1490942923cd6c7cac85d416d7192f6d4af14"
+      },
+      "state": "succeeded",
+      "workflow": "top_sellers_by_city",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows": 200,
+        "batches": 1,
+        "arrow_bytes": 8548,
+        "wire_bytes": 9360,
+        "backend": "duckdb",
+        "prepare_ns": 56084859,
+        "duration_ns": 852349521,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          },
+          {
+            "dataset": "sellers_snap",
+            "generation": "293d17faa31d429d35a48d13b7cd96c3",
+            "refreshed_at": "2026-10-27T20:42:56.217418296Z",
+            "refreshed_on_demand": true
+          },
+          {
+            "dataset": "warehouses_snap",
+            "generation": "212ee3358a6c3f007ad5e9acb53878f9",
+            "refreshed_at": "2026-10-27T20:42:56.310304636Z",
+            "refreshed_on_demand": true
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 259428352,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.04,
+        "source_postgres": 0.0,
+        "source_mysql": 0.04
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 145793024,
+        "node": 308228096,
+        "gateway": 203563008,
+        "load_client": 79474688,
+        "source_clickhouse": 1302872064,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 259428352
+      },
+      "expected": {
+        "rows": 200,
+        "sha256": "1f2d5573ff07dbeec52b19d285c1490942923cd6c7cac85d416d7192f6d4af14"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.5989144169998326,
+      "result_bytes": 9360,
+      "answer": {
+        "rows": 200,
+        "sha256": "1f2d5573ff07dbeec52b19d285c1490942923cd6c7cac85d416d7192f6d4af14"
+      },
+      "state": "succeeded",
+      "workflow": "top_sellers_by_city",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows": 200,
+        "batches": 1,
+        "arrow_bytes": 8548,
+        "wire_bytes": 9360,
+        "backend": "duckdb",
+        "prepare_ns": 35477837,
+        "duration_ns": 578832247,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          },
+          {
+            "dataset": "sellers_snap",
+            "generation": "293d17faa31d429d35a48d13b7cd96c3",
+            "refreshed_at": "2026-10-27T20:42:56.217418296Z"
+          },
+          {
+            "dataset": "warehouses_snap",
+            "generation": "212ee3358a6c3f007ad5e9acb53878f9",
+            "refreshed_at": "2026-10-27T20:42:56.310304636Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 210366464,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.04,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 145793024,
+        "node": 305709056,
+        "gateway": 203563008,
+        "load_client": 79474688,
+        "source_clickhouse": 1301221376,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 210366464
+      },
+      "expected": {
+        "rows": 200,
+        "sha256": "1f2d5573ff07dbeec52b19d285c1490942923cd6c7cac85d416d7192f6d4af14"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 4.743517411999164,
+      "result_bytes": 6048,
+      "answer": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      },
+      "state": "succeeded",
+      "workflow": "cohort_retention",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows": 189,
+        "batches": 1,
+        "arrow_bytes": 5422,
+        "wire_bytes": 6048,
+        "backend": "duckdb",
+        "prepare_ns": 54917994,
+        "duration_ns": 4724848381,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "customers_snap",
+            "generation": "8f90f80908a4ac3cf5869f2778a474b3",
+            "refreshed_at": "2026-10-27T20:42:59.206086291Z",
+            "refreshed_on_demand": true
+          },
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 1002348544,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.51,
+        "source_postgres": 0.38,
+        "source_mysql": 0.03
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 145793024,
+        "node": 321368064,
+        "gateway": 203694080,
+        "load_client": 79474688,
+        "source_clickhouse": 1326092288,
+        "source_postgres": 304480256,
+        "source_mysql": 1660375040,
+        "query_worker": 1002348544
+      },
+      "expected": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 2.482504544999756,
+      "result_bytes": 6048,
+      "answer": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      },
+      "state": "succeeded",
+      "workflow": "cohort_retention",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows": 189,
+        "batches": 1,
+        "arrow_bytes": 5422,
+        "wire_bytes": 6048,
+        "backend": "duckdb",
+        "prepare_ns": 53156533,
+        "duration_ns": 2465154204,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "customers_snap",
+            "generation": "8f90f80908a4ac3cf5869f2778a474b3",
+            "refreshed_at": "2026-10-27T20:42:59.206086291Z"
+          },
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 945831936,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.16,
+        "source_postgres": 0.0,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 146055168,
+        "node": 318038016,
+        "gateway": 203694080,
+        "load_client": 79474688,
+        "source_clickhouse": 1312477184,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 945831936
+      },
+      "expected": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 4.888163564999559,
+      "result_bytes": 896,
+      "answer": {
+        "rows": 20,
+        "sha256": "d121fc89cd67411ae82a6ddd83a01f3c4cc4cb7978a5c1d47b0e22ad6d3196d0"
+      },
+      "state": "succeeded",
+      "workflow": "rider_on_time",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows": 20,
+        "batches": 1,
+        "arrow_bytes": 400,
+        "wire_bytes": 896,
+        "backend": "duckdb",
+        "prepare_ns": 47890661,
+        "duration_ns": 4869458069,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "events_hot_snap",
+            "generation": "39dda84ddea5eb3d2b093dd131ac5ea0",
+            "refreshed_at": "2026-10-27T20:43:08.791287836Z",
+            "refreshed_on_demand": true
+          },
+          {
+            "dataset": "shipments_snap",
+            "generation": "465835e25eb3f8912d110248f399446b",
+            "refreshed_at": "2026-10-27T20:42:52.500535876Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 537894912,
+      "source_cpu_seconds": {
+        "source_clickhouse": 1.27,
+        "source_postgres": 0.0,
+        "source_mysql": 0.02
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 146317312,
+        "node": 320892928,
+        "gateway": 203825152,
+        "load_client": 79474688,
+        "source_clickhouse": 1330520064,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 537894912
+      },
+      "expected": {
+        "rows": 20,
+        "sha256": "d121fc89cd67411ae82a6ddd83a01f3c4cc4cb7978a5c1d47b0e22ad6d3196d0"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 1.001532195999971,
+      "result_bytes": 896,
+      "answer": {
+        "rows": 20,
+        "sha256": "d121fc89cd67411ae82a6ddd83a01f3c4cc4cb7978a5c1d47b0e22ad6d3196d0"
+      },
+      "state": "succeeded",
+      "workflow": "rider_on_time",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows": 20,
+        "batches": 1,
+        "arrow_bytes": 400,
+        "wire_bytes": 896,
+        "backend": "duckdb",
+        "prepare_ns": 55490812,
+        "duration_ns": 982935632,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "events_hot_snap",
+            "generation": "39dda84ddea5eb3d2b093dd131ac5ea0",
+            "refreshed_at": "2026-10-27T20:43:08.791287836Z"
+          },
+          {
+            "dataset": "shipments_snap",
+            "generation": "465835e25eb3f8912d110248f399446b",
+            "refreshed_at": "2026-10-27T20:42:52.500535876Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 338444288,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.05,
+        "source_postgres": 0.0,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 146448384,
+        "node": 310571008,
+        "gateway": 203825152,
+        "load_client": 79474688,
+        "source_clickhouse": 1299255296,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 338444288
+      },
+      "expected": {
+        "rows": 20,
+        "sha256": "d121fc89cd67411ae82a6ddd83a01f3c4cc4cb7978a5c1d47b0e22ad6d3196d0"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 2.4727565040002446,
+      "result_bytes": 11424,
+      "answer": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      },
+      "state": "succeeded",
+      "workflow": "hot_cold_daily_events",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows": 431,
+        "batches": 1,
+        "arrow_bytes": 10909,
+        "wire_bytes": 11424,
+        "backend": "duckdb",
+        "prepare_ns": 21797101,
+        "duration_ns": 2453051546,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "events_hot_snap",
+            "generation": "39dda84ddea5eb3d2b093dd131ac5ea0",
+            "refreshed_at": "2026-10-27T20:43:08.791287836Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 200765440,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.3,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 146710528,
+        "node": 310571008,
+        "gateway": 203825152,
+        "load_client": 79474688,
+        "source_clickhouse": 1302642688,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 200765440
+      },
+      "expected": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 2.486219433999395,
+      "result_bytes": 11424,
+      "answer": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      },
+      "state": "succeeded",
+      "workflow": "hot_cold_daily_events",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows": 431,
+        "batches": 1,
+        "arrow_bytes": 10909,
+        "wire_bytes": 11424,
+        "backend": "duckdb",
+        "prepare_ns": 20422335,
+        "duration_ns": 2468398857,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "events_hot_snap",
+            "generation": "39dda84ddea5eb3d2b093dd131ac5ea0",
+            "refreshed_at": "2026-10-27T20:43:08.791287836Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 203395072,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.68,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 146710528,
+        "node": 310571008,
+        "gateway": 203825152,
+        "load_client": 79474688,
+        "source_clickhouse": 1406754816,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 203395072
+      },
+      "expected": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 24.81931164100024,
+      "result_bytes": 1496,
+      "answer": {
+        "rows": 18,
+        "sha256": "268367ba655410f3c9313e48c8babee8c0fc16341c23292a51ed2991e71e1cd5"
+      },
+      "state": "succeeded",
+      "workflow": "basket_mix",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows": 18,
+        "batches": 1,
+        "arrow_bytes": 764,
+        "wire_bytes": 1496,
+        "backend": "duckdb",
+        "prepare_ns": 48449276,
+        "duration_ns": 24798451490,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "order_items_snap",
+            "generation": "b22a5295a35762acb1d935465676d787",
+            "refreshed_at": "2026-10-27T20:43:39.003452239Z",
+            "refreshed_on_demand": true
+          },
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 2500800512,
+      "source_cpu_seconds": {
+        "source_clickhouse": 7.02,
+        "source_postgres": 0.0,
+        "source_mysql": 0.11
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 146841600,
+        "node": 320618496,
+        "gateway": 205930496,
+        "load_client": 79474688,
+        "source_clickhouse": 1411657728,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 2500800512
+      },
+      "expected": {
+        "rows": 18,
+        "sha256": "268367ba655410f3c9313e48c8babee8c0fc16341c23292a51ed2991e71e1cd5"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 1.2250240829998802,
+      "result_bytes": 1496,
+      "answer": {
+        "rows": 18,
+        "sha256": "268367ba655410f3c9313e48c8babee8c0fc16341c23292a51ed2991e71e1cd5"
+      },
+      "state": "succeeded",
+      "workflow": "basket_mix",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows": 18,
+        "batches": 1,
+        "arrow_bytes": 764,
+        "wire_bytes": 1496,
+        "backend": "duckdb",
+        "prepare_ns": 59359443,
+        "duration_ns": 1204828760,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "order_items_snap",
+            "generation": "b22a5295a35762acb1d935465676d787",
+            "refreshed_at": "2026-10-27T20:43:39.003452239Z"
+          },
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 433704960,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.06,
+        "source_postgres": 0.0,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 146214912,
+        "node": 308989952,
+        "gateway": 205930496,
+        "load_client": 79474688,
+        "source_clickhouse": 1309110272,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 433704960
+      },
+      "expected": {
+        "rows": 18,
+        "sha256": "268367ba655410f3c9313e48c8babee8c0fc16341c23292a51ed2991e71e1cd5"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 2.4489765730004365,
+      "result_bytes": 1088,
+      "answer": {
+        "rows": 9,
+        "sha256": "9e4345e4750f6e15a9e9a97bcd25910b361fb47d1086def1eeaa07b7034f0721"
+      },
+      "state": "succeeded",
+      "workflow": "cod_rto_by_segment",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows": 9,
+        "batches": 1,
+        "arrow_bytes": 368,
+        "wire_bytes": 1088,
+        "backend": "duckdb",
+        "prepare_ns": 90729965,
+        "duration_ns": 2427835457,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "customers_snap",
+            "generation": "8f90f80908a4ac3cf5869f2778a474b3",
+            "refreshed_at": "2026-10-27T20:42:59.206086291Z"
+          },
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          },
+          {
+            "dataset": "shipments_snap",
+            "generation": "465835e25eb3f8912d110248f399446b",
+            "refreshed_at": "2026-10-27T20:42:52.500535876Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 1069142016,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.13,
+        "source_postgres": 0.0,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 146214912,
+        "node": 308989952,
+        "gateway": 205930496,
+        "load_client": 79474688,
+        "source_clickhouse": 1307414528,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 1069142016
+      },
+      "expected": {
+        "rows": 9,
+        "sha256": "9e4345e4750f6e15a9e9a97bcd25910b361fb47d1086def1eeaa07b7034f0721"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 2.28582940600063,
+      "result_bytes": 1088,
+      "answer": {
+        "rows": 9,
+        "sha256": "9e4345e4750f6e15a9e9a97bcd25910b361fb47d1086def1eeaa07b7034f0721"
+      },
+      "state": "succeeded",
+      "workflow": "cod_rto_by_segment",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows": 9,
+        "batches": 1,
+        "arrow_bytes": 368,
+        "wire_bytes": 1088,
+        "backend": "duckdb",
+        "prepare_ns": 84531219,
+        "duration_ns": 2267932342,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "customers_snap",
+            "generation": "8f90f80908a4ac3cf5869f2778a474b3",
+            "refreshed_at": "2026-10-27T20:42:59.206086291Z"
+          },
+          {
+            "dataset": "orders_snap",
+            "generation": "5607a55496ada7770c5e232924501963",
+            "refreshed_at": "2026-10-27T20:41:37.966494162Z"
+          },
+          {
+            "dataset": "shipments_snap",
+            "generation": "465835e25eb3f8912d110248f399446b",
+            "refreshed_at": "2026-10-27T20:42:52.500535876Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 1004736512,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.22,
+        "source_postgres": 0.0,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 146214912,
+        "node": 308989952,
+        "gateway": 205930496,
+        "load_client": 79474688,
+        "source_clickhouse": 1309741056,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 1004736512
+      },
+      "expected": {
+        "rows": 9,
+        "sha256": "9e4345e4750f6e15a9e9a97bcd25910b361fb47d1086def1eeaa07b7034f0721"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.3943895580005119,
+      "result_bytes": 1056,
+      "answer": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      },
+      "state": "succeeded",
+      "workflow": "live_rider_pings_hourly",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows": 24,
+        "batches": 1,
+        "arrow_bytes": 576,
+        "wire_bytes": 1056,
+        "backend": "duckdb",
+        "prepare_ns": 17689052,
+        "duration_ns": 374880412,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "events_hot_snap",
+            "generation": "39dda84ddea5eb3d2b093dd131ac5ea0",
+            "refreshed_at": "2026-10-27T20:43:08.791287836Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 172285952,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.04,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 146214912,
+        "node": 308150272,
+        "gateway": 205930496,
+        "load_client": 79474688,
+        "source_clickhouse": 1319251968,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 172285952
+      },
+      "expected": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.4098781689999669,
+      "result_bytes": 1056,
+      "answer": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      },
+      "state": "succeeded",
+      "workflow": "live_rider_pings_hourly",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows": 24,
+        "batches": 1,
+        "arrow_bytes": 576,
+        "wire_bytes": 1056,
+        "backend": "duckdb",
+        "prepare_ns": 17435732,
+        "duration_ns": 388879681,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "events_hot_snap",
+            "generation": "39dda84ddea5eb3d2b093dd131ac5ea0",
+            "refreshed_at": "2026-10-27T20:43:08.791287836Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 170938368,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.07,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 146214912,
+        "node": 308150272,
+        "gateway": 205930496,
+        "load_client": 79474688,
+        "source_clickhouse": 1319645184,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 170938368
+      },
+      "expected": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      }
+    }
+  ],
+  "denials": [
+    {
+      "check": "seller3_hidden_column",
+      "refused": true,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "upstream_error": "PERMISSION_DENIED"
+    },
+    {
+      "check": "seller3_unlisted_source",
+      "refused": true,
+      "error": "PERMISSION_DENIED",
+      "http_status": 403,
+      "upstream_error": null
+    },
+    {
+      "check": "tenant_b_cannot_see_orders",
+      "refused": true,
+      "error": "PERMISSION_DENIED",
+      "http_status": 403,
+      "upstream_error": null
+    }
+  ]
+}
