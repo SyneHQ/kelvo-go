@@ -56,6 +56,10 @@ type WarmPoolConfig struct {
 	CacheRules      []CacheRule `yaml:"cache_rules"`       // at most 64
 	CacheMaxEntries int         `yaml:"cache_max_entries"` // default 4096, at most 65536
 	CacheMaxFills   int         `yaml:"cache_max_fills"`   // concurrent shared executions; default 256, at most 4096; more run uncached
+	CacheMaxBytes   int64       `yaml:"cache_max_bytes"`   // decoded Arrow bytes of a kept result; default 64 MiB, at most 1 GiB
+	// CacheSnapshotGenerations keeps federated reads over accelerated snapshot
+	// generations, keyed and fenced by generation. Off by default.
+	CacheSnapshotGenerations bool `yaml:"cache_snapshot_generations"`
 	// ReauthorizeEvery bounds how long a worker serves secretless reads on
 	// one authorization of its source; 0 takes the default of 60s.
 	ReauthorizeEvery time.Duration `yaml:"reauthorize_every"`
@@ -120,8 +124,11 @@ func (c WarmPoolConfig) Validate() error {
 	if c.CacheTTL < 0 || c.CacheTTL > 10*time.Minute || c.CacheMaxEntryBytes < 0 || c.CacheMaxEntryBytes > 64<<20 || c.CacheMaxTotalBytes < 0 || c.CacheMaxTotalBytes > 1<<30 {
 		return errors.New("warm_pool: cache_ttl must be at most 10m, cache_max_entry_bytes at most 64 MiB and cache_max_total_bytes at most 1 GiB")
 	}
-	if c.CacheMaxEntries < 0 || c.CacheMaxEntries > 65536 || c.CacheMaxFills < 0 || c.CacheMaxFills > 4096 {
-		return errors.New("warm_pool: cache_max_entries must be at most 65536 and cache_max_fills at most 4096")
+	if c.CacheMaxEntries < 0 || c.CacheMaxEntries > 65536 || c.CacheMaxFills < 0 || c.CacheMaxFills > 4096 || c.CacheMaxBytes < 0 || c.CacheMaxBytes > 1<<30 {
+		return errors.New("warm_pool: cache_max_entries must be at most 65536, cache_max_fills at most 4096 and cache_max_bytes at most 1 GiB")
+	}
+	if c.CacheSnapshotGenerations && c.CacheDisabled {
+		return errors.New("warm_pool: cache_snapshot_generations needs the cache enabled")
 	}
 	if len(c.CacheRules) > 64 || (len(c.CacheRules) > 0 && c.CacheDisabled) {
 		return errors.New("warm_pool: cache_rules take at most 64 rules and need the cache enabled")
@@ -234,6 +241,9 @@ func (c WarmPoolConfig) resultCache() *resultCache {
 	}
 	if c.CacheMaxFills > 0 {
 		cache.maxFills = c.CacheMaxFills
+	}
+	if c.CacheMaxBytes > 0 {
+		cache.maxDecoded = c.CacheMaxBytes
 	}
 	return cache
 }
