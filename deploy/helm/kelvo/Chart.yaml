@@ -1,0 +1,10 @@
+apiVersion: v2
+name: kelvo
+description: Kelvo analytics gateway in cluster mode (gateway, tenant-bound nodes, bundled NATS JetStream)
+type: application
+version: 0.1.0
+appVersion: "v0.1.0-preview.2"
+home: https://github.com/SYNEHQ/kelvo-go
+sources: [https://github.com/SYNEHQ/kelvo-go]
+license: Apache-2.0
+keywords: [analytics, arrow, duckdb, gateway]

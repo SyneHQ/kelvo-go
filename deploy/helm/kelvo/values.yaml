@@ -1,0 +1,148 @@
+# Kelvo cluster-mode chart. One tenant, one gateway Deployment, one Deployment
+# per node, and (by default) a bundled single-member NATS JetStream StatefulSet.
+# See docs/install.md for the walkthrough and deploy/helm/kelvo/README.md.
+
+image:
+  # Gateway and node image (Dockerfile `runtime` target). Pin by digest in
+  # production: set `digest` and it wins over `tag`.
+  repository: ghcr.io/synehq/kelvo
+  tag: ""            # defaults to .Chart.AppVersion
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Secrets are never created by this chart. Create them yourself (for example
+# with deploy/helm/kelvo/scripts/make-secrets.sh) and reference them here.
+secrets:
+  # Opaque secret with these keys (independent random values, >= 32 chars):
+  #   tenant-token, nats-provisioner-password, nats-gateway-password,
+  #   nats-worker-password
+  # NATS reads the passwords through $VAR interpolation: start each with a
+  # letter (a leading digit is parsed as a number and NATS refuses to start).
+  existingSecret: kelvo-secrets
+tls:
+  # Opaque secret holding PEM files:
+  #   ca.crt                                 CA for NATS, gateway and nodes
+  #   nats.crt, nats.key                     SAN DNS:<release>-nats
+  #   api.crt, api.key                       gateway API; SAN DNS:<release>-gateway + client names
+  #   gateway-client.crt, gateway-client.key URI:spiffe://kelvo/gateway, clientAuth EKU
+  #   node-<id>.crt, node-<id>.key           SAN DNS:<release>-node-<id>,
+  #                                          URI:spiffe://kelvo/tenant/<tenant>/worker/<id>
+  existingSecret: kelvo-tls
+
+# Tenant policy. Gateway, nodes and cluster-init render the same policy; a
+# change requires a drain and reprovisioning (docs/cluster.md).
+tenant:
+  id: default
+  maxQueries: 24
+  jobTTL: 10m
+  leaseDuration: 15s
+  limits:
+    max_rows: 1000000
+    max_bytes: 134217728
+    timeout: 30s
+    memory_mb: 512
+    threads: 2
+    max_temp_mb: 256
+
+# Source catalog mounted into every node at /etc/kelvo/catalog.yml. Credentials
+# are referenced by environment variable names (KELVO_SOURCE_*), supplied by
+# nodes[].extraEnvFrom. The default is a tiny inline CSV for smoke tests.
+catalog:
+  sources:
+    - {id: sample, type: csv, path: /etc/kelvo/data/sample.csv}
+  # Files mounted read-only at /etc/kelvo/data/<name>.
+  dataFiles:
+    sample.csv: |
+      region,amount
+      east,10.50
+      west,4.25
+      east,1.25
+
+gateway:
+  replicas: 1
+  maxQueries: 48
+  maxConcurrent: 3
+  maxHTTPRequests: 64
+  service:
+    type: ClusterIP
+    port: 8443
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+  extraEnvFrom: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# One Deployment (replicas: 1) per node identity. Each id needs its own
+# node-<id>.crt/key and becomes worker <id> in the tenant policy with
+# `slots` concurrent queries.
+nodes:
+  - id: n1
+    slots: 1
+nodeDefaults:
+  # Optional node `resources` block (docs/node-capacity.md); {} omits it.
+  admission: {}
+  resources:
+    requests: {cpu: 250m, memory: 768Mi}
+    limits: {cpu: "2", memory: 1536Mi}
+  # Private scratch at /tmp (memory-backed emptyDir counts toward the limit).
+  scratchSizeLimit: 768Mi
+  extraEnvFrom: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Process containment (cgroup v2 delegation, docs/process-containment.md) needs
+# a root bootstrap in a privileged container. This chart does not ship that:
+# nodes run unprivileged with the Landlock sandbox only. Leave false.
+containment:
+  enabled: false
+
+nats:
+  # bundled: a single-member JetStream StatefulSet rendered by this chart.
+  # Set false and fill `external` to use an operator-run (e.g. 3-member) cluster.
+  bundled: true
+  image: nats:2.15.0-alpine
+  storage:
+    size: 2Gi
+    storageClassName: ""
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  jetstream:
+    maxMemory: 16777216
+    maxFile: 268435456
+  external:
+    url: ""          # tls://nats.example:4222
+    replicas: 3      # JetStream replicas; must not exceed healthy members
+
+clusterInit:
+  # Job that creates the tenant's JetStream streams with the provisioner
+  # credential. Re-runs are idempotent for an unchanged policy.
+  enabled: true
+  backoffLimit: 6
+  resources:
+    requests: {cpu: 20m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+networkPolicy:
+  # Restrict traffic to: clients -> gateway, gateway -> nodes, all -> NATS.
+  enabled: false
+  # Peers allowed to reach the gateway API (NetworkPolicy `from` entries).
+  # Empty allows any pod in the namespace.
+  gatewayIngressFrom: []
+  # Node egress for databases. Empty allows all egress (DNS + sources).
+  nodeEgressTo: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile: {type: RuntimeDefault}
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: [ALL]}
