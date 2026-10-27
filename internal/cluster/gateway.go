@@ -516,6 +516,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.status(w, r, g.tenants[tenant], p[2])
 		return
 	}
+	if len(p) == 3 && r.Method == http.MethodDelete {
+		g.release(w, r, g.tenants[tenant], p[2])
+		return
+	}
 	if len(p) == 4 && p[3] == "cancel" && r.Method == "POST" {
 		g.cancelJob(w, r, g.tenants[tenant], p[2])
 		return
