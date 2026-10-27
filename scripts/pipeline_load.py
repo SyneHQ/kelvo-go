@@ -245,7 +245,7 @@ def scan_totals(stats):
 def summary_stats(stats):
     """Keep scalar stats and federation scan totals; drop bulky lists."""
     keep = {k: v for k, v in stats.items() if not isinstance(v, (list, dict))}
-    for key in ("acceleration", "resources", "spill", "temp", "phases"):
+    for key in ("accelerations", "resources", "spill", "temp", "phases"):
         if isinstance(stats.get(key), (dict, list)):
             keep[key] = stats[key]
     keep["rows_fetched"], keep["arrow_bytes_fetched"] = scan_totals(stats)
@@ -254,7 +254,7 @@ def summary_stats(stats):
 
 # ---------------------------------------------------------------- validate
 
-def validate(client, fixture, runs):
+def validate(client, fixture, runs, only=None):
     from federation_cluster_load import Sampler
     doc, refs = spec(), json.loads((PRIVATE / "references.json").read_text())
     database = json.loads(Path(fixture).read_text())["database"]
@@ -268,6 +268,8 @@ def validate(client, fixture, runs):
         if w.get("snapshot", True):
             modes.append(("snapshot", {"mode": "federated", "sources": sources_of(w["sql"], SNAPSHOT), "sql": bind(w["sql"], SNAPSHOT)}))
         for mode, body in modes:
+            if only and mode not in only:
+                continue
             for run in range(runs):
                 sampler = Sampler(fixture, interval=0.2)
                 sampler.start()
@@ -523,6 +525,7 @@ def main():
     parser.add_argument("--fixture", type=Path, help="relational fixture manifest.json (source container sampling)")
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--runs", type=int, default=2)
+    parser.add_argument("--modes", help="comma list of native,federated,snapshot (default all)")
     parser.add_argument("--levels", default="1,5,20,50")
     parser.add_argument("--per-viewer", type=int, default=6)
     parser.add_argument("--retries", type=int, default=3)
@@ -535,7 +538,7 @@ def main():
     client = Client()
     meta = {"binary_sha256": client.manifest.get("binary_sha256"), "started_utc": dt.datetime.now(dt.timezone.utc).isoformat()}
     if args.action == "validate":
-        result = validate(client, args.fixture, args.runs)
+        result = validate(client, args.fixture, args.runs, args.modes and args.modes.split(","))
     elif args.action == "fanout":
         result = {"levels": fanout(client, [int(x) for x in args.levels.split(",")], args.per_viewer, args.retries)}
     else:

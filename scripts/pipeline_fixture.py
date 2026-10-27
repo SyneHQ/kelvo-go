@@ -113,7 +113,7 @@ def table(kind, name, database):
     return {"name": name, "schema": "acceptance", "table": name} if kind == "postgres" else {"name": name, "database": database, "table": name}
 
 
-def sources(data, fixture_dir, out, accel_dir):
+def sources(data, fixture_dir, out, accel_dir, snapshot_memory_mb=768):
     fixture = fra.Fixture.selected(fixture_dir)
     database, env = fixture.manifest["database"], fixture.environment
     names = {"pg": "KELVO_SOURCE_PIPE_PG_DSN", "my": "KELVO_SOURCE_PIPE_MY_DSN", "ch_url": "KELVO_SOURCE_PIPE_CH_URL",
@@ -126,12 +126,14 @@ def sources(data, fixture_dir, out, accel_dir):
     ch = {"id": "ch", "type": "clickhouse", "url_env": names["ch_url"], "username_env": names["ch_user"], "password_env": names["ch_password"],
           "federation": {"tables": [table("clickhouse", t, database) for t in CH], **FED}}
     cold = {"id": "cold", "type": "parquet", "path": str((data / "events_cold.parquet").resolve())}
-    limits = {"max_rows": 60_000_000, "max_bytes": 4 << 30, "timeout": "600s", "memory_mb": 768, "threads": 2, "max_temp_mb": 4096}
+    limits = {"max_rows": 60_000_000, "max_bytes": 4 << 30, "timeout": "600s", "memory_mb": snapshot_memory_mb, "threads": 2, "max_temp_mb": 4096}
 
     def dataset(alias, source, name, interval="0s"):
         return {"id": alias, "query": {"mode": "federated", "sources": [source], "sql": f"SELECT * FROM {source}.{name}"},
                 "authorization_version": "pipeline-v1", "refresh_interval": interval, "max_age": "24h",
-                "on_unavailable": "refresh", "limits": limits}
+                "on_unavailable": "refresh", "limits": limits,
+                # Single-part 20M-row snapshots hit the Parquet row-group metadata limit.
+                "multipart": {"max_part_bytes": 256 << 20, "max_parts": 64}}
     # Small and hot snapshots refresh on the node scheduler (soak refresh load);
     # the 20M/50M-row copies refresh on demand only.
     every = {"events_hot": "5m", "sellers": "5m", "warehouses": "5m", "customers": "10m"}
@@ -156,6 +158,7 @@ def main():
     parser.add_argument("--data", type=Path, help="generate.py output directory")
     parser.add_argument("--fixture", type=Path)
     parser.add_argument("--out", type=Path, default=ROOT / "artifacts/pipeline-private/tenant-sources.json")
+    parser.add_argument("--snapshot-memory-mb", type=int, default=768, help="per-refresh DuckDB memory")
     parser.add_argument("--accel-dir", type=Path, default=ROOT / "artifacts/pipeline-private/acceleration")
     args = parser.parse_args()
     if args.action == "provision":
@@ -164,7 +167,7 @@ def main():
         load(args.data.resolve(), args.fixture)
     else:
         args.out.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        sources(args.data.resolve(), args.fixture, args.out, args.accel_dir.resolve())
+        sources(args.data.resolve(), args.fixture, args.out, args.accel_dir.resolve(), args.snapshot_memory_mb)
 
 
 if __name__ == "__main__":
