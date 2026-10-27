@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -74,6 +75,15 @@ type incrementalPlan struct {
 	request    query.Request
 	prev       PreviousGeneration
 	lastFullAt string
+	newSpill   func() (*os.File, error) // the transaction's private spill area
+}
+
+type spillWriter interface{ NewSpill() (*os.File, error) }
+
+func (p *incrementalPlan) bindSpill(tx any) {
+	if w, ok := tx.(spillWriter); ok && p != nil {
+		p.newSpill = w.NewSpill
+	}
 }
 
 // planIncremental returns nil, with the reason logged, when the refresh must be
@@ -127,7 +137,7 @@ func (m *Manager) execute(ctx context.Context, d catalog.Dataset, executor query
 	var merge *mergeSink
 	if plan != nil {
 		merge = &mergeSink{ctx: ctx, inner: sink, prev: plan.prev, schema: previous,
-			key: d.Incremental.Key, watermark: d.Incremental.Column, maxBytes: mergeCap(d.Limits)}
+			key: d.Incremental.Key, watermark: d.Incremental.Column, maxBytes: mergeCap(d.Limits), newSpill: plan.newSpill}
 		defer merge.release()
 		target, request = merge, plan.request
 	}
@@ -277,6 +287,7 @@ func (m *Manager) refresh(ctx context.Context, id string, onlyIfDue bool, forceF
 		sink.cover = &coverage{column: column}
 	}
 	defer sink.Abort()
+	plan.bindSpill(tx)
 	appended, err := m.execute(ctx, d, executor, sink, plan, previous)
 	if err != nil {
 		return Snapshot{}, err
@@ -337,6 +348,7 @@ func (m *Manager) refreshMultipart(ctx context.Context, d catalog.Dataset, finge
 		sink.cover = &coverage{column: column}
 	}
 	defer sink.Abort()
+	plan.bindSpill(tx)
 	appended, err := m.execute(ctx, d, executor, sink, plan, previous)
 	if err != nil {
 		return Snapshot{}, err

@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -294,4 +296,115 @@ func TestEachPartBatchDoesNotMaskSinkPanics(t *testing.T) {
 		}
 	}()
 	_, _ = eachPartBatch(context.Background(), f, schema, func(arrow.RecordBatch) error { panic("sink bug") })
+}
+
+// The delta spill lives in the dataset's transaction directory: removed on
+// abort, and a crash leftover is removed by the existing stage cleanup.
+func TestIncrementalSpillStaysInTransactionDirectory(t *testing.T) {
+	_, m, _ := managerFixture(t)
+	source := &tsSource{rows: []mergeRow{{1, time.Date(2026, 3, 1, 11, 0, 0, 0, time.UTC), "a"}}}
+	m.factory = func(catalog.Config, query.Limits) (query.Executor, error) { return source, nil }
+	d := incrementalDataset(false, query.Request{Mode: "federated", Sources: []string{"source"}, SQL: "SELECT id, ts, note FROM events"})
+	d.SchemaEvolution = nil
+	d.Incremental = &catalog.Incremental{Column: "ts", Key: []string{"id"}, Deletes: "soft", FullEvery: time.Hour}
+	m.config.Acceleration.Datasets[0] = d
+	ctx := context.Background()
+	for range 2 {
+		if _, err := m.Refresh(ctx, "events", false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if info, _ := m.LastRefresh("events"); !info.Incremental {
+		t.Fatalf("expected incremental %+v", info)
+	}
+	snapshot, err := m.Status("events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Dir(snapshot.Path)
+	leftovers := func() []string {
+		matches, _ := filepath.Glob(filepath.Join(dir, "*delta.arrow"))
+		return matches
+	}
+	if l := leftovers(); len(l) != 0 {
+		t.Fatalf("spill left after commit: %v", l)
+	}
+	tx, err := m.store.Begin(ctx, "events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spill, err := tx.(spillWriter).NewSpill()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := leftovers(); len(l) != 1 {
+		t.Fatalf("spill not in the dataset directory: %v", l)
+	}
+	_ = spill.Close()
+	if err := tx.Abort(); err != nil {
+		t.Fatal(err)
+	}
+	if l := leftovers(); len(l) != 0 {
+		t.Fatalf("spill left after abort: %v", l)
+	}
+	stray := filepath.Join(dir, ".stage-0123456789abcdef0123456789abcdef-delta.arrow")
+	if err := os.WriteFile(stray, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := storeCleanStages(ctx, f); err != nil {
+		t.Fatal(err)
+	}
+	if l := leftovers(); len(l) != 0 {
+		t.Fatalf("crash leftover not cleaned: %v", l)
+	}
+}
+
+func TestMergeSinkRowCapSpillFailureAndSentinelWatermarks(t *testing.T) {
+	schema := arrow.NewSchema([]arrow.Field{{Name: "id", Type: arrow.PrimitiveTypes.Int8}}, nil)
+	b := array.NewRecordBuilder(memory.DefaultAllocator, schema)
+	defer b.Release()
+	for i := range 11 {
+		b.Field(0).(*array.Int8Builder).Append(int8(i))
+	}
+	rec := b.NewRecordBatch()
+	defer rec.Release()
+	// 11 rows over a 640-byte cap's 10-row limit, though the bytes fit.
+	capped := &mergeSink{loaded: true, maxBytes: 640}
+	if err := capped.Write(rec); !errors.Is(err, errIncrementalFallback) || !strings.Contains(capped.fallback, "row cap") {
+		t.Fatalf("row cap: %v %q", err, capped.fallback)
+	}
+	// A spill that cannot be written falls back instead of failing the refresh.
+	dir := t.TempDir()
+	broken := &mergeSink{schema: schema, watermark: "id", key: []string{"id"}, inner: &noteCollector{}, newSpill: func() (*os.File, error) {
+		return os.Open(dir) // a directory: every write fails
+	}}
+	err := broken.Schema(schema)
+	if err == nil {
+		err = broken.Write(rec)
+	}
+	if err == nil {
+		err = broken.finish()
+	}
+	if !errors.Is(err, errIncrementalFallback) || !strings.Contains(broken.fallback, "spill") {
+		t.Fatalf("spill failure: %v %q", err, broken.fallback)
+	}
+	broken.release()
+	// 9999-12-31 in nanoseconds overflows UnixNano; raw values still order.
+	ts := &arrow.TimestampType{Unit: arrow.Microsecond}
+	tb := array.NewTimestampBuilder(memory.DefaultAllocator, ts)
+	defer tb.Release()
+	tb.Append(arrow.Timestamp(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).UnixMicro()))
+	tb.Append(arrow.Timestamp(time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC).UnixMicro()))
+	a := tb.NewArray()
+	defer a.Release()
+	early, _ := watermarkOf(a, 0)
+	late, _ := watermarkOf(a, 1)
+	if !early.less(late) || late.less(early) {
+		t.Fatal("sentinel watermark ordered incorrectly")
+	}
 }
