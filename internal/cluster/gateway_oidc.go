@@ -11,9 +11,15 @@ import (
 
 type oidcAuthority struct{}
 
-func isOIDCAuthority(ctx context.Context) bool {
-	_, ok := ctx.Value(oidcAuthority{}).(bool)
-	return ok
+// oidcExpiry reports the token expiry carried by an OIDC-authenticated context.
+// requestAuthorityErr checks it directly, so expiry does not depend on timer
+// delivery.
+func oidcExpiry(ctx context.Context) (time.Time, bool) {
+	if ctx == nil {
+		return time.Time{}, false
+	}
+	exp, ok := ctx.Value(oidcAuthority{}).(time.Time)
+	return exp, ok
 }
 
 // newGatewayOIDC is opt-in. Every mapped principal must already exist in the
@@ -55,6 +61,6 @@ func (g *Gateway) oidcAuthenticate(r *http.Request, token string) (string, conte
 	ctx, cancel := context.WithDeadline(g.ctx, exp)
 	context.AfterFunc(r.Context(), cancel)
 	ctx = context.WithValue(ctx, keyPrincipalID{}, principal)
-	ctx = context.WithValue(ctx, oidcAuthority{}, true)
+	ctx = context.WithValue(ctx, oidcAuthority{}, exp)
 	return g.oidc.Tenant(), ctx, true
 }

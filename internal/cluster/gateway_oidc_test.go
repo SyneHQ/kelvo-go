@@ -96,4 +96,18 @@ func TestGatewayOIDCTokenGetsExactlyTheMappedPrincipalAuthority(t *testing.T) {
 	if c := do("GET", "/v1/queries/theirs", rotationNew, ""); c != 200 {
 		t.Fatalf("API key: %d", c)
 	}
+	// An expiry carried in the request context denies authority even if the
+	// AfterFunc cancellation has not fired yet.
+	expired := context.WithValue(context.Background(), oidcAuthority{}, time.Now().Add(-time.Second))
+	if requestAuthorityErr(expired) == nil {
+		t.Fatal("expired OIDC authority accepted")
+	}
+	if requestAuthorityErr(context.WithValue(context.Background(), oidcAuthority{}, time.Now().Add(time.Hour))) != nil {
+		t.Fatal("live OIDC authority denied")
+	}
+	// A stale or poisoned key authenticator rejects OIDC tokens too.
+	auth.invalidate()
+	if c := do("GET", "/v1/queries/mine", token("alice"), ""); c != 401 {
+		t.Fatalf("OIDC accepted while key authority is unavailable: %d", c)
+	}
 }
