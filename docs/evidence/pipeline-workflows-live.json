@@ -1,0 +1,2053 @@
+{
+  "binary_sha256": "394b4cc72501b4e91de4b194402836a07e25a2ba9d824b7da1f7141d4f81441d",
+  "started_utc": "2026-10-27T20:09:15.380086+00:00",
+  "finished_utc": "2026-10-27T20:25:40.381171+00:00",
+  "runs_per_mode": 2,
+  "results": [
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 1.6127088659995934,
+      "result_bytes": 18480,
+      "answer": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      },
+      "state": "succeeded",
+      "workflow": "gmv_daily_by_tenant",
+      "mode": "native",
+      "run": 0,
+      "stats": {
+        "rows": 728,
+        "batches": 1,
+        "arrow_bytes": 17472,
+        "wire_bytes": 18480,
+        "backend": "postgres",
+        "prepare_ns": 1366285941,
+        "duration_ns": 1594645680,
+        "engine_streaming": true,
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 95633408,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.06,
+        "source_postgres": 1.38,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 114708480,
+        "node": 295018496,
+        "gateway": 202518528,
+        "load_client": 79572992,
+        "source_clickhouse": 1087315968,
+        "source_postgres": 530456576,
+        "source_mysql": 1629786112,
+        "query_worker": 95633408
+      },
+      "expected": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 1.536997571000029,
+      "result_bytes": 18480,
+      "answer": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      },
+      "state": "succeeded",
+      "workflow": "gmv_daily_by_tenant",
+      "mode": "native",
+      "run": 1,
+      "stats": {
+        "rows": 728,
+        "batches": 1,
+        "arrow_bytes": 17472,
+        "wire_bytes": 18480,
+        "backend": "postgres",
+        "prepare_ns": 1313665951,
+        "duration_ns": 1519483744,
+        "engine_streaming": true,
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 95404032,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.13,
+        "source_postgres": 1.41,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 114970624,
+        "node": 295018496,
+        "gateway": 202518528,
+        "load_client": 79704064,
+        "source_clickhouse": 1094791168,
+        "source_postgres": 531218432,
+        "source_mysql": 1629786112,
+        "query_worker": 95404032
+      },
+      "expected": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 20.633164318000127,
+      "result_bytes": 18064,
+      "answer": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      },
+      "state": "succeeded",
+      "workflow": "gmv_daily_by_tenant",
+      "mode": "federated",
+      "run": 0,
+      "stats": {
+        "rows": 728,
+        "batches": 1,
+        "arrow_bytes": 17472,
+        "wire_bytes": 18064,
+        "backend": "duckdb",
+        "prepare_ns": 49174893,
+        "duration_ns": 20617178718,
+        "engine_streaming": false,
+        "rows_fetched": 20000000,
+        "arrow_bytes_fetched": 669079164
+      },
+      "largest_query_worker_rss_bytes": 142262272,
+      "source_cpu_seconds": {
+        "source_clickhouse": 1.21,
+        "source_postgres": 8.09,
+        "source_mysql": 0.07
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 115470336,
+        "node": 297594880,
+        "gateway": 202649600,
+        "load_client": 79704064,
+        "source_clickhouse": 1104658432,
+        "source_postgres": 499236864,
+        "source_mysql": 1629786112,
+        "query_worker": 142262272
+      },
+      "expected": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 19.98596350700018,
+      "result_bytes": 18064,
+      "answer": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      },
+      "state": "succeeded",
+      "workflow": "gmv_daily_by_tenant",
+      "mode": "federated",
+      "run": 1,
+      "stats": {
+        "rows": 728,
+        "batches": 1,
+        "arrow_bytes": 17472,
+        "wire_bytes": 18064,
+        "backend": "duckdb",
+        "prepare_ns": 35635916,
+        "duration_ns": 19966942436,
+        "engine_streaming": false,
+        "rows_fetched": 20000000,
+        "arrow_bytes_fetched": 669079164
+      },
+      "largest_query_worker_rss_bytes": 136585216,
+      "source_cpu_seconds": {
+        "source_clickhouse": 1.54,
+        "source_postgres": 7.8,
+        "source_mysql": 0.07
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 115703808,
+        "node": 300093440,
+        "gateway": 202842112,
+        "load_client": 79704064,
+        "source_clickhouse": 1151303680,
+        "source_postgres": 500477952,
+        "source_mysql": 1629786112,
+        "query_worker": 136585216
+      },
+      "expected": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 39.469417283999974,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "gmv_daily_by_tenant",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 2832326656,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.62,
+        "source_postgres": 12.45,
+        "source_mysql": 0.12
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 115179520,
+        "node": 514396160,
+        "gateway": 202973184,
+        "load_client": 79704064,
+        "source_clickhouse": 1161289728,
+        "source_postgres": 436486144,
+        "source_mysql": 1629786112,
+        "query_worker": 2832326656
+      },
+      "expected": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 39.596588541000074,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "gmv_daily_by_tenant",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3058679808,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.61,
+        "source_postgres": 12.76,
+        "source_mysql": 0.13
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 115482624,
+        "node": 633970688,
+        "gateway": 203104256,
+        "load_client": 79704064,
+        "source_clickhouse": 1163444224,
+        "source_postgres": 434257920,
+        "source_mysql": 1645514752,
+        "query_worker": 3058679808
+      },
+      "expected": {
+        "rows": 728,
+        "sha256": "4a72c36c1d22f47d6f3b408c18745aa1ef11d7bd20e1c604e326a7f27e110c27"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 40.06859121400021,
+      "result_bytes": 4632,
+      "answer": {
+        "rows": 168,
+        "sha256": "20d06d9f7090a024fa91d13478aaff71eef96c490ae244f2dd8b0e6f64ab5b82"
+      },
+      "state": "succeeded",
+      "workflow": "sla_breach_by_carrier_week",
+      "mode": "federated",
+      "run": 0,
+      "stats": {
+        "rows": 168,
+        "batches": 1,
+        "arrow_bytes": 4032,
+        "wire_bytes": 4632,
+        "backend": "duckdb",
+        "prepare_ns": 120709904,
+        "duration_ns": 40047956884,
+        "engine_streaming": false,
+        "rows_fetched": 40000000,
+        "arrow_bytes_fetched": 1156579164
+      },
+      "largest_query_worker_rss_bytes": 269320192,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.68,
+        "source_postgres": 6.57,
+        "source_mysql": 10.57
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 115126272,
+        "node": 634265600,
+        "gateway": 200028160,
+        "load_client": 79704064,
+        "source_clickhouse": 1164603392,
+        "source_postgres": 494968832,
+        "source_mysql": 1660719104,
+        "query_worker": 269320192
+      },
+      "expected": {
+        "rows": 168,
+        "sha256": "20d06d9f7090a024fa91d13478aaff71eef96c490ae244f2dd8b0e6f64ab5b82"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 39.85065817900022,
+      "result_bytes": 4632,
+      "answer": {
+        "rows": 168,
+        "sha256": "20d06d9f7090a024fa91d13478aaff71eef96c490ae244f2dd8b0e6f64ab5b82"
+      },
+      "state": "succeeded",
+      "workflow": "sla_breach_by_carrier_week",
+      "mode": "federated",
+      "run": 1,
+      "stats": {
+        "rows": 168,
+        "batches": 1,
+        "arrow_bytes": 4032,
+        "wire_bytes": 4632,
+        "backend": "duckdb",
+        "prepare_ns": 48921798,
+        "duration_ns": 39830138089,
+        "engine_streaming": false,
+        "rows_fetched": 40000000,
+        "arrow_bytes_fetched": 1156579164
+      },
+      "largest_query_worker_rss_bytes": 267149312,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.62,
+        "source_postgres": 6.62,
+        "source_mysql": 10.6
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 117817344,
+        "node": 634081280,
+        "gateway": 200220672,
+        "load_client": 79704064,
+        "source_clickhouse": 1157943296,
+        "source_postgres": 496283648,
+        "source_mysql": 1660719104,
+        "query_worker": 267149312
+      },
+      "expected": {
+        "rows": 168,
+        "sha256": "20d06d9f7090a024fa91d13478aaff71eef96c490ae244f2dd8b0e6f64ab5b82"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 39.14171506699995,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "sla_breach_by_carrier_week",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3167244288,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.62,
+        "source_postgres": 12.33,
+        "source_mysql": 0.12
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 118128640,
+        "node": 634265600,
+        "gateway": 200351744,
+        "load_client": 79704064,
+        "source_clickhouse": 1175457792,
+        "source_postgres": 430981120,
+        "source_mysql": 1660719104,
+        "query_worker": 3167244288
+      },
+      "expected": {
+        "rows": 168,
+        "sha256": "20d06d9f7090a024fa91d13478aaff71eef96c490ae244f2dd8b0e6f64ab5b82"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 39.35747699400008,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "sla_breach_by_carrier_week",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3173126144,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.65,
+        "source_postgres": 12.31,
+        "source_mysql": 0.14
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 117399552,
+        "node": 527306752,
+        "gateway": 200351744,
+        "load_client": 79704064,
+        "source_clickhouse": 1182744576,
+        "source_postgres": 434774016,
+        "source_mysql": 1660719104,
+        "query_worker": 3173126144
+      },
+      "expected": {
+        "rows": 168,
+        "sha256": "20d06d9f7090a024fa91d13478aaff71eef96c490ae244f2dd8b0e6f64ab5b82"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 22.173841767999875,
+      "result_bytes": 9360,
+      "answer": {
+        "rows": 200,
+        "sha256": "1f2d5573ff07dbeec52b19d285c1490942923cd6c7cac85d416d7192f6d4af14"
+      },
+      "state": "succeeded",
+      "workflow": "top_sellers_by_city",
+      "mode": "federated",
+      "run": 0,
+      "stats": {
+        "rows": 200,
+        "batches": 1,
+        "arrow_bytes": 8548,
+        "wire_bytes": 9360,
+        "backend": "duckdb",
+        "prepare_ns": 54923736,
+        "duration_ns": 22155566790,
+        "engine_streaming": false,
+        "rows_fetched": 20050200,
+        "arrow_bytes_fetched": 752327273
+      },
+      "largest_query_worker_rss_bytes": 170094592,
+      "source_cpu_seconds": {
+        "source_clickhouse": 1.69,
+        "source_postgres": 8.56,
+        "source_mysql": 0.1
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 118317056,
+        "node": 504164352,
+        "gateway": 200351744,
+        "load_client": 79704064,
+        "source_clickhouse": 1180332032,
+        "source_postgres": 500588544,
+        "source_mysql": 1660719104,
+        "query_worker": 170094592
+      },
+      "expected": {
+        "rows": 200,
+        "sha256": "1f2d5573ff07dbeec52b19d285c1490942923cd6c7cac85d416d7192f6d4af14"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 22.213093585000024,
+      "result_bytes": 9360,
+      "answer": {
+        "rows": 200,
+        "sha256": "1f2d5573ff07dbeec52b19d285c1490942923cd6c7cac85d416d7192f6d4af14"
+      },
+      "state": "succeeded",
+      "workflow": "top_sellers_by_city",
+      "mode": "federated",
+      "run": 1,
+      "stats": {
+        "rows": 200,
+        "batches": 1,
+        "arrow_bytes": 8548,
+        "wire_bytes": 9360,
+        "backend": "duckdb",
+        "prepare_ns": 58563346,
+        "duration_ns": 22195220099,
+        "engine_streaming": false,
+        "rows_fetched": 20050200,
+        "arrow_bytes_fetched": 752327273
+      },
+      "largest_query_worker_rss_bytes": 168116224,
+      "source_cpu_seconds": {
+        "source_clickhouse": 1.36,
+        "source_postgres": 8.62,
+        "source_mysql": 0.1
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 118673408,
+        "node": 504164352,
+        "gateway": 200351744,
+        "load_client": 79704064,
+        "source_clickhouse": 1117339648,
+        "source_postgres": 500846592,
+        "source_mysql": 1660719104,
+        "query_worker": 168116224
+      },
+      "expected": {
+        "rows": 200,
+        "sha256": "1f2d5573ff07dbeec52b19d285c1490942923cd6c7cac85d416d7192f6d4af14"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 39.166759572000046,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "top_sellers_by_city",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3226529792,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.63,
+        "source_postgres": 12.33,
+        "source_mysql": 0.13
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 126525440,
+        "node": 718565376,
+        "gateway": 200482816,
+        "load_client": 79704064,
+        "source_clickhouse": 1183178752,
+        "source_postgres": 434110464,
+        "source_mysql": 1660719104,
+        "query_worker": 3226529792
+      },
+      "expected": {
+        "rows": 200,
+        "sha256": "1f2d5573ff07dbeec52b19d285c1490942923cd6c7cac85d416d7192f6d4af14"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 39.49748850500009,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "top_sellers_by_city",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3228049408,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.85,
+        "source_postgres": 12.39,
+        "source_mysql": 0.13
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 126656512,
+        "node": 731041792,
+        "gateway": 200671232,
+        "load_client": 79704064,
+        "source_clickhouse": 1178345472,
+        "source_postgres": 436465664,
+        "source_mysql": 1660194816,
+        "query_worker": 3228049408
+      },
+      "expected": {
+        "rows": 200,
+        "sha256": "1f2d5573ff07dbeec52b19d285c1490942923cd6c7cac85d416d7192f6d4af14"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 22.44619985999998,
+      "result_bytes": 6456,
+      "answer": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      },
+      "state": "succeeded",
+      "workflow": "cohort_retention",
+      "mode": "native",
+      "run": 0,
+      "stats": {
+        "rows": 189,
+        "batches": 1,
+        "arrow_bytes": 5422,
+        "wire_bytes": 6456,
+        "backend": "postgres",
+        "prepare_ns": 22338868734,
+        "duration_ns": 22429097363,
+        "engine_streaming": true,
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 95481856,
+      "source_cpu_seconds": {
+        "source_clickhouse": 1.64,
+        "source_postgres": 19.99,
+        "source_mysql": 0.08
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 125657088,
+        "node": 731041792,
+        "gateway": 200671232,
+        "load_client": 79704064,
+        "source_clickhouse": 1184911360,
+        "source_postgres": 560812032,
+        "source_mysql": 1660194816,
+        "query_worker": 95481856
+      },
+      "expected": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 19.61714330699988,
+      "result_bytes": 6456,
+      "answer": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      },
+      "state": "succeeded",
+      "workflow": "cohort_retention",
+      "mode": "native",
+      "run": 1,
+      "stats": {
+        "rows": 189,
+        "batches": 1,
+        "arrow_bytes": 5422,
+        "wire_bytes": 6456,
+        "backend": "postgres",
+        "prepare_ns": 19504783335,
+        "duration_ns": 19599047574,
+        "engine_streaming": true,
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 97345536,
+      "source_cpu_seconds": {
+        "source_clickhouse": 1.08,
+        "source_postgres": 19.17,
+        "source_mysql": 0.07
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 125054976,
+        "node": 731041792,
+        "gateway": 200802304,
+        "load_client": 79704064,
+        "source_clickhouse": 1118228480,
+        "source_postgres": 563630080,
+        "source_mysql": 1660194816,
+        "query_worker": 97345536
+      },
+      "expected": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 15.877654360000179,
+      "result_bytes": 6048,
+      "answer": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      },
+      "state": "succeeded",
+      "workflow": "cohort_retention",
+      "mode": "federated",
+      "run": 0,
+      "stats": {
+        "rows": 189,
+        "batches": 1,
+        "arrow_bytes": 5422,
+        "wire_bytes": 6048,
+        "backend": "duckdb",
+        "prepare_ns": 51621516,
+        "duration_ns": 15860109482,
+        "engine_streaming": false,
+        "rows_fetched": 21000000,
+        "arrow_bytes_fetched": 341920339
+      },
+      "largest_query_worker_rss_bytes": 912719872,
+      "source_cpu_seconds": {
+        "source_clickhouse": 1.45,
+        "source_postgres": 5.97,
+        "source_mysql": 0.07
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 124317696,
+        "node": 731041792,
+        "gateway": 200802304,
+        "load_client": 79704064,
+        "source_clickhouse": 1177300992,
+        "source_postgres": 499552256,
+        "source_mysql": 1660194816,
+        "query_worker": 912719872
+      },
+      "expected": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 15.354609706000247,
+      "result_bytes": 6048,
+      "answer": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      },
+      "state": "succeeded",
+      "workflow": "cohort_retention",
+      "mode": "federated",
+      "run": 1,
+      "stats": {
+        "rows": 189,
+        "batches": 1,
+        "arrow_bytes": 5422,
+        "wire_bytes": 6048,
+        "backend": "duckdb",
+        "prepare_ns": 37722336,
+        "duration_ns": 15335056435,
+        "engine_streaming": false,
+        "rows_fetched": 21000000,
+        "arrow_bytes_fetched": 341920339
+      },
+      "largest_query_worker_rss_bytes": 945180672,
+      "source_cpu_seconds": {
+        "source_clickhouse": 1.02,
+        "source_postgres": 5.86,
+        "source_mysql": 0.06
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 125186048,
+        "node": 731041792,
+        "gateway": 200802304,
+        "load_client": 79704064,
+        "source_clickhouse": 1124118528,
+        "source_postgres": 499425280,
+        "source_mysql": 1660194816,
+        "query_worker": 945180672
+      },
+      "expected": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 41.57456133900041,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "cohort_retention",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3325960192,
+      "source_cpu_seconds": {
+        "source_clickhouse": 3.08,
+        "source_postgres": 13.01,
+        "source_mysql": 0.16
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 126103552,
+        "node": 731041792,
+        "gateway": 201064448,
+        "load_client": 79704064,
+        "source_clickhouse": 1178972160,
+        "source_postgres": 438845440,
+        "source_mysql": 1660194816,
+        "query_worker": 3325960192
+      },
+      "expected": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 39.42228193700021,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "cohort_retention",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3343876096,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.83,
+        "source_postgres": 12.48,
+        "source_mysql": 0.14
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 125198336,
+        "node": 721977344,
+        "gateway": 201064448,
+        "load_client": 79704064,
+        "source_clickhouse": 1186906112,
+        "source_postgres": 437882880,
+        "source_mysql": 1659670528,
+        "query_worker": 3343876096
+      },
+      "expected": {
+        "rows": 189,
+        "sha256": "fb41169068239bf3a370edba2b2487489178d3cff1fda8d4f3b070681c06efc8"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 15.183000898000046,
+      "result_bytes": 896,
+      "answer": {
+        "rows": 20,
+        "sha256": "d121fc89cd67411ae82a6ddd83a01f3c4cc4cb7978a5c1d47b0e22ad6d3196d0"
+      },
+      "state": "succeeded",
+      "workflow": "rider_on_time",
+      "mode": "federated",
+      "run": 0,
+      "stats": {
+        "rows": 20,
+        "batches": 1,
+        "arrow_bytes": 400,
+        "wire_bytes": 896,
+        "source_wire_bytes": 226257136,
+        "backend": "duckdb",
+        "prepare_ns": 47682757,
+        "duration_ns": 15166244243,
+        "engine_streaming": false,
+        "rows_fetched": 26771597,
+        "arrow_bytes_fetched": 551170856
+      },
+      "largest_query_worker_rss_bytes": 223461376,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.02,
+        "source_postgres": 0.0,
+        "source_mysql": 5.73
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 124289024,
+        "node": 722108416,
+        "gateway": 201064448,
+        "load_client": 79704064,
+        "source_clickhouse": 1202364416,
+        "source_postgres": 283938816,
+        "source_mysql": 1660112896,
+        "query_worker": 223461376
+      },
+      "expected": {
+        "rows": 20,
+        "sha256": "d121fc89cd67411ae82a6ddd83a01f3c4cc4cb7978a5c1d47b0e22ad6d3196d0"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 14.945415104999938,
+      "result_bytes": 896,
+      "answer": {
+        "rows": 20,
+        "sha256": "d121fc89cd67411ae82a6ddd83a01f3c4cc4cb7978a5c1d47b0e22ad6d3196d0"
+      },
+      "state": "succeeded",
+      "workflow": "rider_on_time",
+      "mode": "federated",
+      "run": 1,
+      "stats": {
+        "rows": 20,
+        "batches": 1,
+        "arrow_bytes": 400,
+        "wire_bytes": 896,
+        "source_wire_bytes": 226257136,
+        "backend": "duckdb",
+        "prepare_ns": 37190526,
+        "duration_ns": 14927160258,
+        "engine_streaming": false,
+        "rows_fetched": 26771597,
+        "arrow_bytes_fetched": 551170856
+      },
+      "largest_query_worker_rss_bytes": 219226112,
+      "source_cpu_seconds": {
+        "source_clickhouse": 1.63,
+        "source_postgres": 0.0,
+        "source_mysql": 5.43
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 125468672,
+        "node": 722108416,
+        "gateway": 203268096,
+        "load_client": 79704064,
+        "source_clickhouse": 1131229184,
+        "source_postgres": 283938816,
+        "source_mysql": 1660112896,
+        "query_worker": 219226112
+      },
+      "expected": {
+        "rows": 20,
+        "sha256": "d121fc89cd67411ae82a6ddd83a01f3c4cc4cb7978a5c1d47b0e22ad6d3196d0"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 56.71314127000005,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "rider_on_time",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3074072576,
+      "source_cpu_seconds": {
+        "source_clickhouse": 5.23,
+        "source_postgres": 0.0,
+        "source_mysql": 17.75
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 125964288,
+        "node": 722108416,
+        "gateway": 203268096,
+        "load_client": 79704064,
+        "source_clickhouse": 1190195200,
+        "source_postgres": 283938816,
+        "source_mysql": 1660243968,
+        "query_worker": 3074072576
+      },
+      "expected": {
+        "rows": 20,
+        "sha256": "d121fc89cd67411ae82a6ddd83a01f3c4cc4cb7978a5c1d47b0e22ad6d3196d0"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 52.713508714,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "rider_on_time",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3071090688,
+      "source_cpu_seconds": {
+        "source_clickhouse": 3.53,
+        "source_postgres": 0.0,
+        "source_mysql": 17.75
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 123867136,
+        "node": 668762112,
+        "gateway": 203268096,
+        "load_client": 79704064,
+        "source_clickhouse": 1178845184,
+        "source_postgres": 283938816,
+        "source_mysql": 1660243968,
+        "query_worker": 3071090688
+      },
+      "expected": {
+        "rows": 20,
+        "sha256": "d121fc89cd67411ae82a6ddd83a01f3c4cc4cb7978a5c1d47b0e22ad6d3196d0"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 2.418544099999963,
+      "result_bytes": 11424,
+      "answer": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      },
+      "state": "succeeded",
+      "workflow": "hot_cold_daily_events",
+      "mode": "federated",
+      "run": 0,
+      "stats": {
+        "rows": 431,
+        "batches": 1,
+        "arrow_bytes": 10909,
+        "wire_bytes": 11424,
+        "source_wire_bytes": 144956024,
+        "backend": "duckdb",
+        "prepare_ns": 21069495,
+        "duration_ns": 2400116895,
+        "engine_streaming": false,
+        "rows_fetched": 6771597,
+        "arrow_bytes_fetched": 144911412
+      },
+      "largest_query_worker_rss_bytes": 174272512,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.61,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 122982400,
+        "node": 668762112,
+        "gateway": 203268096,
+        "load_client": 79835136,
+        "source_clickhouse": 1128771584,
+        "source_postgres": 283938816,
+        "source_mysql": 1660243968,
+        "query_worker": 174272512
+      },
+      "expected": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 2.379752547999942,
+      "result_bytes": 11424,
+      "answer": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      },
+      "state": "succeeded",
+      "workflow": "hot_cold_daily_events",
+      "mode": "federated",
+      "run": 1,
+      "stats": {
+        "rows": 431,
+        "batches": 1,
+        "arrow_bytes": 10909,
+        "wire_bytes": 11424,
+        "source_wire_bytes": 144956024,
+        "backend": "duckdb",
+        "prepare_ns": 17313177,
+        "duration_ns": 2361377800,
+        "engine_streaming": false,
+        "rows_fetched": 6771597,
+        "arrow_bytes_fetched": 144911412
+      },
+      "largest_query_worker_rss_bytes": 172871680,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.67,
+        "source_postgres": 0.0,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 122982400,
+        "node": 627081216,
+        "gateway": 203268096,
+        "load_client": 79835136,
+        "source_clickhouse": 1135779840,
+        "source_postgres": 283938816,
+        "source_mysql": 1660243968,
+        "query_worker": 172871680
+      },
+      "expected": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 2.576594226999987,
+      "result_bytes": 11424,
+      "answer": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      },
+      "state": "succeeded",
+      "workflow": "hot_cold_daily_events",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows": 431,
+        "batches": 1,
+        "arrow_bytes": 10909,
+        "wire_bytes": 11424,
+        "backend": "duckdb",
+        "prepare_ns": 109466080,
+        "duration_ns": 2560866461,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "events_hot_snap",
+            "generation": "a26d6caa1d9f1f8817b71542e0e7f69e",
+            "refreshed_at": "2026-10-27T20:19:10.080110811Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 234532864,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.33,
+        "source_postgres": 0.0,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 123244544,
+        "node": 627081216,
+        "gateway": 203399168,
+        "load_client": 79835136,
+        "source_clickhouse": 1132134400,
+        "source_postgres": 283938816,
+        "source_mysql": 1660243968,
+        "query_worker": 234532864
+      },
+      "expected": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 2.532224810999651,
+      "result_bytes": 11424,
+      "answer": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      },
+      "state": "succeeded",
+      "workflow": "hot_cold_daily_events",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows": 431,
+        "batches": 1,
+        "arrow_bytes": 10909,
+        "wire_bytes": 11424,
+        "backend": "duckdb",
+        "prepare_ns": 93168671,
+        "duration_ns": 2512999619,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "events_hot_snap",
+            "generation": "a26d6caa1d9f1f8817b71542e0e7f69e",
+            "refreshed_at": "2026-10-27T20:19:10.080110811Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 252440576,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.11,
+        "source_postgres": 0.0,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 124030976,
+        "node": 627081216,
+        "gateway": 203399168,
+        "load_client": 79835136,
+        "source_clickhouse": 1118289920,
+        "source_postgres": 283938816,
+        "source_mysql": 1660243968,
+        "query_worker": 252440576
+      },
+      "expected": {
+        "rows": 431,
+        "sha256": "b660ec76d6e5e0e6b30c79b0b723563cd56d74209ddff20f0fc7dd7f3e958dad"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 1.356788425999639,
+      "result_bytes": 1496,
+      "answer": {
+        "rows": 18,
+        "sha256": "268367ba655410f3c9313e48c8babee8c0fc16341c23292a51ed2991e71e1cd5"
+      },
+      "state": "succeeded",
+      "workflow": "basket_mix",
+      "mode": "federated",
+      "run": 0,
+      "stats": {
+        "rows": 18,
+        "batches": 1,
+        "arrow_bytes": 764,
+        "wire_bytes": 1496,
+        "source_wire_bytes": 63110352,
+        "backend": "duckdb",
+        "prepare_ns": 44690371,
+        "duration_ns": 1340745967,
+        "engine_streaming": false,
+        "rows_fetched": 2880027,
+        "arrow_bytes_fetched": 82489727
+      },
+      "largest_query_worker_rss_bytes": 352927744,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.33,
+        "source_postgres": 0.45,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 124030976,
+        "node": 627081216,
+        "gateway": 203399168,
+        "load_client": 79835136,
+        "source_clickhouse": 1118580736,
+        "source_postgres": 398036992,
+        "source_mysql": 1660243968,
+        "query_worker": 352927744
+      },
+      "expected": {
+        "rows": 18,
+        "sha256": "268367ba655410f3c9313e48c8babee8c0fc16341c23292a51ed2991e71e1cd5"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 1.3290293830000337,
+      "result_bytes": 1496,
+      "answer": {
+        "rows": 18,
+        "sha256": "268367ba655410f3c9313e48c8babee8c0fc16341c23292a51ed2991e71e1cd5"
+      },
+      "state": "succeeded",
+      "workflow": "basket_mix",
+      "mode": "federated",
+      "run": 1,
+      "stats": {
+        "rows": 18,
+        "batches": 1,
+        "arrow_bytes": 764,
+        "wire_bytes": 1496,
+        "source_wire_bytes": 63110352,
+        "backend": "duckdb",
+        "prepare_ns": 43819655,
+        "duration_ns": 1310042180,
+        "engine_streaming": false,
+        "rows_fetched": 2880027,
+        "arrow_bytes_fetched": 82489727
+      },
+      "largest_query_worker_rss_bytes": 354693120,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.26,
+        "source_postgres": 0.39,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 124293120,
+        "node": 627081216,
+        "gateway": 203399168,
+        "load_client": 79835136,
+        "source_clickhouse": 1124114432,
+        "source_postgres": 412065792,
+        "source_mysql": 1660243968,
+        "query_worker": 354693120
+      },
+      "expected": {
+        "rows": 18,
+        "sha256": "268367ba655410f3c9313e48c8babee8c0fc16341c23292a51ed2991e71e1cd5"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 14.194852789999914,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "basket_mix",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 2501038080,
+      "source_cpu_seconds": {
+        "source_clickhouse": 6.32,
+        "source_postgres": 0.0,
+        "source_mysql": 0.06
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 124424192,
+        "node": 664981504,
+        "gateway": 203530240,
+        "load_client": 79835136,
+        "source_clickhouse": 1209696256,
+        "source_postgres": 283938816,
+        "source_mysql": 1660243968,
+        "query_worker": 2501038080
+      },
+      "expected": {
+        "rows": 18,
+        "sha256": "268367ba655410f3c9313e48c8babee8c0fc16341c23292a51ed2991e71e1cd5"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 13.830241820000083,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "basket_mix",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 2502160384,
+      "source_cpu_seconds": {
+        "source_clickhouse": 5.69,
+        "source_postgres": 0.0,
+        "source_mysql": 0.06
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 124227584,
+        "node": 705384448,
+        "gateway": 203530240,
+        "load_client": 79835136,
+        "source_clickhouse": 1138438144,
+        "source_postgres": 283938816,
+        "source_mysql": 1660243968,
+        "query_worker": 2502160384
+      },
+      "expected": {
+        "rows": 18,
+        "sha256": "268367ba655410f3c9313e48c8babee8c0fc16341c23292a51ed2991e71e1cd5"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 41.410243030999936,
+      "result_bytes": 1088,
+      "answer": {
+        "rows": 9,
+        "sha256": "9e4345e4750f6e15a9e9a97bcd25910b361fb47d1086def1eeaa07b7034f0721"
+      },
+      "state": "succeeded",
+      "workflow": "cod_rto_by_segment",
+      "mode": "federated",
+      "run": 0,
+      "stats": {
+        "rows": 9,
+        "batches": 1,
+        "arrow_bytes": 368,
+        "wire_bytes": 1088,
+        "backend": "duckdb",
+        "prepare_ns": 48746454,
+        "duration_ns": 41394175666,
+        "engine_streaming": false,
+        "rows_fetched": 41000000,
+        "arrow_bytes_fetched": 1231967695
+      },
+      "largest_query_worker_rss_bytes": 551141376,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.81,
+        "source_postgres": 7.97,
+        "source_mysql": 9.9
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 124141568,
+        "node": 705384448,
+        "gateway": 203530240,
+        "load_client": 79835136,
+        "source_clickhouse": 1188507648,
+        "source_postgres": 498397184,
+        "source_mysql": 1660375040,
+        "query_worker": 551141376
+      },
+      "expected": {
+        "rows": 9,
+        "sha256": "9e4345e4750f6e15a9e9a97bcd25910b361fb47d1086def1eeaa07b7034f0721"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 41.42990047399962,
+      "result_bytes": 1088,
+      "answer": {
+        "rows": 9,
+        "sha256": "9e4345e4750f6e15a9e9a97bcd25910b361fb47d1086def1eeaa07b7034f0721"
+      },
+      "state": "succeeded",
+      "workflow": "cod_rto_by_segment",
+      "mode": "federated",
+      "run": 1,
+      "stats": {
+        "rows": 9,
+        "batches": 1,
+        "arrow_bytes": 368,
+        "wire_bytes": 1088,
+        "backend": "duckdb",
+        "prepare_ns": 49720459,
+        "duration_ns": 41409028313,
+        "engine_streaming": false,
+        "rows_fetched": 41000000,
+        "arrow_bytes_fetched": 1231967695
+      },
+      "largest_query_worker_rss_bytes": 554729472,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.75,
+        "source_postgres": 7.98,
+        "source_mysql": 9.88
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 137691136,
+        "node": 705384448,
+        "gateway": 203530240,
+        "load_client": 79966208,
+        "source_clickhouse": 1193189376,
+        "source_postgres": 498479104,
+        "source_mysql": 1660375040,
+        "query_worker": 554729472
+      },
+      "expected": {
+        "rows": 9,
+        "sha256": "9e4345e4750f6e15a9e9a97bcd25910b361fb47d1086def1eeaa07b7034f0721"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 38.752880041000026,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "cod_rto_by_segment",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3332890624,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.66,
+        "source_postgres": 12.34,
+        "source_mysql": 0.13
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 137216000,
+        "node": 599597056,
+        "gateway": 203530240,
+        "load_client": 80097280,
+        "source_clickhouse": 1191288832,
+        "source_postgres": 437755904,
+        "source_mysql": 1660375040,
+        "query_worker": 3332890624
+      },
+      "expected": {
+        "rows": 9,
+        "sha256": "9e4345e4750f6e15a9e9a97bcd25910b361fb47d1086def1eeaa07b7034f0721"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": false,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "latency_seconds": 39.32130304500015,
+      "state": "failed",
+      "upstream_error": "DATASET_UNAVAILABLE",
+      "upstream_message": "Accelerated dataset is missing, stale, or requires a refresh",
+      "workflow": "cod_rto_by_segment",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 3327377408,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.69,
+        "source_postgres": 12.39,
+        "source_mysql": 0.13
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 136392704,
+        "node": 592175104,
+        "gateway": 203530240,
+        "load_client": 80097280,
+        "source_clickhouse": 1196290048,
+        "source_postgres": 437489664,
+        "source_mysql": 1660375040,
+        "query_worker": 3327377408
+      },
+      "expected": {
+        "rows": 9,
+        "sha256": "9e4345e4750f6e15a9e9a97bcd25910b361fb47d1086def1eeaa07b7034f0721"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.08725997799956531,
+      "result_bytes": 1056,
+      "answer": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      },
+      "state": "succeeded",
+      "workflow": "live_rider_pings_hourly",
+      "mode": "native",
+      "run": 0,
+      "stats": {
+        "rows": 24,
+        "batches": 1,
+        "arrow_bytes": 576,
+        "wire_bytes": 1056,
+        "source_wire_bytes": 1056,
+        "backend": "clickhouse",
+        "prepare_ns": 47555169,
+        "duration_ns": 69064289,
+        "engine_streaming": true,
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 0,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.09,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 135151616,
+        "node": 547168256,
+        "gateway": 203530240,
+        "load_client": 80097280,
+        "source_clickhouse": 1130991616,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040
+      },
+      "expected": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.09053776500013555,
+      "result_bytes": 1056,
+      "answer": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      },
+      "state": "succeeded",
+      "workflow": "live_rider_pings_hourly",
+      "mode": "native",
+      "run": 1,
+      "stats": {
+        "rows": 24,
+        "batches": 1,
+        "arrow_bytes": 576,
+        "wire_bytes": 1056,
+        "source_wire_bytes": 1056,
+        "backend": "clickhouse",
+        "prepare_ns": 50260863,
+        "duration_ns": 73387638,
+        "engine_streaming": true,
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 0,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.09,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 134832128,
+        "node": 547168256,
+        "gateway": 203530240,
+        "load_client": 80097280,
+        "source_clickhouse": 1136865280,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040
+      },
+      "expected": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.4527781659999164,
+      "result_bytes": 1056,
+      "answer": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      },
+      "state": "succeeded",
+      "workflow": "live_rider_pings_hourly",
+      "mode": "federated",
+      "run": 0,
+      "stats": {
+        "rows": 24,
+        "batches": 1,
+        "arrow_bytes": 576,
+        "wire_bytes": 1056,
+        "source_wire_bytes": 81286032,
+        "backend": "duckdb",
+        "prepare_ns": 11832982,
+        "duration_ns": 436741605,
+        "engine_streaming": false,
+        "rows_fetched": 6771597,
+        "arrow_bytes_fetched": 81259164
+      },
+      "largest_query_worker_rss_bytes": 180834304,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.21,
+        "source_postgres": 0.0,
+        "source_mysql": 0.01
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 136945664,
+        "node": 547168256,
+        "gateway": 203530240,
+        "load_client": 80097280,
+        "source_clickhouse": 1142108160,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 180834304
+      },
+      "expected": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.4017681420000372,
+      "result_bytes": 1056,
+      "answer": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      },
+      "state": "succeeded",
+      "workflow": "live_rider_pings_hourly",
+      "mode": "federated",
+      "run": 1,
+      "stats": {
+        "rows": 24,
+        "batches": 1,
+        "arrow_bytes": 576,
+        "wire_bytes": 1056,
+        "source_wire_bytes": 81286032,
+        "backend": "duckdb",
+        "prepare_ns": 12379237,
+        "duration_ns": 384580890,
+        "engine_streaming": false,
+        "rows_fetched": 6771597,
+        "arrow_bytes_fetched": 81259164
+      },
+      "largest_query_worker_rss_bytes": 159277056,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.18,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 136945664,
+        "node": 547168256,
+        "gateway": 203530240,
+        "load_client": 80097280,
+        "source_clickhouse": 1143025664,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 159277056
+      },
+      "expected": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.6243291559999307,
+      "result_bytes": 1056,
+      "answer": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      },
+      "state": "succeeded",
+      "workflow": "live_rider_pings_hourly",
+      "mode": "snapshot",
+      "run": 0,
+      "stats": {
+        "rows": 24,
+        "batches": 1,
+        "arrow_bytes": 576,
+        "wire_bytes": 1056,
+        "backend": "duckdb",
+        "prepare_ns": 114676963,
+        "duration_ns": 609218749,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "events_hot_snap",
+            "generation": "a26d6caa1d9f1f8817b71542e0e7f69e",
+            "refreshed_at": "2026-10-27T20:19:10.080110811Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 196833280,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.41,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 136945664,
+        "node": 547168256,
+        "gateway": 203530240,
+        "load_client": 80097280,
+        "source_clickhouse": 1211228160,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 196833280
+      },
+      "expected": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "ops",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 0.5686060630000611,
+      "result_bytes": 1056,
+      "answer": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      },
+      "state": "succeeded",
+      "workflow": "live_rider_pings_hourly",
+      "mode": "snapshot",
+      "run": 1,
+      "stats": {
+        "rows": 24,
+        "batches": 1,
+        "arrow_bytes": 576,
+        "wire_bytes": 1056,
+        "backend": "duckdb",
+        "prepare_ns": 91379783,
+        "duration_ns": 550710630,
+        "engine_streaming": false,
+        "accelerations": [
+          {
+            "dataset": "events_hot_snap",
+            "generation": "a26d6caa1d9f1f8817b71542e0e7f69e",
+            "refreshed_at": "2026-10-27T20:19:10.080110811Z"
+          }
+        ],
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 197791744,
+      "source_cpu_seconds": {
+        "source_clickhouse": 0.04,
+        "source_postgres": 0.0,
+        "source_mysql": 0.0
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 136945664,
+        "node": 547168256,
+        "gateway": 203530240,
+        "load_client": 80097280,
+        "source_clickhouse": 1211228160,
+        "source_postgres": 283938816,
+        "source_mysql": 1660375040,
+        "query_worker": 197791744
+      },
+      "expected": {
+        "rows": 24,
+        "sha256": "fa6d294470b0c9883992ce4516eb924d07372b4b475181616c5cec54962629e3"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "seller3",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 39.427381788000275,
+      "result_bytes": 1432,
+      "answer": {
+        "rows": 30,
+        "sha256": "f5c6939091ee51ab438ec90c99fcf850bebf3da367bde81baf20dc5a8a18effc"
+      },
+      "state": "succeeded",
+      "workflow": "seller3_portal",
+      "mode": "federated",
+      "run": 0,
+      "stats": {
+        "rows": 30,
+        "batches": 1,
+        "arrow_bytes": 840,
+        "wire_bytes": 1432,
+        "backend": "duckdb",
+        "prepare_ns": 29828949,
+        "duration_ns": 39411126141,
+        "engine_streaming": false,
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 203759616,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.69,
+        "source_postgres": 7.64,
+        "source_mysql": 9.62
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 138563584,
+        "node": 547168256,
+        "gateway": 203530240,
+        "load_client": 80097280,
+        "source_clickhouse": 1198202880,
+        "source_postgres": 498028544,
+        "source_mysql": 1660375040,
+        "query_worker": 203759616
+      },
+      "expected": {
+        "rows": 30,
+        "sha256": "f5c6939091ee51ab438ec90c99fcf850bebf3da367bde81baf20dc5a8a18effc"
+      }
+    },
+    {
+      "tenant": "a",
+      "principal": "seller3",
+      "refusals": 0,
+      "ok": true,
+      "latency_seconds": 39.51682946400024,
+      "result_bytes": 1432,
+      "answer": {
+        "rows": 30,
+        "sha256": "f5c6939091ee51ab438ec90c99fcf850bebf3da367bde81baf20dc5a8a18effc"
+      },
+      "state": "succeeded",
+      "workflow": "seller3_portal",
+      "mode": "federated",
+      "run": 1,
+      "stats": {
+        "rows": 30,
+        "batches": 1,
+        "arrow_bytes": 840,
+        "wire_bytes": 1432,
+        "backend": "duckdb",
+        "prepare_ns": 30974266,
+        "duration_ns": 39499089078,
+        "engine_streaming": false,
+        "rows_fetched": 0,
+        "arrow_bytes_fetched": 0
+      },
+      "largest_query_worker_rss_bytes": 203677696,
+      "source_cpu_seconds": {
+        "source_clickhouse": 2.69,
+        "source_postgres": 7.53,
+        "source_mysql": 9.7
+      },
+      "peak_rss_bytes_by_role": {
+        "broker": 139481088,
+        "node": 478490624,
+        "gateway": 203530240,
+        "load_client": 80097280,
+        "source_clickhouse": 1203253248,
+        "source_postgres": 498024448,
+        "source_mysql": 1660375040,
+        "query_worker": 203677696
+      },
+      "expected": {
+        "rows": 30,
+        "sha256": "f5c6939091ee51ab438ec90c99fcf850bebf3da367bde81baf20dc5a8a18effc"
+      }
+    }
+  ],
+  "denials": [
+    {
+      "check": "seller3_hidden_column",
+      "refused": true,
+      "error": "UNAVAILABLE",
+      "http_status": 503,
+      "upstream_error": "PERMISSION_DENIED"
+    },
+    {
+      "check": "seller3_unlisted_source",
+      "refused": true,
+      "error": "PERMISSION_DENIED",
+      "http_status": 403,
+      "upstream_error": null
+    },
+    {
+      "check": "tenant_b_cannot_see_orders",
+      "refused": true,
+      "error": "PERMISSION_DENIED",
+      "http_status": 403,
+      "upstream_error": null
+    }
+  ]
+}

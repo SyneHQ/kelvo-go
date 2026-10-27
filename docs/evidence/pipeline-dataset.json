@@ -1,0 +1,99 @@
+{
+  "database_kind": {
+    "postgres": {
+      "bytes_on_disk": 2841739264
+    },
+    "mysql": {
+      "bytes_on_disk": 1657389056
+    },
+    "clickhouse": {
+      "bytes_on_disk": 992380096
+    }
+  },
+  "tables": {
+    "orders": {
+      "source": "postgres",
+      "load_seconds": 63.725,
+      "rows": 20000000
+    },
+    "customers": {
+      "source": "postgres",
+      "load_seconds": 2.262,
+      "rows": 1000000
+    },
+    "shipments": {
+      "source": "mysql",
+      "load_seconds": 153.265,
+      "rows": 20000000
+    },
+    "sellers": {
+      "source": "mysql",
+      "load_seconds": 0.451,
+      "rows": 50000
+    },
+    "warehouses": {
+      "source": "mysql",
+      "load_seconds": 0.247,
+      "rows": 200
+    },
+    "order_items": {
+      "source": "clickhouse",
+      "load_seconds": 12.53,
+      "rows": 50001759
+    },
+    "events_hot": {
+      "source": "clickhouse",
+      "load_seconds": 3.127,
+      "rows": 6771597
+    }
+  },
+  "generator_manifest": {
+    "seed": 20261027,
+    "scale": 20000000,
+    "duckdb": "1.4.1",
+    "hot_from": "2025-12-01",
+    "tables": {
+      "customers": {
+        "rows": 1000000,
+        "bytes": 3616855,
+        "content_checksum": "9228784262035252855798030"
+      },
+      "sellers": {
+        "rows": 50000,
+        "bytes": 177187,
+        "content_checksum": "460889489012858741081843"
+      },
+      "warehouses": {
+        "rows": 200,
+        "bytes": 1208,
+        "content_checksum": "1780720259883534307954"
+      },
+      "orders": {
+        "rows": 20000000,
+        "bytes": 288493344,
+        "content_checksum": "184485328105371849147365562"
+      },
+      "order_items": {
+        "rows": 50001759,
+        "bytes": 416228960,
+        "content_checksum": "461203853736876872831387956"
+      },
+      "shipments": {
+        "rows": 20000000,
+        "bytes": 396583349,
+        "content_checksum": "184450972153912018344124976"
+      },
+      "events_cold": {
+        "rows": 153228403,
+        "bytes": 2036712455,
+        "content_checksum": "1413217311757890814819949799"
+      },
+      "events_hot": {
+        "rows": 6771597,
+        "bytes": 90173442,
+        "content_checksum": "62450182088803920179299087"
+      }
+    }
+  },
+  "scope": "Rows/bytes loaded into the owned PostgreSQL 17.6, MySQL 8.4 and ClickHouse 25.8 containers on runner slot 10 from benchmarks/pipelines/generate.py --scale 20000000 --seed 20261027. events_cold stays as a local Parquet file. Load seconds include CSV staging, index build and ANALYZE."
+}
