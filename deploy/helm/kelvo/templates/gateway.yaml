@@ -1,0 +1,94 @@
+{{- $name := include "kelvo.name" . }}
+{{- $secret := include "kelvo.secret" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-gateway
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.gateway.service.type }}
+  selector: {{- include "kelvo.selector" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+  ports:
+    - {name: https, port: {{ .Values.gateway.service.port }}, targetPort: https}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}-gateway
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: {{ .Values.gateway.replicas }}
+  selector:
+    matchLabels: {{- include "kelvo.selector" . | nindent 6 }}
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels: {{- include "kelvo.labels" . | nindent 8 }}
+        app.kubernetes.io/component: gateway
+      annotations:
+        checksum/config: {{ include "kelvo.gatewayConfig" (list . "gateway" "x") | sha256sum | trunc 16 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      automountServiceAccountToken: false
+      {{- include "kelvo.podSecurity" . | nindent 6 }}
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: gateway
+          image: {{ include "kelvo.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [gateway, --config, /etc/kelvo/gateway.yml]
+          ports:
+            - {name: https, containerPort: 8443}
+          env:
+            - name: KELVO_TENANT_TOKEN
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: tenant-token}}
+            - name: KELVO_NATS_GATEWAY_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: nats-gateway-password}}
+          {{- with .Values.gateway.extraEnvFrom }}
+          envFrom: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+{{ toYaml .Values.securityContext | indent 12 }}
+          resources:
+{{ toYaml .Values.gateway.resources | indent 12 }}
+          # /ready needs broker reconciliation and every node's /ready.
+          readinessProbe:
+            httpGet: {path: /ready, port: https, scheme: HTTPS}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health, port: https, scheme: HTTPS}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - {name: config, mountPath: /etc/kelvo/gateway.yml, subPath: gateway.yml, readOnly: true}
+            - {name: tls, mountPath: /run/kelvo/tls, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          configMap: {name: {{ $name }}-config}
+        - name: tls
+          secret:
+            secretName: {{ include "kelvo.tlsSecret" . }}
+            defaultMode: 0440
+            items:
+              - {key: ca.crt, path: ca.crt}
+              - {key: api.crt, path: api.crt}
+              - {key: api.key, path: api.key}
+              - {key: gateway-client.crt, path: gateway-client.crt}
+              - {key: gateway-client.key, path: gateway-client.key}
+        - name: tmp
+          emptyDir: {medium: Memory, sizeLimit: 64Mi}
+      {{- with .Values.gateway.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gateway.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.gateway.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}

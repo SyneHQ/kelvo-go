@@ -1,0 +1,151 @@
+{{- if .Values.nats.bundled }}
+{{- $name := include "kelvo.name" . }}
+{{- $secret := include "kelvo.secret" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-nats
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+data:
+  nats.conf: |
+    server_name: {{ $name }}-nats
+    listen: 0.0.0.0:4222
+    http: 0.0.0.0:8222
+    max_payload: 1048576
+    tls {
+      cert_file: /run/nats/tls/nats.crt
+      key_file: /run/nats/tls/nats.key
+      min_version: "1.3"
+      timeout: 3
+    }
+    jetstream {
+      store_dir: /data/jetstream
+      max_memory_store: {{ .Values.nats.jetstream.maxMemory | int64 }}
+      max_file_store: {{ .Values.nats.jetstream.maxFile | int64 }}
+    }
+    accounts {
+      kelvo {
+        jetstream { max_memory: {{ div .Values.nats.jetstream.maxMemory 2 | int64 }}, max_file: {{ div .Values.nats.jetstream.maxFile 2 | int64 }}, max_streams: 7, max_consumers: 4 }
+        users: [
+          {
+            user: gateway
+            password: $KELVO_NATS_GATEWAY_PASSWORD
+            permissions {
+              publish: { allow: [
+                "$JS.API.INFO", "$JS.API.STREAM.INFO.*",
+                "$JS.API.STREAM.MSG.GET.KV_KELVO_META",
+                "$JS.API.STREAM.MSG.GET.KV_KELVO_JOBS", "$KV.KELVO_JOBS.>",
+                "$JS.API.CONSUMER.INFO.KELVO_QUEUE.dispatch", "job.ready"
+              ] }
+              subscribe: { allow: ["_INBOX.>"] }
+            }
+          },
+          {
+            user: worker
+            password: $KELVO_NATS_WORKER_PASSWORD
+            permissions {
+              publish: { allow: [
+                "$JS.API.INFO", "$JS.API.STREAM.INFO.*",
+                "$JS.API.STREAM.MSG.GET.KV_KELVO_META",
+                "$JS.API.STREAM.MSG.GET.KV_KELVO_JOBS", "$KV.KELVO_JOBS.>",
+                "$JS.API.CONSUMER.INFO.KELVO_QUEUE.dispatch",
+                "$JS.API.CONSUMER.MSG.NEXT.KELVO_QUEUE.dispatch", "$JS.ACK.>",
+                "$JS.API.STREAM.MSG.GET.KV_KELVO_ACCEL_STATUS", "$KV.KELVO_ACCEL_STATUS.>",
+                "$JS.API.STREAM.MSG.GET.KV_KELVO_SOURCE_QUOTAS", "$KV.KELVO_SOURCE_QUOTAS.>",
+                "acceleration.refresh", "$JS.API.CONSUMER.INFO.KELVO_ACCEL_QUEUE.refresh",
+                "$JS.API.CONSUMER.MSG.NEXT.KELVO_ACCEL_QUEUE.refresh"
+              ] }
+              subscribe: { allow: ["_INBOX.>"] }
+            }
+          },
+          { user: provisioner, password: $KELVO_NATS_PROVISIONER_PASSWORD }
+        ]
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-nats
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "kelvo.selector" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+  ports:
+    - {name: client, port: 4222, targetPort: client}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}-nats
+  labels: {{- include "kelvo.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+spec:
+  serviceName: {{ $name }}-nats
+  replicas: 1
+  selector:
+    matchLabels: {{- include "kelvo.selector" . | nindent 6 }}
+      app.kubernetes.io/component: nats
+  template:
+    metadata:
+      labels: {{- include "kelvo.labels" . | nindent 8 }}
+        app.kubernetes.io/component: nats
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: nats
+          image: {{ .Values.nats.image }}
+          args: ["-c", "/etc/nats/nats.conf"]
+          ports:
+            - {name: client, containerPort: 4222}
+            - {name: monitor, containerPort: 8222}
+          env:
+            {{- range $k, $v := dict "KELVO_NATS_GATEWAY_PASSWORD" "nats-gateway-password" "KELVO_NATS_WORKER_PASSWORD" "nats-worker-password" "KELVO_NATS_PROVISIONER_PASSWORD" "nats-provisioner-password" }}
+            - name: {{ $k }}
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: {{ $v }}}}
+            {{- end }}
+          securityContext:
+{{ toYaml .Values.securityContext | indent 12 }}
+          resources:
+{{ toYaml .Values.nats.resources | indent 12 }}
+          readinessProbe:
+            httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: "/healthz?js-enabled-only=true", port: monitor}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - {name: config, mountPath: /etc/nats, readOnly: true}
+            - {name: tls, mountPath: /run/nats/tls, readOnly: true}
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: config
+          configMap: {name: {{ $name }}-nats}
+        - name: tls
+          secret:
+            secretName: {{ include "kelvo.tlsSecret" . }}
+            defaultMode: 0440
+            items:
+              - {key: nats.crt, path: nats.crt}
+              - {key: nats.key, path: nats.key}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.nats.storage.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.nats.storage.size }}
+{{- end }}
