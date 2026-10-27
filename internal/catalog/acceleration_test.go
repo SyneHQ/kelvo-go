@@ -140,16 +140,22 @@ func TestAccelerationRouteValidation(t *testing.T) {
 func TestAccelerationIncrementalValidation(t *testing.T) {
 	inc := func(r string) string { return acceleratedYAML + "      incremental:\n" + r }
 	route := "      route:\n        time_column: created_at\n        live_source: warehouse\n"
-	if c, err := loadAccelerationFixture(t, inc("        column: created_at\n        full_every: 24h\n")); err != nil || c.Acceleration.Datasets[0].CoverageColumn() != "created_at" {
+	if c, err := loadAccelerationFixture(t, inc("        column: created_at\n        key: [id]\n        deletes: soft\n        full_every: 24h\n")); err != nil || c.Acceleration.Datasets[0].CoverageColumn() != "created_at" {
 		t.Fatal("valid incremental rejected", err)
 	}
-	if _, err := loadAccelerationFixture(t, inc("        column: created_at\n        full_every: 24h\n")+route); err != nil {
+	if _, err := loadAccelerationFixture(t, inc("        column: created_at\n        key: [id]\n        deletes: soft\n        full_every: 24h\n")+route); err != nil {
 		t.Fatal("matching route rejected", err)
 	}
-	if _, err := loadAccelerationFixture(t, inc("        column: other\n        full_every: 24h\n")+route); err == nil {
+	if _, err := loadAccelerationFixture(t, inc("        column: other\n        key: [id]\n        deletes: soft\n        full_every: 24h\n")+route); err == nil {
 		t.Fatal("column differing from route time_column accepted")
 	}
-	for _, bad := range []string{"        column: created_at\n", "        full_every: 1h\n", "        column: 'a b'\n        full_every: 1h\n"} {
+	for _, bad := range []string{"        column: created_at\n", "        full_every: 1h\n", "        column: 'a b'\n        full_every: 1h\n",
+		// Fail closed: no key, hard deletes, unknown delete policy, late window not shorter than full_every.
+		"        column: created_at\n        deletes: soft\n        full_every: 1h\n",
+		"        column: created_at\n        key: [id]\n        deletes: hard\n        full_every: 1h\n",
+		"        column: created_at\n        key: [id]\n        full_every: 1h\n",
+		"        column: created_at\n        key: ['a b']\n        deletes: soft\n        full_every: 1h\n",
+		"        column: created_at\n        key: [id]\n        deletes: soft\n        late_window: 1h\n        full_every: 1h\n"} {
 		if _, err := loadAccelerationFixture(t, inc(bad)); err == nil {
 			t.Fatalf("accepted incremental %q", bad)
 		}

@@ -83,12 +83,18 @@ type Route struct {
 	LiveSource string `json:"live_source" yaml:"live_source"`
 }
 
-// Incremental names the monotonically increasing column used as the watermark
-// and how long incremental refreshes may run before a full refresh re-reads
-// everything (rows changed or deleted behind the watermark appear then).
+// Incremental names the watermark column, the row key and how long incremental
+// refreshes may run before a full refresh re-reads everything. Each delta reads
+// rows whose watermark is >= covered_until - late_window (inclusive, so rows
+// sharing the boundary value are re-read) and replaces previous rows with the
+// same key. Deletes must be "soft": a delete is an update that advances the
+// watermark (tombstone or deleted_at row). Hard deletes are not supported.
 type Incremental struct {
-	Column    string        `json:"column" yaml:"column"`
-	FullEvery time.Duration `json:"full_every" yaml:"full_every"`
+	Column     string        `json:"column" yaml:"column"`
+	Key        []string      `json:"key" yaml:"key"`
+	Deletes    string        `json:"deletes" yaml:"deletes"`
+	LateWindow time.Duration `json:"late_window,omitempty" yaml:"late_window,omitempty"`
+	FullEvery  time.Duration `json:"full_every" yaml:"full_every"`
 }
 
 // CoverageColumn is the column whose maximum a refresh records as covered_until.
@@ -223,6 +229,20 @@ func (c *Config) validateAcceleration(base string) error {
 		if d.Incremental != nil {
 			if !ValidID(d.Incremental.Column) || d.Incremental.FullEvery <= 0 {
 				return errors.New("dataset incremental requires a column identifier and a positive full_every")
+			}
+			if len(d.Incremental.Key) == 0 {
+				return errors.New("dataset incremental requires a key; without one, rows sharing a watermark value or updated in place are missed")
+			}
+			for _, k := range d.Incremental.Key {
+				if !ValidID(k) {
+					return errors.New("dataset incremental key must list column identifiers")
+				}
+			}
+			if d.Incremental.Deletes != "soft" {
+				return errors.New("dataset incremental deletes must be soft; hard deletes are invisible to a delta and need full refresh (omit incremental)")
+			}
+			if d.Incremental.LateWindow < 0 || d.Incremental.LateWindow >= d.Incremental.FullEvery {
+				return errors.New("dataset incremental late_window must be non-negative and shorter than full_every")
 			}
 			if d.Route != nil && d.Route.TimeColumn != d.Incremental.Column {
 				return errors.New("dataset incremental column must equal route time_column")
