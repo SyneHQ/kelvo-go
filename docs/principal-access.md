@@ -63,6 +63,10 @@ Key removal cancels active requests. Completion also checks current key membersh
 
 Never reuse a key for another identity. A gateway retains up to 8,192 bindings, including retired keys, without eviction. By default, this history lasts for the process lifetime. Enable [persistent authentication state](gateway-auth-state.md) to keep revision and ownership history across restarts; exhaustion fails closed and has no automatic reset.
 
+## 4. Optional: single sign-on
+
+Gateways can also accept OIDC/JWT bearer tokens from your identity provider. A validated token maps to one principal already listed in `policy.access`; it gets exactly that principal's grants, row/column policy and handle ownership. No principals are created. API keys keep working. See [OIDC tokens](oidc.md).
+
 ## Boundaries
 
 - Native SQL and federation are checked before durable admission and again on the worker. Only selected source credentials enter query children.
