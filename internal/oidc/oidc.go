@@ -44,13 +44,14 @@ type Config struct {
 	// HMACSecretFile enables HS256 only when HS256 is also listed in Algorithms.
 	HMACSecretFile string        `yaml:"hmac_secret_file,omitempty"`
 	ClockSkew      time.Duration `yaml:"clock_skew,omitempty"` // Default 30s, at most 5m.
-	CacheTTL       time.Duration `yaml:"cache_ttl,omitempty"`  // Default 10m, 1m..24h.
+	CacheTTL       time.Duration `yaml:"cache_ttl,omitempty"`  // Default 10m, 1m..1h.
 	HTTPClient     *http.Client  `yaml:"-"`
 }
 
 var (
-	ErrConfig   = errors.New("oidc: invalid configuration")
-	ErrRejected = errors.New("oidc: token rejected")
+	errNoRedirect = errors.New("oidc: redirects are not followed")
+	ErrConfig     = errors.New("oidc: invalid configuration")
+	ErrRejected   = errors.New("oidc: token rejected")
 )
 
 const (
@@ -71,6 +72,8 @@ type Verifier struct {
 	keys      map[string]crypto.PublicKey
 	fetchedAt time.Time
 	lastTry   time.Time
+	inflight  bool
+	ctx       context.Context
 	jwksURL   string
 }
 
@@ -101,7 +104,7 @@ func New(ctx context.Context, cfg Config) (*Verifier, error) {
 	if !validURL(cfg.Issuer) || (cfg.JWKSURL != "" && !validURL(cfg.JWKSURL)) || cfg.Tenant == "" ||
 		len(cfg.Audiences) == 0 || len(cfg.Audiences) > 16 || slices.Contains(cfg.Audiences, "") ||
 		len(cfg.Principals)+len(cfg.Groups) == 0 || len(cfg.Principals)+len(cfg.Groups) > maxMappings ||
-		cfg.ClockSkew < 0 || cfg.ClockSkew > 5*time.Minute || cfg.CacheTTL < time.Minute || cfg.CacheTTL > 24*time.Hour {
+		cfg.ClockSkew < 0 || cfg.ClockSkew > 5*time.Minute || cfg.CacheTTL < time.Minute || cfg.CacheTTL > time.Hour {
 		return nil, ErrConfig
 	}
 	for _, alg := range cfg.Algorithms {
@@ -126,9 +129,14 @@ func New(ctx context.Context, cfg Config) (*Verifier, error) {
 			return nil, ErrConfig
 		}
 	}
-	if v.client == nil {
-		v.client = &http.Client{Timeout: fetchDeadline}
+	client := http.Client{Timeout: fetchDeadline}
+	if v.client != nil {
+		client = *v.client
 	}
+	// Discovery and JWKS fetches never follow redirects, so a provider cannot
+	// steer key material through a non-HTTPS or foreign location.
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return errNoRedirect }
+	v.client, v.ctx = &client, ctx
 	v.refresh(ctx)
 	go func() {
 		t := time.NewTicker(cfg.CacheTTL / 2)
@@ -187,9 +195,18 @@ func (v *Verifier) getJSON(ctx context.Context, raw string, out any) error {
 // only until fetchedAt+CacheTTL.
 func (v *Verifier) refresh(ctx context.Context) bool {
 	v.mu.Lock()
-	v.lastTry = time.Now()
+	if v.inflight {
+		v.mu.Unlock()
+		return false
+	}
+	v.inflight, v.lastTry = true, time.Now()
 	jwks := v.jwksURL
 	v.mu.Unlock()
+	defer func() {
+		v.mu.Lock()
+		v.inflight = false
+		v.mu.Unlock()
+	}()
 	if jwks == "" {
 		var doc struct {
 			Issuer  string `json:"issuer"`
@@ -285,54 +302,80 @@ func parseJWK(raw json.RawMessage) (string, crypto.PublicKey, bool) {
 	return "", nil, false
 }
 
-// key returns the verification key for kid, refetching at most once per
-// refetchFloor when kid is unknown so a newly rotated key is accepted promptly.
-func (v *Verifier) key(ctx context.Context, kid string, now time.Time) (crypto.PublicKey, bool) {
-	for attempt := 0; attempt < 2; attempt++ {
-		v.mu.Lock()
-		fresh := v.keys != nil && now.Before(v.fetchedAt.Add(v.cfg.CacheTTL))
-		var key crypto.PublicKey
-		found := false
-		if fresh {
-			if kid == "" {
-				if len(v.keys) == 1 {
-					for _, k := range v.keys {
-						key, found = k, true
-					}
+// key returns the verification key for kid without waiting on the provider.
+// A miss rejects the current token and, at most once per refetchFloor and
+// never concurrently, starts a background refresh so a newly rotated key is
+// accepted on a later request.
+func (v *Verifier) key(kid string, now time.Time) (crypto.PublicKey, bool) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.keys != nil && now.Before(v.fetchedAt.Add(v.cfg.CacheTTL)) {
+		if kid == "" {
+			if len(v.keys) == 1 {
+				for _, k := range v.keys {
+					return k, true
 				}
-			} else {
-				key, found = v.keys[kid]
 			}
+			return nil, false // kid is required when the set has more than one key.
 		}
-		retry := time.Since(v.lastTry) >= refetchFloor
-		v.mu.Unlock()
-		if found {
-			return key, true
+		if k, ok := v.keys[kid]; ok {
+			return k, true
 		}
-		if attempt > 0 || !retry || (fresh && kid == "") || !v.refresh(ctx) {
-			return nil, false
-		}
+	}
+	if !v.inflight && time.Since(v.lastTry) >= refetchFloor {
+		v.lastTry = time.Now()
+		go v.refresh(v.ctx)
 	}
 	return nil, false
 }
 
-type claims struct {
-	Iss string          `json:"iss"`
-	Aud json.RawMessage `json:"aud"`
-	Exp *json.Number    `json:"exp"`
-	Nbf *json.Number    `json:"nbf"`
-	Iat *json.Number    `json:"iat"`
+// object decodes one JSON object by exact key, rejecting duplicate keys so a
+// second "exp" or a differently cased "Exp" cannot override a checked claim.
+func object(raw []byte) (map[string]json.RawMessage, bool) {
+	d := json.NewDecoder(strings.NewReader(string(raw)))
+	if t, err := d.Token(); err != nil || t != json.Delim('{') {
+		return nil, false
+	}
+	out := map[string]json.RawMessage{}
+	for d.More() {
+		t, err := d.Token()
+		k, ok := t.(string)
+		if err != nil || !ok {
+			return nil, false
+		}
+		if _, dup := out[k]; dup {
+			return nil, false
+		}
+		var v json.RawMessage
+		if d.Decode(&v) != nil {
+			return nil, false
+		}
+		out[k] = v
+	}
+	if t, err := d.Token(); err != nil || t != json.Delim('}') {
+		return nil, false
+	}
+	if _, err := d.Token(); err != io.EOF {
+		return nil, false
+	}
+	return out, true
 }
 
-func unix(n *json.Number) (time.Time, bool) {
-	if n == nil {
-		return time.Time{}, false
+func str(raw json.RawMessage) (string, bool) {
+	var s string
+	return s, raw != nil && json.Unmarshal(raw, &s) == nil
+}
+
+// unix reads a NumericDate. Absent is (zero, true, false); malformed is ok=false.
+func unix(raw json.RawMessage) (t time.Time, ok, present bool) {
+	if raw == nil {
+		return time.Time{}, true, false
 	}
-	f, err := n.Float64()
-	if err != nil || f < 0 || f > 1<<40 {
-		return time.Time{}, false
+	var f float64
+	if json.Unmarshal(raw, &f) != nil || f < 0 || f > 1<<40 {
+		return time.Time{}, false, true
 	}
-	return time.Unix(int64(f), 0), true
+	return time.Unix(int64(f), 0), true, true
 }
 
 // Verify validates token and returns the single principal it maps to and the
@@ -350,14 +393,16 @@ func (v *Verifier) verify(ctx context.Context, token string, now time.Time) (str
 	if len(token) > maxToken || len(parts) != 3 {
 		return "", time.Time{}, false
 	}
-	var header struct {
-		Alg  string          `json:"alg"`
-		Kid  string          `json:"kid"`
-		Crit json.RawMessage `json:"crit"`
-	}
 	rawHeader, rawClaims, sig := b64(parts[0]), b64(parts[1]), b64(parts[2])
-	if rawHeader == nil || rawClaims == nil || sig == nil || json.Unmarshal(rawHeader, &header) != nil ||
-		header.Crit != nil || !slices.Contains(v.cfg.Algorithms, header.Alg) {
+	h, ok := object(rawHeader)
+	if rawClaims == nil || sig == nil || !ok || h["crit"] != nil {
+		return "", time.Time{}, false
+	}
+	var header struct{ Alg, Kid string }
+	var kidOK bool
+	header.Alg, ok = str(h["alg"])
+	header.Kid, kidOK = str(h["kid"])
+	if !ok || (h["kid"] != nil && !kidOK) || !slices.Contains(v.cfg.Algorithms, header.Alg) {
 		return "", time.Time{}, false
 	}
 	signed := []byte(parts[0] + "." + parts[1])
@@ -370,7 +415,7 @@ func (v *Verifier) verify(ctx context.Context, token string, now time.Time) (str
 			return "", time.Time{}, false
 		}
 	} else {
-		key, ok := v.key(ctx, header.Kid, now)
+		key, ok := v.key(header.Kid, now)
 		if !ok {
 			return "", time.Time{}, false
 		}
@@ -392,42 +437,38 @@ func (v *Verifier) verify(ctx context.Context, token string, now time.Time) (str
 			return "", time.Time{}, false
 		}
 	}
-	var c claims
-	d := json.NewDecoder(strings.NewReader(string(rawClaims)))
-	d.UseNumber()
-	if d.Decode(&c) != nil || c.Iss != v.cfg.Issuer {
+	c, ok := object(rawClaims)
+	if iss, isStr := str(c["iss"]); !ok || !isStr || iss != v.cfg.Issuer {
 		return "", time.Time{}, false
 	}
 	skew := v.cfg.ClockSkew
-	exp, ok := unix(c.Exp)
-	if !ok || !now.Before(exp.Add(skew)) {
+	exp, ok, present := unix(c["exp"])
+	if !ok || !present || !now.Before(exp.Add(skew)) {
 		return "", time.Time{}, false
 	}
-	if nbf, ok := unix(c.Nbf); c.Nbf != nil && (!ok || now.Add(skew).Before(nbf)) {
-		return "", time.Time{}, false
-	}
-	if iat, ok := unix(c.Iat); c.Iat != nil && (!ok || now.Add(skew).Before(iat)) {
-		return "", time.Time{}, false
+	for _, name := range []string{"nbf", "iat"} {
+		if t, ok, present := unix(c[name]); !ok || (present && now.Add(skew).Before(t)) {
+			return "", time.Time{}, false
+		}
 	}
 	var audiences []string
-	var single string
-	if json.Unmarshal(c.Aud, &single) == nil {
+	if single, isStr := str(c["aud"]); isStr {
 		audiences = []string{single}
-	} else if json.Unmarshal(c.Aud, &audiences) != nil {
+	} else if c["aud"] == nil || json.Unmarshal(c["aud"], &audiences) != nil {
 		return "", time.Time{}, false
 	}
 	if !slices.ContainsFunc(audiences, func(a string) bool { return slices.Contains(v.cfg.Audiences, a) }) {
 		return "", time.Time{}, false
 	}
-	principal, ok := v.mapIdentity(rawClaims)
+	principal, ok := v.mapIdentity(c)
 	return principal, exp, ok
 }
 
 // mapIdentity resolves exactly one principal from the identity claim and the
 // groups claim. Zero or two distinct principals both reject.
-func (v *Verifier) mapIdentity(rawClaims []byte) (string, bool) {
-	var all map[string]json.RawMessage
-	if json.Unmarshal(rawClaims, &all) != nil {
+func (v *Verifier) mapIdentity(all map[string]json.RawMessage) (string, bool) {
+	// An email is an identity only when the provider says it verified it.
+	if v.cfg.Claim == "email" && string(all["email_verified"]) != "true" {
 		return "", false
 	}
 	found := map[string]bool{}
