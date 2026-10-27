@@ -437,7 +437,9 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if authContext != nil && !isOIDCAuthority(authContext) {
+	if exp, isOIDC := oidcExpiry(authContext); isOIDC {
+		r = r.WithContext(context.WithValue(r.Context(), oidcAuthority{}, exp))
+	} else if authContext != nil {
 		r = r.WithContext(context.WithValue(r.Context(), keyAuthorizationContext{}, keyAuthorization{g.auth, authContext}))
 	}
 	principalID := ""
@@ -547,7 +549,8 @@ func (g *Gateway) authenticate(r *http.Request) (string, context.Context, bool) 
 	token := strings.TrimPrefix(values[0], "Bearer ")
 	if g.auth != nil {
 		tenant, ctx, ok := g.auth.lookup(token)
-		if !ok && g.oidc != nil {
+		// OIDC never bypasses a stale, closed or poisoned key authenticator.
+		if !ok && g.oidc != nil && g.auth.ready() {
 			return g.oidcAuthenticate(r, token)
 		}
 		return tenant, ctx, ok

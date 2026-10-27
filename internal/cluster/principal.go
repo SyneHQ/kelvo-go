@@ -363,6 +363,9 @@ func requestAuthorityErr(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if exp, ok := oidcExpiry(ctx); ok && !time.Now().Before(exp) {
+		return context.Canceled
+	}
 	if auth, ok := ctx.Value(keyAuthorizationContext{}).(keyAuthorization); ok {
 		if auth.authenticator == nil || !auth.authenticator.active(auth.key) {
 			return context.Canceled
