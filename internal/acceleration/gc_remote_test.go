@@ -132,7 +132,9 @@ func (f *gcFixture) run(t *testing.T, del bool) RemoteGCReport {
 	return report
 }
 
-// backdate rewrites the quarantine marker as if it was written long ago.
+// backdate rewrites the quarantine marker as if it was written, and first
+// observed quiescent, long ago. Tests of the quiescence grace itself use
+// provider clock offsets instead.
 func (f *gcFixture) backdate(t *testing.T) {
 	t.Helper()
 	key := f.runtime.backend.key("events", "gc/"+f.orphan.Generation+".quarantine.yaml")
@@ -143,6 +145,7 @@ func (f *gcFixture) backdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	marker.QuarantinedAt = marker.QuarantinedAt.Add(-48 * time.Hour)
+	marker.QuiescentSince = marker.QuarantinedAt
 	raw, _ := yaml.Marshal(marker)
 	f.service.sequence++
 	f.service.objects[key] = fakeSnapshotObject{data: raw, info: objectstore.Info{Size: int64(len(raw)), SHA256: objectSHA256(raw), Version: fmt.Sprintf("revision-%d", f.service.sequence)}}
@@ -373,3 +376,135 @@ func TestRemoteGCFailsClosed(t *testing.T) {
 	})
 }
 
+
+func (f *gcFixture) addReader(t *testing.T, expires time.Time) {
+	t.Helper()
+	key := f.runtime.backend.key("events", "reader-leases/"+f.orphan.Generation+".yml")
+	f.service.mu.Lock()
+	defer f.service.mu.Unlock()
+	var doc map[string]any
+	_ = yaml.Unmarshal(f.service.objects[key].data, &doc)
+	doc["readers"] = []map[string]any{{"id": strings.Repeat("1", 64), "owner": strings.Repeat("2", 64), "sequence": 1, "renewed_at": expires.Add(-time.Minute), "expires_at": expires}}
+	raw, _ := yaml.Marshal(doc)
+	f.service.sequence++
+	f.service.objects[key] = fakeSnapshotObject{data: raw, info: objectstore.Info{Size: int64(len(raw)), SHA256: objectSHA256(raw), Version: fmt.Sprintf("revision-%d", f.service.sequence)}}
+}
+
+func (f *gcFixture) shiftClock(d time.Duration) {
+	f.service.mu.Lock()
+	f.service.clockOffset += d
+	f.service.mu.Unlock()
+}
+
+// A reader renewing for more than a day past quarantine must still get the
+// full grace after it finally expires.
+func TestRemoteGCGraceRunsFromFirstQuiescence(t *testing.T) {
+	f := newGCFixture(t)
+	f.dropHistory(t)
+	f.run(t, true)
+	// The reader kept renewing for 25 hours after quarantine.
+	f.shiftClock(25 * time.Hour)
+	now := time.Now().Add(25 * time.Hour).UTC().Truncate(time.Second)
+	f.addReader(t, now.Add(time.Minute))
+	if got := generationAction(f.run(t, true), f.orphan.Generation).Action; got != "kept: readers may be live" {
+		t.Fatal(got)
+	}
+	f.shiftClock(2 * time.Minute)
+	if got := generationAction(f.run(t, true), f.orphan.Generation).Action; got != "quarantined" {
+		t.Fatal("first quiescent run must only record quiescence", got)
+	}
+	f.shiftClock(30 * time.Minute)
+	if got := generationAction(f.run(t, true), f.orphan.Generation).Action; got != "quarantined" {
+		t.Fatal("deleted before grace after quiescence", got)
+	}
+	if f.object(t, f.orphan.Generation+".parquet") == nil {
+		t.Fatal("data deleted early")
+	}
+	f.shiftClock(31 * time.Minute)
+	if got := generationAction(f.run(t, true), f.orphan.Generation).Action; got != "deleted" {
+		t.Fatal("not deleted after grace from quiescence", got)
+	}
+	f.requireCurrentUnchanged(t)
+}
+
+// A CAS that re-references the generation, or a writer claim, landing between
+// classification and retirement must stop quarantine and leave readers able
+// to acquire.
+func TestRemoteGCRechecksManifestBeforeRetire(t *testing.T) {
+	for _, race := range []string{"referenced", "writer"} {
+		t.Run(race, func(t *testing.T) {
+			f := newGCFixture(t)
+			manifestKey := f.runtime.backend.key("events", storeManifestName)
+			f.service.mu.Lock()
+			saved := f.service.objects[manifestKey]
+			f.service.mu.Unlock()
+			f.dropHistory(t)
+			gets := 0
+			var writer RefreshWriter
+			f.service.beforeGet = func(key string) {
+				if key != manifestKey {
+					return
+				}
+				gets++
+				if gets != 2 { // 1: classification read, 2: writeMarker re-read
+					return
+				}
+				if race == "referenced" {
+					f.service.mu.Lock()
+					f.service.sequence++
+					saved.info.Version = fmt.Sprintf("revision-%d", f.service.sequence)
+					f.service.objects[manifestKey] = saved
+					f.service.mu.Unlock()
+					return
+				}
+				var err error
+				if writer, err = f.runtime.backend.Begin(context.Background(), "events"); err != nil {
+					t.Error(err)
+				}
+			}
+			got := generationAction(f.run(t, true), f.orphan.Generation).Action
+			f.service.beforeGet = nil
+			if writer != nil {
+				defer writer.Abort()
+			}
+			if got != "kept: referenced or writer active" {
+				t.Fatal(got)
+			}
+			if f.object(t, "gc/"+f.orphan.Generation+".quarantine.yaml") != nil {
+				t.Fatal("marker written after race")
+			}
+			lease, err := f.registry.Acquire(context.Background(), f.binding)
+			if err != nil {
+				t.Fatal("generation retired despite race", err)
+			}
+			_ = lease.Close()
+		})
+	}
+}
+
+func TestRemoteGCKeepsWithoutProviderClock(t *testing.T) {
+	f := newGCFixture(t)
+	f.dropHistory(t)
+	manifestKey := f.runtime.backend.key("events", storeManifestName)
+	gets := 0
+	f.service.infoHook = func(op, key string, info objectstore.Info) objectstore.Info {
+		if op == "get" && key == manifestKey {
+			gets++
+			if gets >= 2 {
+				info.ServerTime = time.Time{}
+			}
+		}
+		return info
+	}
+	report, err := f.collector(true).run(context.Background(), "events")
+	f.service.infoHook = nil
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := generationAction(report, f.orphan.Generation).Action; got != "kept: clock" {
+		t.Fatal(got)
+	}
+	if f.object(t, "gc/"+f.orphan.Generation+".quarantine.yaml") != nil {
+		t.Fatal("marker written without provider time")
+	}
+}

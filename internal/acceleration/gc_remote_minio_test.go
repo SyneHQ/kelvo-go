@@ -112,6 +112,7 @@ func TestRemoteGCMinIOConformance(t *testing.T) {
 		t.Fatal(err)
 	}
 	marker.QuarantinedAt = marker.QuarantinedAt.Add(-48 * time.Hour)
+	marker.QuiescentSince = marker.QuarantinedAt
 	raw, _ = yaml.Marshal(marker)
 	if _, err := writer.Put(ctx, markerKey, bytes.NewReader(raw), int64(len(raw)), objectSHA256(raw), objectstore.Condition{Version: info.Version}); err != nil {
 		t.Fatal(err)

@@ -42,12 +42,22 @@ that the next run resumes from.
 4. Retire the generation's reader-registry document (CAS). Retirement
    permanently blocks new `Acquire` and `Seal`. Leases that already exist keep
    renewing, so an in-flight reader keeps reading.
-5. On a later run, re-read the manifest: still unreferenced, no writer, and the
-   marker is at least `--grace` old (minimum 10 minutes, default 24 hours).
+   Steps 3 and 4 run only if a fresh manifest read, taken right before the
+   marker write, still shows the generation unreferenced and no writer lease
+   inside the margin.
+5. On a later run, re-read the manifest: still unreferenced and no writer. A
+   manifest without provider time keeps the generation (`kept: clock`); the
+   host clock is never used.
 6. Inspect the registry: every reader entry must be past `expires_at` plus the
    clock uncertainty, judged against the earliest possible provider time. A
-   crashed reader's entry blocks until it expires.
-7. Delete each data object at its exact current version, then the registry
+   crashed reader's entry blocks until it expires. The first quiescent
+   inspection records `quiescent_since` (provider time) in the marker with a
+   conditional replace.
+7. Deletion waits until `quiescent_since` is at least `--grace` old (minimum
+   10 minutes, default 24 hours) and a fresh inspection is still quiescent.
+   Grace runs from quiescence, not from quarantine, so a reader that renews
+   for days still gets the full grace after it stops.
+8. Delete each data object at its exact current version, then the registry
    document at the version just inspected, then the marker. A missing object
    counts as already deleted.
 
@@ -66,6 +76,17 @@ MinIO `RELEASE.2026-10-23T20-06-51Z` deleted an object even with a stale
 `If-Match`, so the S3 client first sends a conditional `HEAD`. That check is
 not atomic with the delete. It is safe in practice only because generation
 keys are never rewritten.
+
+"Exact version" means the ETag (or GCS generation) matches. Kelvo never
+sends an S3 `versionId`. On a versioned S3 bucket, a delete only adds a delete
+marker: earlier versions remain and no space is freed until a bucket
+lifecycle rule expires noncurrent versions. Configure that rule separately.
+
+Known leaks, reported but never collected: `<generation>.yaml` and
+`.stage-*` objects and late multipart parts that do not match a Kelvo
+generation name show up as `unknown`, and parts of a generation with no
+registry document are kept forever. Clean these by hand after checking the
+report.
 
 An expired registry entry still does not prove that a native child stopped
 reading. Grace is the margin for that. Do not set it lower than your longest
