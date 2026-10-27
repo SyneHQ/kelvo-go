@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
+	"github.com/SYNEHQ/kelvo-go/internal/cluster"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/transport/flightsql"
 )
@@ -65,4 +66,30 @@ func startFlightSQL(c flightSQLConfig, handler http.Handler, cat catalog.Config)
 		}
 	}()
 	return srv.Shutdown, nil
+}
+
+// startGatewayFlightSQL serves Flight SQL over the cluster gateway handler.
+// The gateway listener always requires TLS.
+func startGatewayFlightSQL(c *cluster.GatewayFlightSQLConfig, gateway http.Handler) (func(), error) {
+	if c == nil {
+		return func() {}, nil
+	}
+	if c.Listen == "" || c.TLSCertFile == "" || c.TLSKeyFile == "" {
+		return nil, query.NewError("CONFIGURATION_ERROR", "Gateway Flight SQL requires listen, tls_cert_file and tls_key_file")
+	}
+	var cat catalog.Config
+	if c.CatalogFile != "" {
+		var err error
+		if cat, err = catalog.Load(c.CatalogFile); err != nil {
+			return nil, query.NewError("CONFIGURATION_ERROR", "Gateway Flight SQL catalog is invalid")
+		}
+	}
+	sessions, ttl := c.MaxSessions, c.TicketTTL
+	if sessions == 0 {
+		sessions = 64
+	}
+	if ttl == 0 {
+		ttl = time.Minute
+	}
+	return startFlightSQL(flightSQLConfig{Listen: c.Listen, TLSCert: c.TLSCertFile, TLSKey: c.TLSKeyFile, MaxSessions: sessions, TicketTTL: ttl}, gateway, cat)
 }

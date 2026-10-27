@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -108,6 +109,11 @@ func New(opts Options) (*Server, error) {
 		}
 		for _, t := range src.Federation.Tables {
 			s.tables = append(s.tables, tableRef{src.ID, src.ID, t.Name, src.ID + "." + t.Name})
+		}
+	}
+	if a := opts.Catalog.Acceleration; a != nil {
+		for _, d := range a.Datasets {
+			s.tables = append(s.tables, tableRef{d.ID, "main", d.ID, d.ID})
 		}
 	}
 	for id, v := range map[flightsql.SqlInfo]any{
@@ -412,15 +418,15 @@ func (s *Server) statement(ctx context.Context, sql string) ([]string, error) {
 		}
 		return out, nil
 	}
-	// Default: attach catalog sources the statement names.
+	// Default: attach catalog sources and snapshot datasets the statement names.
 	named := map[string]bool{}
 	for _, id := range idents {
 		named[id] = true
 	}
 	var out []string
-	for _, src := range s.opts.Catalog.Sources {
-		if named[strings.ToLower(src.ID)] {
-			out = append(out, src.ID)
+	for _, t := range s.tables {
+		if named[strings.ToLower(t.source)] && !slices.Contains(out, t.source) {
+			out = append(out, t.source)
 		}
 	}
 	return out, nil

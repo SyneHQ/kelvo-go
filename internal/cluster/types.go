@@ -155,6 +155,19 @@ type GatewayConfig struct {
 	MaxConcurrent       int                          `yaml:"max_concurrent"`
 	MaxHTTPRequests     int                          `yaml:"max_http_requests"`
 	Tenants             []TenantConfig               `yaml:"tenants"`
+	FlightSQL           *GatewayFlightSQLConfig      `yaml:"flight_sql,omitempty"`
+}
+
+// GatewayFlightSQLConfig enables the read-only Flight SQL listener. It serves
+// over the gateway's own HTTP handler; CatalogFile only names tables for
+// metadata, which each caller's key still authorizes.
+type GatewayFlightSQLConfig struct {
+	Listen      string        `yaml:"listen"`
+	TLSCertFile string        `yaml:"tls_cert_file"`
+	TLSKeyFile  string        `yaml:"tls_key_file"`
+	MaxSessions int           `yaml:"max_sessions,omitempty"`
+	TicketTTL   time.Duration `yaml:"ticket_ttl,omitempty"`
+	CatalogFile string        `yaml:"catalog_file,omitempty"`
 }
 
 type NodeConfig struct {
