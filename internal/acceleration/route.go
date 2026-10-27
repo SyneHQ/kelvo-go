@@ -184,7 +184,7 @@ func (rt *Router) Plan(ctx context.Context, c catalog.Config, request query.Requ
 		if err != nil || statusErr != nil || snapshot.Fingerprint != fingerprint || snapshot.CoveredUntil == "" {
 			continue // missing covered_until never routes
 		}
-		reason := RouteReason(request.SQL, id, d.Route.TimeColumn, snapshot.CoveredUntil)
+		reason := RouteReason(request.SQL, id, d.Route.TimeColumn, routeCovered(d, snapshot.CoveredUntil))
 		if reason == "" {
 			continue
 		}
@@ -200,4 +200,18 @@ func (rt *Router) Plan(ctx context.Context, c catalog.Config, request query.Requ
 		return request, nil, false
 	}
 	return live, reasons, true
+}
+
+// routeCovered is the bound the snapshot is trusted up to. An incremental
+// dataset with late_window may still receive rows down to covered_until minus
+// that window, so reads reaching past it go live.
+func routeCovered(d catalog.Dataset, covered string) string {
+	if d.Incremental == nil || d.Incremental.LateWindow == 0 {
+		return covered
+	}
+	t, err := time.Parse(time.RFC3339Nano, covered)
+	if err != nil {
+		return covered // integer watermarks reject late_window at refresh
+	}
+	return t.Add(-d.Incremental.LateWindow).UTC().Format(time.RFC3339Nano)
 }
