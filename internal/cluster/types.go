@@ -12,6 +12,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/secrets"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/tracing"
+	"github.com/SYNEHQ/kelvo-go/internal/transport/pgwire"
 	"github.com/SYNEHQ/kelvo-go/internal/worker"
 )
 
@@ -156,6 +157,7 @@ type GatewayConfig struct {
 	MaxHTTPRequests     int                          `yaml:"max_http_requests"`
 	Tenants             []TenantConfig               `yaml:"tenants"`
 	FlightSQL           *GatewayFlightSQLConfig      `yaml:"flight_sql,omitempty"`
+	PostgresWire        *pgwire.Config               `yaml:"postgres_wire,omitempty"`
 }
 
 // GatewayFlightSQLConfig enables the read-only Flight SQL listener. It serves

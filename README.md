@@ -79,6 +79,8 @@ On-demand analytical queries do not yet support acceleration or durable exports.
 | External query services           | Separately operated [Flight SQL or legacy `dbapi` HTTP services](docs/sources-adapters.md)                                                        |
 | Contained operation adapters      | Saved-connection reads, supported writes, metadata and jobs through [Go adapters](adapters/go/README.md) or [JDBC runtimes](docs/jdbc-runtime.md) |
 
+BI interoperability: an opt-in, read-only [PostgreSQL wire listener](docs/postgres-wire.md) lets psql, psycopg and JDBC tools query federated sources through the same HTTP query path.
+
 Use the [coverage matrix](docs/source-coverage.md) for exact modes, types and validation. Native connector support does not imply federation support. Live sources have no shared transaction snapshot.
 
 ## Dataset acceleration
