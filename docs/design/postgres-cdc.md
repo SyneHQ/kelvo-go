@@ -25,7 +25,10 @@ replays from the checkpoint:
 | After ACK | Resumes after the checkpoint |
 
 The sink contract is narrow so the acceleration snapshot store can implement it later. `Apply`
-returns only after the data is durable. It must be idempotent for a repeated batch LSN. Change
+returns only after the data is durable. A batch is identified by `(LSN, Seq)`: stream batches have
+`Seq` 0, and bootstrap chunks share the consistent-point LSN with `Seq` 1, 2, 3 and so on. A sink
+must be idempotent for a repeated `(LSN, Seq)` and must never deduplicate by LSN alone, or it would
+drop snapshot chunks after the first. Change
 values are absolute (row images, key deletes and truncates), so replaying one transaction on the
 state it produced leaves that state unchanged. A sink that can publish data and checkpoint
 atomically may also implement `CheckpointStore` and remove the replay window.
@@ -42,7 +45,9 @@ checkpoint and fsyncs the directory.
    until the snapshot has been read.
 4. In a `REPEATABLE READ READ ONLY` transaction, run `SET TRANSACTION SNAPSHOT`. Read the schemas
    and every published row as `Snapshot` batches at the slot's consistent point. The first batch
-   has `Reset` set, so the sink discards earlier state.
+   has `Reset` set, so the sink discards earlier state, and begins with an `OpSchema` change for
+   every table. Non-partitioned tables are read with `FROM ONLY`, so rows of inheritance children
+   outside the publication are not copied.
 5. Save a checkpoint at the consistent point.
 
 The snapshot contains exactly the transactions committed before the consistent point. The slot
@@ -68,6 +73,8 @@ bootstrap is repeated.
   - a table has a row filter;
   - a table's REPLICA IDENTITY is not DEFAULT with a primary key, or USING INDEX (FULL and NOTHING
     are rejected);
+  - a table has a publication column list (PostgreSQL 15+), which would otherwise copy columns
+    the publication excludes;
   - a column has a type outside the exact set below.
 - Types:
 
@@ -87,10 +94,16 @@ bootstrap is repeated.
 ## Schema versions
 
 The checkpoint stores each table's schema. A relation message that only appends non-key columns of
-supported types increments `Schema.Version`. The new schema appears in `Batch.Schemas` of the
-transaction where it takes effect. Any other change stops `Run` with `ErrIncompatibleSchema`:
+supported types and no default increments `Schema.Version` by exactly one. The new schema is an
+`OpSchema` change placed in `Batch.Changes` at the point where it takes effect, even in the middle of
+a transaction. Every change carries the `SchemaVersion` it is encoded in, so a transaction such as
+`INSERT; ALTER ADD COLUMN; INSERT; ALTER ADD COLUMN; INSERT` produces `insert@1, schema@2, insert@2,
+schema@3, insert@3`. Existing rows have NULL in an added column. Any other change stops `Run` with
+`ErrIncompatibleSchema`:
 
 - a column dropped, retyped or reordered;
+- an added column that has a default in the current catalog (PostgreSQL fills existing rows without
+  change events; this check fails closed if a default was set later);
 - a key change;
 - a rename;
 - a replica identity change;
@@ -104,8 +117,12 @@ Recovery is an explicit bootstrap.
 
 - there is no checkpoint, or the checkpoint belongs to another slot;
 - the slot is missing;
-- the slot is invalidated (`wal_status = lost` or `invalidation_reason` set, for example after
-  `max_slot_wal_keep_size` removed its WAL);
+- the slot is invalidated or about to be (`wal_status` is `lost` or `unreserved`, or
+  `invalidation_reason` is set, for example after `max_slot_wal_keep_size` removed its WAL), or
+  starting replication fails with SQLSTATE 55000, 42704 or 58P01;
+- the server's system identifier or timeline differs from the one recorded at bootstrap (for
+  example a restored or promoted server);
+- the checkpoint LSN is beyond `pg_current_wal_lsn()`;
 - `confirmed_flush_lsn` is beyond the checkpoint (for example, a checkpoint restored from an older
   backup).
 
@@ -116,15 +133,16 @@ environment variable in configuration. The package never logs the DSN or puts it
 
 ## Limits and open work
 
-- Each transaction is buffered in memory and bounded by `MaxTxnChanges` (default 1,000,000).
-  Larger transactions fail explicitly. Protocol v2 streaming of in-progress transactions is not
-  implemented.
-- WAL for unpublished tables is retained while no published commit arrives, because only
-  checkpointed commit LSNs are acknowledged. A heartbeat table or `pg_logical_emit_message` is
-  needed to bound idle retention.
-- Not covered: publication column lists (they fail as a schema mismatch on the first relation
-  message), partitioned-table `publish_via_partition_root`, failover slots and primary failover,
-  MySQL, and wiring into acceleration snapshots and workers.
+- Each transaction is buffered in memory and bounded by `MaxTxnChanges` (default 1,000,000) and
+  `MaxTxnBytes` of decoded messages (default 256 MiB). Larger transactions fail explicitly.
+  Protocol v2 streaming of in-progress transactions is not implemented.
+- Idle WAL retention: only checkpointed commit LSNs are acknowledged. When `HeartbeatInterval` is
+  set, `Run` emits a transactional `pg_logical_emit_message` with the prefix
+  `kelvo-cdc-heartbeat` while idle. The heartbeat commit is checkpointed and then acknowledged, and
+  it never reaches the sink. Without a heartbeat, WAL for unpublished tables is retained until the
+  next published commit, so production use should set a heartbeat.
+- Not covered: `publish_via_partition_root`, failover slots and primary failover, MySQL, and
+  wiring into acceleration snapshots and workers.
 - Test with `KELVO_TEST_PG_CDC_DSN` set to a superuser DSN (tested on PostgreSQL 17.11) with
   `wal_level=logical`. The WAL-removal test briefly sets `max_slot_wal_keep_size` with
   `ALTER SYSTEM`, so use a disposable server.
