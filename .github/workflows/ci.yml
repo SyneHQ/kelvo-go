@@ -33,6 +33,16 @@ jobs:
       - run: go test -race ./internal/authfence ./internal/authstate ./internal/audit ./internal/access ./internal/containment ./internal/admission ./internal/telemetry ./internal/tracing ./internal/secrets ./internal/delegation ./federation ./internal/federation ./cmd/kelvo ./internal/httpstream ./internal/transport/httpapi ./internal/transportbroker/... ./internal/sources/... ./internal/cluster ./internal/worker ./internal/acceleration ./internal/catalog ./internal/objectstore ./internal/exports
       - name: Race-check schema and multipart object consumers
         run: go test -p 2 -race -tags duckdb_arrow ./internal/acceleration ./internal/engine/duckdb -run 'Test(SchemaEvolution|ObjectDescriptor|ObjectRange|ObjectMultipart(Commit|Empty|Seal|Descriptor|Lease|Ambiguous|Options|Root|Canceled)|MultipartRanges|MultipartObject|ExecuteMultipart)' -count=1 -timeout=10m
+      - name: Race-check PostgreSQL CDC against logical replication
+        run: |
+          password="$(openssl rand -hex 16)"
+          docker run -d --name kelvo-cdc-postgres -p 127.0.0.1:55438:5432 -e POSTGRES_PASSWORD="$password" \
+            postgres:17@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe \
+            -c wal_level=logical -c max_replication_slots=20 -c max_wal_senders=20 >/dev/null
+          for _ in $(seq 60); do docker exec kelvo-cdc-postgres pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1 && break; sleep 1; done
+          KELVO_TEST_PG_CDC_DSN="postgres://postgres:$password@127.0.0.1:55438/postgres?sslmode=disable" \
+            go test -race ./internal/cdc/... -run TestPGCDC -count=1
+          docker rm -f -v kelvo-cdc-postgres >/dev/null
       - run: go vet -tags duckdb_arrow ./...
       - run: go build -tags duckdb_arrow -o bin/kelvo ./cmd/kelvo
       - run: cc -O2 -Wall -Wextra -Werror sandbox/launcher.c -o bin/kelvo-landlock
