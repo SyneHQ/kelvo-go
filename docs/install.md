@@ -135,9 +135,12 @@ Accept a cluster result only as described in [results and errors](cluster.md#res
 - **Containment:** cgroup v2 [process containment](process-containment.md) needs a
   privileged root bootstrap and is not supported by this chart; nodes run with the
   Landlock sandbox only. The pod memory limit bounds the whole node.
+- **NATS storage:** `nats.storage.size` is immutable after install (StatefulSet
+  volume claim template); resize the PVC directly if the storage class allows it.
+  NATS monitoring listens on loopback only; its probes run inside the pod.
 - **NetworkPolicy:** optional (`networkPolicy.enabled`): clients to gateway,
   gateway to nodes, Kelvo pods to NATS; `networkPolicy.nodeEgressTo` limits node
-  egress to your sources.
+  egress to your sources; with an external NATS, list its address there as well.
 
 Not covered: multiple tenants, gateway key rotation, acceleration, exports,
 database operations (use the `kelvo-worker` image and node config from
@@ -158,19 +161,41 @@ gh attestation verify kelvo-linux-amd64 -R SYNEHQ/kelvo-go
 
 ## Verify a release
 
-Images are signed keylessly with cosign from the release workflow, and carry an
-SPDX SBOM attestation and a GitHub build-provenance attestation:
+Images are signed keylessly with cosign from the release workflow (the index
+and every platform image), each platform image carries an SPDX SBOM
+attestation, and the index carries a GitHub build-provenance attestation. The
+public `:vX.Y.Z` and `:latest` tags are added only after signing and attestation
+succeed; `:latest` moves only for the highest stable `vX.Y.Z` tag.
 
 ```sh
+TAG=v0.2.0
 IMG=ghcr.io/synehq/kelvo@sha256:<digest-from-release-notes>
-cosign verify "$IMG" \
-  --certificate-identity-regexp '(?i)^https://github.com/SYNEHQ/kelvo-go/.github/workflows/release.yml@refs/tags/v' \
+ID="https://github.com/SyneHQ/kelvo-go/.github/workflows/release.yml@refs/tags/$TAG"
+cosign verify "$IMG" --certificate-identity "$ID" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-cosign verify-attestation --type spdxjson "$IMG" \
-  --certificate-identity-regexp '(?i)^https://github.com/SYNEHQ/kelvo-go/.github/workflows/release.yml@refs/tags/v' \
+# Per-platform SBOM: verify against the platform digest
+# (docker buildx imagetools inspect "$IMG" lists them).
+cosign verify-attestation --type spdxjson ghcr.io/synehq/kelvo@sha256:<amd64-digest> \
+  --certificate-identity "$ID" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
-gh attestation verify "oci://$IMG" -R SYNEHQ/kelvo-go
+gh attestation verify "oci://$IMG" -R SyneHQ/kelvo-go
 ```
 
+`--certificate-identity` must match the signing workflow ref exactly, including
+the repository's case as GitHub reports it (`gh repo view SyneHQ/kelvo-go --json nameWithOwner`).
+Alternatively use `--certificate-github-workflow-repository SyneHQ/kelvo-go`
+with `--certificate-identity-regexp` and the same OIDC issuer.
+
 A manual run of the Release workflow (`workflow_dispatch`) is a dry run: it
-builds both images for both architectures and the binaries, and pushes nothing.
+builds both images for both architectures, their SBOMs and the binaries, and
+pushes nothing. Tag pushes must match `vMAJOR.MINOR.PATCH[-PRERELEASE]` or the
+workflow stops before any push.
+
+### Maintainer setup
+
+Repository settings the workflow relies on (configure them before the first tag):
+
+1. An environment named `release` with required reviewers. The `publish` and
+   `release` jobs, the only ones that sign, attest, tag images or write the
+   GitHub release, wait for that approval.
+2. A tag ruleset for `v*` that restricts creation, update and deletion to maintainers.

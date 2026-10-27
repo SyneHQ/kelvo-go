@@ -1,9 +1,13 @@
 name: Release
 # Tag push (v*): build linux/amd64 and linux/arm64 `runtime` and `worker`
-# images on native runners, push them to GHCR, sign them keylessly with cosign,
-# attach and attest an SPDX SBOM, attest build provenance, and publish the
-# kelvo and kelvo-landlock binaries with SHA-256 sums on the GitHub release.
+# images on native runners, push them by digest, sign (cosign keyless,
+# recursive) and attest (per-platform SPDX SBOMs, build provenance) the index
+# digest, and only then publish the public :vX (and, for the highest stable
+# release, :latest) tags. The kelvo and kelvo-landlock binaries are copied out
+# of the pushed runtime images and attached with SHA-256 sums.
 # workflow_dispatch is a dry run: it builds everything and pushes nothing.
+# Maintainers: the `release` environment must have required reviewers and v*
+# tags must be protected by a ruleset (docs/install.md#maintainer-setup).
 on:
   push:
     tags: ["v*"]
@@ -17,15 +21,26 @@ env:
   PUBLISH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
   VERSION: ${{ github.ref_name }}
 jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Validate tag
+        if: env.PUBLISH == 'true'
+        run: |
+          printf '%s\n' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
+            || { echo "::error::tag $VERSION is not vMAJOR.MINOR.PATCH[-PRERELEASE]"; exit 1; }
+
   build:
     name: build ${{ matrix.target }} ${{ matrix.arch }}
+    needs: validate
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     permissions:
       contents: read
       packages: write
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         target: [runtime, worker]
         arch: [amd64, arm64]
@@ -44,8 +59,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       # CGO uses the target platform's compiler (see Dockerfile), so each
-      # architecture builds on its own native runner. Images are pushed by
-      # digest only; the publish job assembles the tagged manifest list.
+      # architecture builds on its own native runner. Publishing pushes by
+      # digest only (no tag); a dry run loads the image locally instead.
       - name: Build image
         id: image
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
@@ -60,46 +75,49 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.target }}-${{ matrix.arch }}
           provenance: false
-          outputs: ${{ env.PUBLISH == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', matrix.image) || 'type=cacheonly' }}
-      - name: Record digest
-        if: env.PUBLISH == 'true'
+          outputs: ${{ env.PUBLISH == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', matrix.image) || format('type=docker,name={0}:dry-run', matrix.image) }}
+      - name: Resolve image
+        id: ref
         env:
+          IMAGE: ${{ matrix.image }}
           DIGEST: ${{ steps.image.outputs.digest }}
         run: |
-          mkdir -p digests
-          touch "digests/${DIGEST#sha256:}"
-      - if: env.PUBLISH == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+          set -eu
+          if [ "$PUBLISH" = true ]; then
+            ref="$IMAGE@$DIGEST"
+            docker pull --platform "linux/${{ matrix.arch }}" "$ref"
+          else
+            ref="$IMAGE:dry-run"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          mkdir -p out
+          printf '%s\n' "$DIGEST" > "out/digest-${{ matrix.target }}-${{ matrix.arch }}"
+      # The SBOM describes this platform image; publish attests it to this digest.
+      - name: Generate platform SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
-          name: digest-${{ matrix.target }}-${{ matrix.arch }}
-          path: digests/*
-          if-no-files-found: error
-          retention-days: 1
-      # The runtime image's two executables are the release binaries. Export
-      # them from the cached build so they are byte-identical to the image.
-      - name: Export binaries
+          image: ${{ steps.ref.outputs.ref }}
+          format: spdx-json
+          output-file: out/sbom-${{ matrix.target }}-linux-${{ matrix.arch }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      # Release binaries are copied out of this exact image, so they are
+      # byte-identical to /usr/local/bin in the published image.
+      - name: Extract binaries
         if: matrix.target == 'runtime'
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-        with:
-          context: .
-          target: runtime
-          platforms: linux/${{ matrix.arch }}
-          build-args: VERSION=${{ env.VERSION }}
-          cache-from: type=gha,scope=runtime-${{ matrix.arch }}
-          provenance: false
-          outputs: type=local,dest=rootfs
-      - name: Stage binaries
-        if: matrix.target == 'runtime'
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
         run: |
-          mkdir -p dist
-          cp rootfs/usr/local/bin/kelvo "dist/kelvo-linux-${{ matrix.arch }}"
-          cp rootfs/usr/local/bin/kelvo-landlock "dist/kelvo-landlock-linux-${{ matrix.arch }}"
-          ls -l dist
-      - if: matrix.target == 'runtime'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+          set -eu
+          c=$(docker create "$REF")
+          docker cp "$c:/usr/local/bin/kelvo" "out/kelvo-linux-${{ matrix.arch }}"
+          docker cp "$c:/usr/local/bin/kelvo-landlock" "out/kelvo-landlock-linux-${{ matrix.arch }}"
+          docker rm "$c" >/dev/null
+          sha256sum out/kelvo-*
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: binaries-${{ matrix.arch }}
-          path: dist/*
+          name: build-${{ matrix.target }}-${{ matrix.arch }}
+          path: out/*
           if-no-files-found: error
           retention-days: 7
 
@@ -109,12 +127,14 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    environment: release
     permissions:
       contents: read
       packages: write
       id-token: write
       attestations: write
     strategy:
+      fail-fast: false
       matrix:
         include:
           - {target: runtime, image: ghcr.io/synehq/kelvo}
@@ -122,8 +142,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: digest-${{ matrix.target }}-*
-          path: digests
+          pattern: build-${{ matrix.target }}-*
+          path: in
           merge-multiple: true
       - uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
       - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
@@ -131,61 +151,82 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Create multi-arch manifest
-        id: manifest
+      # The index is pushed under a commit tag only; the public tags are added
+      # in the last step, after signing and attestation succeeded.
+      - name: Create multi-arch index
+        id: index
         env:
           IMAGE: ${{ matrix.image }}
         run: |
           set -eu
           sources=""
-          for d in digests/*; do sources="$sources $IMAGE@sha256:$(basename "$d")"; done
-          tags="-t $IMAGE:$VERSION"
-          case "$VERSION" in *-*) ;; *) tags="$tags -t $IMAGE:latest" ;; esac
+          for f in in/digest-*; do sources="$sources $IMAGE@$(cat "$f")"; done
+          staging="$IMAGE:sha-${GITHUB_SHA}"
           # shellcheck disable=SC2086
-          docker buildx imagetools create $tags $sources
-          digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)
+          docker buildx imagetools create -t "$staging" $sources
+          digest=$(docker buildx imagetools inspect "$staging" --format '{{json .Manifest}}' | jq -r .digest)
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "ref=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-      - name: Sign image (keyless)
+      - name: Sign index and platform images (keyless)
         env:
-          REF: ${{ steps.manifest.outputs.ref }}
-        run: cosign sign --yes "$REF"
-      - name: Generate SBOM
-        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
-        with:
-          image: ${{ steps.manifest.outputs.ref }}
-          format: spdx-json
-          output-file: sbom-${{ matrix.target }}.spdx.json
-          upload-artifact: false
-          upload-release-assets: false
-      - name: Attach SBOM attestation (cosign)
+          REF: ${{ steps.index.outputs.ref }}
+        run: cosign sign --yes --recursive "$REF"
+      - name: Attest platform SBOMs (cosign)
         env:
-          REF: ${{ steps.manifest.outputs.ref }}
-        run: cosign attest --yes --type spdxjson --predicate "sbom-${{ matrix.target }}.spdx.json" "$REF"
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -eu
+          for arch in amd64 arm64; do
+            cosign attest --yes --type spdxjson \
+              --predicate "in/sbom-${{ matrix.target }}-linux-$arch.spdx.json" \
+              "$IMAGE@$(cat "in/digest-${{ matrix.target }}-$arch")"
+          done
+          for arch in amd64 arm64; do
+            echo "digest_$arch=$(cat "in/digest-${{ matrix.target }}-$arch")" >> "$GITHUB_ENV"
+          done
       - uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
         with:
           subject-name: ${{ matrix.image }}
-          subject-digest: ${{ steps.manifest.outputs.digest }}
-          sbom-path: sbom-${{ matrix.target }}.spdx.json
+          subject-digest: ${{ env.digest_amd64 }}
+          sbom-path: in/sbom-${{ matrix.target }}-linux-amd64.spdx.json
+          push-to-registry: true
+      - uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-name: ${{ matrix.image }}
+          subject-digest: ${{ env.digest_arm64 }}
+          sbom-path: in/sbom-${{ matrix.target }}-linux-arm64.spdx.json
           push-to-registry: true
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ matrix.image }}
-          subject-digest: ${{ steps.manifest.outputs.digest }}
+          subject-digest: ${{ steps.index.outputs.digest }}
           push-to-registry: true
-      - name: Record digest
+      # :latest moves only for a stable tag that is the highest stable vX.Y.Z.
+      - name: Publish public tags
         env:
-          REF: ${{ steps.manifest.outputs.ref }}
+          IMAGE: ${{ matrix.image }}
+          REF: ${{ steps.index.outputs.ref }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
+          set -eu
+          tags="-t $IMAGE:$VERSION"
+          case "$VERSION" in
+            *-*) ;;
+            *)
+              highest=$(gh api --paginate "repos/$REPO/tags" -q '.[].name' \
+                | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+              if [ "$highest" = "$VERSION" ]; then tags="$tags -t $IMAGE:latest"; fi ;;
+          esac
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $tags "$REF"
           echo "$REF" > "image-${{ matrix.target }}.txt"
-          { echo '```text'; echo "$REF"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '```text'; echo "$REF ($tags)"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-${{ matrix.target }}
-          path: |
-            sbom-${{ matrix.target }}.spdx.json
-            image-${{ matrix.target }}.txt
+          path: image-${{ matrix.target }}.txt
           if-no-files-found: error
           retention-days: 7
 
@@ -194,6 +235,7 @@ jobs:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    environment: release
     permissions:
       contents: write
       id-token: write
@@ -201,12 +243,13 @@ jobs:
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: "{binaries,release}-*"
+          pattern: "{build-runtime,build-worker,release}-*"
           path: dist
           merge-multiple: true
       - name: Checksums
         working-directory: dist
         run: |
+          rm -f digest-*
           sha256sum -- kelvo-linux-* kelvo-landlock-linux-* ./*.spdx.json | sed 's# \./# #' > SHA256SUMS
           cat SHA256SUMS
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -214,7 +257,7 @@ jobs:
           subject-path: |
             dist/kelvo-linux-*
             dist/kelvo-landlock-linux-*
-      - name: Create GitHub release
+      - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -223,17 +266,19 @@ jobs:
           prerelease=""
           case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
           fence='```'
-          notes="Images (signed with cosign keyless; SBOM and provenance attested):
+          notes="Images (signed with cosign keyless; per-platform SBOMs and provenance attested):
 
           ${fence}text
           $(cat dist/image-runtime.txt)
           $(cat dist/image-worker.txt)
           ${fence}
 
-          Verify: see docs/install.md#verify-a-release."
+          Binaries are copied from the runtime images above. Verify: see docs/install.md#verify-a-release."
           notes=$(printf '%s\n' "$notes" | sed 's/^          //')
           if gh release view "$VERSION" -R "$REPO" >/dev/null 2>&1; then
+            # Re-run: replace assets and point the notes at the current digests.
             gh release upload "$VERSION" -R "$REPO" --clobber dist/kelvo-* dist/*.spdx.json dist/SHA256SUMS
+            gh release edit "$VERSION" -R "$REPO" --notes "$notes"
           else
             # shellcheck disable=SC2086
             gh release create "$VERSION" -R "$REPO" --verify-tag $prerelease --title "Kelvo $VERSION" --notes "$notes" \
