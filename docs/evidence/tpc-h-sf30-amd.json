@@ -1,0 +1,5156 @@
+{
+ "dataset": {
+  "format": "parquet zstd, one file per table, row groups of 122880",
+  "generation_seconds": 497.3479860010002,
+  "generator": "duckdb 1.5.6 dbgen",
+  "sf": 30.0,
+  "suite": "tpch",
+  "tables": {
+   "customer": {
+    "bytes": 239155179,
+    "rows": 4500000,
+    "sha256": "6c6f6b5eab59d42886831c21c3cc2fd8317b28d1f5eb376250a24392f7652c3d"
+   },
+   "lineitem": {
+    "bytes": 4760263634,
+    "rows": 179998372,
+    "sha256": "b23598e459cae58bd2d644531e7ad3a78a43cd22055a399a09a19b3db4671770"
+   },
+   "nation": {
+    "bytes": 1947,
+    "rows": 25,
+    "sha256": "79a4963190470f076796929a250df354f9b1ae29a3747f111da85a44167a49bf"
+   },
+   "orders": {
+    "bytes": 1195983151,
+    "rows": 45000000,
+    "sha256": "4b699d6c6d7935edd6a4e12e018b0d6525ec9716aef0b26163690c2c2ce8313b"
+   },
+   "part": {
+    "bytes": 123356016,
+    "rows": 6000000,
+    "sha256": "3009feec02eadb2cbcf0a9495ce61cddf5221e65c9db427f70f3062e82be93f1"
+   },
+   "partsupp": {
+    "bytes": 840258575,
+    "rows": 24000000,
+    "sha256": "aae5291390dc1c3c4609ad8ca57a62d1969b10d23cb96f9488de7a9c6af48c95"
+   },
+   "region": {
+    "bytes": 1004,
+    "rows": 5,
+    "sha256": "b614dc38e824bdf663fde75ed7c4adcd3e68c9281c6e20563ebb5d6a9007bf3a"
+   },
+   "supplier": {
+    "bytes": 15258861,
+    "rows": 300000,
+    "sha256": "e5dc784d4d97b4ed5b163c07c786c1a4183f03ee2ad05d42c21a3c4c0fb48a84"
+   }
+  }
+ },
+ "finished_utc": "2026-10-27T21:22:08.591842+00:00",
+ "harness_sha256": "d8ac2a5e7247802f94504692189bc0643f248781c8b77d1d6d810dc927997729",
+ "host": {
+  "cpu_model": "AMD EPYC 7763 64-Core Processor",
+  "duckdb": "1.5.6",
+  "kernel": "6.17.0-1022-azure",
+  "label": "shared GitHub-hosted cloud VM (noisy neighbours possible)",
+  "machine": "x86_64",
+  "mem_total_kib": 16377688,
+  "nproc": 4,
+  "pyarrow": "25.0.1",
+  "python": "3.12.3",
+  "trino": "0.336.0"
+ },
+ "kelvo_sha256": "879cd53f0ded540e298ba15a1619e857b79168c375bc459388c58352a27637a6",
+ "limits": {
+  "cgroup_memory_gib": 8,
+  "engine_memory_mb": 6144,
+  "threads": 4,
+  "timeout_s": 900.0,
+  "trino_heap_gib": 6,
+  "trino_query_memory_gib": 4
+ },
+ "queries": {
+  "q01": {
+   "sql_sha256": "0004a7d39d4b4b3dc1e037abcbd173f0063934cd023c6768e4e5e0fff7e8c82f",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 1740840960,
+     "peak_sampled_tree_rss_bytes": 250851328,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 5.457925657000487,
+      "median": 4.500704301000042,
+      "min": 4.498673951000455,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0014681980001114425,
+        "import_s": 0.07874675599941838,
+        "query_s": 5.166993657000603,
+        "rows": 4,
+        "setup_s": 0.05396066699995572
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1740840960,
+       "peak_sampled_tree_rss_bytes": 243535872,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.457925657000487,
+       "result_sha256": "93a9eeec7cec534accad05b07b6e6c4d5594e76f4fb00733bb87840bba45edc1",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 55,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.002536088999477215,
+        "import_s": 0.07683062399974006,
+        "query_s": 4.224415782000506,
+        "rows": 4,
+        "setup_s": 0.05405805699956545
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 160915456,
+       "peak_sampled_tree_rss_bytes": 225402880,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.500704301000042,
+       "result_sha256": "93a9eeec7cec534accad05b07b6e6c4d5594e76f4fb00733bb87840bba45edc1",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 45,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011941630000364967,
+        "import_s": 0.07561833199997636,
+        "query_s": 4.219800942999427,
+        "rows": 4,
+        "setup_s": 0.05384469199998421
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 187609088,
+       "peak_sampled_tree_rss_bytes": 250851328,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.498673951000455,
+       "result_sha256": "93a9eeec7cec534accad05b07b6e6c4d5594e76f4fb00733bb87840bba45edc1",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 45,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 210415616,
+     "peak_sampled_tree_rss_bytes": 404439040,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 4.711770818999867,
+      "median": 4.693240968000282,
+      "min": 4.671178556000086,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 432,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4667279116,
+        "engine_streaming": false,
+        "prepare_ns": 94781955,
+        "rows": 4,
+        "wire_bytes": 1704
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 209887232,
+       "peak_sampled_tree_rss_bytes": 404439040,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.711770818999867,
+       "result_sha256": "814f5a66cb06082ffcb1e8478e7ff5259f46374a5b54752692d8afe582d7a92c",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 47,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 432,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4647114718,
+        "engine_streaming": false,
+        "prepare_ns": 94984887,
+        "rows": 4,
+        "wire_bytes": 1704
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 178401280,
+       "peak_sampled_tree_rss_bytes": 374784000,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.693240968000282,
+       "result_sha256": "814f5a66cb06082ffcb1e8478e7ff5259f46374a5b54752692d8afe582d7a92c",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 47,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 432,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4621011081,
+        "engine_streaming": false,
+        "prepare_ns": 93214159,
+        "rows": 4,
+        "wire_bytes": 1704
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 210415616,
+       "peak_sampled_tree_rss_bytes": 404299776,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.671178556000086,
+       "result_sha256": "814f5a66cb06082ffcb1e8478e7ff5259f46374a5b54752692d8afe582d7a92c",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 47,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 2841391104,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 17.716907943999104,
+      "median": 10.494707773999835,
+      "min": 10.453521544999603,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 2803281920,
+       "process_seconds": 17.716907943999104,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 2816094208,
+       "process_seconds": 10.494707773999835,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 2841391104,
+       "process_seconds": 10.453521544999603,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q02": {
+   "sql_sha256": "4285ea0c6971a19d3caf560bc3c8c646642f5674b542d54ac0005f8ba2321d99",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 281477120,
+     "peak_sampled_tree_rss_bytes": 315568128,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 1.1204754420004974,
+      "median": 1.1007213279999633,
+      "min": 1.06939503600006,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.001527796000118542,
+        "import_s": 0.07863645399993402,
+        "query_s": 0.8835068609996597,
+        "rows": 100,
+        "setup_s": 0.05355042800056253
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 281477120,
+       "peak_sampled_tree_rss_bytes": 315568128,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.1204754420004974,
+       "result_sha256": "874dd13fbc7fd4230cee64925a514502f4c9303b6bab7a33dd9bf609374785a9",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 12,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0013171640002838103,
+        "import_s": 0.08083578099922306,
+        "query_s": 0.8211897999999564,
+        "rows": 100,
+        "setup_s": 0.05309884400048759
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 239017984,
+       "peak_sampled_tree_rss_bytes": 303013888,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.06939503600006,
+       "result_sha256": "874dd13fbc7fd4230cee64925a514502f4c9303b6bab7a33dd9bf609374785a9",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 11,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0031507439998677,
+        "import_s": 0.07581979800033878,
+        "query_s": 0.8519497670004057,
+        "rows": 100,
+        "setup_s": 0.05275116699976934
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 243113984,
+       "peak_sampled_tree_rss_bytes": 307245056,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.1007213279999633,
+       "result_sha256": "874dd13fbc7fd4230cee64925a514502f4c9303b6bab7a33dd9bf609374785a9",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 11,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 251604992,
+     "peak_sampled_tree_rss_bytes": 446021632,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 0.9710318990000815,
+      "median": 0.9685770320002121,
+      "min": 0.9674131479996504,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 19036,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 917850129,
+        "engine_streaming": false,
+        "prepare_ns": 60596955,
+        "rows": 100,
+        "wire_bytes": 20144
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 251604992,
+       "peak_sampled_tree_rss_bytes": 446021632,
+       "peak_spill_bytes": 0,
+       "process_seconds": 0.9685770320002121,
+       "result_sha256": "7e0ed5fb9b5055a79a85afae404feb50b3b18d2d85c23d8894f0f4463d356b5d",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 10,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 19036,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 916555358,
+        "engine_streaming": false,
+        "prepare_ns": 56810479,
+        "rows": 100,
+        "wire_bytes": 20144
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 248659968,
+       "peak_sampled_tree_rss_bytes": 443314176,
+       "peak_spill_bytes": 0,
+       "process_seconds": 0.9674131479996504,
+       "result_sha256": "7e0ed5fb9b5055a79a85afae404feb50b3b18d2d85c23d8894f0f4463d356b5d",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 10,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 19036,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 920867291,
+        "engine_streaming": false,
+        "prepare_ns": 56296496,
+        "rows": 100,
+        "wire_bytes": 20144
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 248160256,
+       "peak_sampled_tree_rss_bytes": 441364480,
+       "peak_spill_bytes": 0,
+       "process_seconds": 0.9710318990000815,
+       "result_sha256": "7e0ed5fb9b5055a79a85afae404feb50b3b18d2d85c23d8894f0f4463d356b5d",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 10,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 5992636416,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 13.577990058000069,
+      "median": 8.652898439999262,
+      "min": 8.576134160999572,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 4909027328,
+       "process_seconds": 13.577990058000069,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 5347680256,
+       "process_seconds": 8.652898439999262,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 5992636416,
+       "process_seconds": 8.576134160999572,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q03": {
+   "sql_sha256": "c6be6f66bfb513c3eadef99c7393c349b25a5c1663cd7cbde6f58c426c16db30",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 909807616,
+     "peak_sampled_tree_rss_bytes": 468058112,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 3.925711135999336,
+      "median": 3.6210206879995894,
+      "min": 3.5749938809995,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.001355807999971148,
+        "import_s": 0.07658639900000708,
+        "query_s": 3.673793724999996,
+        "rows": 10,
+        "setup_s": 0.05450558400025329
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 909807616,
+       "peak_sampled_tree_rss_bytes": 467886080,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.925711135999336,
+       "result_sha256": "9453f7c1cf20e7a914701850fbf31926176ba6953864b00ca0667b683ec8f33c",
+       "returncode": 0,
+       "rows": 10,
+       "samples": 39,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0015282860003935639,
+        "import_s": 0.09120951000022615,
+        "query_s": 3.2730356459996983,
+        "rows": 10,
+        "setup_s": 0.0542411650003487
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 402759680,
+       "peak_sampled_tree_rss_bytes": 466587648,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.5749938809995,
+       "result_sha256": "9453f7c1cf20e7a914701850fbf31926176ba6953864b00ca0667b683ec8f33c",
+       "returncode": 0,
+       "rows": 10,
+       "samples": 36,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011245429996051826,
+        "import_s": 0.08625270999982604,
+        "query_s": 3.320394846000454,
+        "rows": 10,
+        "setup_s": 0.05311729699951684
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 404361216,
+       "peak_sampled_tree_rss_bytes": 468058112,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.6210206879995894,
+       "result_sha256": "9453f7c1cf20e7a914701850fbf31926176ba6953864b00ca0667b683ec8f33c",
+       "returncode": 0,
+       "rows": 10,
+       "samples": 36,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 456294400,
+     "peak_sampled_tree_rss_bytes": 648380416,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 3.8092173309996724,
+      "median": 3.6127345929999137,
+      "min": 3.59716213000047,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 320,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 3566758394,
+        "engine_streaming": false,
+        "prepare_ns": 100185419,
+        "rows": 10,
+        "wire_bytes": 936
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 424857600,
+       "peak_sampled_tree_rss_bytes": 619077632,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.6127345929999137,
+       "result_sha256": "bf752f4c3f020a4699d09e18d666a868f01c4328988d4430ae01faf3c8551fff",
+       "returncode": 0,
+       "rows": 10,
+       "samples": 36,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 320,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 3746307534,
+        "engine_streaming": false,
+        "prepare_ns": 158692953,
+        "rows": 10,
+        "wire_bytes": 936
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 456294400,
+       "peak_sampled_tree_rss_bytes": 648380416,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.8092173309996724,
+       "result_sha256": "bf752f4c3f020a4699d09e18d666a868f01c4328988d4430ae01faf3c8551fff",
+       "returncode": 0,
+       "rows": 10,
+       "samples": 38,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 320,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 3552517908,
+        "engine_streaming": false,
+        "prepare_ns": 101965749,
+        "rows": 10,
+        "wire_bytes": 936
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 432852992,
+       "peak_sampled_tree_rss_bytes": 624889856,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.59716213000047,
+       "result_sha256": "bf752f4c3f020a4699d09e18d666a868f01c4328988d4430ae01faf3c8551fff",
+       "returncode": 0,
+       "rows": 10,
+       "samples": 36,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 0,
+     "peak_cgroup_memory_bytes": 8589934592,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": null,
+     "state": "failed",
+     "trials": [
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 3.95GB, Delta: 84.75MB, Top Consumers: {HashBuilderOperator=3.84GB, LazyOutputBuffer=55.44MB, ExchangeOperator=37.87MB}]\", query_id=20261027_210311_00019_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589934592,
+       "process_seconds": 17.504372399000204,
+       "trial": 0,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 3.92GB, Delta: 84.81MB, Top Consumers: {HashBuilderOperator=3.81GB, LazyOutputBuffer=56.27MB, ExchangeOperator=41.13MB}]\", query_id=20261027_210332_00020_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589930496,
+       "process_seconds": 14.689537639000264,
+       "trial": 1,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 3.77MB, Top Consumers: {HashBuilderOperator=3.90GB, LazyOutputBuffer=53.54MB, ExchangeOperator=34.22MB}]\", query_id=20261027_210350_00021_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589860864,
+       "process_seconds": 14.309635932000674,
+       "trial": 2,
+       "verdict": "failed"
+      }
+     ]
+    }
+   }
+  },
+  "q04": {
+   "sql_sha256": "deef5aca5d262e619cb57705a84aed9f421c81c621ae450ce862c8667ecfbf4e",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 763822080,
+     "peak_sampled_tree_rss_bytes": 540155904,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 2.2521101950005686,
+      "median": 2.094917548999547,
+      "min": 2.0830939400002535,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.001166563999504433,
+        "import_s": 0.07545699299953412,
+        "query_s": 1.9976235040003303,
+        "rows": 5,
+        "setup_s": 0.052497886000310245
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 763822080,
+       "peak_sampled_tree_rss_bytes": 540155904,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.2521101950005686,
+       "result_sha256": "5e789559ab6a8f90c2a53834e76fdfffafd24f883662c9cdbf79c8d5768005c1",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 23,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0010781239998323144,
+        "import_s": 0.07659695599977567,
+        "query_s": 1.833075679999638,
+        "rows": 5,
+        "setup_s": 0.054357255000468285
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 476868608,
+       "peak_sampled_tree_rss_bytes": 536403968,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.0830939400002535,
+       "result_sha256": "5e789559ab6a8f90c2a53834e76fdfffafd24f883662c9cdbf79c8d5768005c1",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 21,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011090859998148517,
+        "import_s": 0.07654962499964313,
+        "query_s": 1.8452962940000361,
+        "rows": 5,
+        "setup_s": 0.053193755999927816
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 476221440,
+       "peak_sampled_tree_rss_bytes": 539836416,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.094917548999547,
+       "result_sha256": "5e789559ab6a8f90c2a53834e76fdfffafd24f883662c9cdbf79c8d5768005c1",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 21,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 525324288,
+     "peak_sampled_tree_rss_bytes": 716963840,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 2.250532244000169,
+      "median": 2.11031354700026,
+      "min": 2.101001121000081,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 106,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2053166678,
+        "engine_streaming": false,
+        "prepare_ns": 98633766,
+        "rows": 5,
+        "wire_bytes": 520
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 506507264,
+       "peak_sampled_tree_rss_bytes": 700649472,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.101001121000081,
+       "result_sha256": "bde518122c1b34facf3493331147466aca3d1da59b1a6ace665ecaa5b2aee9e4",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 21,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 106,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2180091438,
+        "engine_streaming": false,
+        "prepare_ns": 162559293,
+        "rows": 5,
+        "wire_bytes": 520
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 525324288,
+       "peak_sampled_tree_rss_bytes": 716963840,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.250532244000169,
+       "result_sha256": "bde518122c1b34facf3493331147466aca3d1da59b1a6ace665ecaa5b2aee9e4",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 23,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 106,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2063540956,
+        "engine_streaming": false,
+        "prepare_ns": 100690387,
+        "rows": 5,
+        "wire_bytes": 520
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 506867712,
+       "peak_sampled_tree_rss_bytes": 701153280,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.11031354700026,
+       "result_sha256": "bde518122c1b34facf3493331147466aca3d1da59b1a6ace665ecaa5b2aee9e4",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 21,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 8583319552,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 12.444497051000326,
+      "median": 11.562381542999901,
+      "min": 11.396926693999376,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8583319552,
+       "process_seconds": 12.444497051000326,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 7180214272,
+       "process_seconds": 11.562381542999901,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6654423040,
+       "process_seconds": 11.396926693999376,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q05": {
+   "sql_sha256": "99ca082272029f473764c865813c3d25348130127b88df4a3ea0b98f9a7bb769",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 318427136,
+     "peak_sampled_tree_rss_bytes": 368099328,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 4.432228234999457,
+      "median": 4.42062654000074,
+      "min": 4.277930248999837,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.003067857999667467,
+        "import_s": 0.07764621599926613,
+        "query_s": 4.029788138000185,
+        "rows": 5,
+        "setup_s": 0.05294800400042732
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 318427136,
+       "peak_sampled_tree_rss_bytes": 368099328,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.277930248999837,
+       "result_sha256": "33164b98654c4b8058f631b54490848023604ec652593ad40b83653d3c2ae082",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 43,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0022857809999550227,
+        "import_s": 0.09736898300070607,
+        "query_s": 4.081659153999681,
+        "rows": 5,
+        "setup_s": 0.053421341000102984
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 302751744,
+       "peak_sampled_tree_rss_bytes": 359751680,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.42062654000074,
+       "result_sha256": "33164b98654c4b8058f631b54490848023604ec652593ad40b83653d3c2ae082",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 44,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0015487820000998909,
+        "import_s": 0.1252548439997554,
+        "query_s": 4.0923001700002715,
+        "rows": 5,
+        "setup_s": 0.055554575999849476
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 306188288,
+       "peak_sampled_tree_rss_bytes": 366886912,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.432228234999457,
+       "result_sha256": "33164b98654c4b8058f631b54490848023604ec652593ad40b83653d3c2ae082",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 44,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 343543808,
+     "peak_sampled_tree_rss_bytes": 535470080,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 4.4799199200006115,
+      "median": 4.46014336799999,
+      "min": 4.428823609999199,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 135,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4383199138,
+        "engine_streaming": false,
+        "prepare_ns": 107192574,
+        "rows": 5,
+        "wire_bytes": 536
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 342990848,
+       "peak_sampled_tree_rss_bytes": 533934080,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.428823609999199,
+       "result_sha256": "366c0bc586593687d7ab6a7c48437a099762ebd462e6c5d4a70b844da0baad6e",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 44,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 135,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4400918955,
+        "engine_streaming": false,
+        "prepare_ns": 115358345,
+        "rows": 5,
+        "wire_bytes": 536
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 326156288,
+       "peak_sampled_tree_rss_bytes": 520540160,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.46014336799999,
+       "result_sha256": "366c0bc586593687d7ab6a7c48437a099762ebd462e6c5d4a70b844da0baad6e",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 45,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 135,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4433986420,
+        "engine_streaming": false,
+        "prepare_ns": 103710038,
+        "rows": 5,
+        "wire_bytes": 536
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 343543808,
+       "peak_sampled_tree_rss_bytes": 535470080,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.4799199200006115,
+       "result_sha256": "366c0bc586593687d7ab6a7c48437a099762ebd462e6c5d4a70b844da0baad6e",
+       "returncode": 0,
+       "rows": 5,
+       "samples": 45,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 0,
+     "peak_cgroup_memory_bytes": 8589856768,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": null,
+     "state": "failed",
+     "trials": [
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 3.96GB, Delta: 84.81MB, Top Consumers: {HashBuilderOperator=3.83GB, LazyOutputBuffer=66.33MB, ExchangeOperator=47.77MB}]\", query_id=20261027_210509_00025_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589639680,
+       "process_seconds": 12.571552343999429,
+       "trial": 0,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 3.96GB, Delta: 84.81MB, Top Consumers: {HashBuilderOperator=3.83GB, LazyOutputBuffer=56.79MB, ExchangeOperator=52.12MB}]\", query_id=20261027_210526_00026_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589856768,
+       "process_seconds": 10.708299412000088,
+       "trial": 1,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 3.97GB, Delta: 84.81MB, Top Consumers: {HashBuilderOperator=3.83GB, LazyOutputBuffer=64.98MB, ExchangeOperator=45.69MB}]\", query_id=20261027_210541_00027_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589639680,
+       "process_seconds": 12.394882798000253,
+       "trial": 2,
+       "verdict": "failed"
+      }
+     ]
+    }
+   }
+  },
+  "q06": {
+   "sql_sha256": "6307f868310f4e5256cf5cc33ba10d01d14b0267d6fee8d8e738d7b6c589b5ce",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 143056896,
+     "peak_sampled_tree_rss_bytes": 200462336,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 1.9597446710004078,
+      "median": 1.9487038560000656,
+      "min": 1.9337463629999547,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0012637460004043533,
+        "import_s": 0.07958555900040665,
+        "query_s": 1.6838932129994646,
+        "rows": 1,
+        "setup_s": 0.05430497999986983
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 142843904,
+       "peak_sampled_tree_rss_bytes": 197570560,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.9337463629999547,
+       "result_sha256": "9a3ea76d5af3ad22c19136db1874206fc428a60f31a0384ef2c4f51b2250db46",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 20,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.001986514999771316,
+        "import_s": 0.07944179800051643,
+        "query_s": 1.6862236699998903,
+        "rows": 1,
+        "setup_s": 0.05594281699995918
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 143056896,
+       "peak_sampled_tree_rss_bytes": 199204864,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.9487038560000656,
+       "result_sha256": "9a3ea76d5af3ad22c19136db1874206fc428a60f31a0384ef2c4f51b2250db46",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 20,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0012903360002383124,
+        "import_s": 0.0779739959998551,
+        "query_s": 1.6897081710003476,
+        "rows": 1,
+        "setup_s": 0.05413535499974387
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 142626816,
+       "peak_sampled_tree_rss_bytes": 200462336,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.9597446710004078,
+       "result_sha256": "9a3ea76d5af3ad22c19136db1874206fc428a60f31a0384ef2c4f51b2250db46",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 20,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 169508864,
+     "peak_sampled_tree_rss_bytes": 360714240,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 1.9387665419999394,
+      "median": 1.9260249259996272,
+      "min": 1.9253854560001855,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 16,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 1881592173,
+        "engine_streaming": false,
+        "prepare_ns": 95612566,
+        "rows": 1,
+        "wire_bytes": 304
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 166780928,
+       "peak_sampled_tree_rss_bytes": 358518784,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.9253854560001855,
+       "result_sha256": "2a5eb3f382a00bdefdb0bc11591591646c021662562489e8d747869d7dd616bc",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 20,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 16,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 1900500346,
+        "engine_streaming": false,
+        "prepare_ns": 96041124,
+        "rows": 1,
+        "wire_bytes": 304
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 169508864,
+       "peak_sampled_tree_rss_bytes": 360714240,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.9387665419999394,
+       "result_sha256": "2a5eb3f382a00bdefdb0bc11591591646c021662562489e8d747869d7dd616bc",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 20,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 16,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 1883960462,
+        "engine_streaming": false,
+        "prepare_ns": 92785456,
+        "rows": 1,
+        "wire_bytes": 304
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 165736448,
+       "peak_sampled_tree_rss_bytes": 356597760,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.9260249259996272,
+       "result_sha256": "2a5eb3f382a00bdefdb0bc11591591646c021662562489e8d747869d7dd616bc",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 20,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 8584687616,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 6.754196519999823,
+      "median": 5.666611568999542,
+      "min": 5.523031357999571,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8584687616,
+       "process_seconds": 6.754196519999823,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 4618633216,
+       "process_seconds": 5.523031357999571,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 3542847488,
+       "process_seconds": 5.666611568999542,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q07": {
+   "sql_sha256": "a4a0c52b4146f4339aff4722aa9353b5c76f37d406e3eb45b375b60a9ca236cd",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 610557952,
+     "peak_sampled_tree_rss_bytes": 671256576,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 4.737728832000357,
+      "median": 4.664074014999642,
+      "min": 4.189585915999487,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.002797576999910234,
+        "import_s": 0.08003464300054475,
+        "query_s": 3.914457166999455,
+        "rows": 4,
+        "setup_s": 0.05810955400011153
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 606691328,
+       "peak_sampled_tree_rss_bytes": 668413952,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.189585915999487,
+       "result_sha256": "9cd4aab09568ffd6565696909452493a30e5df104c564f29050e5b0b64e6343f",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 42,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.004846762999477505,
+        "import_s": 0.07982242399975803,
+        "query_s": 4.421043000000282,
+        "rows": 4,
+        "setup_s": 0.05409941000016261
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 579108864,
+       "peak_sampled_tree_rss_bytes": 644702208,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.737728832000357,
+       "result_sha256": "9cd4aab09568ffd6565696909452493a30e5df104c564f29050e5b0b64e6343f",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 47,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0013361999999688123,
+        "import_s": 0.07869014500010962,
+        "query_s": 4.378135822999866,
+        "rows": 4,
+        "setup_s": 0.05741654099983862
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 610557952,
+       "peak_sampled_tree_rss_bytes": 671256576,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.664074014999642,
+       "result_sha256": "9cd4aab09568ffd6565696909452493a30e5df104c564f29050e5b0b64e6343f",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 47,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 640438272,
+     "peak_sampled_tree_rss_bytes": 833097728,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 4.824353996999889,
+      "median": 4.3039265110001,
+      "min": 4.290481535999788,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 188,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4244623713,
+        "engine_streaming": false,
+        "prepare_ns": 104790273,
+        "rows": 4,
+        "wire_bytes": 832
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 640438272,
+       "peak_sampled_tree_rss_bytes": 833097728,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.290481535999788,
+       "result_sha256": "3bf6abc9970fa29074629ebedac0ed135cb5cd641df9bfb0cdb19e0e21182fa4",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 43,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 188,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4746467981,
+        "engine_streaming": false,
+        "prepare_ns": 119280040,
+        "rows": 4,
+        "wire_bytes": 832
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 594821120,
+       "peak_sampled_tree_rss_bytes": 786481152,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.824353996999889,
+       "result_sha256": "3bf6abc9970fa29074629ebedac0ed135cb5cd641df9bfb0cdb19e0e21182fa4",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 48,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 188,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4259696083,
+        "engine_streaming": false,
+        "prepare_ns": 102603113,
+        "rows": 4,
+        "wire_bytes": 832
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 634146816,
+       "peak_sampled_tree_rss_bytes": 825700352,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.3039265110001,
+       "result_sha256": "3bf6abc9970fa29074629ebedac0ed135cb5cd641df9bfb0cdb19e0e21182fa4",
+       "returncode": 0,
+       "rows": 4,
+       "samples": 43,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 0,
+     "peak_cgroup_memory_bytes": 8589950976,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": null,
+     "state": "failed",
+     "trials": [
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 193.25MB, Top Consumers: {HashBuilderOperator=3.99GB, ExchangeOperator=1.84MB, PagePartitioner=16.42kB}]\", query_id=20261027_210640_00031_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589934592,
+       "process_seconds": 14.337212016000194,
+       "trial": 0,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 193.63MB, Top Consumers: {HashBuilderOperator=3.99GB, ExchangeOperator=1.84MB, PagePartitioner=16.42kB}]\", query_id=20261027_210700_00032_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589950976,
+       "process_seconds": 13.813296796000031,
+       "trial": 1,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 193.50MB, Top Consumers: {HashBuilderOperator=3.99GB, ExchangeOperator=1.84MB, PagePartitioner=16.42kB}]\", query_id=20261027_210718_00033_dp2mp)",
+       "peak_cgroup_memory_bytes": 8586625024,
+       "process_seconds": 14.618032714999572,
+       "trial": 2,
+       "verdict": "failed"
+      }
+     ]
+    }
+   }
+  },
+  "q08": {
+   "sql_sha256": "5132bdb24613d762b270b4ef92c0002b55dbb7980a754622fbd61657b23ea7a8",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 354414592,
+     "peak_sampled_tree_rss_bytes": 391639040,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 5.606573672000195,
+      "median": 5.566145810999842,
+      "min": 5.4908947910007555,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.002014560999668902,
+        "import_s": 0.07847418800065498,
+        "query_s": 5.2441736210003,
+        "rows": 2,
+        "setup_s": 0.05309517699970456
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 317513728,
+       "peak_sampled_tree_rss_bytes": 380420096,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.4908947910007555,
+       "result_sha256": "c3f8427efd56a57d7982a1806ccf59e38740c3624a26011d8c805aa3db21bb56",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 55,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0018501310005376581,
+        "import_s": 0.07731158699971274,
+        "query_s": 5.326979473999927,
+        "rows": 2,
+        "setup_s": 0.054959449999842036
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 354414592,
+       "peak_sampled_tree_rss_bytes": 391639040,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.606573672000195,
+       "result_sha256": "c3f8427efd56a57d7982a1806ccf59e38740c3624a26011d8c805aa3db21bb56",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 56,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011715290002030088,
+        "import_s": 0.07607117499992455,
+        "query_s": 5.30212656599997,
+        "rows": 2,
+        "setup_s": 0.05491486699975212
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 324292608,
+       "peak_sampled_tree_rss_bytes": 387346432,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.566145810999842,
+       "result_sha256": "c3f8427efd56a57d7982a1806ccf59e38740c3624a26011d8c805aa3db21bb56",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 56,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 385474560,
+     "peak_sampled_tree_rss_bytes": 579743744,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 5.796317103000547,
+      "median": 5.7605408270001135,
+      "min": 5.729721798000355,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 32,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 5747379117,
+        "engine_streaming": false,
+        "prepare_ns": 119960654,
+        "rows": 2,
+        "wire_bytes": 424
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 385474560,
+       "peak_sampled_tree_rss_bytes": 579743744,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.796317103000547,
+       "result_sha256": "6bb8999ab74f0b1638fdc5b5c468c9a68185a1e58d18e3be80b2e3e2485ce46f",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 58,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 32,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 5705382588,
+        "engine_streaming": false,
+        "prepare_ns": 109390465,
+        "rows": 2,
+        "wire_bytes": 424
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 359972864,
+       "peak_sampled_tree_rss_bytes": 553590784,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.7605408270001135,
+       "result_sha256": "6bb8999ab74f0b1638fdc5b5c468c9a68185a1e58d18e3be80b2e3e2485ce46f",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 58,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 32,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 5688663179,
+        "engine_streaming": false,
+        "prepare_ns": 103146747,
+        "rows": 2,
+        "wire_bytes": 424
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 357933056,
+       "peak_sampled_tree_rss_bytes": 552288256,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.729721798000355,
+       "result_sha256": "6bb8999ab74f0b1638fdc5b5c468c9a68185a1e58d18e3be80b2e3e2485ce46f",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 57,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 0,
+     "peak_cgroup_memory_bytes": 8589922304,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": null,
+     "state": "failed",
+     "trials": [
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 8.44MB, Top Consumers: {HashBuilderOperator=3.93GB, LazyOutputBuffer=32.91MB, ScanFilterAndProjectOperator=25.99MB}]\", query_id=20261027_210753_00034_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589676544,
+       "process_seconds": 10.56988697900033,
+       "trial": 0,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 1.32MB, Top Consumers: {HashBuilderOperator=3.92GB, ScanFilterAndProjectOperator=41.59MB, LazyOutputBuffer=32.91MB}]\", query_id=20261027_210809_00035_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589922304,
+       "process_seconds": 10.370794790999753,
+       "trial": 1,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 192kB, Top Consumers: {HashBuilderOperator=3.93GB, LazyOutputBuffer=32.91MB, ScanFilterAndProjectOperator=31.19MB}]\", query_id=20261027_210825_00036_dp2mp)",
+       "peak_cgroup_memory_bytes": 8568627200,
+       "process_seconds": 11.030173045000083,
+       "trial": 2,
+       "verdict": "failed"
+      }
+     ]
+    }
+   }
+  },
+  "q09": {
+   "sql_sha256": "76315395cd8da1fe53f1db8672794e5ea5c76bf2544ceffcecee67d030bd6ee5",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 5307613184,
+     "peak_sampled_tree_rss_bytes": 4127297536,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 9.804470238000249,
+      "median": 9.29466546399999,
+      "min": 9.258744520999244,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.001112278999244154,
+        "import_s": 0.07574728500003403,
+        "query_s": 9.459411413999987,
+        "rows": 175,
+        "setup_s": 0.05298546100038948
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 5208248320,
+       "peak_sampled_tree_rss_bytes": 4093710336,
+       "peak_spill_bytes": 0,
+       "process_seconds": 9.804470238000249,
+       "result_sha256": "820cd8959fe278f54977570c5e71b265d89bbdf1ead2f15660e2f30cc939b975",
+       "returncode": 0,
+       "rows": 175,
+       "samples": 98,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0010115029999724356,
+        "import_s": 0.08023765400048433,
+        "query_s": 8.950045017000775,
+        "rows": 175,
+        "setup_s": 0.057772182999542565
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 5307613184,
+       "peak_sampled_tree_rss_bytes": 4123627520,
+       "peak_spill_bytes": 0,
+       "process_seconds": 9.258744520999244,
+       "result_sha256": "820cd8959fe278f54977570c5e71b265d89bbdf1ead2f15660e2f30cc939b975",
+       "returncode": 0,
+       "rows": 175,
+       "samples": 92,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011335469998812187,
+        "import_s": 0.07373171700055536,
+        "query_s": 9.030911247999938,
+        "rows": 175,
+        "setup_s": 0.05384942799992132
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 5299134464,
+       "peak_sampled_tree_rss_bytes": 4127297536,
+       "peak_spill_bytes": 0,
+       "process_seconds": 9.29466546399999,
+       "result_sha256": "820cd8959fe278f54977570c5e71b265d89bbdf1ead2f15660e2f30cc939b975",
+       "returncode": 0,
+       "rows": 175,
+       "samples": 93,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 5311766528,
+     "peak_sampled_tree_rss_bytes": 4299522048,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 9.908752073999494,
+      "median": 9.460809271000471,
+      "min": 9.283262523999838,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 6143,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 9870526260,
+        "engine_streaming": false,
+        "prepare_ns": 105499168,
+        "rows": 175,
+        "wire_bytes": 6656
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 5276209152,
+       "peak_sampled_tree_rss_bytes": 4259614720,
+       "peak_spill_bytes": 0,
+       "process_seconds": 9.908752073999494,
+       "result_sha256": "b38770a436f711beeb01a493a74c7ea1e7a2aa3342a43babebc7cca47ec37bd2",
+       "returncode": 0,
+       "rows": 175,
+       "samples": 99,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 6143,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 9409472963,
+        "engine_streaming": false,
+        "prepare_ns": 109096494,
+        "rows": 175,
+        "wire_bytes": 6656
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 5311766528,
+       "peak_sampled_tree_rss_bytes": 4280569856,
+       "peak_spill_bytes": 0,
+       "process_seconds": 9.460809271000471,
+       "result_sha256": "b38770a436f711beeb01a493a74c7ea1e7a2aa3342a43babebc7cca47ec37bd2",
+       "returncode": 0,
+       "rows": 175,
+       "samples": 94,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 6143,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 9237726325,
+        "engine_streaming": false,
+        "prepare_ns": 107248342,
+        "rows": 175,
+        "wire_bytes": 6656
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 5303701504,
+       "peak_sampled_tree_rss_bytes": 4299522048,
+       "peak_spill_bytes": 0,
+       "process_seconds": 9.283262523999838,
+       "result_sha256": "b38770a436f711beeb01a493a74c7ea1e7a2aa3342a43babebc7cca47ec37bd2",
+       "returncode": 0,
+       "rows": 175,
+       "samples": 92,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 0,
+     "peak_cgroup_memory_bytes": 8590848000,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": null,
+     "state": "failed",
+     "trials": [
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 1.52MB, Top Consumers: {HashBuilderOperator=3.93GB, ScanFilterAndProjectOperator=31.72MB, LazyOutputBuffer=30.38MB}]\", query_id=20261027_210907_00037_dp2mp)",
+       "peak_cgroup_memory_bytes": 8590848000,
+       "process_seconds": 10.981748891999814,
+       "trial": 0,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 3.99GB, Delta: 7.88MB, Top Consumers: {HashBuilderOperator=3.93GB, LazyOutputBuffer=34.93MB, ScanFilterAndProjectOperator=26.44MB}]\", query_id=20261027_210928_00038_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589926400,
+       "process_seconds": 10.041441768999903,
+       "trial": 1,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 5.29MB, Top Consumers: {HashBuilderOperator=3.92GB, ScanFilterAndProjectOperator=31.72MB, LazyOutputBuffer=27.34MB}]\", query_id=20261027_210947_00039_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589934592,
+       "process_seconds": 10.06424504900042,
+       "trial": 2,
+       "verdict": "failed"
+      }
+     ]
+    }
+   }
+  },
+  "q10": {
+   "sql_sha256": "a63e0d28c4055de1dd414a6c0d1cacc790a8669e835f67d1042b3c4c36c743e6",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 1851338752,
+     "peak_sampled_tree_rss_bytes": 975921152,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 4.337400766000428,
+      "median": 3.969101620999936,
+      "min": 3.9545885549996456,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0022103000001152395,
+        "import_s": 0.07420020300014585,
+        "query_s": 4.096159132000139,
+        "rows": 20,
+        "setup_s": 0.05445777899967652
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1851338752,
+       "peak_sampled_tree_rss_bytes": 893956096,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.337400766000428,
+       "result_sha256": "129020ea50186b7b0754713e1f713077c90b6f2c9ebb6826e5063b1804c573db",
+       "returncode": 0,
+       "rows": 20,
+       "samples": 44,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0018122999999832246,
+        "import_s": 0.07888312100021722,
+        "query_s": 3.7067127270001947,
+        "rows": 20,
+        "setup_s": 0.05393788299988955
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 951894016,
+       "peak_sampled_tree_rss_bytes": 975921152,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.9545885549996456,
+       "result_sha256": "129020ea50186b7b0754713e1f713077c90b6f2c9ebb6826e5063b1804c573db",
+       "returncode": 0,
+       "rows": 20,
+       "samples": 40,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.00157670800035703,
+        "import_s": 0.07476211799985322,
+        "query_s": 3.716146805999415,
+        "rows": 20,
+        "setup_s": 0.053687040000113484
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 872919040,
+       "peak_sampled_tree_rss_bytes": 922296320,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.969101620999936,
+       "result_sha256": "129020ea50186b7b0754713e1f713077c90b6f2c9ebb6826e5063b1804c573db",
+       "returncode": 0,
+       "rows": 20,
+       "samples": 40,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 934645760,
+     "peak_sampled_tree_rss_bytes": 1127407616,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 4.084345754000424,
+      "median": 4.049038443999962,
+      "min": 4.04746030699971,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 4116,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4039165683,
+        "engine_streaming": false,
+        "prepare_ns": 105624838,
+        "rows": 20,
+        "wire_bytes": 5208
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 923566080,
+       "peak_sampled_tree_rss_bytes": 1113067520,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.084345754000424,
+       "result_sha256": "2caeaba47984acf9b4c798af8d3f647e6218f23cf9276f0b5ef1cc027b923149",
+       "returncode": 0,
+       "rows": 20,
+       "samples": 41,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 4116,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4001442061,
+        "engine_streaming": false,
+        "prepare_ns": 97504847,
+        "rows": 20,
+        "wire_bytes": 5208
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 934645760,
+       "peak_sampled_tree_rss_bytes": 1127407616,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.049038443999962,
+       "result_sha256": "2caeaba47984acf9b4c798af8d3f647e6218f23cf9276f0b5ef1cc027b923149",
+       "returncode": 0,
+       "rows": 20,
+       "samples": 41,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 4116,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4004454082,
+        "engine_streaming": false,
+        "prepare_ns": 100189627,
+        "rows": 20,
+        "wire_bytes": 5208
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 920023040,
+       "peak_sampled_tree_rss_bytes": 1113092096,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.04746030699971,
+       "result_sha256": "2caeaba47984acf9b4c798af8d3f647e6218f23cf9276f0b5ef1cc027b923149",
+       "returncode": 0,
+       "rows": 20,
+       "samples": 41,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 8589709312,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 15.569633561000046,
+      "median": 14.40744831200027,
+      "min": 13.739493114999277,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8589709312,
+       "process_seconds": 15.569633561000046,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8588607488,
+       "process_seconds": 14.40744831200027,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8552521728,
+       "process_seconds": 13.739493114999277,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q11": {
+   "sql_sha256": "1537528b7b1862e8cfd6895d346c3d96dcddc06bbe4aa5e31f152732aa315486",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 189751296,
+     "peak_sampled_tree_rss_bytes": 254017536,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 0.9825133089998417,
+      "median": 0.9701980720001302,
+      "min": 0.9695055900001535,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0007721580004727002,
+        "import_s": 0.0730632009999681,
+        "query_s": 0.7358508609995624,
+        "rows": 0,
+        "setup_s": 0.05379122200065467
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 188686336,
+       "peak_sampled_tree_rss_bytes": 252923904,
+       "peak_spill_bytes": 0,
+       "process_seconds": 0.9701980720001302,
+       "result_sha256": "0c3179476ccea869d88b3270f7be4c57c2061d59c6d22dc9b72e3f15b06b841b",
+       "returncode": 0,
+       "rows": 0,
+       "samples": 10,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0033021260005625663,
+        "import_s": 0.07561385400003928,
+        "query_s": 0.7298497430001589,
+        "rows": 0,
+        "setup_s": 0.05424767799922847
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 189751296,
+       "peak_sampled_tree_rss_bytes": 254017536,
+       "peak_spill_bytes": 0,
+       "process_seconds": 0.9695055900001535,
+       "result_sha256": "0c3179476ccea869d88b3270f7be4c57c2061d59c6d22dc9b72e3f15b06b841b",
+       "returncode": 0,
+       "rows": 0,
+       "samples": 10,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0010813179997057887,
+        "import_s": 0.07569364300070447,
+        "query_s": 0.7513209500002631,
+        "rows": 0,
+        "setup_s": 0.05406086599941773
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 169066496,
+       "peak_sampled_tree_rss_bytes": 233680896,
+       "peak_spill_bytes": 0,
+       "process_seconds": 0.9825133089998417,
+       "result_sha256": "0c3179476ccea869d88b3270f7be4c57c2061d59c6d22dc9b72e3f15b06b841b",
+       "returncode": 0,
+       "rows": 0,
+       "samples": 10,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 189218816,
+     "peak_sampled_tree_rss_bytes": 383561728,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 0.8858536269999604,
+      "median": 0.8800069769995389,
+      "min": 0.878677749000417,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 0,
+        "backend": "duckdb",
+        "batches": 0,
+        "duration_ns": 836889518,
+        "engine_streaming": false,
+        "prepare_ns": 55825803,
+        "rows": 0,
+        "wire_bytes": 208
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 186904576,
+       "peak_sampled_tree_rss_bytes": 381231104,
+       "peak_spill_bytes": 0,
+       "process_seconds": 0.878677749000417,
+       "result_sha256": "2cb285119aba02d4109237a6c36bbefc7565985e66f314be26abb74347bb60f7",
+       "returncode": 0,
+       "rows": 0,
+       "samples": 9,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 0,
+        "backend": "duckdb",
+        "batches": 0,
+        "duration_ns": 840284442,
+        "engine_streaming": false,
+        "prepare_ns": 56763273,
+        "rows": 0,
+        "wire_bytes": 208
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 181178368,
+       "peak_sampled_tree_rss_bytes": 376217600,
+       "peak_spill_bytes": 0,
+       "process_seconds": 0.8800069769995389,
+       "result_sha256": "2cb285119aba02d4109237a6c36bbefc7565985e66f314be26abb74347bb60f7",
+       "returncode": 0,
+       "rows": 0,
+       "samples": 9,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 0,
+        "backend": "duckdb",
+        "batches": 0,
+        "duration_ns": 837307121,
+        "engine_streaming": false,
+        "prepare_ns": 56457450,
+        "rows": 0,
+        "wire_bytes": 208
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 189218816,
+       "peak_sampled_tree_rss_bytes": 383561728,
+       "peak_spill_bytes": 0,
+       "process_seconds": 0.8858536269999604,
+       "result_sha256": "2cb285119aba02d4109237a6c36bbefc7565985e66f314be26abb74347bb60f7",
+       "returncode": 0,
+       "rows": 0,
+       "samples": 9,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 8539656192,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 6.506530644000122,
+      "median": 6.225025313000515,
+      "min": 6.110200058000373,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8539656192,
+       "process_seconds": 6.506530644000122,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 5629841408,
+       "process_seconds": 6.225025313000515,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 5113974784,
+       "process_seconds": 6.110200058000373,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q12": {
+   "sql_sha256": "7e584cbfff753e94b9df86c3cf5c74faf6b0b87a8ce9ead6218dd21f445359da",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 790528000,
+     "peak_sampled_tree_rss_bytes": 295620608,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 2.805932543000381,
+      "median": 2.3129219550000926,
+      "min": 2.2984065089995056,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.002526058000512421,
+        "import_s": 0.07678916999975627,
+        "query_s": 2.5415411570002107,
+        "rows": 2,
+        "setup_s": 0.05427910599973984
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 790528000,
+       "peak_sampled_tree_rss_bytes": 292982784,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.805932543000381,
+       "result_sha256": "e84159644260d710b68996ffde034b10cb9f2e38618e9ba3ea8c5eba7c4776c5",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 28,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.00234594100038521,
+        "import_s": 0.07832838000012998,
+        "query_s": 2.0537799769999765,
+        "rows": 2,
+        "setup_s": 0.053676305999943
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 231145472,
+       "peak_sampled_tree_rss_bytes": 295620608,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.3129219550000926,
+       "result_sha256": "e84159644260d710b68996ffde034b10cb9f2e38618e9ba3ea8c5eba7c4776c5",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 23,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0020140699998592027,
+        "import_s": 0.07455237900012435,
+        "query_s": 2.0457582890003323,
+        "rows": 2,
+        "setup_s": 0.05434822000006534
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 230010880,
+       "peak_sampled_tree_rss_bytes": 293879808,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.2984065089995056,
+       "result_sha256": "e84159644260d710b68996ffde034b10cb9f2e38618e9ba3ea8c5eba7c4776c5",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 23,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 265977856,
+     "peak_sampled_tree_rss_bytes": 460623872,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 2.342148968999936,
+      "median": 2.296568132000175,
+      "min": 2.276844975000131,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 84,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2301060358,
+        "engine_streaming": false,
+        "prepare_ns": 104242634,
+        "rows": 2,
+        "wire_bytes": 600
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 262660096,
+       "peak_sampled_tree_rss_bytes": 457015296,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.342148968999936,
+       "result_sha256": "6fbf7a520831af97715bf94f1aae7d3c7f7b8dc4092a3f7d2033245918e05b6a",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 24,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 84,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2230118879,
+        "engine_streaming": false,
+        "prepare_ns": 101080577,
+        "rows": 2,
+        "wire_bytes": 600
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 258473984,
+       "peak_sampled_tree_rss_bytes": 452902912,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.276844975000131,
+       "result_sha256": "6fbf7a520831af97715bf94f1aae7d3c7f7b8dc4092a3f7d2033245918e05b6a",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 23,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 84,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2249263026,
+        "engine_streaming": false,
+        "prepare_ns": 102076376,
+        "rows": 2,
+        "wire_bytes": 600
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 265977856,
+       "peak_sampled_tree_rss_bytes": 460623872,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.296568132000175,
+       "result_sha256": "6fbf7a520831af97715bf94f1aae7d3c7f7b8dc4092a3f7d2033245918e05b6a",
+       "returncode": 0,
+       "rows": 2,
+       "samples": 23,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 6485585920,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 8.062511385999642,
+      "median": 7.663497057000313,
+      "min": 7.6056500830000004,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 5677453312,
+       "process_seconds": 8.062511385999642,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6485585920,
+       "process_seconds": 7.6056500830000004,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 5593284608,
+       "process_seconds": 7.663497057000313,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q13": {
+   "sql_sha256": "f662ed4938555e4afbc6728bc3b8fec569dc37be952a0e3d5c734a21e8cf7804",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 2245931008,
+     "peak_sampled_tree_rss_bytes": 1670979584,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 5.1188043570000445,
+      "median": 5.021469438000167,
+      "min": 4.9477885289998085,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011015250001946697,
+        "import_s": 0.07319087500036403,
+        "query_s": 4.871815615999367,
+        "rows": 45,
+        "setup_s": 0.05300788800013834
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 2245931008,
+       "peak_sampled_tree_rss_bytes": 1648967680,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.1188043570000445,
+       "result_sha256": "ea8c4198bb0e6c87a694e2b4d568935e49e0e660d294bddac6ee3b8de44b28dd",
+       "returncode": 0,
+       "rows": 45,
+       "samples": 51,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0016098859996418469,
+        "import_s": 0.07853357000021788,
+        "query_s": 4.686210155000481,
+        "rows": 45,
+        "setup_s": 0.05393938699944556
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1607180288,
+       "peak_sampled_tree_rss_bytes": 1664118784,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.9477885289998085,
+       "result_sha256": "ea8c4198bb0e6c87a694e2b4d568935e49e0e660d294bddac6ee3b8de44b28dd",
+       "returncode": 0,
+       "rows": 45,
+       "samples": 50,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0029960249994473998,
+        "import_s": 0.0758020690000194,
+        "query_s": 4.770712391000416,
+        "rows": 45,
+        "setup_s": 0.053358643999672495
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1609687040,
+       "peak_sampled_tree_rss_bytes": 1670979584,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.021469438000167,
+       "result_sha256": "ea8c4198bb0e6c87a694e2b4d568935e49e0e660d294bddac6ee3b8de44b28dd",
+       "returncode": 0,
+       "rows": 45,
+       "samples": 50,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 1648427008,
+     "peak_sampled_tree_rss_bytes": 1835212800,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 4.856148317000589,
+      "median": 4.806816537000486,
+      "min": 4.697597092999786,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 720,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4815353312,
+        "engine_streaming": false,
+        "prepare_ns": 55190719,
+        "rows": 45,
+        "wire_bytes": 1112
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1648427008,
+       "peak_sampled_tree_rss_bytes": 1835212800,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.856148317000589,
+       "result_sha256": "dc9790e75a152669f855f2169f5cf5f21450396e564702a7304b50697b102437",
+       "returncode": 0,
+       "rows": 45,
+       "samples": 49,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 720,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4657554829,
+        "engine_streaming": false,
+        "prepare_ns": 55720345,
+        "rows": 45,
+        "wire_bytes": 1112
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1619685376,
+       "peak_sampled_tree_rss_bytes": 1803649024,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.697597092999786,
+       "result_sha256": "dc9790e75a152669f855f2169f5cf5f21450396e564702a7304b50697b102437",
+       "returncode": 0,
+       "rows": 45,
+       "samples": 47,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 720,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4763944491,
+        "engine_streaming": false,
+        "prepare_ns": 55578900,
+        "rows": 45,
+        "wire_bytes": 1112
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1524789248,
+       "peak_sampled_tree_rss_bytes": 1716854784,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.806816537000486,
+       "result_sha256": "dc9790e75a152669f855f2169f5cf5f21450396e564702a7304b50697b102437",
+       "returncode": 0,
+       "rows": 45,
+       "samples": 48,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 8484790272,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 13.98247963400081,
+      "median": 13.852616412000316,
+      "min": 13.720789669000624,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 7627526144,
+       "process_seconds": 13.98247963400081,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8249749504,
+       "process_seconds": 13.852616412000316,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8484790272,
+       "process_seconds": 13.720789669000624,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q14": {
+   "sql_sha256": "6a2a59c7413a5f850755e7898ad14c7f7c45a4f3a0e0147278e2353f61d10f4e",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 673193984,
+     "peak_sampled_tree_rss_bytes": 719065088,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 2.9140266550002707,
+      "median": 2.897600531000535,
+      "min": 2.8931655520000277,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0013990599991302588,
+        "import_s": 0.07576048000009905,
+        "query_s": 2.670615535000252,
+        "rows": 1,
+        "setup_s": 0.052987115000178164
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 673193984,
+       "peak_sampled_tree_rss_bytes": 714489856,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.9140266550002707,
+       "result_sha256": "833f89abb22ed00493dca525dde40b91e75c00745c1c9f1e70673b7f91cb364a",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 29,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0012017529998047394,
+        "import_s": 0.07575876699957007,
+        "query_s": 2.631507932999739,
+        "rows": 1,
+        "setup_s": 0.054101127000649285
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 651857920,
+       "peak_sampled_tree_rss_bytes": 715190272,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.8931655520000277,
+       "result_sha256": "833f89abb22ed00493dca525dde40b91e75c00745c1c9f1e70673b7f91cb364a",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 29,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.001350581000224338,
+        "import_s": 0.08031522999954177,
+        "query_s": 2.641761304999818,
+        "rows": 1,
+        "setup_s": 0.05419959600021684
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 655638528,
+       "peak_sampled_tree_rss_bytes": 719065088,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.897600531000535,
+       "result_sha256": "833f89abb22ed00493dca525dde40b91e75c00745c1c9f1e70673b7f91cb364a",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 29,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 708341760,
+     "peak_sampled_tree_rss_bytes": 899739648,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 2.9434470199994394,
+      "median": 2.9363822390005225,
+      "min": 2.918898334000005,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 8,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2890901376,
+        "engine_streaming": false,
+        "prepare_ns": 98181113,
+        "rows": 1,
+        "wire_bytes": 296
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 682582016,
+       "peak_sampled_tree_rss_bytes": 872652800,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.9363822390005225,
+       "result_sha256": "919bd8ae53111f58b7f5cf45af067ab185e29d961f1be5b3f77223d61a5ad78f",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 30,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 8,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2875876737,
+        "engine_streaming": false,
+        "prepare_ns": 94063928,
+        "rows": 1,
+        "wire_bytes": 296
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 679096320,
+       "peak_sampled_tree_rss_bytes": 872603648,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.918898334000005,
+       "result_sha256": "919bd8ae53111f58b7f5cf45af067ab185e29d961f1be5b3f77223d61a5ad78f",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 29,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 8,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2903446868,
+        "engine_streaming": false,
+        "prepare_ns": 95688386,
+        "rows": 1,
+        "wire_bytes": 296
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 708341760,
+       "peak_sampled_tree_rss_bytes": 899739648,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.9434470199994394,
+       "result_sha256": "919bd8ae53111f58b7f5cf45af067ab185e29d961f1be5b3f77223d61a5ad78f",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 30,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 8551907328,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 7.514209870999366,
+      "median": 6.947947896000187,
+      "min": 6.8240361250000205,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8551907328,
+       "process_seconds": 7.514209870999366,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6000484352,
+       "process_seconds": 6.8240361250000205,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6184677376,
+       "process_seconds": 6.947947896000187,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q15": {
+   "sql_sha256": "fe9d5bc260e20f3e97a8a70be53d3b28c8d3717cabd7fad53095536b396b5ee9",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 444837888,
+     "peak_sampled_tree_rss_bytes": 506761216,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 2.8230734230000962,
+      "median": 2.806330868000259,
+      "min": 2.7846535980006593,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011955010004385258,
+        "import_s": 0.07523580700035382,
+        "query_s": 2.5601764139992156,
+        "rows": 1,
+        "setup_s": 0.05329184200036252
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 432508928,
+       "peak_sampled_tree_rss_bytes": 496779264,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.806330868000259,
+       "result_sha256": "a0ddac964c539a6988e6fae38bf9955af78e67832da095c0573b66402c0d43fe",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 28,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011640019993137685,
+        "import_s": 0.07794707699940773,
+        "query_s": 2.5556561140001577,
+        "rows": 1,
+        "setup_s": 0.054928946000472934
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 442871808,
+       "peak_sampled_tree_rss_bytes": 506208256,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.8230734230000962,
+       "result_sha256": "a0ddac964c539a6988e6fae38bf9955af78e67832da095c0573b66402c0d43fe",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 29,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011018360000889516,
+        "import_s": 0.07323937000001024,
+        "query_s": 2.5265785689998665,
+        "rows": 1,
+        "setup_s": 0.05364417900000262
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 444837888,
+       "peak_sampled_tree_rss_bytes": 506761216,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.7846535980006593,
+       "result_sha256": "a0ddac964c539a6988e6fae38bf9955af78e67832da095c0573b66402c0d43fe",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 28,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 482414592,
+     "peak_sampled_tree_rss_bytes": 676392960,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 2.8369806450000397,
+      "median": 2.823297843000546,
+      "min": 2.8163437709999926,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 96,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2773071860,
+        "engine_streaming": false,
+        "prepare_ns": 91141690,
+        "rows": 1,
+        "wire_bytes": 840
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 482414592,
+       "peak_sampled_tree_rss_bytes": 676392960,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.8163437709999926,
+       "result_sha256": "4efa0f97f6661837366b37f7c7b5c7678d7b7f360ee35a0b7b9a3b8a04f44299",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 28,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 96,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2787711588,
+        "engine_streaming": false,
+        "prepare_ns": 95250322,
+        "rows": 1,
+        "wire_bytes": 840
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 468582400,
+       "peak_sampled_tree_rss_bytes": 623681536,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.8369806450000397,
+       "result_sha256": "4efa0f97f6661837366b37f7c7b5c7678d7b7f360ee35a0b7b9a3b8a04f44299",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 29,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 96,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 2779031713,
+        "engine_streaming": false,
+        "prepare_ns": 90985616,
+        "rows": 1,
+        "wire_bytes": 840
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 457945088,
+       "peak_sampled_tree_rss_bytes": 652398592,
+       "peak_spill_bytes": 0,
+       "process_seconds": 2.823297843000546,
+       "result_sha256": "4efa0f97f6661837366b37f7c7b5c7678d7b7f360ee35a0b7b9a3b8a04f44299",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 28,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 0,
+     "peak_cgroup_memory_bytes": 5666955264,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": null,
+     "state": "failed",
+     "trials": [
+      {
+       "error": "TrinoUserError: TrinoUserError(type=USER_ERROR, name=COLUMN_NOT_FOUND, message=\"line 11:9: Column 'supplier_no' cannot be resolved\", query_id=20261027_211422_00055_dp2mp)",
+       "peak_cgroup_memory_bytes": 5666947072,
+       "process_seconds": 0.017867288000161352,
+       "trial": 0,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoUserError: TrinoUserError(type=USER_ERROR, name=COLUMN_NOT_FOUND, message=\"line 11:9: Column 'supplier_no' cannot be resolved\", query_id=20261027_211424_00056_dp2mp)",
+       "peak_cgroup_memory_bytes": 5666955264,
+       "process_seconds": 0.009331537000434764,
+       "trial": 1,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoUserError: TrinoUserError(type=USER_ERROR, name=COLUMN_NOT_FOUND, message=\"line 11:9: Column 'supplier_no' cannot be resolved\", query_id=20261027_211427_00057_dp2mp)",
+       "peak_cgroup_memory_bytes": 5666189312,
+       "process_seconds": 0.014718178999828524,
+       "trial": 2,
+       "verdict": "failed"
+      }
+     ]
+    }
+   }
+  },
+  "q16": {
+   "sql_sha256": "ba528c266b144a228ad0a865dfc521a541602742b386315fb9c169a30acf7ac1",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 646148096,
+     "peak_sampled_tree_rss_bytes": 706007040,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 1.1796079519999694,
+      "median": 1.1752747109994743,
+      "min": 1.1640788960003192,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0020226130000082776,
+        "import_s": 0.07441641200057347,
+        "query_s": 0.9380289649998304,
+        "rows": 27840,
+        "setup_s": 0.05350315099985892
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 646148096,
+       "peak_sampled_tree_rss_bytes": 704659456,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.1796079519999694,
+       "result_sha256": "84b4c0cebfb02a672b249beaad9dbaaefcd93e4159fecfaa9843c29d58b4d9ef",
+       "returncode": 0,
+       "rows": 27840,
+       "samples": 12,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0022966149999774643,
+        "import_s": 0.07935795000048529,
+        "query_s": 0.9210153220001303,
+        "rows": 27840,
+        "setup_s": 0.053205117999823415
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 643317760,
+       "peak_sampled_tree_rss_bytes": 706007040,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.1640788960003192,
+       "result_sha256": "84b4c0cebfb02a672b249beaad9dbaaefcd93e4159fecfaa9843c29d58b4d9ef",
+       "returncode": 0,
+       "rows": 27840,
+       "samples": 12,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.00271437799983687,
+        "import_s": 0.07613560600020719,
+        "query_s": 0.9348967660007474,
+        "rows": 27840,
+        "setup_s": 0.053222795999317896
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 634437632,
+       "peak_sampled_tree_rss_bytes": 697819136,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.1752747109994743,
+       "result_sha256": "84b4c0cebfb02a672b249beaad9dbaaefcd93e4159fecfaa9843c29d58b4d9ef",
+       "returncode": 0,
+       "rows": 27840,
+       "samples": 12,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 670175232,
+     "peak_sampled_tree_rss_bytes": 862629888,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 1.0529763489994366,
+      "median": 1.0513506560000678,
+      "min": 1.0314639919997717,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 1352752,
+        "backend": "duckdb",
+        "batches": 14,
+        "duration_ns": 989710051,
+        "engine_streaming": false,
+        "prepare_ns": 52189368,
+        "rows": 27840,
+        "wire_bytes": 1357672
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 670175232,
+       "peak_sampled_tree_rss_bytes": 862629888,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.0314639919997717,
+       "result_sha256": "3d195a5fb327b1aac212ca926445659633a89596dd7941841c92bc60aacc04cf",
+       "returncode": 0,
+       "rows": 27840,
+       "samples": 11,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 1352752,
+        "backend": "duckdb",
+        "batches": 14,
+        "duration_ns": 1003520746,
+        "engine_streaming": false,
+        "prepare_ns": 54210852,
+        "rows": 27840,
+        "wire_bytes": 1357672
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 668475392,
+       "peak_sampled_tree_rss_bytes": 862281728,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.0529763489994366,
+       "result_sha256": "3d195a5fb327b1aac212ca926445659633a89596dd7941841c92bc60aacc04cf",
+       "returncode": 0,
+       "rows": 27840,
+       "samples": 11,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 1352752,
+        "backend": "duckdb",
+        "batches": 14,
+        "duration_ns": 1011258212,
+        "engine_streaming": false,
+        "prepare_ns": 53186896,
+        "rows": 27840,
+        "wire_bytes": 1357672
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 668446720,
+       "peak_sampled_tree_rss_bytes": 862547968,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.0513506560000678,
+       "result_sha256": "3d195a5fb327b1aac212ca926445659633a89596dd7941841c92bc60aacc04cf",
+       "returncode": 0,
+       "rows": 27840,
+       "samples": 11,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 6343495680,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 14.361918657999922,
+      "median": 3.323730962000809,
+      "min": 3.101059289000659,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6310170624,
+       "process_seconds": 14.361918657999922,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6311800832,
+       "process_seconds": 3.323730962000809,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6343495680,
+       "process_seconds": 3.101059289000659,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q17": {
+   "sql_sha256": "372057028bfb053807402f35594a1201ca9b80068bcaf01d00c7cdeed1438b4a",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 165351424,
+     "peak_sampled_tree_rss_bytes": 228499456,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 4.561679771999479,
+      "median": 4.544456440999966,
+      "min": 4.525791334000132,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0013252750004539848,
+        "import_s": 0.07519583399971452,
+        "query_s": 4.304861356999936,
+        "rows": 1,
+        "setup_s": 0.05321351800012053
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 161136640,
+       "peak_sampled_tree_rss_bytes": 222896128,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.544456440999966,
+       "result_sha256": "709e7359c6c7956d8712fe5ac8d3db60e4ec629fe09a652dffd5bc160546fc11",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 46,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.001341554999271466,
+        "import_s": 0.07370922399968549,
+        "query_s": 4.307654836999973,
+        "rows": 1,
+        "setup_s": 0.052611502000218024
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 165351424,
+       "peak_sampled_tree_rss_bytes": 228499456,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.561679771999479,
+       "result_sha256": "709e7359c6c7956d8712fe5ac8d3db60e4ec629fe09a652dffd5bc160546fc11",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 46,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0012308969999139663,
+        "import_s": 0.07450649600014003,
+        "query_s": 4.277334272999724,
+        "rows": 1,
+        "setup_s": 0.05337005799992767
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 161652736,
+       "peak_sampled_tree_rss_bytes": 223776768,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.525791334000132,
+       "result_sha256": "709e7359c6c7956d8712fe5ac8d3db60e4ec629fe09a652dffd5bc160546fc11",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 45,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 219435008,
+     "peak_sampled_tree_rss_bytes": 413323264,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 4.744559802000367,
+      "median": 4.723365859000296,
+      "min": 4.722178875999816,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 8,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4702451078,
+        "engine_streaming": false,
+        "prepare_ns": 156987767,
+        "rows": 1,
+        "wire_bytes": 296
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 219435008,
+       "peak_sampled_tree_rss_bytes": 413323264,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.744559802000367,
+       "result_sha256": "a15c46a44b9b2d9677bfcf615f837738a72c861386e973b63453668031be1234",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 47,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 8,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4678428415,
+        "engine_streaming": false,
+        "prepare_ns": 146965188,
+        "rows": 1,
+        "wire_bytes": 296
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 215674880,
+       "peak_sampled_tree_rss_bytes": 410263552,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.722178875999816,
+       "result_sha256": "a15c46a44b9b2d9677bfcf615f837738a72c861386e973b63453668031be1234",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 47,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 8,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 4674232870,
+        "engine_streaming": false,
+        "prepare_ns": 143011118,
+        "rows": 1,
+        "wire_bytes": 296
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 216203264,
+       "peak_sampled_tree_rss_bytes": 410697728,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.723365859000296,
+       "result_sha256": "a15c46a44b9b2d9677bfcf615f837738a72c861386e973b63453668031be1234",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 47,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 8122134528,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 30.807174403000317,
+      "median": 29.700542591999692,
+      "min": 29.562993884000207,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8122134528,
+       "process_seconds": 30.807174403000317,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 7105335296,
+       "process_seconds": 29.700542591999692,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8042008576,
+       "process_seconds": 29.562993884000207,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q18": {
+   "sql_sha256": "d465c252f38cc5ebeb6bf05001d17fcf4b0ad7440b0050574767dc0f69d7ecf4",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 2438643712,
+     "peak_sampled_tree_rss_bytes": 2497568768,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 7.00970465499995,
+      "median": 5.672772685000382,
+      "min": 5.282594597999378,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0010503209996386431,
+        "import_s": 0.0746065470002577,
+        "query_s": 5.020760782999787,
+        "rows": 100,
+        "setup_s": 0.05288424300033512
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 2438643712,
+       "peak_sampled_tree_rss_bytes": 2497568768,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.282594597999378,
+       "result_sha256": "c579308e8fac5d472004c365a2ef4bea5ec9772cbdff9d616dcb157f3d9703b7",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 53,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.001219856999341573,
+        "import_s": 0.0815165750000233,
+        "query_s": 5.328112090000104,
+        "rows": 100,
+        "setup_s": 0.0582877050001116
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 2347520000,
+       "peak_sampled_tree_rss_bytes": 2405994496,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.672772685000382,
+       "result_sha256": "c579308e8fac5d472004c365a2ef4bea5ec9772cbdff9d616dcb157f3d9703b7",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 57,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011401669999031583,
+        "import_s": 0.1071720310001183,
+        "query_s": 6.594035404999886,
+        "rows": 100,
+        "setup_s": 0.0796501309996529
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 2325225472,
+       "peak_sampled_tree_rss_bytes": 2384687104,
+       "peak_spill_bytes": 0,
+       "process_seconds": 7.00970465499995,
+       "result_sha256": "c579308e8fac5d472004c365a2ef4bea5ec9772cbdff9d616dcb157f3d9703b7",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 70,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 2487218176,
+     "peak_sampled_tree_rss_bytes": 2677252096,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 7.395129522999923,
+      "median": 5.582563592000042,
+      "min": 5.403919203999976,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 7404,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 5353600345,
+        "engine_streaming": false,
+        "prepare_ns": 150806265,
+        "rows": 100,
+        "wire_bytes": 8248
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 2487218176,
+       "peak_sampled_tree_rss_bytes": 2677252096,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.403919203999976,
+       "result_sha256": "390a48da5e5b5836dff8cc25d930129bec542b489158daa4f2331869913d3279",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 54,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 7404,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 7320367333,
+        "engine_streaming": false,
+        "prepare_ns": 226174883,
+        "rows": 100,
+        "wire_bytes": 8248
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 2485862400,
+       "peak_sampled_tree_rss_bytes": 2670940160,
+       "peak_spill_bytes": 0,
+       "process_seconds": 7.395129522999923,
+       "result_sha256": "390a48da5e5b5836dff8cc25d930129bec542b489158daa4f2331869913d3279",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 74,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 7404,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 5534104983,
+        "engine_streaming": false,
+        "prepare_ns": 152389578,
+        "rows": 100,
+        "wire_bytes": 8248
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 2365284352,
+       "peak_sampled_tree_rss_bytes": 2554949632,
+       "peak_spill_bytes": 0,
+       "process_seconds": 5.582563592000042,
+       "result_sha256": "390a48da5e5b5836dff8cc25d930129bec542b489158daa4f2331869913d3279",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 56,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 0,
+     "peak_cgroup_memory_bytes": 8590004224,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": null,
+     "state": "failed",
+     "trials": [
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 3.97GB, Delta: 117.63MB, Top Consumers: {HashBuilderOperator=2.98GB, HashAggregationOperator=869.99MB, LazyOutputBuffer=57.98MB}]\", query_id=20261027_211710_00064_dp2mp)",
+       "peak_cgroup_memory_bytes": 8590004224,
+       "process_seconds": 11.870990250999967,
+       "trial": 0,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 4.56MB, Top Consumers: {HashBuilderOperator=2.63GB, HashAggregationOperator=1.26GB, ExchangeOperator=45.61MB}]\", query_id=20261027_211729_00065_dp2mp)",
+       "peak_cgroup_memory_bytes": 8581255168,
+       "process_seconds": 12.332725690000188,
+       "trial": 1,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 3.89GB, Delta: 117.63MB, Top Consumers: {HashBuilderOperator=2.81GB, HashAggregationOperator=918.93MB, LazyOutputBuffer=80.69MB}]\", query_id=20261027_211747_00066_dp2mp)",
+       "peak_cgroup_memory_bytes": 8587415552,
+       "process_seconds": 11.019400629000302,
+       "trial": 2,
+       "verdict": "failed"
+      }
+     ]
+    }
+   }
+  },
+  "q19": {
+   "sql_sha256": "37a2e3a49c93e9dd3f420a3738d882f9f007eb977bac1b86c35bd11e1f11be5e",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 641323008,
+     "peak_sampled_tree_rss_bytes": 568029184,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 4.0980609449998155,
+      "median": 3.888071932999992,
+      "min": 3.881357363999996,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011900030003744178,
+        "import_s": 0.07576361400060705,
+        "query_s": 3.843687198000225,
+        "rows": 1,
+        "setup_s": 0.05381981199934671
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 641323008,
+       "peak_sampled_tree_rss_bytes": 561979392,
+       "peak_spill_bytes": 0,
+       "process_seconds": 4.0980609449998155,
+       "result_sha256": "6355e5fad0dc59825bde738e382d53af4b415fd8e2f821916545d228ddf4baa4",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 41,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0013132780004525557,
+        "import_s": 0.07399689999965631,
+        "query_s": 3.6442685599995457,
+        "rows": 1,
+        "setup_s": 0.05281781400026375
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 504754176,
+       "peak_sampled_tree_rss_bytes": 568029184,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.888071932999992,
+       "result_sha256": "6355e5fad0dc59825bde738e382d53af4b415fd8e2f821916545d228ddf4baa4",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 39,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0018305049998161849,
+        "import_s": 0.0737485329991614,
+        "query_s": 3.6315455040003144,
+        "rows": 1,
+        "setup_s": 0.05106848200011882
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 503730176,
+       "peak_sampled_tree_rss_bytes": 566026240,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.881357363999996,
+       "result_sha256": "6355e5fad0dc59825bde738e382d53af4b415fd8e2f821916545d228ddf4baa4",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 39,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 544374784,
+     "peak_sampled_tree_rss_bytes": 727453696,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 3.8433857769996393,
+      "median": 3.8355863999995563,
+      "min": 3.8264492030002657,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 16,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 3799509564,
+        "engine_streaming": false,
+        "prepare_ns": 94064631,
+        "rows": 1,
+        "wire_bytes": 304
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 534040576,
+       "peak_sampled_tree_rss_bytes": 724668416,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.8433857769996393,
+       "result_sha256": "4d9ff0589409c945ebd41f757a8ee3ee7d7e117e98e421469754310eb1ad56f0",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 39,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 16,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 3794289149,
+        "engine_streaming": false,
+        "prepare_ns": 92587011,
+        "rows": 1,
+        "wire_bytes": 304
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 544374784,
+       "peak_sampled_tree_rss_bytes": 727453696,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.8355863999995563,
+       "result_sha256": "4d9ff0589409c945ebd41f757a8ee3ee7d7e117e98e421469754310eb1ad56f0",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 38,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 16,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 3783917265,
+        "engine_streaming": false,
+        "prepare_ns": 93715180,
+        "rows": 1,
+        "wire_bytes": 304
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 534274048,
+       "peak_sampled_tree_rss_bytes": 723578880,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.8264492030002657,
+       "result_sha256": "4d9ff0589409c945ebd41f757a8ee3ee7d7e117e98e421469754310eb1ad56f0",
+       "returncode": 0,
+       "rows": 1,
+       "samples": 38,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 8589844480,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 8.36287410299974,
+      "median": 7.668743627000367,
+      "min": 7.608942553999441,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8589844480,
+       "process_seconds": 8.36287410299974,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6516379648,
+       "process_seconds": 7.608942553999441,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6435868672,
+       "process_seconds": 7.668743627000367,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q20": {
+   "sql_sha256": "71ef30971a401fc17409ca803b328fc9db0bff1a266adc37cab855b1d7a8a525",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 283271168,
+     "peak_sampled_tree_rss_bytes": 291553280,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 3.480750356000499,
+      "median": 3.4762479399996664,
+      "min": 3.473545801,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0014476469996225205,
+        "import_s": 0.07482989300024201,
+        "query_s": 3.2280089839996435,
+        "rows": 5404,
+        "setup_s": 0.05314825200002815
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 283271168,
+       "peak_sampled_tree_rss_bytes": 291553280,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.473545801,
+       "result_sha256": "28fc154c1756be32d712c201b197f2b32fd84533f83ef0327b57b1517611987b",
+       "returncode": 0,
+       "rows": 5404,
+       "samples": 35,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0034843980001824093,
+        "import_s": 0.07511514399993757,
+        "query_s": 3.221296051000536,
+        "rows": 5404,
+        "setup_s": 0.052702440999382816
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 214016000,
+       "peak_sampled_tree_rss_bytes": 280293376,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.480750356000499,
+       "result_sha256": "28fc154c1756be32d712c201b197f2b32fd84533f83ef0327b57b1517611987b",
+       "returncode": 0,
+       "rows": 5404,
+       "samples": 35,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0013858259999324218,
+        "import_s": 0.07455179099997622,
+        "query_s": 3.2287114979999387,
+        "rows": 5404,
+        "setup_s": 0.05158199900051841
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 217088000,
+       "peak_sampled_tree_rss_bytes": 282583040,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.4762479399996664,
+       "result_sha256": "28fc154c1756be32d712c201b197f2b32fd84533f83ef0327b57b1517611987b",
+       "returncode": 0,
+       "rows": 5404,
+       "samples": 35,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 251281408,
+     "peak_sampled_tree_rss_bytes": 443846656,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 3.5420344980002483,
+      "median": 3.4834846100002324,
+      "min": 3.449579862000064,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 274902,
+        "backend": "duckdb",
+        "batches": 3,
+        "duration_ns": 3411163858,
+        "engine_streaming": false,
+        "prepare_ns": 89134001,
+        "rows": 5404,
+        "wire_bytes": 275784
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 249049088,
+       "peak_sampled_tree_rss_bytes": 441937920,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.449579862000064,
+       "result_sha256": "17d4833e4b8480113bdce2a198cb37bb6b50c0756ed7c43b96e1b3bdd706790c",
+       "returncode": 0,
+       "rows": 5404,
+       "samples": 35,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 274902,
+        "backend": "duckdb",
+        "batches": 3,
+        "duration_ns": 3491612624,
+        "engine_streaming": false,
+        "prepare_ns": 99533492,
+        "rows": 5404,
+        "wire_bytes": 275784
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 251281408,
+       "peak_sampled_tree_rss_bytes": 439271424,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.5420344980002483,
+       "result_sha256": "17d4833e4b8480113bdce2a198cb37bb6b50c0756ed7c43b96e1b3bdd706790c",
+       "returncode": 0,
+       "rows": 5404,
+       "samples": 36,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 274902,
+        "backend": "duckdb",
+        "batches": 3,
+        "duration_ns": 3435254483,
+        "engine_streaming": false,
+        "prepare_ns": 103805413,
+        "rows": 5404,
+        "wire_bytes": 275784
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 250167296,
+       "peak_sampled_tree_rss_bytes": 443846656,
+       "peak_spill_bytes": 0,
+       "process_seconds": 3.4834846100002324,
+       "result_sha256": "17d4833e4b8480113bdce2a198cb37bb6b50c0756ed7c43b96e1b3bdd706790c",
+       "returncode": 0,
+       "rows": 5404,
+       "samples": 35,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 6432571392,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 15.832205427999725,
+      "median": 15.744968369999697,
+      "min": 15.422772115000043,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6432571392,
+       "process_seconds": 15.832205427999725,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6272176128,
+       "process_seconds": 15.422772115000043,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 5908320256,
+       "process_seconds": 15.744968369999697,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  },
+  "q21": {
+   "sql_sha256": "cc86477033b2f272e11a51bed218179100352f26b712b42982556c8d10d225b4",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 1304825856,
+     "peak_sampled_tree_rss_bytes": 1364787200,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 10.23480300600022,
+      "median": 9.800430278000022,
+      "min": 9.538717424999959,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0012653419998969184,
+        "import_s": 0.0745602119995965,
+        "query_s": 9.277671758999531,
+        "rows": 100,
+        "setup_s": 0.05242971900042903
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1304825856,
+       "peak_sampled_tree_rss_bytes": 1364787200,
+       "peak_spill_bytes": 0,
+       "process_seconds": 9.538717424999959,
+       "result_sha256": "f9629a3a07eacb05ee23939de32bbd46f022304f5fc5ec779455c334b4f45b7e",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 95,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011785560000134865,
+        "import_s": 0.09900151399961032,
+        "query_s": 9.874792163000166,
+        "rows": 100,
+        "setup_s": 0.0646572149998974
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1258901504,
+       "peak_sampled_tree_rss_bytes": 1315901440,
+       "peak_spill_bytes": 0,
+       "process_seconds": 10.23480300600022,
+       "result_sha256": "f9629a3a07eacb05ee23939de32bbd46f022304f5fc5ec779455c334b4f45b7e",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 102,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011994349997621612,
+        "import_s": 0.07942121699943527,
+        "query_s": 9.449886368999614,
+        "rows": 100,
+        "setup_s": 0.0577754410005582
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1276272640,
+       "peak_sampled_tree_rss_bytes": 1332862976,
+       "peak_spill_bytes": 0,
+       "process_seconds": 9.800430278000022,
+       "result_sha256": "f9629a3a07eacb05ee23939de32bbd46f022304f5fc5ec779455c334b4f45b7e",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 98,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 1560543232,
+     "peak_sampled_tree_rss_bytes": 1563262976,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 10.426845338999556,
+      "median": 10.350084158000755,
+      "min": 10.039960186000826,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 3004,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 9999956263,
+        "engine_streaming": false,
+        "prepare_ns": 206647000,
+        "rows": 100,
+        "wire_bytes": 3408
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1370959872,
+       "peak_sampled_tree_rss_bytes": 1563262976,
+       "peak_spill_bytes": 0,
+       "process_seconds": 10.039960186000826,
+       "result_sha256": "d60fbc409b6986795bab00ce249323cf0fb863f5fb2f5d5a63102a45bf1e285b",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 100,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 3004,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 10369326876,
+        "engine_streaming": false,
+        "prepare_ns": 206951462,
+        "rows": 100,
+        "wire_bytes": 3408
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1560543232,
+       "peak_sampled_tree_rss_bytes": 1542217728,
+       "peak_spill_bytes": 0,
+       "process_seconds": 10.426845338999556,
+       "result_sha256": "d60fbc409b6986795bab00ce249323cf0fb863f5fb2f5d5a63102a45bf1e285b",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 104,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 3004,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 10296031570,
+        "engine_streaming": false,
+        "prepare_ns": 212315794,
+        "rows": 100,
+        "wire_bytes": 3408
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 1348628480,
+       "peak_sampled_tree_rss_bytes": 1535766528,
+       "peak_spill_bytes": 0,
+       "process_seconds": 10.350084158000755,
+       "result_sha256": "d60fbc409b6986795bab00ce249323cf0fb863f5fb2f5d5a63102a45bf1e285b",
+       "returncode": 0,
+       "rows": 100,
+       "samples": 103,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 0,
+     "peak_cgroup_memory_bytes": 8589934592,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": null,
+     "state": "failed",
+     "trials": [
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 1.49MB, Top Consumers: {HashBuilderOperator=3.88GB, ExchangeOperator=54.13MB, LazyOutputBuffer=36.56MB}]\", query_id=20261027_212025_00073_dp2mp)",
+       "peak_cgroup_memory_bytes": 8589934592,
+       "process_seconds": 17.661602799999855,
+       "trial": 0,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 3.98GB, Delta: 37.69MB, Top Consumers: {HashBuilderOperator=3.82GB, LazyOutputBuffer=65.45MB, ExchangeOperator=57.01MB}]\", query_id=20261027_212053_00074_dp2mp)",
+       "peak_cgroup_memory_bytes": 8586420224,
+       "process_seconds": 13.481049500000154,
+       "trial": 1,
+       "verdict": "failed"
+      },
+      {
+       "error": "TrinoQueryError: TrinoQueryError(type=INSUFFICIENT_RESOURCES, name=EXCEEDED_LOCAL_MEMORY_LIMIT, message=\"Query exceeded per-node memory limit of 4GB [Allocated: 4.00GB, Delta: 128kB, Top Consumers: {HashBuilderOperator=3.76GB, ExchangeOperator=101.21MB, LazyOutputBuffer=93.44MB}]\", query_id=20261027_212117_00075_dp2mp)",
+       "peak_cgroup_memory_bytes": 8587993088,
+       "process_seconds": 13.735379308999654,
+       "trial": 2,
+       "verdict": "failed"
+      }
+     ]
+    }
+   }
+  },
+  "q22": {
+   "sql_sha256": "9f032f8d812226a04c27e60a07bb8ad3f50e37bf63d9b5ff79ae07f1ac63ec17",
+   "systems": {
+    "duckdb": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 265814016,
+     "peak_sampled_tree_rss_bytes": 328658944,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 1.382226970999909,
+      "median": 1.3589871280000807,
+      "min": 1.3571815049999714,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.0011222889997952734,
+        "import_s": 0.07649696499993297,
+        "query_s": 1.1213556170005177,
+        "rows": 7,
+        "setup_s": 0.05398204899938719
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 265814016,
+       "peak_sampled_tree_rss_bytes": 328617984,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.3589871280000807,
+       "result_sha256": "9580794c952ae1e09bb1eb745cc156858430a155612e30c6bb87b159e39bf15a",
+       "returncode": 0,
+       "rows": 7,
+       "samples": 14,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.00118356499933725,
+        "import_s": 0.07471421900027053,
+        "query_s": 1.1152472220001073,
+        "rows": 7,
+        "setup_s": 0.054574996999690484
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 263729152,
+       "peak_sampled_tree_rss_bytes": 327958528,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.3571815049999714,
+       "result_sha256": "9580794c952ae1e09bb1eb745cc156858430a155612e30c6bb87b159e39bf15a",
+       "returncode": 0,
+       "rows": 7,
+       "samples": 14,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_write_s": 0.005567674999838346,
+        "import_s": 0.07901794999997946,
+        "query_s": 1.135988744000315,
+        "rows": 7,
+        "setup_s": 0.05401704099949711
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 265154560,
+       "peak_sampled_tree_rss_bytes": 328658944,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.382226970999909,
+       "result_sha256": "9580794c952ae1e09bb1eb745cc156858430a155612e30c6bb87b159e39bf15a",
+       "returncode": 0,
+       "rows": 7,
+       "samples": 14,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "kelvo": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 293097472,
+     "peak_sampled_tree_rss_bytes": 487501824,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 1.2865556300002936,
+      "median": 1.285095705000458,
+      "min": 1.2728522009992957,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "engine_stats": {
+        "arrow_bytes": 214,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 1227553200,
+        "engine_streaming": false,
+        "prepare_ns": 59001333,
+        "rows": 7,
+        "wire_bytes": 728
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 293097472,
+       "peak_sampled_tree_rss_bytes": 487501824,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.2728522009992957,
+       "result_sha256": "c90dba4fd8f596e7df3c979687b10097ace158a68160b9855b069ee8a6f4b889",
+       "returncode": 0,
+       "rows": 7,
+       "samples": 13,
+       "timed_out": false,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 214,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 1232628757,
+        "engine_streaming": false,
+        "prepare_ns": 56638343,
+        "rows": 7,
+        "wire_bytes": 728
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 292683776,
+       "peak_sampled_tree_rss_bytes": 486674432,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.2865556300002936,
+       "result_sha256": "c90dba4fd8f596e7df3c979687b10097ace158a68160b9855b069ee8a6f4b889",
+       "returncode": 0,
+       "rows": 7,
+       "samples": 13,
+       "timed_out": false,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "engine_stats": {
+        "arrow_bytes": 214,
+        "backend": "duckdb",
+        "batches": 1,
+        "duration_ns": 1237370379,
+        "engine_streaming": false,
+        "prepare_ns": 56566984,
+        "rows": 7,
+        "wire_bytes": 728
+       },
+       "error": null,
+       "memory_max_events": 0,
+       "note": "events sampled while the scope existed; a kill after the last sample may be missed",
+       "oom_kill_events": 0,
+       "peak_cgroup_memory_bytes": 292995072,
+       "peak_sampled_tree_rss_bytes": 487374848,
+       "peak_spill_bytes": 0,
+       "process_seconds": 1.285095705000458,
+       "result_sha256": "c90dba4fd8f596e7df3c979687b10097ace158a68160b9855b069ee8a6f4b889",
+       "returncode": 0,
+       "rows": 7,
+       "samples": 13,
+       "timed_out": false,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    },
+    "trino": {
+     "passed_trials": 3,
+     "peak_cgroup_memory_bytes": 8577605632,
+     "peak_sampled_tree_rss_bytes": 0,
+     "peak_spill_bytes": 0,
+     "seconds": {
+      "max": 3.377240079999865,
+      "median": 2.8651183550000496,
+      "min": 2.847472848999132,
+      "n": 3
+     },
+     "state": "passed",
+     "trials": [
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 8577605632,
+       "process_seconds": 3.377240079999865,
+       "trial": 0,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6440960000,
+       "process_seconds": 2.847472848999132,
+       "trial": 1,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      },
+      {
+       "error": null,
+       "peak_cgroup_memory_bytes": 6474911744,
+       "process_seconds": 2.8651183550000496,
+       "trial": 2,
+       "verdict": "exact_order",
+       "verdict_detail": ""
+      }
+     ]
+    }
+   }
+  }
+ },
+ "schema_version": 1,
+ "setup": {
+  "trino": {
+   "connector": "hive, file metastore, native local filesystem over the same Parquet files",
+   "image": "trinodb/trino:479",
+   "startup_and_ddl_seconds_excluded": 14.123204849000103,
+   "version": "479"
+  }
+ },
+ "sf": 30.0,
+ "started_utc": "2026-10-27T21:01:05.148728+00:00",
+ "suite": "tpch",
+ "systems": [
+  "duckdb",
+  "kelvo",
+  "trino"
+ ],
+ "trials": 3
+}
