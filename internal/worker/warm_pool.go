@@ -54,6 +54,8 @@ type WarmPoolConfig struct {
 	// CacheRules give matching reads their own TTL; the first match wins and
 	// no match takes cache_ttl. A ttl of 0 keeps nothing for matching reads.
 	CacheRules []CacheRule `yaml:"cache_rules"` // at most 64
+	CacheMaxEntries int `yaml:"cache_max_entries"` // default 4096, at most 65536
+	CacheMaxFills   int `yaml:"cache_max_fills"`   // concurrent shared executions; default 256, at most 4096; more run uncached
 	// ReauthorizeEvery bounds how long a worker serves secretless reads on
 	// one authorization of its source; 0 takes the default of 60s.
 	ReauthorizeEvery time.Duration `yaml:"reauthorize_every"`
@@ -117,6 +119,9 @@ func (c WarmPoolConfig) Validate() error {
 	}
 	if c.CacheTTL < 0 || c.CacheTTL > 10*time.Minute || c.CacheMaxEntryBytes < 0 || c.CacheMaxEntryBytes > 64<<20 || c.CacheMaxTotalBytes < 0 || c.CacheMaxTotalBytes > 1<<30 {
 		return errors.New("warm_pool: cache_ttl must be at most 10m, cache_max_entry_bytes at most 64 MiB and cache_max_total_bytes at most 1 GiB")
+	}
+	if c.CacheMaxEntries < 0 || c.CacheMaxEntries > 65536 || c.CacheMaxFills < 0 || c.CacheMaxFills > 4096 {
+		return errors.New("warm_pool: cache_max_entries must be at most 65536 and cache_max_fills at most 4096")
 	}
 	if len(c.CacheRules) > 64 || (len(c.CacheRules) > 0 && c.CacheDisabled) {
 		return errors.New("warm_pool: cache_rules take at most 64 rules and need the cache enabled")
@@ -224,6 +229,12 @@ func (c WarmPoolConfig) resultCache() *resultCache {
 	}
 	cache := newResultCache(ttl, min(entry, total), total)
 	cache.rules = c.CacheRules
+	if c.CacheMaxEntries > 0 {
+		cache.maxEntries = c.CacheMaxEntries
+	}
+	if c.CacheMaxFills > 0 {
+		cache.maxFills = c.CacheMaxFills
+	}
 	return cache
 }
 

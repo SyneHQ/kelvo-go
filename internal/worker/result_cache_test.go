@@ -427,20 +427,25 @@ func TestResultCacheBounds(t *testing.T) {
 func TestResultCacheKeyNeverCrossesTenants(t *testing.T) {
 	r := query.Request{Mode: "native", ConnectionID: "app", SQL: "SELECT 1"}
 	l := query.DefaultLimits()
-	base := resultCacheKey("tenant-a", "team", "app", "db", "public", "rev", r, l)
+	k := cacheKey{Tenant: "tenant-a", Team: "team", Principal: "alice", Connection: "app", Database: "db", Schema: "public", Revision: "rev", Policy: "p"}
+	base := resultCacheKey(k, r, l)
 	other := r
 	other.Parameters = []query.Parameter{{Type: "int64", Value: json.RawMessage("1")}}
 	small := l
 	small.MaxRows = 10
+	with := func(mutate func(*cacheKey)) string { c := k; mutate(&c); return resultCacheKey(c, r, l) }
 	for name, key := range map[string]string{
-		"tenant":     resultCacheKey("tenant-b", "team", "app", "db", "public", "rev", r, l),
-		"team":       resultCacheKey("tenant-a", "other", "app", "db", "public", "rev", r, l),
-		"connection": resultCacheKey("tenant-a", "team", "app2", "db", "public", "rev", r, l),
-		"database":   resultCacheKey("tenant-a", "team", "app", "db2", "public", "rev", r, l),
-		"schema":     resultCacheKey("tenant-a", "team", "app", "db", "sales", "rev", r, l),
-		"revision":   resultCacheKey("tenant-a", "team", "app", "db", "public", "rev2", r, l),
-		"parameters": resultCacheKey("tenant-a", "team", "app", "db", "public", "rev", other, l),
-		"limits":     resultCacheKey("tenant-a", "team", "app", "db", "public", "rev", r, small),
+		"tenant":     with(func(c *cacheKey) { c.Tenant = "tenant-b" }),
+		"team":       with(func(c *cacheKey) { c.Team = "other" }),
+		"principal":  with(func(c *cacheKey) { c.Principal = "bob" }),
+		"connection": with(func(c *cacheKey) { c.Connection = "app2" }),
+		"database":   with(func(c *cacheKey) { c.Database = "db2" }),
+		"schema":     with(func(c *cacheKey) { c.Schema = "sales" }),
+		"revision":   with(func(c *cacheKey) { c.Revision = "rev2" }),
+		"policy":     with(func(c *cacheKey) { c.Policy = "p2" }),
+		"generation": with(func(c *cacheKey) { c.Generations = []datasetGeneration{{"orders", "g1"}} }),
+		"parameters": resultCacheKey(k, other, l),
+		"limits":     resultCacheKey(k, r, small),
 	} {
 		if key == base {
 			t.Fatal("key ignores", name)
@@ -448,24 +453,8 @@ func TestResultCacheKeyNeverCrossesTenants(t *testing.T) {
 	}
 	refresh := r
 	refresh.BypassCache = true
-	if resultCacheKey("tenant-a", "team", "app", "db", "public", "rev", refresh, l) != base {
+	if resultCacheKey(k, refresh, l) != base {
 		t.Fatal("refresh changed the key")
-	}
-}
-
-// Decision, signed off by the owner: the key leaves out the principal. A
-// result depends only on the source it came from; every read is authorized
-// for its own principal before the cache is consulted; restricted principals
-// (row policies) never reach the cache. Two principals of one tenant reading
-// the same connection therefore share an entry. Changing this is a design
-// decision, not a fix.
-func TestResultCacheKeyIgnoresPrincipal(t *testing.T) {
-	l := query.DefaultLimits()
-	alice := query.Request{Mode: "native", ConnectionID: "app", SQL: "SELECT 1", Delegation: "grant-for-alice"}
-	bob := alice
-	bob.Delegation = "grant-for-bob"
-	if resultCacheKey("t", "team", "app", "db", "public", "rev", alice, l) != resultCacheKey("t", "team", "app", "db", "public", "rev", bob, l) {
-		t.Fatal("the principal entered the cache key")
 	}
 }
 

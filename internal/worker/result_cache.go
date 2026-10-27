@@ -4,9 +4,6 @@ package worker
 import (
 	"container/list"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -19,6 +16,7 @@ import (
 const (
 	cacheMaxEntries    = 4096
 	cacheEntryOverhead = 512 // bytes charged per entry beyond its data: key, list and map
+	cacheMaxFills      = 256 // default concurrent shared executions
 )
 
 // resultCache serves identical dashboard reads once. Concurrent identical
@@ -34,6 +32,7 @@ type resultCache struct {
 	maxEntry, maxTotal int64
 	perTenant          int64 // a quarter of maxTotal
 	maxEntries         int
+	maxFills           int // shared executions collecting a result; more run uncached
 
 	mu       sync.Mutex
 	lru      *list.List // of *cacheEntry, most recent at the front
@@ -42,6 +41,7 @@ type resultCache struct {
 	byTenant map[string]int64 // the same, per tenant
 	flights  map[string]*cacheFlight
 	hits     int64
+	fenced   int64 // results not kept or not served because their fence moved
 }
 
 type cacheEntry struct {
@@ -51,6 +51,7 @@ type cacheEntry struct {
 	started     time.Time // when the execution that produced it started
 	stored      time.Time // when it was kept
 	expires     time.Time
+	token       string // fence token when the execution started
 }
 
 func (e *cacheEntry) size() int64 { return int64(len(e.data)+len(e.key)) + cacheEntryOverhead }
@@ -59,6 +60,7 @@ func (e *cacheEntry) size() int64 { return int64(len(e.data)+len(e.key)) + cache
 // and is cancelled only when every caller interested in it has gone.
 type cacheFlight struct {
 	started time.Time
+	token   string // fence token when the execution started
 	done    chan struct{}
 	cancel  context.CancelFunc
 
@@ -73,12 +75,13 @@ type cacheFlight struct {
 	// Set before done is closed.
 	entry    *cacheEntry // the kept result
 	oversize bool        // completed but too large to keep
+	fenced   bool        // completed after its fence moved: never replayed
 	stats    query.Stats
 	err      error
 }
 
 func newResultCache(ttl time.Duration, maxEntry, maxTotal int64) *resultCache {
-	return &resultCache{ttl: ttl, maxEntry: maxEntry, maxTotal: maxTotal, perTenant: maxTotal / 4, maxEntries: cacheMaxEntries,
+	return &resultCache{ttl: ttl, maxEntry: maxEntry, maxTotal: maxTotal, perTenant: maxTotal / 4, maxEntries: cacheMaxEntries, maxFills: cacheMaxFills,
 		lru: list.New(), entries: map[string]*list.Element{}, byTenant: map[string]int64{}, flights: map[string]*cacheFlight{}}
 }
 
@@ -101,20 +104,6 @@ func (c *resultCache) Hits() int64 {
 	return c.hits
 }
 
-// resultCacheKey binds everything a result depends on: tenant (cluster tenant
-// and app team), connection, database, schema, source revision (definition
-// and credentials), SQL, parameters and result limits.
-//
-// It deliberately leaves out the principal. A result depends only on the
-// source it was read from; every read is authorized before the cache is
-// consulted; and restricted principals, whose results could differ, never
-// reach the cache. TestResultCacheKeyIgnoresPrincipal pins this.
-func resultCacheKey(tenant, team, connection, database, schema, revision string, r query.Request, limits query.Limits) string {
-	raw, _ := json.Marshal([]any{"kelvo.result-cache.v2", tenant, team, connection, database, schema, revision, r.Mode, r.SQL, r.Parameters, limits.MaxRows, limits.MaxBytes, limits.ResultCompression})
-	sum := sha256.Sum256(raw)
-	return hex.EncodeToString(sum[:])
-}
-
 // executeFunc runs a read, delivering to sink and copying its Arrow IPC
 // result to tee when tee is not nil.
 type executeFunc func(ctx context.Context, sink query.Sink, tee *cappedBuffer) (query.Stats, error)
@@ -132,15 +121,43 @@ func (c *resultCache) do(ctx context.Context, key, tenant string, refresh bool, 
 // doTTL is do keeping the result for ttl; 0 keeps nothing, though concurrent
 // identical reads still share one execution.
 func (c *resultCache) doTTL(ctx context.Context, key, tenant string, ttl time.Duration, refresh bool, sink query.Sink, execute executeFunc, replay replayFunc) (query.Stats, error) {
+	return c.doFenced(ctx, key, tenant, ttl, refresh, nil, sink, execute, replay)
+}
+
+// cacheFence returns a token for the state a result depends on beyond its key:
+// the current authorization revision and, for snapshot reads, the current
+// generations. A result is kept only when the token at the end of its
+// execution equals the token at its start, and served only while it still
+// equals the current token. "" means the state is unknown: nothing is kept or
+// served. It must not call back into the cache.
+type cacheFence func() string
+
+// doFenced is doTTL guarded by fence (nil: no fence). A fill that started
+// before a refresh publication or an authorization change is never kept, and
+// its waiters run their own reads rather than replay it.
+func (c *resultCache) doFenced(ctx context.Context, key, tenant string, ttl time.Duration, refresh bool, fence cacheFence, sink query.Sink, execute executeFunc, replay replayFunc) (query.Stats, error) {
+	token := ""
+	if fence != nil {
+		if token = fence(); token == "" {
+			c.mu.Lock()
+			c.fenced++
+			c.mu.Unlock()
+			return execute(ctx, sink, nil)
+		}
+	}
 	c.mu.Lock()
 	if !refresh {
 		if entry := c.freshLocked(key); entry != nil {
-			c.hits++
-			c.mu.Unlock()
-			return c.replay(entry, sink, replay)
+			if entry.token == token {
+				c.hits++
+				c.mu.Unlock()
+				return c.replay(entry, sink, replay)
+			}
+			c.removeLocked(c.entries[key]) // its fence moved: revoked or refreshed
+			c.fenced++
 		}
 	}
-	if f := c.flights[key]; f != nil && c.joinableLocked(f, key, refresh) {
+	if f := c.flights[key]; f != nil && f.token == token && c.joinableLocked(f, key, refresh) {
 		id := c.joinLocked(f, ctx)
 		c.mu.Unlock()
 		select {
@@ -156,17 +173,21 @@ func (c *resultCache) doTTL(ctx context.Context, key, tenant string, ttl time.Du
 			c.hits++
 			c.mu.Unlock()
 			return c.replay(f.entry, sink, replay)
-		case f.oversize:
+		case f.oversize, f.fenced:
 			return execute(ctx, sink, nil)
 		default:
 			return f.stats, f.err
 		}
 	}
-	f := &cacheFlight{started: time.Now(), done: make(chan struct{}), participants: map[int]time.Time{}}
+	if c.flights[key] == nil && len(c.flights) >= c.maxFills {
+		c.mu.Unlock()
+		return execute(ctx, sink, nil) // fill bound reached: run uncached
+	}
+	f := &cacheFlight{started: time.Now(), token: token, done: make(chan struct{}), participants: map[int]time.Time{}}
 	c.flights[key] = f
 	id := c.joinLocked(f, ctx)
 	c.mu.Unlock()
-	return c.lead(ctx, key, tenant, ttl, f, id, sink, execute)
+	return c.lead(ctx, key, tenant, ttl, fence, f, id, sink, execute)
 }
 
 // joinableLocked reports whether a read may join f. A plain read joins any
@@ -213,7 +234,7 @@ func (c *resultCache) retimeLocked(f *cacheFlight) {
 // lead runs f detached from the leader's cancellation: if the leader leaves
 // while others wait, the read continues for them. The leader streams to its
 // own sink only while it is still waiting.
-func (c *resultCache) lead(ctx context.Context, key, tenant string, ttl time.Duration, f *cacheFlight, id int, sink query.Sink, execute executeFunc) (query.Stats, error) {
+func (c *resultCache) lead(ctx context.Context, key, tenant string, ttl time.Duration, fence cacheFence, f *cacheFlight, id int, sink query.Sink, execute executeFunc) (query.Stats, error) {
 	// Detached from the leader; ended by retimeLocked's timer or the last
 	// participant leaving.
 	execCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
@@ -232,7 +253,8 @@ func (c *resultCache) lead(ctx context.Context, key, tenant string, ttl time.Dur
 			if recovered := recover(); recovered != nil {
 				err = query.NewError("QUERY_FAILED", fmt.Sprint("Read failed: ", recovered))
 			}
-			c.finish(key, tenant, ttl, f, buffer, stats, err)
+			moved := fence != nil && fence() != f.token
+			c.finish(key, tenant, ttl, f, buffer, stats, err, moved)
 		}()
 		stats, err = execute(execCtx, leader, buffer)
 	}()
@@ -283,18 +305,23 @@ func (c *resultCache) leave(f *cacheFlight, key string, id int) {
 	}
 }
 
-func (c *resultCache) finish(key, tenant string, ttl time.Duration, f *cacheFlight, buffer *cappedBuffer, stats query.Stats, err error) {
+// finish closes f. moved reports that its fence changed while it ran: the
+// result is neither kept nor replayed to waiters.
+func (c *resultCache) finish(key, tenant string, ttl time.Duration, f *cacheFlight, buffer *cappedBuffer, stats query.Stats, err error, moved bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	buffer.releaseLocked()
 	f.stats, f.err = stats, err
 	if err == nil {
-		if buffer.over {
+		if moved {
+			f.fenced = true
+			c.fenced++
+		} else if buffer.over {
 			f.oversize = true
 		} else {
 			// Waiters replay a complete result even when it is not kept (a newer
 			// generation is kept, or the tenant's share is full).
-			f.entry = &cacheEntry{key: key, tenant: tenant, data: buffer.data, stats: stats, started: f.started, expires: time.Now().Add(ttl)}
+			f.entry = &cacheEntry{key: key, tenant: tenant, data: buffer.data, stats: stats, started: f.started, expires: time.Now().Add(ttl), token: f.token}
 			if ttl > 0 {
 				c.storeLocked(f.entry)
 			}
