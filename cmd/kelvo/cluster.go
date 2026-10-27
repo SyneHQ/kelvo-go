@@ -129,6 +129,12 @@ func runCluster(args []string) error {
 		return err
 	}
 	defer stopOperationInputs()
+	stopFlightSQL, err := startGatewayFlightSQL(cfg.FlightSQL, gateway)
+	if err != nil {
+		_ = gateway.Close()
+		return err
+	}
+	defer stopFlightSQL()
 
 	var closeErr error
 	closed := make(chan struct{})
