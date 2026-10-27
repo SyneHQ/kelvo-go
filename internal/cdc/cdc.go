@@ -37,6 +37,8 @@ const (
 	OpUpdate   Op = "update"
 	OpDelete   Op = "delete"
 	OpTruncate Op = "truncate"
+	// OpSchema introduces Change.Schema; later changes of that relation use it.
+	OpSchema Op = "schema"
 )
 
 type unchanged struct{}
@@ -65,6 +67,8 @@ type Schema struct {
 	Name      string   `json:"name"`
 	Columns   []Column `json:"columns"`
 	Version   int      `json:"version"`
+	// Partitioned tables are read with their partitions; other tables with ONLY.
+	Partitioned bool `json:"partitioned,omitempty"`
 }
 
 // Table is the qualified table name.
@@ -73,38 +77,48 @@ func (s Schema) Table() string { return s.Namespace + "." + s.Name }
 // Change is one row change. Row holds every column in Schema order for insert
 // and update (values are nil for NULL, Unchanged, or the decoded Go value).
 // Key holds the key column values in Schema order for every row change.
+// SchemaVersion is the relation's schema version the change is encoded in.
+// An OpSchema change carries the new Schema and precedes, in order, every
+// change that uses it; versions of one relation increase by exactly one.
 type Change struct {
-	Op       Op
-	Relation uint32
-	Table    string
-	Key      []any
-	Row      []any
+	Op            Op
+	Relation      uint32
+	Table         string
+	SchemaVersion int
+	Schema        *Schema
+	Key           []any
+	Row           []any
 }
 
 // Batch is one source transaction, or one chunk of the bootstrap snapshot.
-// Changes are in source order. Schemas lists schema versions that take effect
-// in this batch before its changes.
+// Changes are in source order. The batch identity is (LSN, Seq): stream
+// batches have Seq 0; snapshot chunks share the consistent-point LSN and
+// carry Seq 1, 2, ... in order. The first snapshot chunk starts with an
+// OpSchema change for every table.
 type Batch struct {
 	LSN        uint64 // commit end LSN; the snapshot's consistent point for Snapshot batches
+	Seq        uint64
 	CommitTime time.Time
 	Snapshot   bool
 	Reset      bool // first bootstrap batch: discard all prior sink state
-	Schemas    map[uint32]Schema
 	Changes    []Change
 }
 
 // Sink applies ordered batches. Apply must be durable when it returns and
-// idempotent: a batch whose LSN the sink already applied may be delivered
-// again after a crash and must leave the same state.
+// idempotent: a batch whose (LSN, Seq) the sink already applied may be
+// delivered again after a crash and must leave the same state. Never
+// deduplicate by LSN alone.
 type Sink interface {
 	Apply(ctx context.Context, b Batch) error
 }
 
 // Checkpoint is the durable resume position.
 type Checkpoint struct {
-	Slot    string            `json:"slot"`
-	LSN     uint64            `json:"lsn"`
-	Schemas map[uint32]Schema `json:"schemas"`
+	Slot     string            `json:"slot"`
+	SystemID string            `json:"system_id"`
+	Timeline int32             `json:"timeline"`
+	LSN      uint64            `json:"lsn"`
+	Schemas  map[uint32]Schema `json:"schemas"`
 }
 
 // CheckpointStore persists the checkpoint. Save must be durable when it

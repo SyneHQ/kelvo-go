@@ -26,6 +26,21 @@ type Postgres struct {
 	MaxTxnChanges  int           // default 1,000,000; larger transactions fail explicitly
 	SnapshotChunk  int           // rows per bootstrap batch; default 10,000
 	StatusInterval time.Duration // standby status cadence; default 10s
+	MaxTxnBytes    int           // decoded message bytes per transaction; default 256 MiB
+	// HeartbeatInterval, when positive, emits a transactional logical message
+	// at this cadence while idle so the checkpoint and acknowledged LSN
+	// advance past WAL of unpublished tables. Heartbeat commits are
+	// checkpointed, then acknowledged; they never reach the sink.
+	HeartbeatInterval time.Duration
+}
+
+const heartbeatPrefix = "kelvo-cdc-heartbeat"
+
+func (p *Postgres) maxBytes() int {
+	if p.MaxTxnBytes > 0 {
+		return p.MaxTxnBytes
+	}
+	return 256 << 20
 }
 
 func (p *Postgres) maxTxn() int {
@@ -88,8 +103,11 @@ func (p *Postgres) loadSchemas(ctx context.Context, q querier) (map[uint32]Schem
 		oid             uint32
 		ns, name, ident string
 		filter          *string
+		attnames        []string
+		partitioned     bool
 	}
-	rows, err := q.Query(ctx, `SELECT c.oid, n.nspname, c.relname, c.relreplident::text, to_jsonb(pt)->>'rowfilter'
+	rows, err := q.Query(ctx, `SELECT c.oid, n.nspname, c.relname, c.relreplident::text, to_jsonb(pt)->>'rowfilter',
+	(SELECT array_agg(a ORDER BY a) FROM jsonb_array_elements_text(to_jsonb(pt)->'attnames') a), c.relkind = 'p'
 FROM pg_publication_tables pt
 JOIN pg_namespace n ON n.nspname = pt.schemaname
 JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = pt.tablename
@@ -99,7 +117,7 @@ WHERE pt.pubname = $1 ORDER BY 2, 3`, p.Publication)
 	}
 	tables, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (table, error) {
 		var t table
-		return t, r.Scan(&t.oid, &t.ns, &t.name, &t.ident, &t.filter)
+		return t, r.Scan(&t.oid, &t.ns, &t.name, &t.ident, &t.filter, &t.attnames, &t.partitioned)
 	})
 	if err != nil {
 		return nil, err
@@ -109,7 +127,7 @@ WHERE pt.pubname = $1 ORDER BY 2, 3`, p.Publication)
 	}
 	out := make(map[uint32]Schema, len(tables))
 	for _, t := range tables {
-		s := Schema{Namespace: t.ns, Name: t.name, Version: 1}
+		s := Schema{Namespace: t.ns, Name: t.name, Version: 1, Partitioned: t.partitioned}
 		if t.filter != nil {
 			return nil, fmt.Errorf("%w: %s has a publication row filter", ErrUnsupported, s.Table())
 		}
@@ -133,6 +151,15 @@ ORDER BY a.attnum`, t.oid, t.ident)
 		}
 		if err := checkColumns(s, s.Columns); err != nil {
 			return nil, err
+		}
+		if t.attnames != nil { // PostgreSQL 15+: reject publication column lists
+			names := make([]string, len(s.Columns))
+			for i, c := range s.Columns {
+				names[i] = c.Name
+			}
+			if slices.Sort(names); !slices.Equal(names, t.attnames) {
+				return nil, fmt.Errorf("%w: %s has a publication column list", ErrUnsupported, s.Table())
+			}
 		}
 		if !slices.ContainsFunc(s.Columns, func(c Column) bool { return c.Key }) {
 			return nil, fmt.Errorf("%w: %s has no replica identity key", ErrUnsupported, s.Table())
@@ -185,6 +212,10 @@ func (p *Postgres) Bootstrap(ctx context.Context, sink Sink, store CheckpointSto
 	}
 	// The exported snapshot stays valid until r runs another command or closes.
 	defer r.Close(context.Background())
+	sys, err := pglogrepl.IdentifySystem(ctx, r)
+	if err != nil {
+		return err
+	}
 	slot, err := pglogrepl.CreateReplicationSlot(ctx, r, p.Slot, "pgoutput",
 		pglogrepl.CreateReplicationSlotOptions{Mode: pglogrepl.LogicalReplication, SnapshotAction: "EXPORT_SNAPSHOT"})
 	if err != nil {
@@ -210,16 +241,20 @@ func (p *Postgres) Bootstrap(ctx context.Context, sink Sink, store CheckpointSto
 	if chunk <= 0 {
 		chunk = 10_000
 	}
-	b := Batch{LSN: uint64(point), Snapshot: true, Reset: true, Schemas: schemas}
+	b := Batch{LSN: uint64(point), Seq: 1, Snapshot: true, Reset: true}
+	for _, oid := range slices.Sorted(maps.Keys(schemas)) {
+		s := schemas[oid]
+		b.Changes = append(b.Changes, Change{Op: OpSchema, Relation: oid, Table: s.Table(), SchemaVersion: s.Version, Schema: &s})
+	}
 	flush := func() error {
 		err := sink.Apply(ctx, b)
-		b = Batch{LSN: uint64(point), Snapshot: true}
+		b = Batch{LSN: uint64(point), Seq: b.Seq + 1, Snapshot: true}
 		return err
 	}
 	for _, oid := range slices.Sorted(maps.Keys(schemas)) {
 		s := schemas[oid]
 		err := readTable(ctx, tx.Conn().PgConn(), s, func(row []any) error {
-			b.Changes = append(b.Changes, Change{Op: OpInsert, Relation: oid, Table: s.Table(), Key: key(s, row), Row: row})
+			b.Changes = append(b.Changes, Change{Op: OpInsert, Relation: oid, Table: s.Table(), SchemaVersion: s.Version, Key: key(s, row), Row: row})
 			if len(b.Changes) >= chunk {
 				return flush()
 			}
@@ -237,7 +272,7 @@ func (p *Postgres) Bootstrap(ctx context.Context, sink Sink, store CheckpointSto
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	return store.Save(ctx, Checkpoint{Slot: p.Slot, LSN: uint64(point), Schemas: schemas})
+	return store.Save(ctx, Checkpoint{Slot: p.Slot, SystemID: sys.SystemID, Timeline: sys.Timeline, LSN: uint64(point), Schemas: schemas})
 }
 
 func readTable(ctx context.Context, c *pgconn.PgConn, s Schema, fn func([]any) error) error {
@@ -245,7 +280,11 @@ func readTable(ctx context.Context, c *pgconn.PgConn, s Schema, fn func([]any) e
 	for i, col := range s.Columns {
 		names[i] = pgx.Identifier{col.Name}.Sanitize()
 	}
-	rr := c.ExecParams(ctx, "SELECT "+strings.Join(names, ", ")+" FROM "+pgx.Identifier{s.Namespace, s.Name}.Sanitize(), nil, nil, nil, nil)
+	only := "ONLY "
+	if s.Partitioned {
+		only = ""
+	}
+	rr := c.ExecParams(ctx, "SELECT "+strings.Join(names, ", ")+" FROM "+only+pgx.Identifier{s.Namespace, s.Name}.Sanitize(), nil, nil, nil, nil)
 	for rr.NextRow() {
 		vals := rr.Values()
 		row := make([]any, len(vals))
@@ -300,9 +339,17 @@ func (p *Postgres) Run(ctx context.Context, sink Sink, store CheckpointStore) er
 		return err
 	}
 	defer r.Close(context.Background())
+	sys, err := pglogrepl.IdentifySystem(ctx, r)
+	if err != nil {
+		return err
+	}
+	if sys.SystemID != cp.SystemID || sys.Timeline != cp.Timeline {
+		return fmt.Errorf("%w: server system %s timeline %d differs from checkpoint system %s timeline %d",
+			ErrBootstrapRequired, sys.SystemID, sys.Timeline, cp.SystemID, cp.Timeline)
+	}
 	pub := strings.ReplaceAll(pgx.Identifier{p.Publication}.Sanitize(), "'", "''")
 	err = pglogrepl.StartReplication(ctx, r, p.Slot, pglogrepl.LSN(cp.LSN), pglogrepl.StartReplicationOptions{
-		Mode: pglogrepl.LogicalReplication, PluginArgs: []string{"proto_version '1'", "publication_names '" + pub + "'"},
+		Mode: pglogrepl.LogicalReplication, PluginArgs: []string{"proto_version '1'", "publication_names '" + pub + "'", "messages 'true'"},
 	})
 	if err != nil {
 		return slotError(err)
@@ -317,19 +364,22 @@ func (p *Postgres) checkSlot(ctx context.Context, lsn uint64) error {
 	}
 	defer c.Close(context.Background())
 	var plugin, walStatus, reason string
-	var confirmed pglogrepl.LSN
+	var confirmed, current pglogrepl.LSN
 	err = c.QueryRow(ctx, `SELECT coalesce(plugin, ''), coalesce(wal_status, ''), coalesce(confirmed_flush_lsn, '0/0')::text,
-coalesce(to_jsonb(s)->>'invalidation_reason', '') FROM pg_replication_slots s WHERE slot_name = $1 AND database = current_database()`,
-		p.Slot).Scan(&plugin, &walStatus, &confirmed, &reason)
+coalesce(to_jsonb(s)->>'invalidation_reason', ''), pg_current_wal_lsn()::text
+FROM pg_replication_slots s WHERE slot_name = $1 AND database = current_database()`,
+		p.Slot).Scan(&plugin, &walStatus, &confirmed, &reason, &current)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return fmt.Errorf("%w: slot %q does not exist", ErrBootstrapRequired, p.Slot)
 	case err != nil:
 		return err
-	case walStatus == "lost" || reason != "":
+	case walStatus == "lost" || walStatus == "unreserved" || reason != "":
 		return fmt.Errorf("%w: slot %q invalidated (wal_status=%s reason=%s)", ErrBootstrapRequired, p.Slot, walStatus, reason)
 	case plugin != "pgoutput":
 		return fmt.Errorf("%w: slot %q uses plugin %q", ErrUnsupported, p.Slot, plugin)
+	case lsn > uint64(current):
+		return fmt.Errorf("%w: checkpoint %s is beyond server WAL %s", ErrBootstrapRequired, pglogrepl.LSN(lsn), current)
 	case uint64(confirmed) > lsn:
 		return fmt.Errorf("%w: slot %q confirmed %s beyond checkpoint %s", ErrBootstrapRequired, p.Slot, confirmed, pglogrepl.LSN(lsn))
 	}
@@ -339,7 +389,7 @@ coalesce(to_jsonb(s)->>'invalidation_reason', '') FROM pg_replication_slots s WH
 // slotError maps a slot that became unusable while starting to ErrBootstrapRequired.
 func slotError(err error) error {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && (pgErr.Code == "55000" || pgErr.Code == "42704") {
+	if errors.As(err, &pgErr) && (pgErr.Code == "55000" || pgErr.Code == "42704" || pgErr.Code == "58P01") {
 		return fmt.Errorf("%w: %s", ErrBootstrapRequired, pgErr.Message)
 	}
 	return err
@@ -360,7 +410,23 @@ func (p *Postgres) stream(ctx context.Context, r *pgconn.PgConn, sink Sink, stor
 		return pglogrepl.SendStandbyStatusUpdate(ctx, r, pglogrepl.StandbyStatusUpdate{WALWritePosition: pglogrepl.LSN(acked)})
 	}
 	var txn *Batch
+	txnBytes := 0
 	next := time.Now().Add(interval)
+	var hb *pgx.Conn
+	defer func() {
+		if hb != nil {
+			hb.Close(context.Background())
+		}
+	}()
+	aux := func() error { // lazily opened for heartbeats and catalog checks
+		if hb != nil {
+			return nil
+		}
+		c, err := p.connect(ctx)
+		hb = c
+		return err
+	}
+	beat := time.Now().Add(p.HeartbeatInterval)
 	for {
 		if !time.Now().Before(next) {
 			if err := status(); err != nil {
@@ -368,7 +434,22 @@ func (p *Postgres) stream(ctx context.Context, r *pgconn.PgConn, sink Sink, stor
 			}
 			next = time.Now().Add(interval)
 		}
-		rctx, cancel := context.WithDeadline(ctx, next)
+		deadline := next
+		if p.HeartbeatInterval > 0 {
+			if txn == nil && !time.Now().Before(beat) {
+				if err := aux(); err != nil {
+					return err
+				}
+				if _, err := hb.Exec(ctx, "SELECT pg_logical_emit_message(true, $1, '')", heartbeatPrefix); err != nil {
+					return fmt.Errorf("cdc: heartbeat: %w", err)
+				}
+				beat = time.Now().Add(p.HeartbeatInterval)
+			}
+			if beat.Before(deadline) {
+				deadline = beat
+			}
+		}
+		rctx, cancel := context.WithDeadline(ctx, deadline)
 		msg, err := r.ReceiveMessage(rctx)
 		cancel()
 		if err != nil {
@@ -414,22 +495,35 @@ func (p *Postgres) stream(ctx context.Context, r *pgconn.PgConn, sink Sink, stor
 		if err != nil {
 			return err
 		}
+		if txn != nil {
+			if txnBytes += len(x.WALData); txnBytes > p.maxBytes() {
+				return fmt.Errorf("%w: transaction exceeds %d bytes", ErrUnsupported, p.maxBytes())
+			}
+		}
 		if _, ok := lm.(*pglogrepl.BeginMessage); !ok && txn == nil {
 			if _, ok := lm.(*pglogrepl.OriginMessage); !ok {
-				return fmt.Errorf("cdc: %T outside a transaction", lm)
+				if _, ok := lm.(*pglogrepl.LogicalDecodingMessage); !ok {
+					return fmt.Errorf("cdc: %T outside a transaction", lm)
+				}
 			}
 		}
 		switch m := lm.(type) {
 		case *pglogrepl.BeginMessage:
-			txn = &Batch{CommitTime: m.CommitTime, Schemas: map[uint32]Schema{}}
+			txn, txnBytes = &Batch{CommitTime: m.CommitTime}, 0
 		case *pglogrepl.RelationMessage:
 			s, changed, err := evolve(schemas, m)
 			if err != nil {
 				return err
 			}
 			if changed {
+				if err := aux(); err != nil {
+					return err
+				}
+				if err := checkAddedDefaults(ctx, hb, m.RelationID, s.Columns[len(schemas[m.RelationID].Columns):]); err != nil {
+					return fmt.Errorf("%s: %w", s.Table(), err)
+				}
 				schemas[m.RelationID] = s
-				txn.Schemas[m.RelationID] = s
+				txn.Changes = append(txn.Changes, Change{Op: OpSchema, Relation: m.RelationID, Table: s.Table(), SchemaVersion: s.Version, Schema: &s})
 			}
 		case *pglogrepl.InsertMessage:
 			err = p.add(txn, schemas, m.RelationID, func(s Schema) ([]Change, error) {
@@ -453,10 +547,12 @@ func (p *Postgres) stream(ctx context.Context, r *pgconn.PgConn, sink Sink, stor
 			end := uint64(m.TransactionEndLSN)
 			if end > acked {
 				txn.LSN = end
-				if err := sink.Apply(ctx, *txn); err != nil {
+				if len(txn.Changes) == 0 {
+					// Heartbeat or emptied transaction: nothing to publish.
+				} else if err := sink.Apply(ctx, *txn); err != nil {
 					return fmt.Errorf("cdc: apply %s: %w", pglogrepl.LSN(end), err)
 				}
-				if err := store.Save(ctx, Checkpoint{Slot: p.Slot, LSN: end, Schemas: maps.Clone(schemas)}); err != nil {
+				if err := store.Save(ctx, Checkpoint{Slot: p.Slot, SystemID: cp.SystemID, Timeline: cp.Timeline, LSN: end, Schemas: maps.Clone(schemas)}); err != nil {
 					return fmt.Errorf("cdc: checkpoint %s: %w", pglogrepl.LSN(end), err)
 				}
 				acked = end
@@ -465,7 +561,7 @@ func (p *Postgres) stream(ctx context.Context, r *pgconn.PgConn, sink Sink, stor
 				}
 			}
 			txn = nil
-		case *pglogrepl.TypeMessage, *pglogrepl.OriginMessage:
+		case *pglogrepl.TypeMessage, *pglogrepl.OriginMessage, *pglogrepl.LogicalDecodingMessage:
 		default:
 			return fmt.Errorf("%w: logical message %T", ErrUnsupported, lm)
 		}
@@ -485,7 +581,7 @@ func (p *Postgres) add(txn *Batch, schemas map[uint32]Schema, rel uint32, fn fun
 		return fmt.Errorf("%s: %w", s.Table(), err)
 	}
 	for _, c := range cs {
-		c.Relation, c.Table = rel, s.Table()
+		c.Relation, c.Table, c.SchemaVersion = rel, s.Table(), s.Version
 		txn.Changes = append(txn.Changes, c)
 	}
 	// ponytail: whole transaction buffered in memory; stream protocol v2 if transactions exceed this bound.
@@ -582,4 +678,23 @@ func evolve(schemas map[uint32]Schema, m *pglogrepl.RelationMessage) (Schema, bo
 	}
 	old.Columns, old.Version = cols, old.Version+1
 	return old, true, nil
+}
+
+// checkAddedDefaults rejects added columns that have, or had, a default:
+// PostgreSQL fills existing rows without emitting row changes, so a sink
+// could not reproduce them. It reads the current catalog, so it can also
+// reject a column whose default was set later (fail closed).
+func checkAddedDefaults(ctx context.Context, c *pgx.Conn, rel uint32, added []Column) error {
+	for _, col := range added {
+		var hasDefault bool
+		err := c.QueryRow(ctx, `SELECT coalesce(bool_or(atthasdef OR atthasmissing), true) FROM pg_attribute WHERE attrelid = $1 AND attname = $2`,
+			rel, col.Name).Scan(&hasDefault)
+		if err != nil {
+			return err
+		}
+		if hasDefault {
+			return fmt.Errorf("%w: added column %s has a default that existing rows received without change events", ErrIncompatibleSchema, col.Name)
+		}
+	}
+	return nil
 }
