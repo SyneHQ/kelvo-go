@@ -156,6 +156,8 @@ func TestSnapshotPolicyRejectsDirectReadersAndHiddenColumns(t *testing.T) {
 		"SELECT sql FROM duckdb_tables()",
 		"SELECT sql FROM duckdb_views()",
 		"SELECT macro_definition FROM duckdb_functions()",
+		"SELECT pg_get_viewdef((SELECT oid FROM pg_class WHERE relname='orders_fast'))",
+		"SELECT * FROM duckdb_table_sample('orders_fast')",
 	} {
 		sink := &accessValueSink{}
 		_, err := engine.Execute(ctx, query.Request{Sources: []string{"orders_fast"}, SQL: sql}, sink)

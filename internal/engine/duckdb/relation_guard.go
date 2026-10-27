@@ -32,7 +32,7 @@ var deniedFunctions = map[string]struct{}{
 	"enable_logging": {}, "disable_logging": {}, "enable_profiling": {}, "disable_profiling": {},
 	"enable_peg_parser": {}, "disable_peg_parser": {}, "truncate_duckdb_logs": {}, "pragma_table_info": {},
 	"iceberg_scan": {}, "iceberg_metadata": {}, "iceberg_snapshots": {}, "delta_scan": {}, "st_read": {}, "st_read_meta": {},
-	"http_get": {}, "http_post": {}, "http_head": {},
+	"http_get": {}, "http_post": {}, "http_head": {}, "duckdb_table_sample": {},
 }
 
 // deniedPrefixes cover whole families: readers, database scanners, parquet
@@ -40,6 +40,9 @@ var deniedFunctions = map[string]struct{}{
 var deniedPrefixes = []string{
 	"read_", "postgres_", "mysql_", "sqlite_", "parquet_", "http_", "pragma_", "iceberg_", "delta_",
 	"ducklake_", "odbc_", "st_read", "kelvo_arrow_scan_", "excel", "xlsx",
+	// pg_get_viewdef and siblings return object definitions, which embed
+	// source paths and presigned URLs.
+	"pg_get_",
 }
 
 // deniedRelations are catalog relations referenced as base tables (not table
@@ -74,7 +77,7 @@ var deniedCallRE = func() *regexp.Regexp {
 		names = append(names, regexp.QuoteMeta(n))
 	}
 	names = append(names, `read_[a-z0-9_]*`, `postgres_[a-z0-9_]*`, `mysql_[a-z0-9_]*`, `sqlite_[a-z0-9_]*`,
-		`parquet_[a-z0-9_]*`, `pragma_[a-z0-9_]*`, `kelvo_arrow_scan_[a-z0-9_]*`, `iceberg_[a-z0-9_]*`, `delta_[a-z0-9_]*`)
+		`parquet_[a-z0-9_]*`, `pragma_[a-z0-9_]*`, `pg_get_[a-z0-9_]*`, `kelvo_arrow_scan_[a-z0-9_]*`, `iceberg_[a-z0-9_]*`, `delta_[a-z0-9_]*`)
 	return regexp.MustCompile(`(?is)\b(?:` + strings.Join(names, "|") + `)\s*(?:/\*.*?\*/\s*)*\(`)
 }()
 
@@ -98,7 +101,7 @@ func preflightDenied(sqlText string) bool {
 // if the tree cannot be obtained. It runs after the single-SELECT check, on a
 // connection already locked down, and json_serialize_sql only parses: it never
 // opens a file or binds a relation.
-func enforceRelationAllowlist(ctx context.Context, raw any, sqlText string) error {
+func enforceRelationAllowlist(ctx context.Context, raw any, sqlText string, aliases []string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -124,16 +127,21 @@ func enforceRelationAllowlist(ctx context.Context, raw any, sqlText string) erro
 	if json.Unmarshal(parsed.Stmts, &node) != nil {
 		return query.NewError("PERMISSION_DENIED", "SQL could not be validated for read-only access")
 	}
-	return walkPlan(node)
+	allowed := make(map[string]struct{}, len(aliases))
+	for _, a := range aliases {
+		allowed[strings.ToLower(a)] = struct{}{}
+	}
+	return walkPlan(node, allowed)
 }
 
-func walkPlan(v any) error {
+func walkPlan(v any, aliases map[string]struct{}) error {
 	switch t := v.(type) {
 	case map[string]any:
 		if kind, _ := t["type"].(string); kind == "BASE_TABLE" {
 			table, _ := t["table_name"].(string)
 			schema, _ := t["schema_name"].(string)
-			if err := checkBaseTable(schema, table); err != nil {
+			catalogName, _ := t["catalog_name"].(string)
+			if err := checkBaseTable(catalogName, schema, table, aliases); err != nil {
 				return err
 			}
 		}
@@ -141,13 +149,13 @@ func walkPlan(v any) error {
 			return query.NewError("PERMISSION_DENIED", "Query uses a capability unavailable to this execution")
 		}
 		for _, child := range t {
-			if err := walkPlan(child); err != nil {
+			if err := walkPlan(child, aliases); err != nil {
 				return err
 			}
 		}
 	case []any:
 		for _, child := range t {
-			if err := walkPlan(child); err != nil {
+			if err := walkPlan(child, aliases); err != nil {
 				return err
 			}
 		}
@@ -155,20 +163,34 @@ func walkPlan(v any) error {
 	return nil
 }
 
-func checkBaseTable(schema, table string) error {
-	// A registered source view, CTE or catalog relation is always a plain
-	// identifier. A file path, glob or presigned URL used as a table name is
-	// not, so reject it outright: it would read the file directly, bypassing
-	// the registered relation and its row/column policy.
+// checkBaseTable allows (a) a plain-identifier relation, or (b) a name
+// qualified by one of this request's source aliases (an attached database),
+// whose upstream schema/table parts may be any quoted identifier such as
+// "Order Items". The serializer reports an unqualified string or path used as
+// a table (a replacement scan, which reads files) with no catalog or schema,
+// so it can never take path (b). A qualified name never triggers a
+// replacement scan; it only resolves inside the attached catalog.
+func checkBaseTable(catalogName, schema, table string, aliases map[string]struct{}) error {
+	denied := query.NewError("PERMISSION_DENIED", "Query references a relation unavailable to this execution")
+	qualifier := strings.ToLower(catalogName)
+	if qualifier == "" {
+		qualifier = strings.ToLower(schema)
+	}
+	if _, attached := aliases[qualifier]; attached && qualifier != "" {
+		if table == "" {
+			return denied
+		}
+		return nil
+	}
 	if !catalog.ValidID(table) {
-		return query.NewError("PERMISSION_DENIED", "Query references a relation unavailable to this execution")
+		return denied
 	}
 	low := strings.ToLower(table)
 	if _, bad := deniedRelations[low]; bad {
-		return query.NewError("PERMISSION_DENIED", "Query references a relation unavailable to this execution")
+		return denied
 	}
 	if strings.ToLower(schema) == "information_schema" && low == "views" {
-		return query.NewError("PERMISSION_DENIED", "Query references a relation unavailable to this execution")
+		return denied
 	}
 	return nil
 }
