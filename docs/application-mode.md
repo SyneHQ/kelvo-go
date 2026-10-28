@@ -59,6 +59,13 @@ process boundary. The sandbox launcher and managed scratch still apply.
 Omit the block only where cgroup delegation is impossible, such as a Kubernetes pod.
 A present block must still be valid.
 
+Kelvo rejects any group-writable ancestor of its directories. A Kubernetes volume
+mounted with a pod `fsGroup` has a `root:<fsGroup>` root with mode `2775`.
+Set `KELVO_TRUST_OWN_GROUP_ANCESTORS=1` to accept such an ancestor when it is
+owned by root, its group is Kelvo's effective group, and it is not world-writable.
+This relaxes ancestors only. Kelvo's own directories and files must still be
+private and owned by Kelvo. Any other value keeps the default checks.
+
 The resolver must implement `/internal/kelvo/resolve-operation` and
 `/internal/kelvo/complete-operation`. The configured resolver URL remains
 `https://<application>/internal/kelvo/resolve`. The completion callback reports

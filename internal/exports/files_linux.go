@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/pathtrust"
 	"go.yaml.in/yaml/v3"
 	"golang.org/x/sys/unix"
 )
@@ -89,7 +90,7 @@ func trustedAncestor(fd int) error {
 	if st.Mode&unix.S_IFMT != unix.S_IFDIR || (st.Uid != 0 && st.Uid != uint32(os.Geteuid())) {
 		return ErrCorrupt
 	}
-	if st.Mode&0022 != 0 && !(st.Uid == 0 && st.Mode&unix.S_ISVTX != 0) {
+	if st.Mode&0022 != 0 && !(st.Uid == 0 && st.Mode&unix.S_ISVTX != 0) && !pathtrust.OwnGroupAncestor(st.Uid, st.Gid, st.Mode) {
 		return ErrCorrupt
 	}
 	return nil

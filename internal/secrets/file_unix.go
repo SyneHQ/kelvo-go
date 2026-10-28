@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/SYNEHQ/kelvo-go/internal/pathtrust"
 	"golang.org/x/sys/unix"
 )
 
@@ -46,7 +47,7 @@ func readPrivateDocument(ctx context.Context, path string, limit int) (value []b
 		// plus private, owned descendants protect the eventual secret file.
 		trusted := info.Uid == uint32(os.Geteuid()) || info.Uid == 0
 		writable := info.Mode&0022 != 0
-		stickyRoot := info.Uid == 0 && info.Mode&unix.S_ISVTX != 0
+		stickyRoot := info.Uid == 0 && info.Mode&unix.S_ISVTX != 0 || pathtrust.OwnGroupAncestor(info.Uid, info.Gid, uint32(info.Mode))
 		if !trusted || (writable && !stickyRoot) {
 			return nil, ErrUnavailable
 		}
