@@ -40,7 +40,7 @@ type ApplicationConfig struct {
 	Adapter          worker.OperationProcessConfig   `yaml:"adapter"`
 	Limits           query.Limits                    `yaml:"limits"`
 	Resources        ResourceConfig                  `yaml:"resources"`
-	Containment      ContainmentConfig               `yaml:"containment"`
+	Containment      *ContainmentConfig              `yaml:"containment,omitempty"`
 	SandboxPath      string                          `yaml:"sandbox_path"`
 	ScratchDirectory string                          `yaml:"scratch_directory"`
 	MaxRetained      int                             `yaml:"max_retained"`
@@ -67,7 +67,9 @@ func LoadApplication(path string) (ApplicationConfig, error) {
 	c.StateDirectory = relativePath(base, c.StateDirectory)
 	c.ScratchDirectory = relativePath(base, c.ScratchDirectory)
 	c.SandboxPath = relativePath(base, c.SandboxPath)
-	c.Containment.StateDirectory = relativePath(base, c.Containment.StateDirectory)
+	if c.Containment != nil {
+		c.Containment.StateDirectory = relativePath(base, c.Containment.StateDirectory)
+	}
 	c.Adapter.Binary = relativePath(base, c.Adapter.Binary)
 	resolveTLS(base, &c.TLS)
 	c.Resolver.CAFile = relativePath(base, c.Resolver.CAFile)
@@ -85,19 +87,23 @@ func (c ApplicationConfig) Validate() error {
 		c.MaxMetadataBytes < 1024 || c.MaxMetadataBytes > c.MaxResultBytes ||
 		c.MaxStoredBytes < 2*c.MaxResultBytes || c.MaxStoredBytes > 1<<30 || c.Resolver.Validate() != nil ||
 		c.Adapter.JDBC != nil || c.Adapter.Validate() != nil || c.TLS.CertFile == "" || c.TLS.KeyFile == "" || c.TLS.Trust != nil || c.TLS.IdentityFile != "" || c.TLS.ReloadInterval != 0 ||
-		c.Containment.Validate(&c.Resources, c.Limits) != nil || !c.Resources.Fits(c.Limits, false) || c.Resources.Export != nil ||
+		(c.Containment != nil && c.Containment.Validate(&c.Resources, c.Limits) != nil) || !c.Resources.Fits(c.Limits, false) || c.Resources.Export != nil ||
 		3*c.MaxResultBytes+(2<<20) > (c.Resources.MemoryMB-c.Resources.BaselineMB)<<20 {
 		return errApplicationConfig
 	}
 	if _, _, err := net.SplitHostPort(c.Listen); err != nil {
 		return errApplicationConfig
 	}
-	for _, path := range []string{c.StateDirectory, c.ScratchDirectory, c.SandboxPath, c.Containment.StateDirectory} {
+	paths := []string{c.StateDirectory, c.ScratchDirectory, c.SandboxPath}
+	if c.Containment != nil {
+		paths = append(paths, c.Containment.StateDirectory)
+	}
+	for _, path := range paths {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path || path == "/" {
 			return errApplicationConfig
 		}
 	}
-	if overlappingExportPaths(c.StateDirectory, c.ScratchDirectory) || overlappingExportPaths(c.StateDirectory, c.Containment.StateDirectory) || overlappingExportPaths(c.ScratchDirectory, c.Containment.StateDirectory) {
+	if overlappingExportPaths(c.StateDirectory, c.ScratchDirectory) || (c.Containment != nil && (overlappingExportPaths(c.StateDirectory, c.Containment.StateDirectory) || overlappingExportPaths(c.ScratchDirectory, c.Containment.StateDirectory))) {
 		return errApplicationConfig
 	}
 	trust, err := c.trust()

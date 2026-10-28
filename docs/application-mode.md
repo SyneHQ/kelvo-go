@@ -53,6 +53,12 @@ Kelvo runs each operation in a contained adapter process. This mode requires
 Linux cgroup v2, managed scratch, and the sandbox launcher. Startup checks containment
 with a real child process. Failed cleanup stops new work.
 
+The `containment` block is optional. Without it, workers run without per-query
+cgroups and the surrounding container or pod limits are the only memory, CPU, and
+process boundary. The sandbox launcher and managed scratch still apply.
+Omit the block only where cgroup delegation is impossible, such as a Kubernetes pod.
+A present block must still be valid.
+
 The resolver must implement `/internal/kelvo/resolve-operation` and
 `/internal/kelvo/complete-operation`. The configured resolver URL remains
 `https://<application>/internal/kelvo/resolve`. The completion callback reports

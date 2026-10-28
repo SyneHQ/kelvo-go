@@ -72,18 +72,22 @@ func runApplication(args []string) (resultErr error) {
 		return err
 	}
 	executor.ResourceOverheadBytes = cfg.Resources.OverheadMB << 20
-	executor.Containment, err = containment.Open(cfg.Containment.Config)
-	if err != nil {
-		return query.NewError("CONFIGURATION_ERROR", "Application containment is unavailable")
-	}
-	executor.ContainmentBudget = cfg.Containment.Budget
-	defer func() {
-		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		resultErr = errors.Join(resultErr, executor.Containment.Close(cleanup))
-	}()
-	if err = verifyContainmentStartup(ctx, executor); err != nil {
-		return err
+	// Without a containment block the pod or container limits are the only
+	// memory, CPU and process boundary; workers get no per-query cgroups.
+	if cfg.Containment != nil {
+		executor.Containment, err = containment.Open(cfg.Containment.Config)
+		if err != nil {
+			return query.NewError("CONFIGURATION_ERROR", "Application containment is unavailable")
+		}
+		executor.ContainmentBudget = cfg.Containment.Budget
+		defer func() {
+			cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			resultErr = errors.Join(resultErr, executor.Containment.Close(cleanup))
+		}()
+		if err = verifyContainmentStartup(ctx, executor); err != nil {
+			return err
+		}
 	}
 	listener, err := net.Listen("tcp", cfg.Listen)
 	if err != nil {
@@ -94,7 +98,9 @@ func runApplication(args []string) (resultErr error) {
 	if err != nil {
 		return query.NewError("CONFIGURATION_ERROR", "Application state is unavailable or its identity changed")
 	}
-	executor.Containment.SetOnQuarantine(func(error) { app.BeginDrain(); executor.ResourcePool.Drain() })
+	if executor.Containment != nil {
+		executor.Containment.SetOnQuarantine(func(error) { app.BeginDrain(); executor.ResourcePool.Drain() })
+	}
 	server := &http.Server{Handler: tlsRuntime.Handler(app), TLSConfig: tlsRuntime.Config, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 64 << 10}
 	done := make(chan error, 1)
 	accepting := &applicationListener{Listener: listener, ready: make(chan struct{})}
