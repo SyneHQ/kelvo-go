@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/SYNEHQ/kelvo-go/internal/pathtrust"
 	"golang.org/x/sys/unix"
 )
 
@@ -30,7 +31,7 @@ func openDirectory(path string, create bool) (*os.File, error) {
 	}
 	for _, name := range strings.Split(strings.TrimPrefix(path, "/"), "/") {
 		var st unix.Stat_t
-		if unix.Fstat(fd, &st) != nil || st.Mode&unix.S_IFMT != unix.S_IFDIR || (st.Uid != 0 && st.Uid != uint32(os.Geteuid())) || (st.Mode&0022 != 0 && !(st.Uid == 0 && st.Mode&unix.S_ISVTX != 0)) {
+		if unix.Fstat(fd, &st) != nil || st.Mode&unix.S_IFMT != unix.S_IFDIR || (st.Uid != 0 && st.Uid != uint32(os.Geteuid())) || (st.Mode&0022 != 0 && !(st.Uid == 0 && st.Mode&unix.S_ISVTX != 0) && !pathtrust.OwnGroupAncestor(st.Uid, st.Gid, st.Mode)) {
 			unix.Close(fd)
 			return nil, ErrCorrupt
 		}

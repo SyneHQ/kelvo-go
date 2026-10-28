@@ -10,6 +10,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/SYNEHQ/kelvo-go/internal/pathtrust"
 	"golang.org/x/sys/unix"
 )
 
@@ -55,7 +56,7 @@ func checkPrivate(file *os.File, directory bool) (unix.Stat_t, error) {
 	if directory {
 		wantType, wantMode = unix.S_IFDIR, 0700
 	}
-	if st.Uid != uint32(os.Geteuid()) || st.Mode&unix.S_IFMT != wantType || st.Mode&07777 != wantMode || (!directory && st.Nlink != 1) {
+	if st.Uid != uint32(os.Geteuid()) || st.Mode&unix.S_IFMT != wantType || st.Mode&0777 != wantMode || (!directory && st.Nlink != 1) {
 		return st, ErrUnavailable
 	}
 	return st, nil
@@ -72,7 +73,7 @@ func openDirectory(path string, create bool, operations diskIO) (*os.File, error
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	for i, name := range parts {
 		var st unix.Stat_t
-		if unix.Fstat(int(current.Fd()), &st) != nil || st.Mode&unix.S_IFMT != unix.S_IFDIR || (st.Uid != 0 && st.Uid != uint32(os.Geteuid())) || (st.Mode&0022 != 0 && !(st.Uid == 0 && st.Mode&unix.S_ISVTX != 0)) {
+		if unix.Fstat(int(current.Fd()), &st) != nil || st.Mode&unix.S_IFMT != unix.S_IFDIR || (st.Uid != 0 && st.Uid != uint32(os.Geteuid())) || (st.Mode&0022 != 0 && !(st.Uid == 0 && st.Mode&unix.S_ISVTX != 0) && !pathtrust.OwnGroupAncestor(st.Uid, st.Gid, st.Mode)) {
 			_ = operations.close(current)
 			return nil, ErrUnavailable
 		}

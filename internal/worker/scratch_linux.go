@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/internal/pathtrust"
 	"golang.org/x/sys/unix"
 )
 
@@ -102,7 +103,7 @@ func openScratchRootPath(path string) (int, error) {
 			return -1, errScratchUnsafe
 		}
 		leaf := index == len(components)-1
-		stickyTemporaryAncestor := !leaf && st.Uid == 0 && st.Mode&unix.S_ISVTX != 0
+		stickyTemporaryAncestor := !leaf && (st.Uid == 0 && st.Mode&unix.S_ISVTX != 0 || pathtrust.OwnGroupAncestor(st.Uid, st.Gid, st.Mode))
 		if st.Mode&0o022 != 0 && !stickyTemporaryAncestor || leaf && !privateDirectory(&st) {
 			unix.Close(fd)
 			return -1, errScratchUnsafe

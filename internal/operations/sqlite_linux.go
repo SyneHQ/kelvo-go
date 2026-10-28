@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/SYNEHQ/kelvo-go/internal/pathtrust"
 	"golang.org/x/sys/unix"
 	_ "modernc.org/sqlite"
 )
@@ -263,7 +264,7 @@ func sqliteDirectory(path string) (*os.File, error) {
 	}
 	for _, name := range strings.Split(strings.TrimPrefix(path, "/"), "/") {
 		var st unix.Stat_t
-		if unix.Fstat(fd, &st) != nil || (st.Uid != 0 && st.Uid != uint32(os.Geteuid())) || (st.Mode&0022 != 0 && !(st.Uid == 0 && st.Mode&unix.S_ISVTX != 0)) {
+		if unix.Fstat(fd, &st) != nil || (st.Uid != 0 && st.Uid != uint32(os.Geteuid())) || (st.Mode&0022 != 0 && !(st.Uid == 0 && st.Mode&unix.S_ISVTX != 0) && !pathtrust.OwnGroupAncestor(st.Uid, st.Gid, st.Mode)) {
 			unix.Close(fd)
 			return nil, ErrInvalid
 		}

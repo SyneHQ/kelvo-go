@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/SYNEHQ/kelvo-go/internal/pathtrust"
 	"golang.org/x/sys/unix"
 )
 
@@ -49,7 +50,7 @@ func openTree(path string, private, cgroup bool) (*tree, error) {
 			return nil, ErrOwnership
 		}
 		leaf := i == len(parts)-1
-		stickyAncestor := !leaf && st.Uid == 0 && st.Mode&unix.S_ISVTX != 0
+		stickyAncestor := !leaf && (st.Uid == 0 && st.Mode&unix.S_ISVTX != 0 || pathtrust.OwnGroupAncestor(st.Uid, st.Gid, st.Mode))
 		if (st.Mode&0o022 != 0 && !stickyAncestor) || (leaf && int(st.Uid) != os.Geteuid()) ||
 			(leaf && private && st.Mode&0o777 != 0o700) {
 			unix.Close(fd)
