@@ -49,7 +49,7 @@ type Application struct {
 }
 
 func NewApplication(ctx context.Context, cfg ApplicationConfig, token string, executor *worker.Executor) (_ *Application, resultErr error) {
-	if ctx == nil || cfg.Validate() != nil || len(token) < 32 || len(token) > 4096 || executor == nil || executor.ResourcePool == nil || executor.ScratchRoot == nil || executor.Containment == nil ||
+	if ctx == nil || cfg.Validate() != nil || len(token) < 32 || len(token) > 4096 || executor == nil || executor.ResourcePool == nil || executor.ScratchRoot == nil || (cfg.Containment == nil) != (executor.Containment == nil) ||
 		!executor.HasConnectionResolver(cfg.Issuer, cfg.Resolver.URL) || executor.Limits != cfg.Limits || executor.SandboxPath != cfg.SandboxPath {
 		return nil, errApplicationConfig
 	}
@@ -264,7 +264,9 @@ func (p *preparedApplicationOperation) Close() error {
 		if err := p.sink.abort(); err != nil {
 			if errors.Is(err, operationinput.ErrCleanup) || errors.Is(err, operationrun.ErrCleanup) {
 				p.app.failed.Store(true)
-				p.app.executor.Containment.QuarantineOperation()
+				if p.app.executor.Containment != nil {
+					p.app.executor.Containment.QuarantineOperation()
+				}
 				return operationrun.ErrCleanup
 			}
 			p.completion.Complete()

@@ -158,11 +158,16 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	if parent == nil || resolve == nil || e == nil || e.Limits.Validate() != nil || !operations.ValidID(operationID) || !operations.ValidDigest(requestSHA256) {
 		return receipt, operationFailure("INVALID_ARGUMENT")
 	}
-	if e.ScratchRoot == nil || e.SandboxPath == "" || e.ResourcePool == nil || e.Containment == nil || containment.FromContext(parent) != nil ||
-		!e.ContainmentBudget.FitsOverhead(int64(e.Limits.MemoryMB), e.ResourceOverheadBytes>>20) {
+	if e.ScratchRoot == nil || e.SandboxPath == "" || e.ResourcePool == nil || containment.FromContext(parent) != nil ||
+		(e.Containment != nil && !e.ContainmentBudget.FitsOverhead(int64(e.Limits.MemoryMB), e.ResourceOverheadBytes>>20)) {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("CONFIGURATION_ERROR")
 	}
-	if e.Containment.Err() != nil {
+	// Without containment the surrounding container limits are the boundary.
+	quarantine := func() {}
+	if e.Containment != nil {
+		quarantine = e.Containment.QuarantineOperation
+	}
+	if e.Containment != nil && e.Containment.Err() != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("RESOURCE_EXHAUSTED")
 	}
 	if err := validateOperationLauncher(e.SandboxPath); err != nil {
@@ -192,14 +197,14 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	holdScratch, err := custody.Hold()
 	if err != nil {
 		if cleanupErr := workspace.cleanup(); cleanupErr != nil {
-			e.Containment.QuarantineOperation()
+			quarantine()
 			reportScratchCleanupFailure(cleanupErr)
 		}
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
 	defer func() {
 		if cleanupErr := workspace.cleanup(); cleanupErr != nil {
-			e.Containment.QuarantineOperation()
+			quarantine()
 			reportScratchCleanupFailure(cleanupErr)
 			resultErr = errors.Join(resultErr, operationFailure("RESOURCE_EXHAUSTED"))
 			return // Keep scratch custody until ownership is proven empty.
@@ -232,24 +237,29 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	// The launcher grants and executes the inherited inode, not the mutable
 	// pathname whose content was originally selected by operator configuration.
 	args[len(args)-2] = "/proc/self/fd/5"
-	processLimits, err := e.ContainmentBudget.ProcessLimits(int64(e.Limits.MemoryMB), e.Limits.Threads)
-	if err != nil {
-		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("CONFIGURATION_ERROR")
-	}
-	holdProcess, err := custody.Hold()
-	if err != nil {
-		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
-	}
-	job, err := e.Containment.PrepareProcess(processLimits, holdProcess)
-	if err != nil {
-		holdProcess()
-		return rejectedOperation(input, "RESOURCE_EXHAUSTED"), operationFailure("RESOURCE_EXHAUSTED")
+	var job containment.Process
+	if e.Containment != nil {
+		processLimits, err := e.ContainmentBudget.ProcessLimits(int64(e.Limits.MemoryMB), e.Limits.Threads)
+		if err != nil {
+			return rejectedOperation(input, "UNAVAILABLE"), operationFailure("CONFIGURATION_ERROR")
+		}
+		holdProcess, err := custody.Hold()
+		if err != nil {
+			return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
+		}
+		job, err = e.Containment.PrepareProcess(processLimits, holdProcess)
+		if err != nil {
+			holdProcess()
+			return rejectedOperation(input, "RESOURCE_EXHAUSTED"), operationFailure("RESOURCE_EXHAUSTED")
+		}
 	}
 	cleanup.prepared = true
 	// Even Start failure has one cleanup owner. Finish retains reservations on
 	// cgroup uncertainty; workspace cleanup separately retains scratch custody.
 	defer func() {
-		if _, err := job.Finish(context.Background()); err != nil {
+		if job == nil {
+			cleanup.process = true
+		} else if _, err := job.Finish(context.Background()); err != nil {
 			resultErr = errors.Join(resultErr, operationFailure("RESOURCE_EXHAUSTED"))
 		} else {
 			cleanup.process = true
@@ -268,7 +278,7 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 			cleanupContext, stop := context.WithTimeout(context.Background(), 5*time.Second)
 			defer stop()
 			if err := private.close(cleanupContext); err != nil {
-				e.Containment.QuarantineOperation()
+				quarantine()
 				resultErr = errors.Join(resultErr, operationFailure("RESOURCE_EXHAUSTED"))
 				return // Retain custody when physical cleanup is not confirmed.
 			}
@@ -379,7 +389,7 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	if private != nil {
 		command.ExtraFiles = append(command.ExtraFiles, nil, private.file) // fd6 absent, fd7 private control.
 	}
-	commandIO, err = newCommandIO(ctx, command, payload, io.Discard, custody, e.Containment.QuarantineOperation)
+	commandIO, err = newCommandIO(ctx, command, payload, io.Discard, custody, quarantine)
 	if err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
@@ -387,7 +397,12 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	if err := operationBinaryCurrent(binary, identity); err != nil || (sourceFile != nil && operationBinaryCurrent(sourceFile, sourceIdentity) != nil) || (jdbcFiles != nil && jdbc.current() != nil) || ctx.Err() != nil || input.CredentialsValidUntil <= time.Now().Unix() {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
-	if err := commandIO.Start(func() error { return job.Start(command) }); err != nil {
+	if err := commandIO.Start(func() error {
+		if job != nil {
+			return job.Start(command)
+		}
+		return command.Start()
+	}); err != nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
 	}
 	if private != nil {
@@ -445,7 +460,12 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 	}
 	// Keep the leader unreaped until its descendants receive final SIGKILL.
 	cleanupErr := finishProcess(command, ctx.Err() != nil)
-	waitErr := job.Wait()
+	var waitErr error
+	if job != nil {
+		waitErr = job.Wait()
+	} else {
+		waitErr = command.Wait()
+	}
 	if ioErr := commandIO.Finish(context.Background()); ioErr != nil {
 		waitErr = errors.Join(waitErr, ioErr)
 	}
