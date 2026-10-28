@@ -112,6 +112,8 @@ Median seconds over three sequential trials, including startup and Arrow file pe
 
 Kelvo and Python use DuckDB 1.5.6; Polars uses 1.44.2. Startup and binding overhead affect these command timings. They do not show Kelvo accelerating DuckDB itself.
 
+At TPC scale (TPC-H SF1–SF30, TPC-DS SF1–SF10, 8 GiB / 4 threads each), every Kelvo trial matched DuckDB's answers, with in-engine time 4–14% above DuckDB's: [TPC scale benchmarks](docs/tpc-scale-benchmarks.md).
+
 With live ClickHouse on Azure, native queries compute at the source; federation transfers rows for local DuckDB execution:
 
 | Workflow                   | Azure native | Oracle native | Azure federation | Oracle federation |
