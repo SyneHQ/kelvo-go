@@ -43,7 +43,7 @@ mounts = [{ volume = "nats-data", mount_path = "/data" }]
 # Small request so the app fits the single node's reservations; the
 # profile limit still allows bursts.
 [services.nats.resources]
-cpu_request = "25m"
+cpu_request = "160m"
 
 [services.nats.secrets]
 KELVO_NATS_PROVISIONER_PASSWORD = { ref = "kelvo-nats-provisioner-password" }
@@ -125,7 +125,7 @@ mode = 292
 
 [services.cluster-init]
 restart_nonce = "prod-2026-10-24-p32c"
-image = "ghcr.io/synehq/kelvo-go@sha256:21014fc05193818f10d98530726746f62089ee03b6f676655d0e83477adc4a7a"
+image = "ghcr.io/synehq/kelvo-go@sha256:08167de2c593b8d8f9f12b4cf90781e8445140da3a6d392b805bbc4e70bdf5a3"
 registry_credential = "ghcr"
 # A new pod's network policy is programmed a few seconds after it starts, and
 # cluster-init connects to NATS once, at once. Wait before connecting.
@@ -280,7 +280,7 @@ mode = 288
 
 [services.gateway]
 restart_nonce = "prod-2026-10-24-p32c"
-image = "ghcr.io/synehq/kelvo-go@sha256:21014fc05193818f10d98530726746f62089ee03b6f676655d0e83477adc4a7a"
+image = "ghcr.io/synehq/kelvo-go@sha256:08167de2c593b8d8f9f12b4cf90781e8445140da3a6d392b805bbc4e70bdf5a3"
 registry_credential = "ghcr"
 # Kelvo reads its service keys only from a private 0600 file owned by its own
 # user under trusted directories; mounted secrets are root-owned and
@@ -309,7 +309,7 @@ command = ["socat", "TCP-LISTEN:8445,bind=127.0.0.1,fork,reuseaddr", "TCP:node:8
 # Small request so the app fits the single node's reservations; the
 # profile limit still allows bursts.
 [services.gateway.resources]
-cpu_request = "30m"
+cpu_request = "120m"
 # Bursts of schema calls throttled the 600m default: TLS, grant checks and
 # operation inputs all run here.
 cpu_limit = "2"
@@ -453,7 +453,7 @@ mode = 288
 
 [services.node]
 restart_nonce = "prod-2026-10-24-p32c"
-image = "ghcr.io/synehq/kelvo-go-node@sha256:71f48588de6afbe7db051ae27a2395db669a96b8151b85c8e2f32fa4e9d70059"
+image = "ghcr.io/synehq/kelvo-go-node@sha256:86fd41885e79fd1aa10f38586064cc3238e0a22761e6611e944675baabb266a4"
 registry_credential = "ghcr"
 # start.sh (below) prepares what a container cannot know in advance, then runs
 # the image entrypoint.
@@ -487,7 +487,7 @@ command = ["/bin/sh", "-c", "socat TCP-LISTEN:9443,bind=127.0.0.1,fork,reuseaddr
 # Small request so the app fits the single node's reservations; the
 # profile limit still allows bursts.
 [services.node.resources]
-cpu_request = "60m"
+cpu_request = "120m"
 memory_request = "768Mi"
 memory_limit = "2Gi"
 
@@ -612,7 +612,7 @@ operations:
     ca_file: /run/kelvo/tls/internal-ca.crt
   adapter:
     binary: /usr/local/bin/kelvo-adapter-go
-    sha256: ea53495c9c7840674daac9b0f8e53a8bebb4ec0dc49b1797e690da06a54d5d0b
+    sha256: 9105c20fee8f83ba029d912c6e3359eb82d3fbe7d8bd29724c250a40d46d6608
   results:
     directory: /var/lib/kelvo/results
     max_entries: 1024
