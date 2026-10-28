@@ -52,11 +52,12 @@ func checkPrivate(file *os.File, directory bool) (unix.Stat_t, error) {
 	if unix.Fstat(int(file.Fd()), &st) != nil {
 		return st, ErrUnavailable
 	}
-	wantType, wantMode := uint32(unix.S_IFREG), uint32(0600)
+	wantType, wantMode, mode := uint32(unix.S_IFREG), uint32(0600), st.Mode&07777
 	if directory {
-		wantType, wantMode = unix.S_IFDIR, 0700
+		// A directory inherits setgid below a Kubernetes fsGroup volume root.
+		wantType, wantMode, mode = unix.S_IFDIR, 0700, mode&^unix.S_ISGID
 	}
-	if st.Uid != uint32(os.Geteuid()) || st.Mode&unix.S_IFMT != wantType || st.Mode&0777 != wantMode || (!directory && st.Nlink != 1) {
+	if st.Uid != uint32(os.Geteuid()) || st.Mode&unix.S_IFMT != wantType || mode != wantMode || (!directory && st.Nlink != 1) {
 		return st, ErrUnavailable
 	}
 	return st, nil
