@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
 	"slices"
 	"time"
 
@@ -81,7 +82,18 @@ func operationInputIdentity(scope operationstore.Scope, authorityDigest string) 
 	return exports.Identity{Owner: "operation-" + hex.EncodeToString(sum[:]), AuthorizationSHA256: authorityDigest}
 }
 
-func operationResponse(record operationstore.Record) operations.Response {
+// SourceErrorsHeader opts a client into Receipt.SourceError. Older clients
+// decode receipts strictly and would reject the field, so it is withheld
+// unless the request asks for it.
+const SourceErrorsHeader = "X-Kelvo-Source-Errors"
+
+func operationResponse(r *http.Request, record operationstore.Record) operations.Response {
+	receipt := record.Receipt
+	if receipt != nil && receipt.SourceError != nil && r.Header.Get(SourceErrorsHeader) != "1" {
+		withheld := *receipt
+		withheld.SourceError = nil
+		receipt = &withheld
+	}
 	return operations.Response{Version: operations.Version, ID: record.ID, RequestSHA256: record.RequestSHA256,
-		State: record.State, Receipt: record.Receipt}
+		State: record.State, Receipt: receipt}
 }

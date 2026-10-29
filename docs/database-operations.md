@@ -81,6 +81,14 @@ A verified `429` means this submission was not admitted. It does not settle an e
 | `failed` | Read failure or known partial effects | Inspect step receipts |
 | `outcome_unknown` | Source effects cannot be established | Reconcile with the source; never replay automatically |
 
+### Source errors
+
+When PostgreSQL or MySQL refuses the caller's statement, a receipt with error code `SOURCE_FAILED` or `OUTCOME_UNKNOWN` carries `source_error`: the server's `sqlstate`, `message`, `detail`, `hint`, `schema`, `table`, `column` and `constraint`, plus `statement` (the failing batch index). Each field is one line of at most 1 KiB. Connection, login and server-lifecycle failures (SQLSTATE classes `08`, `28`, `57P`, or `FATAL`) never cross. `detail` can quote row values the statement touched, and receipts are retained with the operation.
+
+A PostgreSQL `ERROR` for an autocommit statement is `failed`, not `outcome_unknown`: the server reports it before the implicit commit. MySQL autocommit errors stay `outcome_unknown`, because non-transactional tables can be partly written.
+
+Gateways return `source_error` only when the request sends `X-Kelvo-Source-Errors: 1`, which this SDK always does; older SDKs reject unknown receipt fields. Stored receipts with `source_error` cannot be read by an older gateway, so a rollback below this release needs the operation store cleared or its records expired.
+
 Workers stop accepting operations when receipt persistence cannot be verified, resource cleanup fails, or a confirmed operation has a delivery or audit error. A confirmed committed receipt stays committed; lifecycle failure reporting never replays a source write. Shutdown reports these failures, including an expired cleanup deadline.
 
 Use a stable idempotency key for retries of the same mutation. A new key creates a new operation. Retention is bounded; keys are not permanent deduplication records.
