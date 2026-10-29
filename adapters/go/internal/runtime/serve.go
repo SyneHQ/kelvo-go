@@ -283,7 +283,7 @@ func (r Runner) executeServeRequest(
 	open func(context.Context, adapter.ConnectionSpec, operations.Request) (adapter.Session, error),
 	output io.Writer,
 ) (receipt operations.Receipt, resultErr error) {
-	defer func() { receipt.ErrorCode = sourceFailureCode(ctx, receipt, resultErr) }()
+	defer func() { receipt = withFailureCode(ctx, receipt, resultErr) }()
 	receipt = operations.Receipt{
 		Version:       operations.Version,
 		OperationID:   input.OperationID,

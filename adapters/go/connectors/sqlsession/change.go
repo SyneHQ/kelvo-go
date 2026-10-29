@@ -10,6 +10,8 @@ import (
 	"math"
 	"regexp"
 	"strings"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Options struct {
@@ -183,6 +185,12 @@ func ExecuteStatements(ctx context.Context, pool *sql.DB, engine string, stateme
 			// absent, even when the selected database's base tables use InnoDB.
 			result.Outcome = Unknown
 			if tx != nil && tx.Rollback() == nil && !mysqlTransaction(engine) {
+				result.Outcome = Failed
+			}
+			// PostgreSQL reports an autocommit statement's own ERROR before its
+			// implicit commit and never after it, so the statement did not commit.
+			var refused *pgconn.PgError
+			if tx == nil && errors.As(err, &refused) && refused.Severity == "ERROR" {
 				result.Outcome = Failed
 			}
 			return result, fmt.Errorf("statement %d: %w", index+1, err)
