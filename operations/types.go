@@ -196,7 +196,8 @@ const (
 
 // Receipt describes source effects separately from transport completion.
 // A nil AffectedRows means unavailable. ErrorCode is a fixed public category,
-// never a raw driver message. Input/credential data must never appear here.
+// never a raw driver message. Input/credential data must never appear here;
+// SourceError is the one exception, see its type.
 type Receipt struct {
 	Version           int           `json:"version"`
 	OperationID       string        `json:"operation_id"`
@@ -208,6 +209,28 @@ type Receipt struct {
 	Steps             []StepReceipt `json:"steps,omitempty"`
 	ProviderReference string        `json:"provider_reference,omitempty"`
 	ErrorCode         string        `json:"error_code,omitempty"`
+	SourceError       *SourceError  `json:"source_error,omitempty"`
+}
+
+// MaxSourceErrorText bounds each SourceError text field in bytes.
+const MaxSourceErrorText = 1024
+
+// SourceError is the database's own error for the caller's statement, so the
+// caller sees why the source refused it. It is set only with SOURCE_FAILED or
+// OUTCOME_UNKNOWN and only for errors the server raised while running the statement, never for
+// connecting or authenticating. Detail can quote row values the statement
+// touched. Gateways return it only to clients that ask for it.
+type SourceError struct {
+	SQLState   string `json:"sqlstate,omitempty"`
+	Message    string `json:"message"`
+	Detail     string `json:"detail,omitempty"`
+	Hint       string `json:"hint,omitempty"`
+	Schema     string `json:"schema,omitempty"`
+	Table      string `json:"table,omitempty"`
+	Column     string `json:"column,omitempty"`
+	Constraint string `json:"constraint,omitempty"`
+	// Statement is the failing batch statement's index; nil for one statement.
+	Statement *int `json:"statement,omitempty"`
 }
 
 type ResultRef struct {

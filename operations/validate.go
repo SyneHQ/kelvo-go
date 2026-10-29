@@ -474,6 +474,9 @@ func (r Receipt) Validate() error {
 			return ErrInvalid
 		}
 	}
+	if r.SourceError != nil && ((r.ErrorCode != "SOURCE_FAILED" && r.ErrorCode != "OUTCOME_UNKNOWN") || r.SourceError.validate(len(r.Steps)) != nil) {
+		return ErrInvalid
+	}
 	if r.Result != nil {
 		v := r.Result
 		if !ValidID(v.ID) || !ValidDigest(v.SHA256) || v.Bytes < 0 || v.Bytes > 1<<40 || v.Rows < 0 || v.Rows > 100000000 {
@@ -654,4 +657,31 @@ func (c Capabilities) Supports(r Request) error {
 		return nil
 	}
 	return ErrUnsupported
+}
+
+func (e SourceError) validate(steps int) error {
+	if !text(e.Message, MaxSourceErrorText) || (e.Statement != nil && (*e.Statement < 0 || *e.Statement >= steps)) {
+		return ErrInvalid
+	}
+	if e.SQLState != "" && !sqlState(e.SQLState) {
+		return ErrInvalid
+	}
+	for _, s := range []string{e.Detail, e.Hint, e.Schema, e.Table, e.Column, e.Constraint} {
+		if !optionalText(s, MaxSourceErrorText) {
+			return ErrInvalid
+		}
+	}
+	return nil
+}
+
+func sqlState(s string) bool {
+	if len(s) != 5 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'A' || c > 'Z') {
+			return false
+		}
+	}
+	return true
 }
