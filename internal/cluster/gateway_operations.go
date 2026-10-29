@@ -137,7 +137,7 @@ func (g *Gateway) serveOperationHTTP(w http.ResponseWriter, r *http.Request, ten
 	}
 	switch {
 	case len(parts) == 3 && r.Method == http.MethodGet:
-		g.json(w, 200, operationResponse(record))
+		g.json(w, 200, operationResponse(r, record))
 	case len(parts) == 4 && parts[3] == "results" && r.Method == http.MethodGet:
 		g.operationResults(w, r, state, claims, record)
 	case len(parts) == 4 && parts[3] == "cancel" && r.Method == http.MethodPost:
@@ -156,7 +156,7 @@ func (g *Gateway) serveOperationHTTP(w http.ResponseWriter, r *http.Request, ten
 		if !g.auditSuccess(w, r, op) {
 			return
 		}
-		g.json(w, 200, operationResponse(updated.Record))
+		g.json(w, 200, operationResponse(r, updated.Record))
 	case len(parts) == 4 && parts[3] == "cleanup-lease" && r.Method == http.MethodPost:
 		g.operationCleanupLease(w, r, g.tenants[tenant], state, claims, record)
 	case len(parts) == 4 && parts[3] == "connection-lease" && r.Method == http.MethodPost:
@@ -256,7 +256,7 @@ func (g *Gateway) submitOperation(w http.ResponseWriter, r *http.Request, state 
 	if !g.auditSuccess(w, r, op) {
 		return
 	}
-	g.json(w, http.StatusAccepted, operationResponse(snapshot.Record))
+	g.json(w, http.StatusAccepted, operationResponse(r, snapshot.Record))
 }
 
 // This response proves only that the current submission was not admitted. In

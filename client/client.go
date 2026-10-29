@@ -203,6 +203,8 @@ func (c *Client) do(ctx context.Context, method, path string, auth Authority, bo
 	}
 	req.Header.Set("Accept", "application/vnd.apache.arrow.stream, application/json")
 	req.Header.Set("Accept-Encoding", "identity")
+	// This client decodes Receipt.SourceError; gateways withhold it otherwise.
+	req.Header.Set("X-Kelvo-Source-Errors", "1")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

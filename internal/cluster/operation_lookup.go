@@ -44,5 +44,5 @@ func (g *Gateway) lookupOperation(w http.ResponseWriter, r *http.Request, state 
 		g.operationError(w, err)
 		return
 	}
-	g.json(w, 200, operationResponse(value.Record))
+	g.json(w, 200, operationResponse(r, value.Record))
 }

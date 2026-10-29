@@ -111,7 +111,7 @@ func (a *Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case len(parts) == 2 && r.Method == http.MethodGet:
-		applicationJSON(w, 200, operationResponse(record))
+		applicationJSON(w, 200, operationResponse(r, record))
 	case len(parts) == 3 && parts[2] == "results" && r.Method == http.MethodGet:
 		a.result(w, r, claims, record)
 	case len(parts) == 3 && parts[2] == "cancel" && r.Method == http.MethodPost:
@@ -133,7 +133,7 @@ func (a *Application) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			applicationStorageError(w, err)
 			return
 		}
-		applicationJSON(w, 200, operationResponse(updated.Record))
+		applicationJSON(w, 200, operationResponse(r, updated.Record))
 	case len(parts) == 3 && parts[2] == "connection-lease" && r.Method == http.MethodPost:
 		a.connectionLease(w, r, claims, record)
 	default:
@@ -252,7 +252,7 @@ func (a *Application) submit(w http.ResponseWriter, r *http.Request, claims oper
 		return
 	}
 	a.runtime.Wake()
-	applicationJSON(w, http.StatusAccepted, operationResponse(snapshot.Record))
+	applicationJSON(w, http.StatusAccepted, operationResponse(r, snapshot.Record))
 }
 
 func (a *Application) discardInput(identity exports.Identity, ref operations.InputRef) {
@@ -288,7 +288,7 @@ func (a *Application) lookup(w http.ResponseWriter, r *http.Request, claims oper
 		applicationError(w, 403, "PERMISSION_DENIED", "Retained operation access denied")
 		return
 	}
-	applicationJSON(w, 200, operationResponse(snapshot.Record))
+	applicationJSON(w, 200, operationResponse(r, snapshot.Record))
 }
 
 func (a *Application) connectionLease(w http.ResponseWriter, r *http.Request, claims operations.GrantClaims, record operationstore.Record) {
