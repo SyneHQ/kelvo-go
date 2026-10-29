@@ -64,6 +64,7 @@ func executeRead(ctx context.Context, input adapter.ProcessRequest, invocation a
 		}
 	}
 	if err != nil {
+		receipt.SourceError = sourceError(err, nil)
 		return receipt, err
 	}
 	if sink.writer == nil || stats.Rows != sink.rows || ctx.Err() != nil {

@@ -33,3 +33,13 @@ func sourceFailureCode(ctx context.Context, receipt operations.Receipt, err erro
 	}
 	return receipt.ErrorCode
 }
+
+// withFailureCode applies sourceFailureCode; a narrowed or cleared code drops
+// SourceError, which belongs only to SOURCE_FAILED and OUTCOME_UNKNOWN.
+func withFailureCode(ctx context.Context, receipt operations.Receipt, err error) operations.Receipt {
+	receipt.ErrorCode = sourceFailureCode(ctx, receipt, err)
+	if receipt.ErrorCode != "SOURCE_FAILED" && receipt.ErrorCode != "OUTCOME_UNKNOWN" {
+		receipt.SourceError = nil
+	}
+	return receipt
+}

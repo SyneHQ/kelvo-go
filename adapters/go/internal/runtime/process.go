@@ -62,7 +62,7 @@ func (r Runner) execute(parent context.Context, input adapter.ProcessRequest, ou
 	}
 	ctx, cancel := context.WithDeadline(parent, deadline)
 	defer cancel()
-	defer func() { receipt.ErrorCode = sourceFailureCode(ctx, receipt, resultErr) }()
+	defer func() { receipt = withFailureCode(ctx, receipt, resultErr) }()
 	if err := ctx.Err(); err != nil {
 		receipt.Outcome = operations.CancelledBeforeStart
 		receipt.ErrorCode = "CANCELLED"
@@ -194,6 +194,14 @@ func executeInvocation(ctx context.Context, input adapter.ProcessRequest, invoca
 			receipt.Outcome = operations.OutcomeUnknown
 			receipt.Effect = operations.EffectUnknown
 			receipt.ErrorCode = "OUTCOME_UNKNOWN"
+		}
+		if err != nil {
+			var statement *int
+			if input.Request.Spec.Statement.Batch != nil && result.Attempted > 0 {
+				failed := result.Attempted - 1
+				statement = &failed
+			}
+			receipt.SourceError = sourceError(err, statement)
 		}
 		if batch := input.Request.Spec.Statement.Batch; batch != nil {
 			steps, stepErr := changeSteps(batch, result, invocation.Change.Transaction)
