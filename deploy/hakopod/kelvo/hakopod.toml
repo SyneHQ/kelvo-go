@@ -509,6 +509,11 @@ content = """
 set -eu
 # securityfs is not mounted in containers; the entrypoint reads the LSM list.
 grep -q securityfs /proc/mounts || mount -t securityfs securityfs /sys/kernel/security
+# Containment records pin the cgroup root's inode, and that root is new on
+# every container start, so records left by a previous start can never match
+# and make the node refuse to start (ErrOwnership). Their groups died with the
+# previous container's cgroup, so drop them.
+rm -f /var/lib/kelvo/containment/*.intent /var/lib/kelvo/containment/*.owned
 # The container sees the host cgroup tree, so its own cgroup path changes on
 # every start. Write it into a copy of node.yml (containment.root = <cgroup>/jobs).
 cg=/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)
