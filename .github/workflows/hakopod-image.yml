@@ -41,7 +41,10 @@ jobs:
           target: hakopod-node
           push: true
           platforms: linux/amd64
-          build-args: VERSION=${{ github.ref_name }}
+          # The node executes queries; Federated Database joins need the DuckDB bridge.
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            DUCKBRIDGE=1
           tags: |
             ghcr.io/synehq/kelvo-go-node:${{ github.sha }}
             ghcr.io/synehq/kelvo-go-node:${{ github.ref_name }}
