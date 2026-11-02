@@ -28,6 +28,7 @@ const (
 	OperationPath            = "/internal/kelvo/resolve-operation"
 	CompletionPath           = "/internal/kelvo/complete-operation"
 	FileReadPath             = "/internal/kelvo/operation-file"
+	QueryFileReadPath        = "/internal/kelvo/query-file"
 	FileCommitPath           = "/internal/kelvo/operation-file-commit"
 	FileCommitMediaType      = "application/vnd.kelvo.file-update"
 	FileSHA256Header         = "X-Kelvo-File-SHA256"
@@ -89,6 +90,10 @@ type Source struct {
 	TokenEnv    string            `json:"token_env,omitempty"`
 	Options     map[string]string `json:"options,omitempty"`
 	Federation  *Federation       `json:"federation,omitempty"`
+	// File describes an uploaded file joined in a federated query: never a path.
+	// The worker fetches its bytes from QueryFileReadPath and exposes it as the
+	// single table "<alias>.data". Set only for csv, parquet, json and jsonl.
+	File *filesnapshot.Descriptor `json:"file,omitempty"`
 }
 
 type Federation struct {
@@ -122,6 +127,14 @@ type QueryResponse struct {
 	Secrets          map[string]string `json:"secrets"`
 	// PrivateSources is indexed by selected alias. These proofs are parent-only.
 	PrivateSources map[string]sourceproof.Envelope `json:"private_sources,omitempty"`
+}
+
+// QueryFileReadRequest fetches one federated file source's bytes under the same
+// signed delegation and worker binding as the QueryRequest that resolved it.
+type QueryFileReadRequest struct {
+	QueryRequest
+	Alias    string                  `json:"alias"`
+	Snapshot filesnapshot.Descriptor `json:"snapshot"`
 }
 
 type OperationRequest struct {

@@ -77,7 +77,10 @@ type Config struct {
 	AuthorizeCompletion func(context.Context, CompletionRequest) (CompletionAuthority, error)
 	CompleteOperation   func(context.Context, CompletionAuthority) error
 	OpenFile            func(context.Context, FileReadRequest, operations.GrantClaims, Authorization) (io.ReadCloser, error)
-	LockPublication     func(context.Context, FileCommitRequest, operations.GrantClaims) (PublicationLock, error)
+	// OpenQueryFile streams a federated file source named by the signed delegation.
+	// It must re-authorize the connection and refuse a file whose digest changed.
+	OpenQueryFile   func(context.Context, QueryFileReadRequest, delegation.Claims, Authorization) (io.ReadCloser, error)
+	LockPublication func(context.Context, FileCommitRequest, operations.GrantClaims) (PublicationLock, error)
 }
 
 // Handler is intended for a dedicated mTLS listener with body/access logging
