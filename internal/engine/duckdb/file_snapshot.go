@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
@@ -30,6 +31,43 @@ func NewFileSnapshot(source catalog.Source, limits query.Limits) (*Engine, error
 	return e, nil
 }
 
+// jsonDocuments keeps nested values and numeric lexemes intact as opaque text.
+func jsonDocuments(kind, path string) string {
+	format := "auto"
+	if kind == "jsonl" {
+		format = "newline_delimited"
+	}
+	return "SELECT CAST(json AS VARCHAR) AS document FROM read_json_objects(" + path + ", format='" + format + "', ignore_errors=false)"
+}
+
+// attachFederatedFile exposes a resolver-fetched upload as "<alias>.data" for
+// a federated join. Unlike a standalone snapshot, CSV columns are auto-typed
+// so they compare with the other sources' typed columns.
+func attachFederatedFile(ctx context.Context, executor driver.ExecerContext, source catalog.Source) error {
+	if source.Path == "" || source.Adapter != "" || source.Federation != nil || source.LocalSnapshot != nil || source.ObjectSnapshot != nil || source.Object != nil || source.Range != nil || len(source.Ranges) != 0 || len(source.ParquetPaths) != 0 || len(source.Options) != 0 || source.DSNEnv != "" || source.URLEnv != "" || source.TokenEnv != "" || source.UsernameEnv != "" || source.PasswordEnv != "" {
+		return errors.New("invalid federated file source")
+	}
+	path := "'" + quoteLiteral(source.Path) + "'"
+	var body string
+	switch source.Type {
+	case "csv":
+		body = "SELECT * FROM read_csv_auto(" + path + ")"
+	case "parquet":
+		body = "SELECT * FROM read_parquet(" + path + ")"
+	case "json", "jsonl":
+		body = jsonDocuments(source.Type, path)
+	default:
+		return errors.New("unsupported federated file source")
+	}
+	id := quoteIdentifier(source.ID)
+	for _, statement := range []string{"CREATE SCHEMA " + id, "CREATE VIEW " + id + ".data AS " + body} {
+		if _, err := executor.ExecContext(ctx, statement, nil); err != nil {
+			return fmt.Errorf("trusted source setup failed: %w", err)
+		}
+	}
+	return nil
+}
+
 func attachFileSnapshot(ctx context.Context, raw any, source catalog.Source) error {
 	executor, ok := raw.(driver.ExecerContext)
 	if !ok {
@@ -46,12 +84,7 @@ func attachFileSnapshot(ctx context.Context, raw any, source catalog.Source) err
 	case "parquet":
 		statement = "CREATE VIEW " + id + " AS SELECT * FROM read_parquet(" + path + ")"
 	case "json", "jsonl":
-		format := "auto"
-		if source.Type == "jsonl" {
-			format = "newline_delimited"
-		}
-		// Opaque JSON text keeps nested values and numeric lexemes intact.
-		statement = "CREATE VIEW " + id + " AS SELECT CAST(json AS VARCHAR) AS document FROM read_json_objects(" + path + ", format='" + format + "', ignore_errors=false)"
+		statement = "CREATE VIEW " + id + " AS " + jsonDocuments(source.Type, path)
 	case "duckdb":
 		statement = "ATTACH " + path + " AS " + id + " (READ_ONLY)"
 	default:

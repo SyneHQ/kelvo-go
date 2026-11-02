@@ -137,6 +137,40 @@ type QueryFileReadRequest struct {
 	Snapshot filesnapshot.Descriptor `json:"snapshot"`
 }
 
+func (r QueryFileReadRequest) Validate() error {
+	if r.QueryRequest.Validate() != nil || r.Query.Mode != "federated" || !sourceIDPattern.MatchString(r.Alias) || r.Snapshot.Validate() != nil || !QueryFileFormat(r.Snapshot.Format) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// QueryFileFormat reports the upload formats a federated query may join.
+func QueryFileFormat(format string) bool {
+	switch format {
+	case "csv", "parquet", "json", "jsonl":
+		return true
+	}
+	return false
+}
+
+// QueryFileTable is the single relation a federated file source exposes.
+var QueryFileTable = delegation.Table{Name: "data", Table: "data"}
+
+// ValidQueryFileSource checks the only accepted file source shape against its
+// signed selection: one "data" table, no namespace, credentials or options.
+func ValidQueryFileSource(s Source, selected delegation.Source) bool {
+	return s.File != nil && s.File.Validate() == nil && QueryFileFormat(s.Type) && s.File.Format == s.Type &&
+		s.DSNEnv == "" && s.URLEnv == "" && s.UsernameEnv == "" && s.PasswordEnv == "" && s.TokenEnv == "" && len(s.Options) == 0 &&
+		s.Federation != nil && s.Federation.MaxScanRows == 0 && s.Federation.MaxScanBytes == 0 &&
+		len(s.Federation.Tables) == 1 && s.Federation.Tables[0] == QueryFileTable &&
+		ValidQueryFileSelection(selected)
+}
+
+// ValidQueryFileSelection checks a signed delegation source names a file peer.
+func ValidQueryFileSelection(selected delegation.Source) bool {
+	return selected.Database == "" && selected.Schema == "" && len(selected.Tables) == 1 && selected.Tables[0] == QueryFileTable
+}
+
 type OperationRequest struct {
 	Grant       string             `json:"grant"`
 	Operation   operations.Request `json:"operation"`

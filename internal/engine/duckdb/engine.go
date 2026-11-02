@@ -248,6 +248,12 @@ func attachSources(ctx context.Context, raw any, sources []catalog.Source, exten
 		if source.Adapter != "" {
 			return errors.New("source adapters are unavailable to DuckDB federation")
 		}
+		if source.FederatedFile {
+			if err := attachFederatedFile(ctx, exec, source); err != nil {
+				return err
+			}
+			continue
+		}
 		if source.Federation != nil || access.GuardedSnapshot(ctx, source) {
 			continue
 		}

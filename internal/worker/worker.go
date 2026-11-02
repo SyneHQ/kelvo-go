@@ -100,7 +100,9 @@ type Executor struct {
 	// delegation issuer. No resolver identity or proof enters child stdin.
 	connectionResolvers map[string]*ConnectionResolver
 	connectionSourceIDs map[string]string
-	WarmPool            *WarmPoolManager
+	// queryFiles is set only on a resolved executor copy with file sources.
+	queryFiles *queryFiles
+	WarmPool   *WarmPoolManager
 	// OperationAdapter is the pinned adapter binary for metadata inspections
 	// that no read worker takes.
 	OperationAdapter OperationProcessConfig
@@ -456,6 +458,11 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		releaseScratch()
 		snapshotScratch()
 	}()
+	// Federated file sources are spooled into this query's workspace, which
+	// the deferred cleanup removes whether the query succeeds or fails.
+	if err := e.queryFiles.spool(ctx, dir, cfg.Sources); err != nil {
+		return stats, err
+	}
 	input := Input{Config: cfg, Limits: e.Limits, Request: r}
 	if e.Metrics != nil {
 		input.TimingVersion = telemetry.ChildTimingVersion

@@ -7,17 +7,20 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/SYNEHQ/kelvo-go/filesnapshot"
 	"github.com/SYNEHQ/kelvo-go/internal/access"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/delegation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/sources/postgres"
+	"github.com/SYNEHQ/kelvo-go/resolver"
 	driver "github.com/go-sql-driver/mysql"
 )
 
@@ -87,6 +90,19 @@ func (e *Executor) resolveConnections(ctx context.Context, execution delegation.
 	copy.Config = catalog.Config{Sources: response.Sources, ExtensionDirectory: e.Config.ExtensionDirectory}
 	copy.ObjectRuntime = nil
 	copy.Secrets = connectionSecrets(response.Secrets)
+	copy.queryFiles = nil
+	if len(response.Files) != 0 {
+		// A file peer's signed table is checked above; at runtime it is a
+		// local spool, never a network federation adapter.
+		for i := range copy.Config.Sources {
+			if copy.Config.Sources[i].FederatedFile {
+				copy.Config.Sources[i].Federation = nil
+			}
+		}
+		copy.queryFiles = &queryFiles{descriptors: response.Files, fetch: func(ctx context.Context, alias string, d filesnapshot.Descriptor, w *os.File) error {
+			return resolver.fetchQueryFile(ctx, execution, request, alias, d, w)
+		}}
+	}
 	copy.connectionSourceIDs = make(map[string]string, len(execution.Claims.Sources))
 	for _, source := range execution.Claims.Sources {
 		// The saved connection's identity survives alias changes and credential
@@ -133,7 +149,7 @@ func validateConnectionCatalogWith(response connectionResolution, claims delegat
 	}
 	refs := make(map[string]bool)
 	aliases := make(map[string]bool)
-	tableCount := 0
+	tableCount, files := 0, 0
 	for i, source := range response.Sources {
 		selected := claims.Sources[i]
 		folded := strings.ToLower(source.ID)
@@ -154,6 +170,17 @@ func validateConnectionCatalogWith(response connectionResolution, claims delegat
 				return bad
 			}
 			refs[ref.name] = true
+		}
+		if source.FederatedFile {
+			// An uploaded file joins only a federated query, as the single
+			// signed table "<alias>.data", with no credentials or options.
+			descriptor, ok := response.Files[source.ID]
+			files++
+			tableCount++
+			if !ok || request.Mode != "federated" || plaintextOK || tableCount > 32 || !validQueryFileSource(source, descriptor, selected) {
+				return bad
+			}
+			continue
 		}
 		if !validConnectionSource(source, selected, response.Secrets, plaintextOK) {
 			return bad
@@ -180,10 +207,17 @@ func validateConnectionCatalogWith(response connectionResolution, claims delegat
 			tableAliases[foldedTable] = true
 		}
 	}
-	if len(refs) != len(response.Secrets) {
+	if len(refs) != len(response.Secrets) || files != len(response.Files) {
 		return bad
 	}
 	return nil
+}
+
+func validQueryFileSource(s catalog.Source, descriptor filesnapshot.Descriptor, selected delegation.Source) bool {
+	return resolver.QueryFileFormat(s.Type) && descriptor.Validate() == nil && descriptor.Format == s.Type && resolver.ValidQueryFileSelection(selected) &&
+		s.DSNEnv == "" && s.URLEnv == "" && s.UsernameEnv == "" && s.PasswordEnv == "" && s.TokenEnv == "" && len(s.Options) == 0 &&
+		s.Federation != nil && s.Federation.MaxScanRows == 0 && s.Federation.MaxScanBytes == 0 && len(s.Federation.Tables) == 1 &&
+		s.Federation.Tables[0] == (catalog.FederationTable{Name: resolver.QueryFileTable.Name, Table: resolver.QueryFileTable.Table})
 }
 
 func validConnectionSource(s catalog.Source, selected delegation.Source, secrets map[string]string, plaintextOK bool) bool {

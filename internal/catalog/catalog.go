@@ -40,6 +40,9 @@ type Source struct {
 	Options      map[string]string `json:"options,omitempty" yaml:"options,omitempty"`
 	Object       *ObjectRead       `json:"object,omitempty" yaml:"-"`
 	Range        *ObjectRange      `json:"object_range,omitempty" yaml:"-"`
+	// FederatedFile marks a resolver-fetched upload spooled to Path. Engines
+	// expose it as "<ID>.data". Set only by on-demand resolution, never YAML.
+	FederatedFile bool `json:"federated_file,omitempty" yaml:"-"`
 }
 type Config struct {
 	Sources            []Source            `json:"sources" yaml:"sources"`

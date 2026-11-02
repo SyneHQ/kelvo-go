@@ -138,7 +138,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case QueryPath, OperationPath, CompletionPath, FileReadPath, FileCommitPath:
+	case QueryPath, OperationPath, CompletionPath, FileReadPath, QueryFileReadPath, FileCommitPath:
 	default:
 		deny(w, http.StatusNotFound)
 		return
@@ -189,6 +189,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.complete(w, r)
 	case FileReadPath:
 		h.fileRead(w, r)
+	case QueryFileReadPath:
+		h.queryFileRead(w, r)
 	case FileCommitPath:
 		h.fileCommit(w, r)
 	}
@@ -207,7 +209,8 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any, limit int) error 
 	if err != nil {
 		return ErrInvalid
 	}
-	if _, ok := dst.(*QueryRequest); ok {
+	switch dst.(type) {
+	case *QueryRequest, *QueryFileReadRequest:
 		return delegation.StrictJSONLimit(raw, dst, limit)
 	}
 	return operations.DecodeStrict(raw, dst, limit)
@@ -410,6 +413,12 @@ func validateQueryMaterial(m QueryMaterial, c delegation.Claims, input QueryRequ
 		if s.ID != selected.Alias {
 			return ErrInvalid
 		}
+		if s.File != nil {
+			if input.Query.Mode == "native" || !ValidQueryFileSource(s, selected) {
+				return ErrInvalid
+			}
+			continue
+		}
 		if input.Query.Mode == "native" {
 			if s.Federation != nil || len(selected.Tables) != 0 {
 				return ErrInvalid
@@ -443,7 +452,7 @@ func (h *Handler) operation(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(ctx)
 	material, err := h.config.ResolveOperation(r.Context(), clone(input), clone(claims), before)
 	defer clear(material.Secrets)
-	if err != nil || material.ValidUntil.Unix() <= time.Now().Unix() || material.Source.ID != "source_1" || material.Source.Federation != nil || validateSources([]Source{material.Source}, material.Secrets) != nil {
+	if err != nil || material.ValidUntil.Unix() <= time.Now().Unix() || material.Source.ID != "source_1" || material.Source.Federation != nil || material.Source.File != nil || validateSources([]Source{material.Source}, material.Secrets) != nil {
 		deny(w, http.StatusForbidden)
 		return
 	}
