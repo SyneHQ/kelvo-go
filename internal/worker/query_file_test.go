@@ -143,7 +143,7 @@ func TestQueryFileSpoolsVerifiedBytesUnderTheQueryBinding(t *testing.T) {
 			}}
 			dir := t.TempDir()
 			sources := []catalog.Source{{ID: "selected", Type: "postgres"}, {ID: "files", Type: "csv", FederatedFile: true}}
-			err := files.spool(context.Background(), dir, sources)
+			err := files.spool(context.Background(), dir, sources, 1<<20)
 			if mode != "valid" {
 				if err == nil || sources[1].Path != "" {
 					t.Fatal("unverified file was attached")
@@ -159,7 +159,21 @@ func TestQueryFileSpoolsVerifiedBytesUnderTheQueryBinding(t *testing.T) {
 			}
 		})
 	}
-	if (*queryFiles)(nil).spool(context.Background(), t.TempDir(), []catalog.Source{{ID: "files", Type: "csv", FederatedFile: true}}) == nil {
+	if (*queryFiles)(nil).spool(context.Background(), t.TempDir(), []catalog.Source{{ID: "files", Type: "csv", FederatedFile: true}}, 1<<20) == nil {
 		t.Fatal("file source without a fetcher was accepted")
+	}
+}
+
+func TestQueryFilesOverScratchFailBeforeFetch(t *testing.T) {
+	snapshot := queryFileDescriptor()
+	fetched := false
+	files := &queryFiles{descriptors: map[string]filesnapshot.Descriptor{"files": snapshot}, fetch: func(context.Context, string, filesnapshot.Descriptor, *os.File) error {
+		fetched = true
+		return nil
+	}}
+	sources := []catalog.Source{{ID: "files", Type: "csv", FederatedFile: true}}
+	err := files.spool(context.Background(), t.TempDir(), sources, snapshot.Bytes-1)
+	if err == nil || !strings.Contains(err.Error(), "scratch space") || fetched || sources[0].Path != "" {
+		t.Fatalf("files over the scratch reservation were fetched: %v", err)
 	}
 }

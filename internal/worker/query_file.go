@@ -62,8 +62,19 @@ func (r *ConnectionResolver) fetchQueryFile(ctx context.Context, execution deleg
 
 // spool writes each federated file source into the per-query workspace dir,
 // re-hashes it and points the runtime source at the spooled path. The files
-// are removed with the workspace, on success or failure.
-func (f *queryFiles) spool(ctx context.Context, dir string, sources []catalog.Source) error {
+// are removed with the workspace, on success or failure. The reservation is
+// taken before resolution, so it cannot grow: all files must fit inside the
+// scratch bytes already reserved, checked before anything is fetched.
+func (f *queryFiles) spool(ctx context.Context, dir string, sources []catalog.Source, scratchBytes int64) error {
+	if f != nil {
+		var total int64
+		for _, descriptor := range f.descriptors {
+			total += descriptor.Bytes
+		}
+		if total > scratchBytes {
+			return query.NewError("RESOURCE_EXHAUSTED", "Federated files exceed the query's scratch space")
+		}
+	}
 	spooled := 0
 	for i := range sources {
 		if !sources[i].FederatedFile {

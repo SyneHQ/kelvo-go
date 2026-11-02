@@ -460,7 +460,7 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 	}()
 	// Federated file sources are spooled into this query's workspace, which
 	// the deferred cleanup removes whether the query succeeds or fails.
-	if err := e.queryFiles.spool(ctx, dir, cfg.Sources); err != nil {
+	if err := e.queryFiles.spool(ctx, dir, cfg.Sources, int64(e.Limits.MaxTempMB)<<20); err != nil {
 		return stats, err
 	}
 	input := Input{Config: cfg, Limits: e.Limits, Request: r}
