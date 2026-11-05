@@ -367,3 +367,35 @@ func requirePrivateAccessError(t *testing.T, err error, code, statement, table s
 		}
 	}
 }
+
+// Types without a native driver value (enums, arrays, inet, interval, time)
+// stream as their PostgreSQL text form instead of failing the whole read.
+func TestPostgresLiveUnknownTypesAsText(t *testing.T) {
+	db := openFixture(t, "pgx", "KELVO_TEST_POSTGRES_TYPES_DSN")
+	execFixture(t, db, `DROP TYPE IF EXISTS kelvo_text_mood; CREATE TYPE kelvo_text_mood AS ENUM ('happy', 'sad')`)
+	t.Cleanup(func() { _, _ = db.Exec(`DROP TYPE IF EXISTS kelvo_text_mood`) })
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	rows, err := db.QueryContext(ctx, `SELECT 'happy'::kelvo_text_mood AS mood, ARRAY[1,2]::int4[] AS ints, ARRAY['a','b']::text[] AS texts,
+		'10.0.0.1'::inet AS ip, '1 day 02:00:00'::interval AS span, '12:34:56'::time AS clock, NULL::kelvo_text_mood AS missing`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	sink := &liveSink{}
+	defer sink.Close()
+	if _, err := sqlnative.StreamRows(ctx, rows, sqlnative.Dialect{SourceType: "postgres", DriverName: "pgx"}, query.Limits{MaxRows: 10, MaxBytes: 1 << 20, Timeout: 10 * time.Second, MemoryMB: 16, Threads: 1, MaxTempMB: 1}, sink); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"happy", "{1,2}", "{a,b}", "10.0.0.1", "1 day 02:00:00", "12:34:56"}
+	record := sink.records[0]
+	for i, value := range want {
+		column, ok := record.Column(i).(*array.String)
+		if !ok || column.Value(0) != value {
+			t.Fatalf("column %s = %v, want %q", record.ColumnName(i), record.Column(i), value)
+		}
+	}
+	if !record.Column(6).IsNull(0) {
+		t.Fatal("NULL enum must stay null")
+	}
+}
