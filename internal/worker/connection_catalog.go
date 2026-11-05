@@ -225,8 +225,8 @@ func validConnectionSource(s catalog.Source, selected delegation.Source, secrets
 		return false
 	}
 	for key, value := range s.Options {
-		if key == "tls_ca_pem" && (s.Type == "postgres" || s.Type == "cockroachdb" || s.Type == "alloydb" || s.Type == "redshift") {
-			if s.Federation != nil || postgres.ValidateSourceOptions(s.Options) != nil {
+		if key == "tls_ca_pem" && (s.Type == "postgres" || s.Type == "cockroachdb" || s.Type == "alloydb" || s.Type == "redshift" || s.Type == "clickhouse") {
+			if s.Federation != nil || postgres.ValidateSourceOptions(map[string]string{key: value}) != nil {
 				return false
 			}
 			continue
@@ -275,6 +275,9 @@ func validConnectionSource(s catalog.Source, selected delegation.Source, secrets
 			return false
 		}
 		for key, value := range s.Options {
+			if key == "tls_ca_pem" {
+				continue // validated above
+			}
 			if key != "arrow_compression" || (value != "none" && value != "lz4_frame") {
 				return false
 			}
