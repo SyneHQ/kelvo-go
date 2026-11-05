@@ -253,22 +253,39 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	settings.Set("max_threads", strconv.Itoa(e.limits.Threads))
 	settings.Set("output_format_arrow_compression_method", e.compression[source.ID])
 	settings.Set("wait_end_of_query", "0")
-	endpoint.RawQuery = settings.Encode()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(req.SQL))
-	if err != nil {
-		return stats, query.NewError("QUERY_FAILED", "Could not prepare source request")
-	}
-	httpReq.SetBasicAuth(username, password)
-	httpReq.Header.Set("Content-Type", "text/plain; charset=utf-8")
-	httpReq.Header.Set("Accept", "application/vnd.apache.arrow.stream")
-	httpReq.Header.Set("User-Agent", "kelvo-go")
 	client := e.client
 	if dedicated, ok := e.clients[source.ID]; ok {
 		client = dedicated
 	}
-	response, err := client.Do(httpReq)
-	if err != nil {
-		return stats, failed(ctx, sourceError(ctx, "Could not execute source query"), "other", endpoint.Hostname(), nil, err)
+	queryID := settings.Get("query_id")
+	var response *http.Response
+	// A managed profile may constrain some settings (452); retry without the
+	// resource settings, then with readonly alone, as on the native path.
+	for i, drop := range [][]string{nil, {"max_execution_time", "max_memory_usage", "max_threads"}, {"max_result_rows", "max_result_bytes", "result_overflow_mode"}} {
+		for _, name := range drop {
+			settings.Del(name)
+		}
+		if i > 0 {
+			settings.Set("query_id", fmt.Sprintf("%s-%d", queryID, i))
+		}
+		endpoint.RawQuery = settings.Encode()
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(req.SQL))
+		if err != nil {
+			return stats, query.NewError("QUERY_FAILED", "Could not prepare source request")
+		}
+		httpReq.SetBasicAuth(username, password)
+		httpReq.Header.Set("Content-Type", "text/plain; charset=utf-8")
+		httpReq.Header.Set("Accept", "application/vnd.apache.arrow.stream")
+		httpReq.Header.Set("User-Agent", "kelvo-go")
+		response, err = client.Do(httpReq)
+		if err != nil {
+			return stats, failed(ctx, sourceError(ctx, "Could not execute source query"), "other", endpoint.Hostname(), nil, err)
+		}
+		if response.StatusCode == http.StatusOK || response.Header.Get("X-ClickHouse-Exception-Code") != strconv.Itoa(settingConstraintViolation) || i == 2 {
+			break
+		}
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxErrorBytes))
+		_ = response.Body.Close()
 	}
 	defer response.Body.Close()
 	// Closing the response on cancellation also interrupts a blocked IPC read.

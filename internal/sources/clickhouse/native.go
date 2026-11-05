@@ -16,6 +16,7 @@ import (
 	"time"
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/decimal128"
@@ -46,16 +47,7 @@ func (e *Engine) executeNative(ctx context.Context, endpoint *url.URL, config *t
 		return failed(ctx, sourceError(ctx, "Could not execute source query"), "other", host, nil, err)
 	}
 	defer conn.Close()
-	queryCtx := ch.Context(ctx, ch.WithQueryID(queryID), ch.WithSettings(ch.Settings{
-		"readonly":             1,
-		"max_execution_time":   int64(math.Ceil(e.limits.Timeout.Seconds())),
-		"max_result_rows":      e.limits.MaxRows,
-		"max_result_bytes":     e.limits.MaxBytes,
-		"result_overflow_mode": "throw",
-		"max_memory_usage":     int64(e.limits.MemoryMB) * (1 << 20),
-		"max_threads":          e.limits.Threads,
-	}))
-	rows, err := conn.Query(queryCtx, sql) // ctx cancellation makes the driver send Cancel
+	rows, err := e.queryNative(ctx, conn, queryID, sql)
 	if err != nil {
 		return nativeFailed(ctx, host, err)
 	}
@@ -134,6 +126,44 @@ func (e *Engine) executeNative(ctx context.Context, endpoint *url.URL, config *t
 	}
 	return nil
 }
+
+// queryNative sends the query with Kelvo's limits as settings. A managed
+// profile may constrain some of them (code 452, SETTING_CONSTRAINT_VIOLATION);
+// then retry without the resource settings, whose server-side limits the
+// profile already enforces, and finally with readonly alone. readonly=1 is
+// never dropped; Kelvo still enforces rows, bytes and its own timeout.
+func (e *Engine) queryNative(ctx context.Context, conn driver.Conn, queryID, sql string) (driver.Rows, error) {
+	tiers := []ch.Settings{
+		{
+			"readonly":             1,
+			"max_execution_time":   int64(math.Ceil(e.limits.Timeout.Seconds())),
+			"max_result_rows":      e.limits.MaxRows,
+			"max_result_bytes":     e.limits.MaxBytes,
+			"result_overflow_mode": "throw",
+			"max_memory_usage":     int64(e.limits.MemoryMB) * (1 << 20),
+			"max_threads":          e.limits.Threads,
+		},
+		{"readonly": 1, "max_result_rows": e.limits.MaxRows, "max_result_bytes": e.limits.MaxBytes, "result_overflow_mode": "throw"},
+		{"readonly": 1},
+	}
+	var err error
+	for i, settings := range tiers {
+		id := queryID
+		if i > 0 {
+			id = fmt.Sprintf("%s-%d", queryID, i)
+		}
+		var rows driver.Rows
+		// ctx cancellation makes the driver send Cancel.
+		rows, err = conn.Query(ch.Context(ctx, ch.WithQueryID(id), ch.WithSettings(settings)), sql)
+		var exception *ch.Exception
+		if err == nil || !errors.As(err, &exception) || exception.Code != settingConstraintViolation {
+			return rows, err
+		}
+	}
+	return nil, err
+}
+
+const settingConstraintViolation = 452
 
 // nativeFailed classifies a driver error into failure.go's vocabulary. A
 // server exception keeps the public HTTP wording and records its code.
