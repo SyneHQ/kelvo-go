@@ -77,6 +77,7 @@ func TestRelationalMetadataWidthsZonesAndNativeTypes(t *testing.T) {
 		{"mysql", "TINYINT", arrow.PrimitiveTypes.Int8}, {"mysql", "UNSIGNED TINYINT", arrow.PrimitiveTypes.Uint8}, {"mariadb", "SMALLINT", arrow.PrimitiveTypes.Int16}, {"mysql", "UNSIGNED SMALLINT", arrow.PrimitiveTypes.Uint16}, {"mysql", "MEDIUMINT", arrow.PrimitiveTypes.Int32}, {"mysql", "UNSIGNED MEDIUMINT", arrow.PrimitiveTypes.Uint32}, {"mysql", "INT", arrow.PrimitiveTypes.Int32}, {"mysql", "UNSIGNED INT", arrow.PrimitiveTypes.Uint32}, {"mysql", "BIGINT", arrow.PrimitiveTypes.Int64}, {"mysql", "UNSIGNED BIGINT", arrow.PrimitiveTypes.Uint64},
 		{"mysql", "BIT", arrow.BinaryTypes.Binary}, {"mysql", "FLOAT", arrow.PrimitiveTypes.Float32}, {"mysql", "TIMESTAMP", &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: "UTC"}}, {"mariadb", "DATETIME", &arrow.TimestampType{Unit: arrow.Microsecond}},
 		{"postgres", "INT2", arrow.PrimitiveTypes.Int16}, {"postgresql", "INT4", arrow.PrimitiveTypes.Int32}, {"cockroachdb", "INT8", arrow.PrimitiveTypes.Int64}, {"alloydb", "TIMESTAMP", &arrow.TimestampType{Unit: arrow.Microsecond}}, {"redshift", "TIMESTAMPTZ", &arrow.TimestampType{Unit: arrow.Microsecond, TimeZone: "UTC"}}, {"postgres", "UUID", arrow.BinaryTypes.String}, {"postgres", "JSONB", arrow.BinaryTypes.String}, {"postgres", "BYTEA", arrow.BinaryTypes.Binary},
+		{"postgres", "INTERVAL", arrow.BinaryTypes.String}, {"postgres", "_INT4", arrow.BinaryTypes.String}, {"postgres", "INET", arrow.BinaryTypes.String}, {"postgres", "16385", arrow.BinaryTypes.String},
 	} {
 		t.Run(test.source+"/"+test.name, func(t *testing.T) {
 			schema, err := schemaFor(typesForTest(t, []metadataColumn{{name: test.name}}), Dialect{SourceType: test.source})
@@ -178,12 +179,13 @@ func TestNormalizeUTCWallTimeAndZeroDate(t *testing.T) {
 	if _, err := normalizeValue(&arrow.Decimal128Type{Precision: 30, Scale: 10}, float64(123.45)); err == nil {
 		t.Fatal("inexact float accepted as decimal")
 	}
-	for _, kind := range []string{"postgres", "mysql"} {
-		for _, name := range []string{"TIME", "INTERVAL", "GEOMETRY", "INT4[]"} {
-			_, err := schemaFor(typesForTest(t, []metadataColumn{{name: name}}), Dialect{SourceType: kind})
-			if err == nil {
-				t.Fatalf("unsupported %s %s accepted", kind, name)
-			}
+	for _, name := range []string{"TIME", "INTERVAL", "GEOMETRY", "INT4[]"} {
+		if _, err := schemaFor(typesForTest(t, []metadataColumn{{name: name}}), Dialect{SourceType: "mysql"}); err == nil {
+			t.Fatalf("unsupported mysql %s accepted", name)
+		}
+		// PostgreSQL has a text form for every type; pgx returns it as a string.
+		if schema, err := schemaFor(typesForTest(t, []metadataColumn{{name: name}}), Dialect{SourceType: "postgres"}); err != nil || !arrow.TypeEqual(schema.Field(0).Type, arrow.BinaryTypes.String) {
+			t.Fatalf("postgres %s not streamed as text: %v", name, err)
 		}
 	}
 }

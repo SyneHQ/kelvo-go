@@ -27,7 +27,8 @@ func TestOracleDriverNativeTypes(t *testing.T) {
 			}
 		})
 	}
-	for _, source := range []string{"mysql", "postgresql", "sqlserver"} {
+	// PostgreSQL streams unknown types as text, so only these refuse LONG.
+	for _, source := range []string{"mysql", "sqlserver"} {
 		if _, err := schemaFor(typesForTest(t, []metadataColumn{{name: "LONG"}}), Dialect{SourceType: source}); err == nil {
 			t.Fatalf("Oracle-only LONG mapping leaked to %s", source)
 		}

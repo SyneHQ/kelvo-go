@@ -48,7 +48,9 @@ func postgresType(c *sql.ColumnType, t string) (arrow.DataType, error) {
 		}
 		return relationalDecimal(c, 76)
 	default:
-		return nil, errors.New("unsupported PostgreSQL type")
+		// Enums, arrays, inet, interval, time and other types pgx has no native
+		// driver value for arrive as their PostgreSQL text form.
+		return arrow.BinaryTypes.String, nil
 	}
 }
 func mysqlType(c *sql.ColumnType, t string) (arrow.DataType, error) {
