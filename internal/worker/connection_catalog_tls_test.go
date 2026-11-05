@@ -60,3 +60,42 @@ func TestConnectionCatalogAllowsBoundedPrivateCAOnlyForNativePostgres(t *testing
 		})
 	}
 }
+
+func TestConnectionCatalogAllowsPrivateCAForNativeClickHouse(t *testing.T) {
+	pub, key, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert := &x509.Certificate{SerialNumber: big.NewInt(1), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, cert, cert, pub, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+	clickhouse := func(options map[string]string) catalog.Source {
+		return catalog.Source{ID: "selected", Type: "clickhouse", URLEnv: "U", UsernameEnv: "N", PasswordEnv: "P", Options: options}
+	}
+	secrets := map[string]string{"U": "https://ch.example:8443/?database=analytics", "N": "reader", "P": "secret"}
+	selected := delegation.Source{Alias: "selected", Database: "analytics"}
+	for _, options := range []map[string]string{{"tls_ca_pem": root}, {"tls_ca_pem": root, "arrow_compression": "lz4_frame"}} {
+		if !validConnectionSource(clickhouse(options), selected, secrets, false) {
+			t.Fatalf("native ClickHouse private CA rejected: %v", len(options))
+		}
+	}
+	big := root
+	for len(big) <= 64<<10 {
+		big += root
+	}
+	federated := clickhouse(map[string]string{"tls_ca_pem": root})
+	federated.Federation = &catalog.FederationConfig{}
+	for name, source := range map[string]catalog.Source{
+		"junk":       clickhouse(map[string]string{"tls_ca_pem": root + "junk"}),
+		"not_pem":    clickhouse(map[string]string{"tls_ca_pem": "garbage"}),
+		"oversized":  clickhouse(map[string]string{"tls_ca_pem": big}),
+		"federation": federated,
+	} {
+		if validConnectionSource(source, selected, secrets, false) {
+			t.Fatalf("%s: unsafe ClickHouse trust accepted", name)
+		}
+	}
+}

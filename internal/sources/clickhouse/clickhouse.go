@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -40,6 +41,7 @@ type Engine struct {
 	compression map[string]string
 	limits      query.Limits
 	client      *http.Client
+	clients     map[string]*http.Client // per-source clients for private CAs
 	resolved    map[string]ResolvedSource
 }
 
@@ -49,6 +51,7 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 	}
 	sources := make(map[string]catalog.Source)
 	compression := make(map[string]string)
+	var clients map[string]*http.Client
 	for _, source := range config.Sources {
 		if source.Type != "clickhouse" {
 			continue
@@ -69,24 +72,37 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		if _, err := sourceURL(source); err != nil {
 			return nil, err
 		}
+		if pem, ok := source.Options["tls_ca_pem"]; ok {
+			roots := x509.NewCertPool()
+			if source.Federation != nil || len(pem) > 64<<10 || !roots.AppendCertsFromPEM([]byte(pem)) {
+				return nil, query.NewError("INVALID_ARGUMENT", "Invalid ClickHouse tls_ca_pem")
+			}
+			endpoint, _ := sourceURL(source)
+			if clients == nil {
+				clients = make(map[string]*http.Client)
+			}
+			clients[source.ID] = newClient(&tls.Config{MinVersion: tls.VersionTLS12, ServerName: endpoint.Hostname(), RootCAs: roots})
+		}
 		sources[source.ID] = source
 		// Freeze the validated option independently of the caller's options map.
 		compression[source.ID] = codec
 	}
+	return &Engine{sources: sources, compression: compression, limits: limits, client: newClient(nil), clients: clients}, nil
+}
+
+func newClient(config *tls.Config) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConns = 64
 	transport.MaxIdleConnsPerHost = 16
 	transport.DisableCompression = true
-	return &Engine{
-		sources:     sources,
-		compression: compression,
-		limits:      limits,
-		client: &http.Client{
-			Transport: transport,
-			// Never forward configured credentials to an HTTP redirect destination.
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		},
-	}, nil
+	if config != nil {
+		transport.TLSClientConfig = config
+	}
+	return &http.Client{
+		Transport: transport,
+		// Never forward configured credentials to an HTTP redirect destination.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
 }
 
 // ResolvedSource is private one-operation connection material. Callers must
@@ -145,6 +161,9 @@ func NewResolved(source ResolvedSource, limits query.Limits) (*Engine, error) {
 // the context supplied to Execute.
 func (e *Engine) Close() error {
 	e.client.CloseIdleConnections()
+	for _, client := range e.clients {
+		client.CloseIdleConnections()
+	}
 	return nil
 }
 
@@ -211,7 +230,11 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	httpReq.Header.Set("Content-Type", "text/plain; charset=utf-8")
 	httpReq.Header.Set("Accept", "application/vnd.apache.arrow.stream")
 	httpReq.Header.Set("User-Agent", "kelvo-go")
-	response, err := e.client.Do(httpReq)
+	client := e.client
+	if dedicated, ok := e.clients[source.ID]; ok {
+		client = dedicated
+	}
+	response, err := client.Do(httpReq)
 	if err != nil {
 		return stats, sourceError(ctx, "Could not execute source query")
 	}

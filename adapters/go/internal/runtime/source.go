@@ -111,6 +111,9 @@ func sourceConnection(spec adapter.ConnectionSpec) (adapter.Connection, error) {
 		}
 		c.Username = spec.Username
 		c.Password = spec.Password
+		if c, err = connectionTLS(spec, c); err != nil {
+			return c, err
+		}
 	case "mongodb":
 		if spec.DSN == "" || spec.URL != "" || spec.Username != "" || spec.Password != "" || spec.Token != "" {
 			return c, adapter.ErrInvalid
