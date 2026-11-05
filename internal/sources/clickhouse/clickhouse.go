@@ -43,6 +43,7 @@ type Engine struct {
 	client      *http.Client
 	clients     map[string]*http.Client // per-source clients for private CAs
 	resolved    map[string]ResolvedSource
+	nativeTLS   map[string]*tls.Config // clickhouses:// sources only
 }
 
 func New(config catalog.Config, limits query.Limits) (*Engine, error) {
@@ -52,6 +53,7 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 	sources := make(map[string]catalog.Source)
 	compression := make(map[string]string)
 	var clients map[string]*http.Client
+	nativeTLS := make(map[string]*tls.Config)
 	for _, source := range config.Sources {
 		if source.Type != "clickhouse" {
 			continue
@@ -69,8 +71,24 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		if codec != "none" && codec != "lz4_frame" {
 			return nil, query.NewError("INVALID_ARGUMENT", "ClickHouse arrow_compression must be none or lz4_frame")
 		}
-		if _, err := sourceURL(source); err != nil {
+		endpoint, err := sourceURL(source)
+		if err != nil {
 			return nil, err
+		}
+		if endpoint.Scheme == "clickhouses" {
+			if source.Federation != nil || selected {
+				return nil, query.NewError("INVALID_ARGUMENT", "Native ClickHouse sources do not support federation or arrow_compression")
+			}
+			config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: endpoint.Hostname()}
+			if pem, ok := source.Options["tls_ca_pem"]; ok {
+				config.RootCAs = x509.NewCertPool()
+				if len(pem) > 64<<10 || !config.RootCAs.AppendCertsFromPEM([]byte(pem)) {
+					return nil, query.NewError("INVALID_ARGUMENT", "Invalid ClickHouse tls_ca_pem")
+				}
+			}
+			nativeTLS[source.ID] = config
+			sources[source.ID] = source
+			continue
 		}
 		if pem, ok := source.Options["tls_ca_pem"]; ok {
 			roots := x509.NewCertPool()
@@ -87,7 +105,7 @@ func New(config catalog.Config, limits query.Limits) (*Engine, error) {
 		// Freeze the validated option independently of the caller's options map.
 		compression[source.ID] = codec
 	}
-	return &Engine{sources: sources, compression: compression, limits: limits, client: newClient(nil), clients: clients}, nil
+	return &Engine{sources: sources, compression: compression, limits: limits, client: newClient(nil), clients: clients, nativeTLS: nativeTLS}, nil
 }
 
 func newClient(config *tls.Config) *http.Client {
@@ -123,14 +141,14 @@ func NewResolved(source ResolvedSource, limits query.Limits) (*Engine, error) {
 		return nil, query.NewError("INVALID_ARGUMENT", "Invalid resolved ClickHouse source")
 	}
 	endpoint, err := parseSourceURL(source.URL)
-	if err != nil || endpoint.Scheme != "https" || (endpoint.Path != "" && endpoint.Path != "/") || endpoint.Query().Get("database") == "" {
+	if err != nil || (endpoint.Scheme != "https" && endpoint.Scheme != "clickhouses") || (endpoint.Path != "" && endpoint.Path != "/") || endpoint.Query().Get("database") == "" {
 		return nil, query.NewError("INVALID_ARGUMENT", "Resolved ClickHouse source requires an HTTPS origin and database")
 	}
 	codec := source.Compression
 	if codec == "" {
 		codec = "none"
 	}
-	if codec != "none" && codec != "lz4_frame" {
+	if codec != "none" && codec != "lz4_frame" || codec != "none" && endpoint.Scheme == "clickhouses" {
 		return nil, query.NewError("INVALID_ARGUMENT", "Invalid Arrow compression")
 	}
 	config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: endpoint.Hostname()}
@@ -154,7 +172,11 @@ func NewResolved(source ResolvedSource, limits query.Limits) (*Engine, error) {
 	transport.MaxIdleConns = 1
 	transport.MaxIdleConnsPerHost = 1
 	source.TLS = nil
-	return &Engine{sources: map[string]catalog.Source{source.ID: {ID: source.ID, Type: "clickhouse"}}, compression: map[string]string{source.ID: codec}, resolved: map[string]ResolvedSource{source.ID: source}, limits: limits, client: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	var nativeTLS map[string]*tls.Config
+	if endpoint.Scheme == "clickhouses" {
+		nativeTLS = map[string]*tls.Config{source.ID: config}
+	}
+	return &Engine{sources: map[string]catalog.Source{source.ID: {ID: source.ID, Type: "clickhouse"}}, compression: map[string]string{source.ID: codec}, resolved: map[string]ResolvedSource{source.ID: source}, nativeTLS: nativeTLS, limits: limits, client: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
 // Close releases pooled idle HTTP connections. Active execution is cancelled by
@@ -207,6 +229,16 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	id := make([]byte, 16)
 	if _, err := rand.Read(id); err != nil {
 		return stats, query.NewError("QUERY_FAILED", "Could not prepare source query")
+	}
+	if endpoint.Scheme == "clickhouses" {
+		config, ok := e.nativeTLS[source.ID]
+		if !ok {
+			return stats, query.NewError("INVALID_ARGUMENT", "ClickHouse source URL is unavailable or invalid")
+		}
+		return stats, e.executeNative(ctx, endpoint, config, username, password, "kelvo-"+hex.EncodeToString(id), req.SQL, sink, &stats, started)
+	}
+	if e.nativeTLS[source.ID] != nil {
+		return stats, query.NewError("INVALID_ARGUMENT", "ClickHouse source URL is unavailable or invalid")
 	}
 	settings := endpoint.Query()
 	settings.Set("query_id", "kelvo-"+hex.EncodeToString(id))
@@ -308,7 +340,7 @@ func sourceURL(source catalog.Source) (*url.URL, error) {
 }
 func parseSourceURL(raw string) (*url.URL, error) {
 	endpoint, err := url.Parse(raw)
-	if err != nil || raw == "" || endpoint == nil || (endpoint.Scheme != "https" && endpoint.Scheme != "http") || endpoint.Hostname() == "" || endpoint.User != nil || endpoint.Fragment != "" || endpoint.Opaque != "" {
+	if err != nil || raw == "" || endpoint == nil || (endpoint.Scheme != "https" && endpoint.Scheme != "http" && endpoint.Scheme != "clickhouses") || endpoint.Hostname() == "" || endpoint.Scheme == "clickhouses" && (!validPort(endpoint.Port()) || endpoint.Path != "" && endpoint.Path != "/") || endpoint.User != nil || endpoint.Fragment != "" || endpoint.Opaque != "" {
 		return nil, query.NewError("INVALID_ARGUMENT", "ClickHouse source URL is unavailable or invalid")
 	}
 	values, err := url.ParseQuery(endpoint.RawQuery)
@@ -323,6 +355,11 @@ func parseSourceURL(raw string) (*url.URL, error) {
 		}
 	}
 	return endpoint, nil
+}
+
+func validPort(raw string) bool {
+	n, err := strconv.Atoi(raw)
+	return err == nil && n >= 1 && n <= 65535
 }
 
 func credentials(source catalog.Source) (username, password string, err error) {

@@ -94,7 +94,7 @@ func sourceConnection(spec adapter.ConnectionSpec) (adapter.Connection, error) {
 			return c, adapter.ErrInvalid
 		}
 		u, err := url.Parse(spec.URL)
-		if err != nil || u.Scheme != "https" || u.User != nil || u.Hostname() == "" || (u.Path != "" && u.Path != "/") || u.Fragment != "" || u.Opaque != "" {
+		if err != nil || u.Scheme != "https" && u.Scheme != "clickhouses" || u.User != nil || u.Hostname() == "" || (u.Path != "" && u.Path != "/") || u.Fragment != "" || u.Opaque != "" {
 			return c, adapter.ErrInvalid
 		}
 		params, err := url.ParseQuery(u.RawQuery)
@@ -103,6 +103,14 @@ func sourceConnection(spec adapter.ConnectionSpec) (adapter.Connection, error) {
 		}
 		c.Host = u.Hostname()
 		c.Port = 443
+		if u.Scheme == "clickhouses" {
+			// The session reads this to speak the native TCP+TLS protocol.
+			c.Port = 9440
+			if c.Options == nil {
+				c.Options = map[string]string{}
+			}
+			c.Options["protocol"] = "native"
+		}
 		if u.Port() != "" {
 			c.Port, err = strconv.Atoi(u.Port())
 			if err != nil {
