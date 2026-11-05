@@ -630,7 +630,7 @@ operations:
     ca_file: /run/kelvo/tls/internal-ca.crt
   adapter:
     binary: /usr/local/bin/kelvo-adapter-go
-    sha256: f68d5af0946c0f1f73d42a05b2c364e909c4b589a7a7d5d981a8510466c7cb18
+    sha256: e5042c63127cf365a83d83c400a75ae4c305c06d454b0ff461f0914592b2a6a1
   results:
     directory: /var/lib/kelvo/results
     max_entries: 1024
