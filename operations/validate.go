@@ -477,6 +477,9 @@ func (r Receipt) Validate() error {
 	if r.SourceError != nil && ((r.ErrorCode != "SOURCE_FAILED" && r.ErrorCode != "OUTCOME_UNKNOWN") || r.SourceError.validate(len(r.Steps)) != nil) {
 		return ErrInvalid
 	}
+	if r.SourceFailure != nil && (r.ErrorCode == "" || r.SourceFailure.Validate() != nil) {
+		return ErrInvalid
+	}
 	if r.Result != nil {
 		v := r.Result
 		if !ValidID(v.ID) || !ValidDigest(v.SHA256) || v.Bytes < 0 || v.Bytes > 1<<40 || v.Rows < 0 || v.Rows > 100000000 {
