@@ -494,6 +494,19 @@ memory_limit = "2Gi"
 [services.node.network_access]
 from = ["gateway"]
 
+# Hakopod admits a pod to a managed database only through a binding. Kelvo
+# never reads these variables; they open the node's path to the Syne app
+# database (f8b0…) and Lumen ClickHouse (7f1b…) that users connect as sources.
+[services.node.bindings.SYNE_DB_DATABASE_URL]
+managed_database = "f8b0006ab9b3001a9ad5a41a6bca68d1"
+endpoint = "read_write"
+protocol = "postgres"
+
+[services.node.bindings.LUMEN_CLICKHOUSE_DATABASE_URL]
+managed_database = "7f1b736d9c92bb18efd948441f12e9dd"
+endpoint = "read_write"
+protocol = "clickhouse"
+
 [services.node.env]
 # Cluster CIDRs: NATS, gateway, db-api's resolver and rabbit's private transport.
 KELVO_ALLOW_CIDRS = "10.42.0.0/16,10.43.0.0/16"
