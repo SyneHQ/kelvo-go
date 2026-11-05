@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/SYNEHQ/kelvo-go/adapter"
+	native "github.com/SYNEHQ/kelvo-go/internal/sources/clickhouse"
 	"github.com/SYNEHQ/kelvo-go/operations"
 	"github.com/SYNEHQ/kelvo-go/query"
 )
@@ -40,6 +41,12 @@ func withFailureCode(ctx context.Context, receipt operations.Receipt, err error)
 	receipt.ErrorCode = sourceFailureCode(ctx, receipt, err)
 	if receipt.ErrorCode != "SOURCE_FAILED" && receipt.ErrorCode != "OUTCOME_UNKNOWN" {
 		receipt.SourceError = nil
+	}
+	// Only the fixed-vocabulary reason crosses; the node logs and strips it.
+	var failure *native.Failure
+	if receipt.ErrorCode != "" && errors.As(err, &failure) && failure.SourceFailure.Validate() == nil {
+		reason := failure.SourceFailure
+		receipt.SourceFailure = &reason
 	}
 	return receipt
 }
