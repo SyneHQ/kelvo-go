@@ -236,7 +236,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	}
 	response, err := client.Do(httpReq)
 	if err != nil {
-		return stats, sourceError(ctx, "Could not execute source query")
+		return stats, failed(ctx, sourceError(ctx, "Could not execute source query"), "other", endpoint.Hostname(), nil, err)
 	}
 	defer response.Body.Close()
 	// Closing the response on cancellation also interrupts a blocked IPC read.
@@ -244,7 +244,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	defer stopClose()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxErrorBytes))
-		return stats, sourceError(ctx, "Source rejected query")
+		return stats, failed(ctx, sourceError(ctx, "Source rejected query"), "http_status", endpoint.Hostname(), response, nil)
 	}
 	// An explicit SQL FORMAT override cannot be parsed as Arrow and fails closed.
 	// ClickHouse >=26.8 can override FORMAT through output_format; older supported
@@ -257,7 +257,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	reader, err := ipc.NewReaderFromMessageReader(framing, ipc.WithAllocator(allocator))
 	if err != nil {
 		framing.Release()
-		return stats, streamError(ctx, allocator, stream, framing)
+		return stats, failed(ctx, streamError(ctx, allocator, stream, framing), "arrow_stream", endpoint.Hostname(), nil, nil)
 	}
 	defer reader.Release()
 	stats.PrepareNS = time.Since(started).Nanoseconds()
@@ -270,7 +270,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		}
 		record := reader.RecordBatch()
 		if record == nil {
-			return stats, sourceError(ctx, "Source returned an invalid Arrow batch")
+			return stats, failed(ctx, sourceError(ctx, "Source returned an invalid Arrow batch"), "arrow_stream", endpoint.Hostname(), nil, nil)
 		}
 		if record.NumRows() > e.limits.MaxRows-stats.Rows {
 			return stats, query.NewError("RESOURCE_EXHAUSTED", "Query result exceeds row limit")
@@ -287,7 +287,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		stats.Batches++
 	}
 	if reader.Err() != nil || !framing.complete {
-		return stats, streamError(ctx, allocator, stream, framing)
+		return stats, failed(ctx, streamError(ctx, allocator, stream, framing), "arrow_stream", endpoint.Hostname(), nil, nil)
 	}
 	// ClickHouse may append a text exception after sending HTTP 200. An Arrow
 	// decoder stops at its end marker, so require HTTP EOF without trailing data.
@@ -295,7 +295,7 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	n, readErr := response.Body.Read(trailing[:])
 	stream.bytesRead += int64(n)
 	if n != 0 || !errors.Is(readErr, io.EOF) {
-		return stats, sourceError(ctx, "Source returned an incomplete or invalid Arrow stream")
+		return stats, failed(ctx, sourceError(ctx, "Source returned an incomplete or invalid Arrow stream"), "arrow_stream", endpoint.Hostname(), nil, nil)
 	}
 	if err := ctx.Err(); err != nil {
 		return stats, query.PublicError(err)

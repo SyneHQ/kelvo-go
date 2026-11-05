@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -23,6 +24,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/internal/containment"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/clickhouse"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
 	"github.com/SYNEHQ/kelvo-go/internal/tracing"
 	"github.com/apache/arrow-go/v18/arrow"
@@ -60,9 +62,11 @@ func (in Input) ExecutionContext(ctx context.Context) (context.Context, error) {
 }
 
 type Outcome struct {
-	Stats           query.Stats            `json:"stats"`
-	Error           *query.Error           `json:"error,omitempty"`
-	Timing          *telemetry.ChildTiming `json:"timing,omitempty"`
+	Stats  query.Stats            `json:"stats"`
+	Error  *query.Error           `json:"error,omitempty"`
+	Timing *telemetry.ChildTiming `json:"timing,omitempty"`
+	// SourceFailure is the child's fixed-vocabulary reason; only the node logs it.
+	SourceFailure   *clickhouse.Failure `json:"source_failure,omitempty"`
 	timingMalformed bool
 }
 type Executor struct {
@@ -625,6 +629,9 @@ func (e *Executor) execute(ctx context.Context, r query.Request, sink query.Sink
 		waitErr = errors.Join(waitErr, ioErr)
 	}
 	outcome, decodeErr := decodeCommandOutcome(commandIO, &stderr)
+	if e.LogFailedReads && outcome.SourceFailure != nil {
+		log.Print(outcome.SourceFailure.LogLine())
+	}
 	if e.Metrics != nil {
 		terminated := exited && nativeExit.Code == -1
 		recordChildTiming(e.Metrics, ctx, outcome, decodeErr, terminated, childBound)

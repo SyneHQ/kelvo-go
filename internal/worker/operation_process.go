@@ -167,6 +167,7 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 			resultErr = errors.Join(resultErr, finishErr)
 			finishCancel()
 		}
+		receipt = logSourceFailure(receipt)
 		if finalizer, ok := sink.(OperationFinalizer); ok {
 			receipt, resultErr = finalizer.FinalizeOperation(receipt, resultErr)
 		}
@@ -546,6 +547,16 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 		resultErr = operationFailure("QUERY_FAILED")
 	}
 	return receipt, resultErr
+}
+
+// logSourceFailure writes the adapter's sanitized source failure reason to the
+// node log and strips it, so published receipts keep their previous shape.
+func logSourceFailure(receipt operations.Receipt) operations.Receipt {
+	if receipt.SourceFailure != nil {
+		log.Print(receipt.SourceFailure.LogLine())
+		receipt.SourceFailure = nil
+	}
+	return receipt
 }
 
 func operationEnvironment(directory string, threads int) []string {

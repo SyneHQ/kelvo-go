@@ -254,6 +254,7 @@ func runWorkerIO(parent context.Context, input io.Reader, stream, diagnostics io
 	emit := func(err error) error {
 		if err != nil {
 			outcome.Error = query.PublicError(err)
+			errors.As(err, &outcome.SourceFailure)
 		}
 		return worker.EncodeOutcome(diagnostics, outcome)
 	}

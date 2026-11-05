@@ -210,6 +210,8 @@ type Receipt struct {
 	ProviderReference string        `json:"provider_reference,omitempty"`
 	ErrorCode         string        `json:"error_code,omitempty"`
 	SourceError       *SourceError  `json:"source_error,omitempty"`
+	// SourceFailure is the operator-log reason for a failed source; node-only.
+	SourceFailure *SourceFailure `json:"source_failure,omitempty"`
 }
 
 // MaxSourceErrorText bounds each SourceError text field in bytes.
