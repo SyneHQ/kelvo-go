@@ -28,6 +28,7 @@ const (
 	OperationPath            = "/internal/kelvo/resolve-operation"
 	CompletionPath           = "/internal/kelvo/complete-operation"
 	FileReadPath             = "/internal/kelvo/operation-file"
+	QueryFileReadPath        = "/internal/kelvo/query-file"
 	FileCommitPath           = "/internal/kelvo/operation-file-commit"
 	FileCommitMediaType      = "application/vnd.kelvo.file-update"
 	FileSHA256Header         = "X-Kelvo-File-SHA256"
@@ -89,6 +90,10 @@ type Source struct {
 	TokenEnv    string            `json:"token_env,omitempty"`
 	Options     map[string]string `json:"options,omitempty"`
 	Federation  *Federation       `json:"federation,omitempty"`
+	// File describes an uploaded file joined in a federated query: never a path.
+	// The worker fetches its bytes from QueryFileReadPath and exposes it as the
+	// single table "<alias>.data". Set only for csv, parquet, json and jsonl.
+	File *filesnapshot.Descriptor `json:"file,omitempty"`
 }
 
 type Federation struct {
@@ -122,6 +127,48 @@ type QueryResponse struct {
 	Secrets          map[string]string `json:"secrets"`
 	// PrivateSources is indexed by selected alias. These proofs are parent-only.
 	PrivateSources map[string]sourceproof.Envelope `json:"private_sources,omitempty"`
+}
+
+// QueryFileReadRequest fetches one federated file source's bytes under the same
+// signed delegation and worker binding as the QueryRequest that resolved it.
+type QueryFileReadRequest struct {
+	QueryRequest
+	Alias    string                  `json:"alias"`
+	Snapshot filesnapshot.Descriptor `json:"snapshot"`
+}
+
+func (r QueryFileReadRequest) Validate() error {
+	if r.QueryRequest.Validate() != nil || r.Query.Mode != "federated" || !sourceIDPattern.MatchString(r.Alias) || r.Snapshot.Validate() != nil || !QueryFileFormat(r.Snapshot.Format) {
+		return ErrInvalid
+	}
+	return nil
+}
+
+// QueryFileFormat reports the upload formats a federated query may join.
+func QueryFileFormat(format string) bool {
+	switch format {
+	case "csv", "parquet", "json", "jsonl":
+		return true
+	}
+	return false
+}
+
+// QueryFileTable is the single relation a federated file source exposes.
+var QueryFileTable = delegation.Table{Name: "data", Table: "data"}
+
+// ValidQueryFileSource checks the only accepted file source shape against its
+// signed selection: one "data" table, no namespace, credentials or options.
+func ValidQueryFileSource(s Source, selected delegation.Source) bool {
+	return s.File != nil && s.File.Validate() == nil && QueryFileFormat(s.Type) && s.File.Format == s.Type &&
+		s.DSNEnv == "" && s.URLEnv == "" && s.UsernameEnv == "" && s.PasswordEnv == "" && s.TokenEnv == "" && len(s.Options) == 0 &&
+		s.Federation != nil && s.Federation.MaxScanRows == 0 && s.Federation.MaxScanBytes == 0 &&
+		len(s.Federation.Tables) == 1 && s.Federation.Tables[0] == QueryFileTable &&
+		ValidQueryFileSelection(selected)
+}
+
+// ValidQueryFileSelection checks a signed delegation source names a file peer.
+func ValidQueryFileSelection(selected delegation.Source) bool {
+	return selected.Database == "" && selected.Schema == "" && len(selected.Tables) == 1 && selected.Tables[0] == QueryFileTable
 }
 
 type OperationRequest struct {

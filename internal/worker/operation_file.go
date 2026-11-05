@@ -75,6 +75,13 @@ func (e *Executor) FetchOperationFile(ctx context.Context, record operationstore
 	if err != nil {
 		return 0, connectionUnavailable()
 	}
+	return receiveVerifiedFile(ctx, resolver, req, snapshot, record.AuthorityUntil.Unix(), record.ExecuteBefore.Unix(), destination)
+}
+
+// receiveVerifiedFile sends a private file request and copies exactly the
+// declared bytes. A final trailer proves authorization was rechecked after
+// delivery; the receipt is bounded by authority, limit and the peer chain.
+func receiveVerifiedFile(ctx context.Context, resolver *ConnectionResolver, req *http.Request, snapshot filesnapshot.Descriptor, authorityUntil, limit int64, destination io.Writer) (int64, error) {
 	req.GetBody = nil
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/octet-stream")
@@ -106,10 +113,10 @@ func (e *Executor) FetchOperationFile(ctx context.Context, record operationstore
 	now := time.Now()
 	peerUntil, ok := resolverCertificateExpiry(resp.TLS, now)
 	until, err := strconv.ParseInt(resp.Trailer.Get(resolverapi.SourceValidUntilTrailer), 10, 64)
-	if !ok || err != nil || len(resp.Trailer.Values(resolverapi.FileVerifiedTrailer)) != 1 || len(resp.Trailer.Values(resolverapi.SourceValidUntilTrailer)) != 1 || resp.Trailer.Get(resolverapi.FileVerifiedTrailer) != snapshot.SHA256 || strconv.FormatInt(until, 10) != resp.Trailer.Get(resolverapi.SourceValidUntilTrailer) || until <= now.Unix() || until > now.Unix()+5 || until > record.AuthorityUntil.Unix() {
+	if !ok || err != nil || len(resp.Trailer.Values(resolverapi.FileVerifiedTrailer)) != 1 || len(resp.Trailer.Values(resolverapi.SourceValidUntilTrailer)) != 1 || resp.Trailer.Get(resolverapi.FileVerifiedTrailer) != snapshot.SHA256 || strconv.FormatInt(until, 10) != resp.Trailer.Get(resolverapi.SourceValidUntilTrailer) || until <= now.Unix() || until > now.Unix()+5 || until > authorityUntil {
 		return 0, connectionUnavailable()
 	}
-	until = min(until, peerUntil.Unix(), record.ExecuteBefore.Unix())
+	until = min(until, peerUntil.Unix(), limit)
 	if until <= now.Unix() {
 		return 0, connectionUnavailable()
 	}

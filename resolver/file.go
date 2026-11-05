@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/SYNEHQ/kelvo-go/delegation"
 	"github.com/SYNEHQ/kelvo-go/filesnapshot"
 	"github.com/SYNEHQ/kelvo-go/operations"
 )
@@ -72,13 +73,82 @@ func (h *Handler) fileRead(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.Remove(verified.Name())
 	defer verified.Close()
-	_, after, until, err := h.operationCheck(r, input.OperationRequest)
-	if err != nil || after.Revision != input.SourceRevision || setDeadline(w, until, false) != nil {
+	recheck := func() (time.Time, bool) {
+		_, after, until, err := h.operationCheck(r, input.OperationRequest)
+		return until, err == nil && after.Revision == input.SourceRevision
+	}
+	until, ok := recheck()
+	if !ok || setDeadline(w, until, false) != nil {
 		deny(w, http.StatusForbidden)
 		return
 	}
+	streamVerified(w, ctx, verified, input.Snapshot, recheck)
+}
+
+// queryFileRead serves one federated file source under the query's own signed
+// delegation, lease and worker binding, with the operation file stream's
+// verify-before-disclose and trailer contract.
+func (h *Handler) queryFileRead(w http.ResponseWriter, r *http.Request) {
+	if h.config.AuthorizeQuery == nil || h.config.OpenQueryFile == nil {
+		deny(w, http.StatusForbidden)
+		return
+	}
+	var input QueryFileReadRequest
+	if readJSON(w, r, &input, MaxQueryRequestBytes+4096) != nil || input.Validate() != nil {
+		deny(w, http.StatusBadRequest)
+		return
+	}
+	claims, before, until, err := h.queryCheck(r, input.QueryRequest)
+	if err != nil || !signedFileAlias(claims, input.Alias) {
+		deny(w, http.StatusForbidden)
+		return
+	}
+	ctx, cancel := context.WithDeadline(r.Context(), until)
+	defer cancel()
+	r = r.WithContext(ctx)
+	file, err := h.config.OpenQueryFile(ctx, clone(input), clone(claims), before)
+	if file != nil {
+		defer file.Close()
+	}
+	if err != nil || file == nil {
+		deny(w, http.StatusForbidden)
+		return
+	}
+	stopFileClose := context.AfterFunc(ctx, func() { _ = file.Close() })
+	defer stopFileClose()
+	verified, err := h.spoolVerified(ctx, file, input.Snapshot)
+	if err != nil {
+		deny(w, http.StatusForbidden)
+		return
+	}
+	defer os.Remove(verified.Name())
+	defer verified.Close()
+	recheck := func() (time.Time, bool) {
+		_, after, until, err := h.queryCheck(r, input.QueryRequest)
+		return until, err == nil && after.Revision == before.Revision
+	}
+	until, ok := recheck()
+	if !ok || setDeadline(w, until, false) != nil {
+		deny(w, http.StatusForbidden)
+		return
+	}
+	streamVerified(w, ctx, verified, input.Snapshot, recheck)
+}
+
+func signedFileAlias(c delegation.Claims, alias string) bool {
+	for _, s := range c.Sources {
+		if s.Alias == alias {
+			return ValidQueryFileSelection(s)
+		}
+	}
+	return false
+}
+
+// streamVerified writes an already verified spool with the digest header and
+// the trailers a worker requires; recheck re-authorizes after the last byte.
+func streamVerified(w http.ResponseWriter, ctx context.Context, verified *os.File, snapshot filesnapshot.Descriptor, recheck func() (time.Time, bool)) {
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set(FileSHA256Header, input.Snapshot.SHA256)
+	w.Header().Set(FileSHA256Header, snapshot.SHA256)
 	w.Header().Set("Trailer", FileVerifiedTrailer+", "+SourceValidUntilTrailer)
 	w.WriteHeader(http.StatusOK)
 	// Flush before copying to preserve the required streaming/trailer response,
@@ -87,17 +157,17 @@ func (h *Handler) fileRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hash := sha256.New()
-	n, err := io.CopyBuffer(io.MultiWriter(w, hash), io.LimitReader(contextReader{ctx, verified}, input.Snapshot.Bytes), make([]byte, 64<<10))
+	n, err := io.CopyBuffer(io.MultiWriter(w, hash), io.LimitReader(contextReader{ctx, verified}, snapshot.Bytes), make([]byte, 64<<10))
 	var extra [1]byte
 	extraN, extraErr := io.ReadFull(verified, extra[:])
-	if err != nil || n != input.Snapshot.Bytes || extraN != 0 || extraErr != io.EOF || hex.EncodeToString(hash.Sum(nil)) != input.Snapshot.SHA256 || ctx.Err() != nil {
+	if err != nil || n != snapshot.Bytes || extraN != 0 || extraErr != io.EOF || hex.EncodeToString(hash.Sum(nil)) != snapshot.SHA256 || ctx.Err() != nil {
 		return
 	}
-	_, final, until, err := h.operationCheck(r, input.OperationRequest)
-	if err != nil || final.Revision != input.SourceRevision {
+	until, ok := recheck()
+	if !ok {
 		return
 	}
-	w.Header().Set(FileVerifiedTrailer, input.Snapshot.SHA256)
+	w.Header().Set(FileVerifiedTrailer, snapshot.SHA256)
 	w.Header().Set(SourceValidUntilTrailer, strconv.FormatInt(until.Unix(), 10))
 }
 

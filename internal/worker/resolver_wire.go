@@ -4,6 +4,7 @@ package worker
 import (
 	"maps"
 
+	"github.com/SYNEHQ/kelvo-go/filesnapshot"
 	"github.com/SYNEHQ/kelvo-go/internal/catalog"
 	"github.com/SYNEHQ/kelvo-go/resolver"
 	"github.com/SYNEHQ/kelvo-go/sourceproof"
@@ -17,6 +18,9 @@ type connectionResolution struct {
 	ValidUntil       int64
 	Sources          []catalog.Source
 	Secrets          map[string]string
+	// Files holds each federated file source's descriptor by alias. The
+	// matching Sources entry has FederatedFile set and no Path until spooled.
+	Files map[string]filesnapshot.Descriptor
 }
 
 type operationResolution struct {
@@ -44,7 +48,15 @@ func resolvedSource(s resolver.Source) catalog.Source {
 func resolvedQuery(wire resolver.QueryResponse) connectionResolution {
 	out := connectionResolution{Version: wire.Version, DelegationSHA256: wire.DelegationSHA256, ValidUntil: wire.ValidUntil, Secrets: wire.Secrets}
 	for _, source := range wire.Sources {
-		out.Sources = append(out.Sources, resolvedSource(source))
+		converted := resolvedSource(source)
+		if source.File != nil {
+			if out.Files == nil {
+				out.Files = map[string]filesnapshot.Descriptor{}
+			}
+			out.Files[source.ID] = *source.File
+			converted.FederatedFile = true
+		}
+		out.Sources = append(out.Sources, converted)
 	}
 	return out
 }
