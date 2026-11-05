@@ -45,6 +45,9 @@ func (Driver) Open(ctx context.Context, c adapter.Connection) (adapter.Session, 
 		return nil, adapter.ErrInvalid
 	}
 	for key, value := range c.Options {
+		if key == "protocol" && value == "native" {
+			continue
+		}
 		if key != "migration_server_uuid" || !migration.ValidServerUUID(value) {
 			return nil, adapter.ErrInvalid
 		}
@@ -62,7 +65,11 @@ func (Driver) Open(ctx context.Context, c adapter.Connection) (adapter.Session, 
 	if config.ServerName == "" {
 		config.ServerName = c.Host
 	}
-	endpoint := url.URL{Scheme: "https", Host: net.JoinHostPort(c.Host, strconv.Itoa(c.Port)), RawQuery: url.Values{"database": {c.Namespace}}.Encode()}
+	scheme := "https"
+	if c.Options["protocol"] == "native" {
+		scheme = "clickhouses"
+	}
+	endpoint := url.URL{Scheme: scheme, Host: net.JoinHostPort(c.Host, strconv.Itoa(c.Port)), RawQuery: url.Values{"database": {c.Namespace}}.Encode()}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	transport.TLSClientConfig = config
@@ -72,6 +79,12 @@ func (Driver) Open(ctx context.Context, c adapter.Connection) (adapter.Session, 
 	transport.MaxIdleConnsPerHost = 1
 	session := &Session{source: native.ResolvedSource{ID: "operation_source", URL: endpoint.String(), Username: c.Username, Password: c.Password, TLS: config}, database: c.Namespace, client: &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 	session.migrationUUID = c.Options["migration_server_uuid"]
+	if scheme == "clickhouses" {
+		// ponytail: statements and migrations still speak HTTP; native
+		// sessions serve reads, connection tests and metadata only.
+		session.client.CloseIdleConnections()
+		session.client = nil
+	}
 	if err := session.Test(ctx); err != nil {
 		_ = session.Close()
 		return nil, err

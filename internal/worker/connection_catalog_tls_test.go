@@ -99,3 +99,25 @@ func TestConnectionCatalogAllowsPrivateCAForNativeClickHouse(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectionCatalogClickHouseSchemes(t *testing.T) {
+	selected := delegation.Source{Alias: "selected", Database: "analytics"}
+	check := func(name, raw string, options map[string]string, federation bool, want bool) {
+		t.Helper()
+		source := catalog.Source{ID: "selected", Type: "clickhouse", URLEnv: "U", UsernameEnv: "N", PasswordEnv: "P", Options: options}
+		if federation {
+			source.Federation = &catalog.FederationConfig{}
+		}
+		if got := validConnectionSource(source, selected, map[string]string{"U": raw, "N": "reader", "P": "secret"}, false); got != want {
+			t.Fatalf("%s: got %v want %v", name, got, want)
+		}
+	}
+	check("https", "https://ch.example:8443/?database=analytics", nil, false, true)
+	check("clickhouses", "clickhouses://ch.example:9440?database=analytics", nil, false, true)
+	check("clickhouses_slash", "clickhouses://ch.example:9440/?database=analytics", nil, false, true)
+	check("clickhouses_no_port", "clickhouses://ch.example?database=analytics", nil, false, false)
+	check("clickhouse_plain", "clickhouse://ch.example:9000?database=analytics", nil, false, false)
+	check("clickhouses_compression", "clickhouses://ch.example:9440?database=analytics", map[string]string{"arrow_compression": "none"}, false, false)
+	check("clickhouses_federation", "clickhouses://ch.example:9440?database=analytics", nil, true, false)
+	check("clickhouses_wrong_db", "clickhouses://ch.example:9440?database=other", nil, false, false)
+}

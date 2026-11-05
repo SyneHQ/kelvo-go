@@ -271,14 +271,15 @@ func validConnectionSource(s catalog.Source, selected delegation.Source, secrets
 	case "d1":
 		return urlToken && len(s.Options) == 2 && connectionAccount.MatchString(s.Options["account_id"]) && connectionDatabaseUUID.MatchString(s.Options["database_id"]) && s.Options["database_id"] == selected.Database && secrets[s.URLEnv] == "https://api.cloudflare.com" && s.Federation == nil && len(secrets[s.TokenEnv]) <= 16<<10 && !strings.ContainsAny(secrets[s.TokenEnv], "\r\n")
 	case "clickhouse":
-		if s.URLEnv == "" || s.DSNEnv != "" || s.TokenEnv != "" || !validConnectionHTTPS(secrets[s.URLEnv]) || s.UsernameEnv == "" || s.PasswordEnv == "" {
+		native := validConnectionClickHouseNative(secrets[s.URLEnv])
+		if s.URLEnv == "" || s.DSNEnv != "" || s.TokenEnv != "" || !native && !validConnectionHTTPS(secrets[s.URLEnv]) || native && s.Federation != nil || s.UsernameEnv == "" || s.PasswordEnv == "" {
 			return false
 		}
 		for key, value := range s.Options {
 			if key == "tls_ca_pem" {
 				continue // validated above
 			}
-			if key != "arrow_compression" || (value != "none" && value != "lz4_frame") {
+			if native || key != "arrow_compression" || (value != "none" && value != "lz4_frame") {
 				return false
 			}
 		}
@@ -288,6 +289,17 @@ func validConnectionSource(s catalog.Source, selected delegation.Source, secrets
 	default:
 		return false
 	}
+}
+
+// validConnectionClickHouseNative accepts clickhouses://host:port, the native
+// TCP+TLS protocol. Plain clickhouse:// is never accepted.
+func validConnectionClickHouseNative(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "clickhouses" || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.Opaque != "" {
+		return false
+	}
+	port, err := strconv.Atoi(u.Port())
+	return err == nil && port >= 1 && port <= 65535
 }
 
 func validConnectionHTTPS(raw string) bool {
