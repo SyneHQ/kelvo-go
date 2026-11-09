@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -158,5 +159,28 @@ func TestCacheUnsetEnvBuildsLiveEveryTime(t *testing.T) {
 	queryTrips(t, s[0])
 	if g.values.Load() != 2 || g.drive.Load() != 0 || len(entries(t, dir)) != 0 {
 		t.Fatal(g.values.Load(), g.drive.Load(), entries(t, dir))
+	}
+}
+
+func TestCacheIOFailureFallsBackLive(t *testing.T) {
+	g, s, dir := cachedSessions(t, 1)
+	os.Mkdir(filepath.Join(dir, s[0].cacheKey("7")+".lock"), 0o700) // the lock file cannot be opened
+	queryTrips(t, s[0])
+	if g.values.Load() != 1 || len(entries(t, dir)) != 1 {
+		t.Fatal(g.values.Load(), entries(t, dir))
+	}
+}
+
+func TestCacheCorruptEntryIsRebuilt(t *testing.T) {
+	g, s, dir := cachedSessions(t, 1)
+	queryTrips(t, s[0])
+	path := filepath.Join(dir, s[0].cacheKey("7"), "snapshot.duckdb")
+	raw, _ := os.ReadFile(path)
+	raw[len(raw)/2] ^= 0xff
+	os.WriteFile(path, raw, 0o600)
+	queryTrips(t, s[0])
+	queryTrips(t, s[0])
+	if g.values.Load() != 2 {
+		t.Fatal(g.values.Load())
 	}
 }

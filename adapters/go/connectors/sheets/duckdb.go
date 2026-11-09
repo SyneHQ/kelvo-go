@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -22,25 +23,32 @@ import (
 )
 
 func (s *Session) execute(ctx context.Context, q adapter.Query, metadata *operations.MetadataSpec, sink adapter.Sink) (adapter.QueryStats, error) {
-	path, sum, size, release, err := s.materialize(ctx, false)
-	if err != nil {
-		return adapter.QueryStats{}, err
+	for retry := false; ; retry = true {
+		snap, err := s.materialize(ctx, retry)
+		if err != nil {
+			return adapter.QueryStats{}, err
+		}
+		defer snap.release()
+		file, err := os.Open(snap.path)
+		if err != nil {
+			return adapter.QueryStats{}, err
+		}
+		session, err := files.Open(ctx, file, snap.path, "google_sheets", filesnapshot.Descriptor{Version: 1, Format: "duckdb", Bytes: snap.size, SHA256: snap.sum}, s.limits)
+		if err != nil {
+			file.Close()
+			if snap.drop != nil && !retry && errors.Is(err, adapter.ErrInvalid) {
+				snap.release() // a corrupt cached entry: drop it and rebuild once
+				snap.drop()
+				continue
+			}
+			return adapter.QueryStats{}, err
+		}
+		defer session.Close()
+		if metadata != nil {
+			return session.Inspect(ctx, *metadata, adapter.Limits{MaxRows: q.MaxRows, MaxBytes: q.MaxBytes, BatchRows: q.BatchRows}, sink)
+		}
+		return session.Query(ctx, q, sink)
 	}
-	defer release()
-	file, err := os.Open(path)
-	if err != nil {
-		return adapter.QueryStats{}, err
-	}
-	session, err := files.Open(ctx, file, path, "google_sheets", filesnapshot.Descriptor{Version: 1, Format: "duckdb", Bytes: size, SHA256: sum}, s.limits)
-	if err != nil {
-		file.Close()
-		return adapter.QueryStats{}, err
-	}
-	defer session.Close()
-	if metadata != nil {
-		return session.Inspect(ctx, *metadata, adapter.Limits{MaxRows: q.MaxRows, MaxBytes: q.MaxBytes, BatchRows: q.BatchRows}, sink)
-	}
-	return session.Query(ctx, q, sink)
 }
 
 // refresh is Test(): with a usable cache it rebuilds and republishes the
@@ -50,81 +58,106 @@ func (s *Session) refresh(ctx context.Context) error {
 		_, _, err := s.tabs(ctx)
 		return err
 	}
-	_, _, _, release, err := s.materialize(ctx, true)
+	snap, err := s.materialize(ctx, true)
 	if err == nil {
-		release()
+		snap.release()
 	}
 	return err
 }
 
-// materialize returns a verified snapshot path and its digest. With a cache and
-// a successful Drive version check it reuses (or builds once and publishes) the
-// shared entry and holds a shared lock on it until release; otherwise it builds
-// a private snapshot exactly as before.
-func (s *Session) materialize(ctx context.Context, force bool) (path, sum string, size int64, release func(), err error) {
-	cache := cacheFromEnv()
-	version, ok := "", false
-	if cache != nil {
-		version, ok = s.driveVersion(ctx)
-	}
-	if !ok {
-		dir, err := os.MkdirTemp("", "kelvo-sheets-")
-		if err != nil {
-			return "", "", 0, nil, err
+type materialized struct {
+	path, sum string
+	size      int64
+	release   func()
+	drop      func() // set on a cache hit: removes the entry
+}
+
+// materialize returns a snapshot path and its digest. With a cache and a
+// successful Drive version check it reuses (or builds once and publishes) the
+// shared entry, holding a shared lock until release. Any cache I/O failure
+// falls back to a private build, exactly as before; only Sheets fetch and
+// context errors are returned.
+func (s *Session) materialize(ctx context.Context, force bool) (materialized, error) {
+	var tables []table
+	if cache := cacheFromEnv(); cache != nil {
+		if version, ok := s.driveVersion(ctx); ok {
+			snap, fetched, err := s.fromCache(ctx, cache, s.cacheKey(version), version, force)
+			if err != nil || snap.release != nil {
+				return snap, err
+			}
+			tables = fetched
 		}
-		path, sum, size, err = s.build(ctx, dir)
-		if err != nil {
-			os.RemoveAll(dir)
-			return "", "", 0, nil, err
-		}
-		return path, sum, size, func() { os.RemoveAll(dir) }, nil
 	}
-	key := s.cacheKey(version)
-	// Readers share the entry; a miss upgrades to exclusive so concurrent
-	// processes build once and the waiters reuse the published result.
-	lock, err := cache.lock(key, syscall.LOCK_SH)
+	var err error
+	if tables == nil {
+		if tables, err = s.snapshot(ctx); err != nil {
+			return materialized{}, err
+		}
+	}
+	dir, err := os.MkdirTemp("", "kelvo-sheets-")
 	if err != nil {
-		return "", "", 0, nil, err
+		return materialized{}, err
 	}
-	release = func() { lock.Close() }
+	path, sum, size, err := s.build(ctx, dir, tables)
+	if err != nil {
+		os.RemoveAll(dir)
+		return materialized{}, err
+	}
+	return materialized{path: path, sum: sum, size: size, release: func() { os.RemoveAll(dir) }}, nil
+}
+
+// fromCache returns a held entry, or a zero value (plus any tables it already
+// fetched) when the caller should fall back. err is fatal: fetch or context.
+func (s *Session) fromCache(ctx context.Context, cache *sheetCache, key, version string, force bool) (materialized, []table, error) {
+	lock, err := cache.lock(ctx, key, syscall.LOCK_SH)
+	if err != nil {
+		return materialized{}, nil, ctx.Err()
+	}
 	fresh := func() (cacheMeta, bool) {
 		meta, ok := cache.meta(key)
 		return meta, ok && !force && meta.SpreadsheetID == s.id && meta.Version == version
 	}
+	var tables []table
 	meta, hit := fresh()
 	if !hit {
-		if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err == nil {
-			meta, hit = fresh()
+		// Upgrade so concurrent processes build once and the waiters reuse it.
+		if cache.relock(ctx, lock, key, syscall.LOCK_EX) != nil {
+			lock.Close()
+			return materialized{}, nil, ctx.Err()
 		}
-		if err == nil && !hit {
-			meta, err = s.buildEntry(ctx, cache, key, version)
+		if meta, hit = fresh(); !hit {
+			if tables, err = s.snapshot(ctx); err != nil {
+				lock.Close()
+				return materialized{}, nil, err
+			}
+			if meta, err = s.buildEntry(ctx, cache, key, version, tables); err != nil {
+				lock.Close()
+				return materialized{}, tables, ctx.Err()
+			}
 		}
-		if err == nil {
-			err = syscall.Flock(int(lock.Fd()), syscall.LOCK_SH)
-		}
-		if err != nil {
-			release()
-			return "", "", 0, nil, err
+		if cache.relock(ctx, lock, key, syscall.LOCK_SH) != nil {
+			lock.Close()
+			return materialized{}, tables, ctx.Err()
 		}
 	}
-	if hit {
+	snap := materialized{path: filepath.Join(cache.dir, key, "snapshot.duckdb"), sum: meta.SHA256, size: meta.Bytes, release: func() { lock.Close() }}
+	if tables == nil {
 		now := time.Now()
 		os.Chtimes(filepath.Join(cache.dir, key, "meta.json"), now, now) // last used, for LRU
-	}
-	path = filepath.Join(cache.dir, key, "snapshot.duckdb")
-	if !hit {
+		snap.drop = func() { cache.remove(key) }
+	} else {
 		cache.evict(key, s.id, version)
 	}
-	return path, meta.SHA256, meta.Bytes, release, nil
+	return snap, nil, nil
 }
 
-func (s *Session) buildEntry(ctx context.Context, cache *sheetCache, key, version string) (cacheMeta, error) {
+func (s *Session) buildEntry(ctx context.Context, cache *sheetCache, key, version string, tables []table) (cacheMeta, error) {
 	tmp, err := os.MkdirTemp(cache.dir, ".tmp-")
 	if err != nil {
 		return cacheMeta{}, err
 	}
 	defer os.RemoveAll(tmp)
-	_, sum, size, err := s.build(ctx, tmp)
+	_, sum, size, err := s.build(ctx, tmp, tables)
 	if err != nil {
 		return cacheMeta{}, err
 	}
@@ -132,12 +165,8 @@ func (s *Session) buildEntry(ctx context.Context, cache *sheetCache, key, versio
 	return meta, cache.publish(key, tmp, meta)
 }
 
-// build fetches the sheet and writes dir/snapshot.duckdb, fsynced.
-func (s *Session) build(ctx context.Context, dir string) (path, sum string, size int64, err error) {
-	tables, err := s.snapshot(ctx)
-	if err != nil {
-		return "", "", 0, err
-	}
+// build writes dir/snapshot.duckdb, fsynced, and returns its digest.
+func (s *Session) build(ctx context.Context, dir string, tables []table) (path, sum string, size int64, err error) {
 	path = filepath.Join(dir, "snapshot.duckdb")
 	if err = writeSnapshot(ctx, path, tables, s.limits.MemoryMB, s.limits.Threads); err != nil {
 		return "", "", 0, err

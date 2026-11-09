@@ -82,17 +82,61 @@ func (s *Session) cacheKey(version string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// lock opens $DIR/<key>.lock and takes how (LOCK_EX or LOCK_SH, optionally |LOCK_NB).
-func (c *sheetCache) lock(key string, how int) (*os.File, error) {
-	file, err := os.OpenFile(filepath.Join(c.dir, key+".lock"), os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, err
-	}
-	if err = syscall.Flock(int(file.Fd()), how); err != nil {
+// lock opens $DIR/<key>.lock and takes how (LOCK_EX or LOCK_SH, optionally
+// |LOCK_NB), polling so ctx bounds the wait. remove() unlinks lock files, so a
+// lock taken on an unlinked inode is dropped and retried.
+func (c *sheetCache) lock(ctx context.Context, key string, how int) (*os.File, error) {
+	path := filepath.Join(c.dir, key+".lock")
+	for range 5 {
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+		if err != nil {
+			return nil, err
+		}
+		if err = flockWait(ctx, file, how); err != nil {
+			file.Close()
+			return nil, err
+		}
+		if current(file, path) {
+			return file, nil
+		}
 		file.Close()
-		return nil, err
 	}
-	return file, nil
+	return nil, syscall.EAGAIN
+}
+
+// relock converts a held lock; conversion is not atomic, so it re-checks the inode.
+func (c *sheetCache) relock(ctx context.Context, file *os.File, key string, how int) error {
+	if err := flockWait(ctx, file, how); err != nil {
+		return err
+	}
+	if !current(file, filepath.Join(c.dir, key+".lock")) {
+		return syscall.EAGAIN
+	}
+	return nil
+}
+
+func current(file *os.File, path string) bool {
+	held, err := file.Stat()
+	named, err2 := os.Stat(path)
+	return err == nil && err2 == nil && os.SameFile(held, named)
+}
+
+// flockWait polls a non-blocking flock with backoff until ctx is done.
+// With LOCK_NB in how it tries once.
+func flockWait(ctx context.Context, file *os.File, how int) error {
+	wait := 50 * time.Millisecond
+	for {
+		err := syscall.Flock(int(file.Fd()), how|syscall.LOCK_NB)
+		if err == nil || how&syscall.LOCK_NB != 0 || err != syscall.EWOULDBLOCK {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(wait):
+		}
+		wait = min(wait*2, 500*time.Millisecond)
+	}
 }
 
 func (c *sheetCache) meta(key string) (cacheMeta, bool) {
@@ -141,6 +185,14 @@ func (c *sheetCache) evict(keep, spreadsheetID, version string) {
 	var total int64
 	for _, name := range names {
 		key := name.Name()
+		if name.IsDir() && strings.HasPrefix(key, ".tmp-") { // builds in flight, or left by a crash
+			if info, err := name.Info(); err == nil && time.Since(info.ModTime()) > 30*time.Minute {
+				os.RemoveAll(filepath.Join(c.dir, key))
+			} else {
+				total += dirSize(filepath.Join(c.dir, key))
+			}
+			continue
+		}
 		if !name.IsDir() || len(key) != 64 || strings.Trim(key, "0123456789abcdef") != "" {
 			continue
 		}
@@ -169,13 +221,28 @@ func (c *sheetCache) evict(keep, spreadsheetID, version string) {
 
 // remove deletes an entry only when nobody is building or reading it.
 func (c *sheetCache) remove(key string) bool {
-	lock, err := c.lock(key, syscall.LOCK_EX|syscall.LOCK_NB)
+	lock, err := c.lock(context.Background(), key, syscall.LOCK_EX|syscall.LOCK_NB)
 	if err != nil {
 		return false
 	}
 	defer lock.Close()
-	// ponytail: the .lock file stays behind (tiny); deleting it races a process that just opened it.
-	return os.RemoveAll(filepath.Join(c.dir, key)) == nil
+	if os.RemoveAll(filepath.Join(c.dir, key)) != nil {
+		return false
+	}
+	os.Remove(filepath.Join(c.dir, key+".lock")) // lock() re-checks the inode, so waiters retry
+	return true
+}
+
+func dirSize(dir string) (total int64) {
+	filepath.WalkDir(dir, func(_ string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			if info, err := d.Info(); err == nil {
+				total += info.Size()
+			}
+		}
+		return nil
+	})
+	return total
 }
 
 func writeSynced(path string, raw []byte) error {

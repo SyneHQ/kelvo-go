@@ -1,6 +1,7 @@
 package sheets
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ func TestEvictKeepsBudgetByLeastRecentUse(t *testing.T) {
 		used := time.Now().Add(time.Duration(i-10) * time.Minute)
 		os.Chtimes(filepath.Join(dir, "meta.json"), used, used)
 	}
-	held, err := c.lock(keys[1], 1) // LOCK_SH: a reader is using the second-oldest entry
+	held, err := c.lock(context.Background(), keys[1], 1) // LOCK_SH: a reader is using the second-oldest entry
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,5 +59,24 @@ func TestEvictKeepsBudgetByLeastRecentUse(t *testing.T) {
 	exists := func(key string) bool { _, err := os.Stat(filepath.Join(c.dir, key)); return err == nil }
 	if !exists(keys[0]) || !exists(keys[1]) || exists(keys[2]) || exists(keys[3]) {
 		t.Fatal(exists(keys[0]), exists(keys[1]), exists(keys[2]), exists(keys[3]))
+	}
+}
+
+func TestEvictSweepsStaleBuildsAndRemoveUnlinksLock(t *testing.T) {
+	c := &sheetCache{dir: t.TempDir(), maxBytes: 1 << 30}
+	stale, live := filepath.Join(c.dir, ".tmp-old-x"), filepath.Join(c.dir, ".tmp-y")
+	os.Mkdir(stale, 0o700)
+	os.Mkdir(live, 0o700)
+	old := time.Now().Add(-time.Hour)
+	os.Chtimes(stale, old, old)
+	key := (&Session{id: "s", limits: testLimits()}).cacheKey("1")
+	os.Mkdir(filepath.Join(c.dir, key), 0o700)
+	lock, _ := c.lock(context.Background(), key, 2) // LOCK_EX, then released
+	lock.Close()
+	c.evict("", "other", "1")
+	for path, want := range map[string]bool{stale: false, live: true, filepath.Join(c.dir, key): false, filepath.Join(c.dir, key+".lock"): false} {
+		if _, err := os.Stat(path); (err == nil) != want {
+			t.Fatal(path, want)
+		}
 	}
 }
