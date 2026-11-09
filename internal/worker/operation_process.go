@@ -418,7 +418,14 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 		return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT")
 	}
 	defer clear(payload)
-	cacheArgs, cacheEnv := sheetsCacheGrant(cfg.SheetsCache, input.Source.Engine)
+	cacheArgs, cacheEnv, cacheDirectory := sheetsCacheGrant(cfg.SheetsCache, input.Source.Engine, input.AppTeam)
+	if cacheDirectory != "" {
+		// The node owns the root; each team only ever sees its own subdirectory.
+		if err := os.Mkdir(cacheDirectory, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+			return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
+		}
+		_ = os.Chtimes(cacheDirectory, time.Now(), time.Now()) // marks the team busy for the sweep
+	}
 	args = append(cacheArgs, args...)
 	command := e.nativeCommand(ctx, e.SandboxPath, args...)
 	command.Dir = operationDirectory

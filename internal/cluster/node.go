@@ -263,6 +263,10 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 		n.wg.Add(1)
 		go func() { defer n.wg.Done(); n.obs.stall.run(n.ctx) }()
 	}
+	if cfg.Operations != nil && cfg.Operations.SheetsCache != nil {
+		n.wg.Add(1)
+		go n.sweepSheetsCache(*cfg.Operations.SheetsCache)
+	}
 	n.wg.Add(3)
 	go n.dispatch()
 	go n.heartbeat()
@@ -1067,3 +1071,21 @@ func (s *nodeSink) Schema(schema *arrow.Schema) error {
 	return nil
 }
 func (s *nodeSink) Write(b arrow.RecordBatch) error { return s.sink.Write(b) }
+
+// sweepSheetsCache trims the Sheets cache at start and hourly. A failed sweep
+// is logged and retried; it never drains the node.
+func (n *Node) sweepSheetsCache(cache worker.SheetsCacheConfig) {
+	defer n.wg.Done()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		if err := worker.SweepSheetsCache(cache, time.Now()); err != nil {
+			log.Printf("kelvo: sheets cache sweep on node %s: %v", n.cfg.WorkerID, err)
+		}
+		select {
+		case <-n.ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
