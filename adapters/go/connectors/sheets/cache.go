@@ -106,6 +106,12 @@ func (c *sheetCache) lock(ctx context.Context, key string, how int) (*os.File, e
 
 // relock converts a held lock; conversion is not atomic, so it re-checks the inode.
 func (c *sheetCache) relock(ctx context.Context, file *os.File, key string, how int) error {
+	// Drop the held lock first: waiting to convert a shared lock while other
+	// processes do the same deadlocks where a failed conversion keeps the old
+	// lock (BSD). Callers re-check the entry after the new lock is granted.
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_UN); err != nil {
+		return err
+	}
 	if err := flockWait(ctx, file, how); err != nil {
 		return err
 	}

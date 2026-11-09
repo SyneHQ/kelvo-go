@@ -139,6 +139,11 @@ func (s *Session) fromCache(ctx context.Context, cache *sheetCache, key, version
 			lock.Close()
 			return materialized{}, tables, ctx.Err()
 		}
+		// The entry was briefly unlocked while the lock changed mode; eviction may have taken it.
+		if meta, hit = fresh(); !hit {
+			lock.Close()
+			return materialized{}, tables, ctx.Err()
+		}
 	}
 	snap := materialized{path: filepath.Join(cache.dir, key, "snapshot.duckdb"), sum: meta.SHA256, size: meta.Bytes, release: func() { lock.Close() }}
 	if tables == nil {
