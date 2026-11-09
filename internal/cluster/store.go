@@ -111,50 +111,13 @@ func OpenStore(parent context.Context, c NATSConfig, p Policy, initialize bool) 
 	if err := ValidatePolicy(p); err != nil {
 		return nil, errors.New("invalid cluster policy")
 	}
-	u, err := url.Parse(c.URL)
-	if err != nil || u.Scheme != "tls" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Host == "" {
-		return nil, errors.New("invalid NATS URL")
-	}
-	if c.CAFile == "" {
-		return nil, errors.New("NATS TLS CA is required")
-	}
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
-	roots := x509.NewCertPool()
-	b, err := os.ReadFile(c.CAFile)
-	if err != nil || !roots.AppendCertsFromPEM(b) {
-		return nil, errors.New("invalid NATS CA")
-	}
-	tc := &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13, ServerName: u.Hostname()}
-	if (c.CertFile == "") != (c.KeyFile == "") {
-		return nil, errors.New("incomplete NATS client certificate")
-	}
-	if c.CertFile != "" {
-		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
-		if err != nil {
-			return nil, errors.New("invalid NATS client certificate")
-		}
-		tc.Certificates = []tls.Certificate{cert}
-	}
-	opts := []nats.Option{nats.Secure(tc), nats.Timeout(5 * time.Second)}
-	if c.CredentialsFile != "" {
-		opts = append(opts, nats.UserCredentials(c.CredentialsFile))
-	} else {
-		pw := os.Getenv(c.PasswordEnv)
-		if c.Username == "" || len(pw) < 32 {
-			return nil, errors.New("NATS credentials are invalid")
-		}
-		opts = append(opts, nats.UserInfo(c.Username, pw))
-	}
-	nc, err := nats.Connect(c.URL, opts...)
+	nc, js, err := dialJetStream(c)
 	if err != nil {
-		return nil, coordinationUnavailable("nats_connect", err)
+		return nil, err
 	}
 	fail := func(e error) (*NATSStore, error) { nc.Close(); return nil, e }
-	js, err := jetstream.New(nc)
-	if err != nil {
-		return fail(errors.New("JetStream unavailable"))
-	}
 	meta, err := openClusterMetadata(ctx, js, p, initialize)
 	if err != nil {
 		return fail(err)
@@ -762,4 +725,53 @@ func (s *NATSStore) worker(ctx context.Context, id, owner string, claim bool) er
 		return coordinationUnavailable(stage+"_write", err)
 	}
 	return nil
+}
+
+// dialJetStream connects with the tenant's NATS settings exactly as OpenStore
+// does: tls:// only, a pinned CA, TLS 1.3, and either a credentials file or a
+// username with a password of at least 32 bytes from the named environment.
+func dialJetStream(c NATSConfig) (*nats.Conn, jetstream.JetStream, error) {
+	u, err := url.Parse(c.URL)
+	if err != nil || u.Scheme != "tls" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Host == "" {
+		return nil, nil, errors.New("invalid NATS URL")
+	}
+	if c.CAFile == "" {
+		return nil, nil, errors.New("NATS TLS CA is required")
+	}
+	roots := x509.NewCertPool()
+	b, err := os.ReadFile(c.CAFile)
+	if err != nil || !roots.AppendCertsFromPEM(b) {
+		return nil, nil, errors.New("invalid NATS CA")
+	}
+	tc := &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13, ServerName: u.Hostname()}
+	if (c.CertFile == "") != (c.KeyFile == "") {
+		return nil, nil, errors.New("incomplete NATS client certificate")
+	}
+	if c.CertFile != "" {
+		cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+		if err != nil {
+			return nil, nil, errors.New("invalid NATS client certificate")
+		}
+		tc.Certificates = []tls.Certificate{cert}
+	}
+	opts := []nats.Option{nats.Secure(tc), nats.Timeout(5 * time.Second)}
+	if c.CredentialsFile != "" {
+		opts = append(opts, nats.UserCredentials(c.CredentialsFile))
+	} else {
+		pw := os.Getenv(c.PasswordEnv)
+		if c.Username == "" || len(pw) < 32 {
+			return nil, nil, errors.New("NATS credentials are invalid")
+		}
+		opts = append(opts, nats.UserInfo(c.Username, pw))
+	}
+	nc, err := nats.Connect(c.URL, opts...)
+	if err != nil {
+		return nil, nil, coordinationUnavailable("nats_connect", err)
+	}
+	js, err := jetstream.New(nc)
+	if err != nil {
+		nc.Close()
+		return nil, nil, errors.New("JetStream unavailable")
+	}
+	return nc, js, nil
 }
