@@ -33,7 +33,7 @@ func GoogleAccessToken(ctx context.Context, credentials, scope string) (string, 
 		return "", adapter.ErrInvalid
 	}
 	switch scope {
-	case "https://www.googleapis.com/auth/analytics.readonly", "https://www.googleapis.com/auth/adwords", "https://www.googleapis.com/auth/spreadsheets.readonly", "https://www.googleapis.com/auth/bigquery":
+	case "https://www.googleapis.com/auth/analytics.readonly", "https://www.googleapis.com/auth/adwords", "https://www.googleapis.com/auth/spreadsheets.readonly", "https://www.googleapis.com/auth/bigquery", "https://www.googleapis.com/auth/drive.metadata.readonly":
 	default:
 		return "", adapter.ErrUnsupported
 	}

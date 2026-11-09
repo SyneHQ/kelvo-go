@@ -467,6 +467,7 @@ int main(int argc, char **argv) {
 	const char *read_execs[64];
 	size_t read_exec_count = 0;
 	const char *write = NULL;
+	const char *cache = NULL;
 	int jdbc_jars = 0;
 	int private_channel = 0;
 	int i = 1;
@@ -504,7 +505,14 @@ int main(int argc, char **argv) {
 			write = argv[i];
 			continue;
 		}
-		die("expected --read, --read-exec, --write, or --");
+		/* One persistent node cache (Google Sheets snapshots), never scratch. */
+		if (strcmp(argv[i], "--cache") == 0) {
+			if (++i == argc || cache != NULL)
+				die("invalid --cache argument");
+			cache = argv[i];
+			continue;
+		}
+		die("expected --read, --read-exec, --write, --cache, or --");
 	}
 	if (i == argc || write == NULL || i + 2 >= argc)
 		die("usage: --read PATH... --write JOBDIR -- /absolute/kelvo worker");
@@ -530,6 +538,8 @@ int main(int argc, char **argv) {
 	if (serve && (jdbc_jars || private_channel || has_operation_source || has_fd7 ||
 		      strcmp(argv[i + 1], "/proc/self/fd/5") != 0))
 		die("serve requires a plain pinned native operation");
+	if (cache && (serve || strcmp(argv[i + 1], "/proc/self/fd/5") != 0))
+		die("cache requires a pinned native operation");
 	if (jdbc_jars && (has_operation_source || strcmp(argv[i + 1], "/proc/self/fd/5") != 0))
 		die("JDBC runtime requires the pinned operation entrypoint");
 
@@ -564,6 +574,11 @@ int main(int argc, char **argv) {
 	char *jobdir = canonical_path(write);
 	add_path_rule(ruleset, jobdir, fs_write, 0, 1);
 	free(jobdir);
+	if (cache) {
+		char *cachedir = canonical_path(cache);
+		add_path_rule(ruleset, cachedir, fs_write, 0, 1);
+		free(cachedir);
+	}
 	char *worker;
 	if (strcmp(argv[i + 1], "/proc/self/fd/5") == 0) {
 		add_operation_binary_rule(ruleset);

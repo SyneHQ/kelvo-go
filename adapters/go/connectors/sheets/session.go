@@ -39,6 +39,8 @@ const maxSheetColumns = 1024
 type Session struct {
 	mu                     sync.Mutex
 	id, credential, origin string
+	driveOrigin            string
+	mint                   func(ctx context.Context, credential, scope string) (string, error)
 	http                   *http.Client
 	limits                 query.Limits
 }
@@ -54,7 +56,7 @@ func Open(ctx context.Context, id, credential string, limits query.Limits) (*Ses
 	transport.MaxIdleConnsPerHost = 1
 	transport.MaxIdleConns = 2
 	client := &http.Client{Transport: transport, Timeout: 45 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	return &Session{id: id, credential: credential, origin: "https://sheets.googleapis.com", http: client, limits: limits}, nil
+	return &Session{id: id, credential: credential, origin: "https://sheets.googleapis.com", driveOrigin: "https://www.googleapis.com", mint: saas.GoogleAccessToken, http: client, limits: limits}, nil
 }
 func (s *Session) Close() error {
 	if s == nil {
@@ -75,8 +77,9 @@ func (s *Session) Test(ctx context.Context) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, _, err := s.tabs(ctx)
-	return err
+	ctx, cancel := context.WithTimeout(ctx, s.limits.Timeout)
+	defer cancel()
+	return s.refresh(ctx)
 }
 func (s *Session) Query(ctx context.Context, q adapter.Query, sink adapter.Sink) (adapter.QueryStats, error) {
 	if s == nil || ctx == nil || sink == nil || q.Validate() != nil {
@@ -113,7 +116,7 @@ func (s *Session) tabs(ctx context.Context) ([]tab, string, error) {
 	if s.http == nil {
 		return nil, "", adapter.ErrInvalid
 	}
-	token, err := saas.GoogleAccessToken(ctx, s.credential, scope)
+	token, err := s.mint(ctx, s.credential, scope)
 	if err != nil {
 		return nil, "", err
 	}
@@ -123,7 +126,7 @@ func (s *Session) tabs(ctx context.Context) ([]tab, string, error) {
 	}
 	remaining := int64(1 << 20)
 	path := "/v4/spreadsheets/" + s.id + "?fields=spreadsheetId,sheets.properties(title,gridProperties(columnCount,rowCount))"
-	if err = s.get(ctx, path, token, &remaining, &data); err != nil {
+	if err = s.get(ctx, s.origin+path, token, &remaining, &data); err != nil {
 		return nil, "", err
 	}
 	if data.SpreadsheetID != s.id || len(data.Sheets) > maxSheetTabs {
@@ -165,7 +168,7 @@ func (s *Session) snapshot(ctx context.Context) ([]table, error) {
 			MajorDimension string  `json:"majorDimension"`
 			Values         [][]any `json:"values"`
 		}
-		if err = s.get(ctx, path, token, &remaining, &values); err != nil {
+		if err = s.get(ctx, s.origin+path, token, &remaining, &values); err != nil {
 			return nil, err
 		}
 		if values.MajorDimension != "ROWS" || len(values.Values) > maxSheetRows {
@@ -198,11 +201,11 @@ func (s *Session) snapshot(ctx context.Context) ([]table, error) {
 	}
 	return tables, nil
 }
-func (s *Session) get(ctx context.Context, path, token string, remaining *int64, out any) error {
+func (s *Session) get(ctx context.Context, target, token string, remaining *int64, out any) error {
 	if remaining == nil || *remaining < 1 {
 		return adapter.ErrLimit
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", s.origin+path, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", target, nil)
 	if err != nil {
 		return adapter.ErrInvalid
 	}

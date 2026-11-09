@@ -11,3 +11,8 @@ import (
 func (*Session) execute(context.Context, adapter.Query, *operations.MetadataSpec, adapter.Sink) (adapter.QueryStats, error) {
 	return adapter.QueryStats{}, adapter.ErrUnsupported
 }
+
+func (s *Session) refresh(ctx context.Context) error {
+	_, _, err := s.tabs(ctx)
+	return err
+}
