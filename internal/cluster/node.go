@@ -10,6 +10,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -173,6 +174,14 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 		if err != nil {
 			cancel()
 			return nil, err
+		}
+		if cache := cfg.Operations.SheetsCache; cache != nil {
+			if err := os.MkdirAll(cache.Directory, 0700); err != nil || os.Chmod(cache.Directory, 0700) != nil {
+				cancel()
+				closeRuntime()
+				return nil, errors.Join(errOperationConfig, err)
+			}
+			prepared.SheetsCache = cache
 		}
 		n.cfg.Operations.Adapter = prepared
 		n.closeOperationRuntime = closeRuntime

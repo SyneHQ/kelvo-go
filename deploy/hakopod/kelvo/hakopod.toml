@@ -631,6 +631,9 @@ operations:
   adapter:
     binary: /usr/local/bin/kelvo-adapter-go
     sha256: cae2cbc2e3282f7d0227012d8a4aebae76497ce54e7c80466ff2ec36b2cb1d94
+  sheets_cache:
+    directory: /var/lib/kelvo/sheets-cache
+    max_mb: 4096
   results:
     directory: /var/lib/kelvo/results
     max_entries: 1024

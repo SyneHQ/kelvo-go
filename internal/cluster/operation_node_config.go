@@ -22,6 +22,8 @@ type OperationNodeConfig struct {
 	MaxDownloads   int                                      `yaml:"max_downloads"`
 	PollInterval   time.Duration                            `yaml:"poll_interval"`
 	WarmPool       *worker.WarmPoolConfig                   `yaml:"warm_pool,omitempty"`
+	// SheetsCache is an optional persistent cache for Google Sheets adapters.
+	SheetsCache *worker.SheetsCacheConfig `yaml:"sheets_cache,omitempty"`
 	// Caps on concurrent durable operations inside the background class; 0
 	// means no cap.
 	MaxPerTenant     int `yaml:"max_per_tenant,omitempty"`
@@ -52,6 +54,9 @@ func validateNodeOperations(c NodeConfig) error {
 	}
 	if c.Exports != nil && overlappingExportPaths(o.Results.Directory, c.Exports.Directory) {
 		return errOperationConfig
+	}
+	if err := validateSheetsCache(c); err != nil {
+		return err
 	}
 	// The admission pool accounts for both verified download buffers and parent
 	// IPC/serialization overhead. Persistent result disk has a separate budget.
@@ -84,6 +89,31 @@ func validateNodeOperations(c NodeConfig) error {
 		return err
 	}
 	return o.Adapter.Validate()
+}
+
+// The cache must not share custody with any directory that is cleaned,
+// quarantined or audited for another purpose.
+func validateSheetsCache(c NodeConfig) error {
+	cache := c.Operations.SheetsCache
+	if cache == nil {
+		return nil
+	}
+	if cache.Validate() != nil {
+		return errOperationConfig
+	}
+	others := []string{c.ScratchDirectory, c.Operations.Results.Directory, c.Audit.Directory}
+	if c.Containment != nil {
+		others = append(others, c.Containment.StateDirectory)
+	}
+	if c.Exports != nil {
+		others = append(others, c.Exports.Directory)
+	}
+	for _, directory := range others {
+		if directory != "" && overlappingExportPaths(cache.Directory, directory) {
+			return errOperationConfig
+		}
+	}
+	return nil
 }
 
 func operationDownloadMemory(c *OperationNodeConfig) int64 { return 3*c.MaxResultBytes + (2 << 20) }
