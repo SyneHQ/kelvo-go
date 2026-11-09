@@ -40,7 +40,7 @@ func fixtureHandler(t *testing.T) http.HandlerFunc {
 		switch r.URL.Path {
 		case "/v4/spreadsheets/saved-sheet":
 			w.Write([]byte(`{"spreadsheetId":"saved-sheet","sheets":[{"properties":{"title":"Daily trips","gridProperties":{"columnCount":3}}}]}`))
-		case "/v4/spreadsheets/saved-sheet/values/'Daily trips'!A1:GR10002":
+		case "/v4/spreadsheets/saved-sheet/values/'Daily trips'!A1:C10002":
 			if r.URL.Query().Get("valueRenderOption") != "UNFORMATTED_VALUE" {
 				t.Error("value rendering")
 			}
@@ -83,12 +83,20 @@ func TestSnapshotRejectsWrongSheetRedirectAndTruncation(t *testing.T) {
 	}
 }
 func TestColumnsRejectObjectsAndTooWideRows(t *testing.T) {
-	for _, rows := range [][][]any{{{map[string]any{"x": 1}}}, {make([]any, 201)}} {
+	for _, rows := range [][][]any{{{map[string]any{"x": 1}}}, {make([]any, maxSheetColumns+1)}} {
 		if _, err := columnNames(rows); err == nil {
 			t.Fatal("invalid columns accepted")
 		}
 	}
 	if text, err := cellText(json.Number("1.234567890123456789e20")); err != nil || text != "1.234567890123456789e20" {
 		t.Fatal(text, err)
+	}
+}
+
+func TestColumnLetter(t *testing.T) {
+	for n, want := range map[int]string{1: "A", 26: "Z", 27: "AA", 200: "GR", 286: "JZ", 1024: "AMJ"} {
+		if got := columnLetter(n); got != want {
+			t.Fatalf("columnLetter(%d) = %s, want %s", n, got, want)
+		}
 	}
 }

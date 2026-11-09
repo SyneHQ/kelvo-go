@@ -26,6 +26,10 @@ import (
 const scope = "https://www.googleapis.com/auth/spreadsheets.readonly"
 const maxSnapshotBytes = 32 << 20
 
+// maxSheetColumns bounds a tab's width. Survey exports run past the old 200
+// (column GR); maxSnapshotBytes still bounds the data actually fetched.
+const maxSheetColumns = 1024
+
 type Session struct {
 	mu                     sync.Mutex
 	id, credential, origin string
@@ -121,7 +125,7 @@ func (s *Session) tabs(ctx context.Context) ([]tab, string, error) {
 	seen := map[string]bool{}
 	for _, tab := range data.Sheets {
 		title := tab.Properties.Title
-		if title == "" || len(title) > 1024 || !utf8.ValidString(title) || strings.ContainsRune(title, 0) || seen[strings.ToLower(title)] || tab.Properties.Grid != nil && (tab.Properties.Grid.Columns < 1 || tab.Properties.Grid.Columns > 200) {
+		if title == "" || len(title) > 1024 || !utf8.ValidString(title) || strings.ContainsRune(title, 0) || seen[strings.ToLower(title)] || tab.Properties.Grid != nil && (tab.Properties.Grid.Columns < 1 || tab.Properties.Grid.Columns > maxSheetColumns) {
 			return nil, "", adapter.ErrUnsupported
 		}
 		seen[strings.ToLower(title)] = true
@@ -147,7 +151,7 @@ func (s *Session) snapshot(ctx context.Context) ([]table, error) {
 			continue
 		}
 		title := tab.Properties.Title
-		rangeName := "'" + strings.ReplaceAll(title, "'", "''") + "'!A1:GR10002"
+		rangeName := "'" + strings.ReplaceAll(title, "'", "''") + "'!A1:" + columnLetter(tab.Properties.Grid.Columns) + "10002"
 		path := "/v4/spreadsheets/" + s.id + "/values/" + url.PathEscape(rangeName) + "?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING"
 		var values struct {
 			Range          string  `json:"range"`
@@ -247,7 +251,7 @@ func columnNames(rows [][]any) ([]string, error) {
 	for _, row := range rows {
 		width = max(width, len(row))
 	}
-	if width < 1 || width > 200 {
+	if width < 1 || width > maxSheetColumns {
 		return nil, adapter.ErrLimit
 	}
 	columns := make([]string, width)
@@ -271,4 +275,13 @@ func columnNames(rows [][]any) ([]string, error) {
 		columns[i] = name
 	}
 	return columns, nil
+}
+
+// columnLetter returns the A1 column name for a 1-based column number (1→A, 27→AA).
+func columnLetter(n int) string {
+	letters := ""
+	for ; n > 0; n = (n - 1) / 26 {
+		letters = string(rune('A'+(n-1)%26)) + letters
+	}
+	return letters
 }
