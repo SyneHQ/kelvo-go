@@ -39,8 +39,8 @@ func fixtureHandler(t *testing.T) http.HandlerFunc {
 		}
 		switch r.URL.Path {
 		case "/v4/spreadsheets/saved-sheet":
-			w.Write([]byte(`{"spreadsheetId":"saved-sheet","sheets":[{"properties":{"title":"Daily trips","gridProperties":{"columnCount":3}}}]}`))
-		case "/v4/spreadsheets/saved-sheet/values/'Daily trips'!A1:C10002":
+			w.Write([]byte(`{"spreadsheetId":"saved-sheet","sheets":[{"properties":{"title":"Daily trips","gridProperties":{"columnCount":3,"rowCount":3}}}]}`))
+		case "/v4/spreadsheets/saved-sheet/values/'Daily trips'!A1:C3":
 			if r.URL.Query().Get("valueRenderOption") != "UNFORMATTED_VALUE" {
 				t.Error("value rendering")
 			}
