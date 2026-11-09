@@ -194,12 +194,12 @@ tenants:
       lease_duration: 15s
       replicas: 1
       limits:
-        max_rows: 10000
-        max_bytes: 4194304
+        max_rows: 100000
+        max_bytes: 33554432
         timeout: 60s
-        memory_mb: 128
+        memory_mb: 512
         threads: 1
-        max_temp_mb: 128
+        max_temp_mb: 1024
         result_compression: lz4_frame
       workers: {local: 32}
       operations:
@@ -367,12 +367,12 @@ tenants:
       lease_duration: 15s
       replicas: 1
       limits:
-        max_rows: 10000
-        max_bytes: 4194304
+        max_rows: 100000
+        max_bytes: 33554432
         timeout: 60s
-        memory_mb: 128
+        memory_mb: 512
         threads: 1
-        max_temp_mb: 128
+        max_temp_mb: 1024
         result_compression: lz4_frame
       workers: {local: 32}
       operations:
@@ -488,8 +488,8 @@ command = ["/bin/sh", "-c", "socat TCP-LISTEN:9443,bind=127.0.0.1,fork,reuseaddr
 # profile limit still allows bursts.
 [services.node.resources]
 cpu_request = "120m"
-memory_request = "768Mi"
-memory_limit = "3Gi"
+memory_request = "1536Mi"
+memory_limit = "6Gi"
 
 [services.node.network_access]
 from = ["gateway"]
@@ -575,10 +575,10 @@ nats:
   ca_file: /run/kelvo/tls/nats-ca.crt
 resources:
   max_concurrent: 36
-  memory_mb: 2720
+  memory_mb: 5792
   baseline_mb: 96
-  overhead_mb: 192
-  scratch_mb: 1536
+  overhead_mb: 576
+  scratch_mb: 6144
 scratch_directory: /var/lib/kelvo/scratch
 containment:
   # Must equal <delegated cgroup>/jobs; start.sh writes the real path.
@@ -648,7 +648,7 @@ operations:
     idle_ttl: 30m
     max_workers: 4
     max_per_key: 2
-    # 8 reads x the default 8 MiB stream buffer must fit overhead_mb (192).
+    # 8 reads x the default 8 MiB stream buffer must fit overhead_mb (576).
     max_in_flight: 8
     queue_depth: 64
     queue_timeout: 10s
@@ -660,12 +660,12 @@ policy:
   lease_duration: 15s
   replicas: 1
   limits:
-    max_rows: 10000
-    max_bytes: 4194304
+    max_rows: 100000
+    max_bytes: 33554432
     timeout: 60s
-    memory_mb: 128
+    memory_mb: 512
     threads: 1
-    max_temp_mb: 128
+    max_temp_mb: 1024
     result_compression: lz4_frame
   workers: {local: 32}
   operations:

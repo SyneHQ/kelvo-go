@@ -24,10 +24,16 @@ import (
 )
 
 const scope = "https://www.googleapis.com/auth/spreadsheets.readonly"
-const maxSnapshotBytes = 32 << 20
+
+// Fetched sheet JSON may use an eighth of the query's memory: parsed values and
+// the DuckDB build take several times that. Tabs and rows follow the sheet.
+const (
+	maxSheetTabs = 200
+	maxSheetRows = 2_000_000
+)
 
 // maxSheetColumns bounds a tab's width. Survey exports run past the old 200
-// (column GR); maxSnapshotBytes still bounds the data actually fetched.
+// (column GR); the snapshot byte budget still bounds the data actually fetched.
 const maxSheetColumns = 1024
 
 type Session struct {
@@ -98,6 +104,7 @@ type tab struct {
 		Title string `json:"title"`
 		Grid  *struct {
 			Columns int `json:"columnCount"`
+			Rows    int `json:"rowCount"`
 		} `json:"gridProperties"`
 	} `json:"properties"`
 }
@@ -115,17 +122,17 @@ func (s *Session) tabs(ctx context.Context) ([]tab, string, error) {
 		Sheets        []tab  `json:"sheets"`
 	}
 	remaining := int64(1 << 20)
-	path := "/v4/spreadsheets/" + s.id + "?fields=spreadsheetId,sheets.properties(title,gridProperties.columnCount)"
+	path := "/v4/spreadsheets/" + s.id + "?fields=spreadsheetId,sheets.properties(title,gridProperties(columnCount,rowCount))"
 	if err = s.get(ctx, path, token, &remaining, &data); err != nil {
 		return nil, "", err
 	}
-	if data.SpreadsheetID != s.id || len(data.Sheets) > 30 {
+	if data.SpreadsheetID != s.id || len(data.Sheets) > maxSheetTabs {
 		return nil, "", adapter.ErrInvalid
 	}
 	seen := map[string]bool{}
 	for _, tab := range data.Sheets {
 		title := tab.Properties.Title
-		if title == "" || len(title) > 1024 || !utf8.ValidString(title) || strings.ContainsRune(title, 0) || seen[strings.ToLower(title)] || tab.Properties.Grid != nil && (tab.Properties.Grid.Columns < 1 || tab.Properties.Grid.Columns > maxSheetColumns) {
+		if title == "" || len(title) > 1024 || !utf8.ValidString(title) || strings.ContainsRune(title, 0) || seen[strings.ToLower(title)] || tab.Properties.Grid != nil && (tab.Properties.Grid.Columns < 1 || tab.Properties.Grid.Columns > maxSheetColumns || tab.Properties.Grid.Rows > maxSheetRows) {
 			return nil, "", adapter.ErrUnsupported
 		}
 		seen[strings.ToLower(title)] = true
@@ -144,14 +151,14 @@ func (s *Session) snapshot(ctx context.Context) ([]table, error) {
 	if err != nil {
 		return nil, err
 	}
-	remaining := min(int64(maxSnapshotBytes), int64(s.limits.MemoryMB)<<17)
+	remaining := int64(s.limits.MemoryMB) << 17 // an eighth of the query memory, in fetched JSON
 	var tables []table
 	for _, tab := range tabs {
 		if tab.Properties.Grid == nil {
 			continue
 		}
 		title := tab.Properties.Title
-		rangeName := "'" + strings.ReplaceAll(title, "'", "''") + "'!A1:" + columnLetter(tab.Properties.Grid.Columns) + "10002"
+		rangeName := "'" + strings.ReplaceAll(title, "'", "''") + "'!A1:" + columnLetter(tab.Properties.Grid.Columns) + strconv.Itoa(sheetRows(tab.Properties.Grid.Rows))
 		path := "/v4/spreadsheets/" + s.id + "/values/" + url.PathEscape(rangeName) + "?valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=FORMATTED_STRING"
 		var values struct {
 			Range          string  `json:"range"`
@@ -161,7 +168,7 @@ func (s *Session) snapshot(ctx context.Context) ([]table, error) {
 		if err = s.get(ctx, path, token, &remaining, &values); err != nil {
 			return nil, err
 		}
-		if values.MajorDimension != "ROWS" || len(values.Values) > 10001 {
+		if values.MajorDimension != "ROWS" || len(values.Values) > maxSheetRows {
 			return nil, adapter.ErrLimit
 		}
 		if len(values.Values) == 0 {
@@ -284,4 +291,12 @@ func columnLetter(n int) string {
 		letters = string(rune('A'+(n-1)%26)) + letters
 	}
 	return letters
+}
+
+// sheetRows is the last row to read: the tab's row count, or the cap when Google omits it.
+func sheetRows(n int) int {
+	if n < 1 || n > maxSheetRows {
+		return maxSheetRows
+	}
+	return n
 }
