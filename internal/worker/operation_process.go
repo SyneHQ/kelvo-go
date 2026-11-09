@@ -32,6 +32,8 @@ type OperationProcessConfig struct {
 	JDBC                   *OperationJDBCConfig `yaml:"jdbc,omitempty"`
 	preparedJDBC           *operationJDBCRuntime
 	PrivateOpenDiagnostics bool `yaml:"private_open_diagnostics,omitempty"`
+	// SheetsCache is set by the node from operations.sheets_cache.
+	SheetsCache *SheetsCacheConfig `yaml:"-"`
 }
 
 // OperationFinalizer commits or aborts a retained result while resource custody
@@ -416,9 +418,18 @@ func (e *Executor) executeResolvedOperation(parent context.Context, cfg Operatio
 		return rejectedOperation(input, "INVALID_ARGUMENT"), operationFailure("INVALID_ARGUMENT")
 	}
 	defer clear(payload)
+	cacheArgs, cacheEnv, cacheDirectory := sheetsCacheGrant(cfg.SheetsCache, input.Source.Engine, input.AppTeam)
+	if cacheDirectory != "" {
+		// The node owns the root; each team only ever sees its own subdirectory.
+		if err := os.Mkdir(cacheDirectory, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+			return rejectedOperation(input, "UNAVAILABLE"), operationFailure("UNAVAILABLE")
+		}
+		_ = os.Chtimes(cacheDirectory, time.Now(), time.Now()) // marks the team busy for the sweep
+	}
+	args = append(cacheArgs, args...)
 	command := e.nativeCommand(ctx, e.SandboxPath, args...)
 	command.Dir = operationDirectory
-	command.Env = operationEnvironment(operationDirectory, e.Limits.Threads)
+	command.Env = append(operationEnvironment(operationDirectory, e.Limits.Threads), cacheEnv...)
 	if workspace.lease == nil {
 		return rejectedOperation(input, "UNAVAILABLE"), operationFailure("CONFIGURATION_ERROR")
 	}

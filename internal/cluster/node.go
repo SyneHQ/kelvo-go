@@ -10,6 +10,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -174,6 +175,14 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 			cancel()
 			return nil, err
 		}
+		if cache := cfg.Operations.SheetsCache; cache != nil {
+			if err := os.MkdirAll(cache.Directory, 0700); err != nil || os.Chmod(cache.Directory, 0700) != nil {
+				cancel()
+				closeRuntime()
+				return nil, errors.Join(errOperationConfig, err)
+			}
+			prepared.SheetsCache = cache
+		}
 		n.cfg.Operations.Adapter = prepared
 		n.closeOperationRuntime = closeRuntime
 	}
@@ -253,6 +262,10 @@ func newNode(cfg NodeConfig, store Store, executor query.Executor) (*Node, error
 		n.obs.stall = newStallDetector(*cfg.Observability.StallDump, n.obs)
 		n.wg.Add(1)
 		go func() { defer n.wg.Done(); n.obs.stall.run(n.ctx) }()
+	}
+	if cfg.Operations != nil && cfg.Operations.SheetsCache != nil {
+		n.wg.Add(1)
+		go n.sweepSheetsCache(*cfg.Operations.SheetsCache)
 	}
 	n.wg.Add(3)
 	go n.dispatch()
@@ -1058,3 +1071,21 @@ func (s *nodeSink) Schema(schema *arrow.Schema) error {
 	return nil
 }
 func (s *nodeSink) Write(b arrow.RecordBatch) error { return s.sink.Write(b) }
+
+// sweepSheetsCache trims the Sheets cache at start and hourly. A failed sweep
+// is logged and retried; it never drains the node.
+func (n *Node) sweepSheetsCache(cache worker.SheetsCacheConfig) {
+	defer n.wg.Done()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		if err := worker.SweepSheetsCache(cache, time.Now()); err != nil {
+			log.Printf("kelvo: sheets cache sweep on node %s: %v", n.cfg.WorkerID, err)
+		}
+		select {
+		case <-n.ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
