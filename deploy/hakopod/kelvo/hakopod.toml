@@ -197,7 +197,7 @@ tenants:
         max_rows: 10000
         max_bytes: 4194304
         timeout: 60s
-        memory_mb: 128
+        memory_mb: 32
         threads: 1
         max_temp_mb: 128
         result_compression: lz4_frame
@@ -370,7 +370,7 @@ tenants:
         max_rows: 10000
         max_bytes: 4194304
         timeout: 60s
-        memory_mb: 128
+        memory_mb: 32
         threads: 1
         max_temp_mb: 128
         result_compression: lz4_frame
@@ -489,7 +489,7 @@ command = ["/bin/sh", "-c", "socat TCP-LISTEN:9443,bind=127.0.0.1,fork,reuseaddr
 [services.node.resources]
 cpu_request = "120m"
 memory_request = "768Mi"
-memory_limit = "3Gi"
+memory_limit = "2Gi"
 
 [services.node.network_access]
 from = ["gateway"]
@@ -575,9 +575,9 @@ nats:
   ca_file: /run/kelvo/tls/nats-ca.crt
 resources:
   max_concurrent: 36
-  memory_mb: 2720
+  memory_mb: 1632
   baseline_mb: 96
-  overhead_mb: 192
+  overhead_mb: 96
   scratch_mb: 1536
 scratch_directory: /var/lib/kelvo/scratch
 containment:
@@ -648,7 +648,7 @@ operations:
     idle_ttl: 30m
     max_workers: 4
     max_per_key: 2
-    # 8 reads x the default 8 MiB stream buffer must fit overhead_mb (192).
+    # 8 reads x the default 8 MiB stream buffer must fit overhead_mb (96).
     max_in_flight: 8
     queue_depth: 64
     queue_timeout: 10s
@@ -663,7 +663,7 @@ policy:
     max_rows: 10000
     max_bytes: 4194304
     timeout: 60s
-    memory_mb: 128
+    memory_mb: 32
     threads: 1
     max_temp_mb: 128
     result_compression: lz4_frame
