@@ -214,3 +214,21 @@ incomplete campaign and start new matched pairs with recorded observer fingerpri
 
 This profile does not replace [sustained mixed-load acceptance](sustained-acceptance.md),
 provider conformance, multihost availability or production deployment validation.
+
+## Change a deployed policy
+
+Every gateway, node and cluster-init compares its tenant policy with the copy
+stored in NATS (`KELVO_META` / `meta.config`) byte for byte and refuses to
+start on a difference, so changing a policy (for example query limits) needs a
+migration before the new configs roll:
+
+1. Build `cmd/kelvo-policy-migrate` (`CGO_ENABLED=0 go build ./cmd/kelvo-policy-migrate`).
+2. Run it where the tenant's NATS CA is mounted and NATS is reachable, with the
+   provisioner password in the environment named by the config, passing the
+   gateway config currently deployed and the one about to be deployed:
+   `kelvo-policy-migrate -from current-gateway.yml -to new-gateway.yml` reports
+   `pending`; add `-apply` to swap the stored policy with a compare-and-swap.
+   It refuses a stored policy that is neither the old nor the new one, and
+   reports `current` once done, so it is safe to re-run.
+3. Deploy the new configs immediately: processes still on the old policy will
+   refuse to restart after step 2.
