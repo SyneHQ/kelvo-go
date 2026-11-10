@@ -25,6 +25,7 @@ import (
 	"github.com/SYNEHQ/kelvo-go/internal/federation"
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 	"github.com/SYNEHQ/kelvo-go/internal/telemetry"
+	"github.com/SYNEHQ/kelvo-go/operations"
 )
 
 // Engine creates a fresh DuckDB database instance for every execution. It is a
@@ -184,20 +185,23 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		// Validate the parsed tree before preparing: binding a name that does
 		// not resolve runs a replacement scan, which already opens the file.
 		if err := enforceRelationAllowlist(ctx, raw, req.SQL); err != nil {
-			return err
+			return statementError{err}
 		}
 		if err := validateReadOnly(ctx, raw, req.SQL); err != nil {
-			return err
+			return statementError{err}
 		}
 		bounded, err := boundedSelect(normalizeValidatedSelect(req.SQL), e.limits.MaxRows)
 		if err != nil {
 			return err
 		}
 		stats.PrepareNS = time.Since(prepareStarted).Nanoseconds()
-		return deliver(ctx, driverConn, bounded, values, e.limits, sink, &stats)
+		if err := deliver(ctx, driverConn, bounded, values, e.limits, sink, &stats); err != nil {
+			return statementError{err}
+		}
+		return nil
 	})
 	if err = bindings.callbackError(err); err != nil {
-		return stats, publicError(err)
+		return stats, withSourceError(publicError(err), err, tempDir)
 	}
 	return stats, nil
 }
@@ -444,7 +448,8 @@ func validateReadOnly(ctx context.Context, raw any, sqlText string) error {
 	// The worker process deadline bounds preparation, which lacks a context API.
 	stmt, err := preparer.Prepare(sqlText)
 	if err != nil {
-		return query.NewError("PERMISSION_DENIED", "Only one valid read-only SELECT statement is permitted")
+		// The public error stays; the cause is kept only for withSourceError.
+		return fmt.Errorf("%w: %w", query.NewError("PERMISSION_DENIED", "Only one valid read-only SELECT statement is permitted"), err)
 	}
 	defer stmt.Close()
 	if err := ctx.Err(); err != nil {
@@ -555,6 +560,53 @@ func publicError(err error) error {
 		return query.NewError("RESOURCE_EXHAUSTED", "Query exceeded DuckDB memory limit")
 	}
 	return query.NewError("QUERY_FAILED", "Query failed")
+}
+
+// statementError marks a failure of the caller's statement, after trusted
+// setup (configure, attach, access locks) finished.
+type statementError struct{ error }
+
+func (e statementError) Unwrap() error { return e.error }
+
+// SourceFailure is a public error (QUERY_FAILED, or PERMISSION_DENIED for a
+// statement DuckDB could not prepare) that also carries DuckDB's own message
+// for the caller's statement. Adapter runtimes read it through SourceError().
+type SourceFailure struct {
+	public error
+	source operations.SourceError
+}
+
+func (e *SourceFailure) Error() string                        { return e.public.Error() }
+func (e *SourceFailure) Unwrap() error                        { return e.public }
+func (e *SourceFailure) SourceError() *operations.SourceError { s := e.source; return &s }
+
+// statementErrorTypes are DuckDB classes about the caller's SQL. IO, HTTP,
+// network, permission, internal and lifecycle classes can name hosts, paths or
+// engine state and stay generic; Planner/Executor/Optimizer too, since their
+// messages describe engine internals rather than the statement.
+var statementErrorTypes = map[duck.ErrorType]bool{
+	duck.ErrorTypeParser: true, duck.ErrorTypeSyntax: true, duck.ErrorTypeBinder: true, duck.ErrorTypeCatalog: true,
+	duck.ErrorTypeConversion: true, duck.ErrorTypeInvalidInput: true, duck.ErrorTypeOutOfRange: true,
+	duck.ErrorTypeMismatchType: true, duck.ErrorTypeInvalidType: true, duck.ErrorTypeDivideByZero: true,
+	duck.ErrorTypeNotImplemented: true, duck.ErrorTypeExpression: true, duck.ErrorTypeParameterNotResolved: true,
+	duck.ErrorTypeParameterNotAllowed: true, duck.ErrorTypeConstraint: true,
+}
+
+// withSourceError attaches DuckDB's message to the unchanged public error when the
+// caller's statement raised a statement-class error whose text names no
+// workspace path, absolute path or URL. Anything else returns public unchanged.
+func withSourceError(public, cause error, workspace string) error {
+	var stmt statementError
+	var native *duck.Error
+	if pe := query.PublicError(public); pe == nil || (pe.Code != "QUERY_FAILED" && pe.Code != "PERMISSION_DENIED") || !errors.As(cause, &stmt) || !errors.As(stmt.error, &native) || native == nil || !statementErrorTypes[native.Type] {
+		return public
+	}
+	msg := native.Msg
+	if msg == "" || (workspace != "" && strings.Contains(msg, workspace)) || strings.Contains(msg, os.TempDir()) ||
+		strings.Contains(msg, "://") || strings.Contains(msg, "'/") || strings.Contains(msg, "\"/") {
+		return public
+	}
+	return &SourceFailure{public: public, source: operations.SourceError{Message: msg}}
 }
 
 var _ query.Executor = (*Engine)(nil)

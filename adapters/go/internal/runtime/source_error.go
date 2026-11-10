@@ -17,6 +17,9 @@ func sourceError(err error, statement *int) *operations.SourceError {
 	var out operations.SourceError
 	var pg *pgconn.PgError
 	var my *mysqldriver.MySQLError
+	var engine interface {
+		SourceError() *operations.SourceError
+	}
 	switch {
 	case errors.As(err, &pg):
 		if pg.Severity == "FATAL" || pg.Severity == "PANIC" || connectionClass(pg.Code) {
@@ -30,6 +33,11 @@ func sourceError(err error, statement *int) *operations.SourceError {
 			return nil
 		}
 		out = operations.SourceError{SQLState: state, Message: my.Message}
+	case errors.As(err, &engine):
+		// Kelvo's DuckDB engine already kept only statement-class, path-free text.
+		if e := engine.SourceError(); e != nil {
+			out = *e
+		}
 	default:
 		return nil
 	}
