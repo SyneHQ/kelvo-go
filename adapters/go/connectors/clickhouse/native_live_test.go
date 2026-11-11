@@ -81,18 +81,22 @@ func liveProtocol(t *testing.T, raw string) {
 		row = append(row, record.ColumnName(i)+"="+column.ValueStr(0))
 	}
 	t.Logf("row 0: %s", strings.Join(row, " "))
+	// FixedString comes back as trimmed text on both protocols.
+	if f, _ := sink.schema.FieldsByName("fs"); f[0].Type.ID() != arrow.STRING || record.Column(len(row)-1).ValueStr(0) != "ab" {
+		t.Errorf("fs: %s %q want utf8 \"ab\"", f[0].Type, record.Column(len(row)-1).ValueStr(0))
+	}
 	field := func(name string) arrow.DataType {
 		f, _ := sink.schema.FieldsByName(name)
 		return f[0].Type
 	}
 	if u.Scheme == "clickhouses" {
 		for name, want := range map[string]string{"i32": "int32", "u64": "uint64", "s": "utf8", "n": "int64", "nn": "int64", "dt": "timestamp[s, tz=UTC]", "dt64": "timestamp[ms, tz=UTC]",
-			"dec": "decimal(18, 2)", "id": "utf8", "arr": "utf8", "d": "date32", "fs": "binary"} {
+			"dec": "decimal(18, 2)", "id": "utf8", "arr": "utf8", "d": "date32", "fs": "utf8"} {
 			if got := field(name).String(); got != want {
 				t.Errorf("%s: %s want %s", name, got, want)
 			}
 		}
-		for i, want := range []string{"-7", "42", "hello", "(null)", "5", "2026-01-02T03:04:05Z", "2026-01-02T03:04:05.678Z", "12.34", "123e4567-e89b-12d3-a456-426614174000", "[1 2 3]", "2026-01-02", "YWI="} {
+		for i, want := range []string{"-7", "42", "hello", "(null)", "5", "2026-01-02T03:04:05Z", "2026-01-02T03:04:05.678Z", "12.34", "123e4567-e89b-12d3-a456-426614174000", "[1 2 3]", "2026-01-02", "ab"} {
 			if got := record.Column(i).ValueStr(0); got != want {
 				t.Errorf("%s: %q want %q", record.ColumnName(i), got, want)
 			}

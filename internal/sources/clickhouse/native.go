@@ -4,6 +4,7 @@ package clickhouse
 import (
 	"context"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	ch "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -244,7 +246,10 @@ func scalarType(name string) (arrow.DataType, func(array.Builder, any)) {
 		}
 	}
 	if strings.HasPrefix(name, "FixedString(") {
-		return arrow.BinaryTypes.Binary, func(b array.Builder, v any) { b.(*array.BinaryBuilder).Append([]byte(v.(string))) }
+		// Mostly codes (country, currency) padded with NULs; binary readers
+		// rendered them as base64. Text with the padding trimmed, and upper-case
+		// hex like ClickHouse's hex() when the bytes are not UTF-8 (hashes).
+		return arrow.BinaryTypes.String, func(b array.Builder, v any) { b.(*array.StringBuilder).Append(fixedStringText(v.(string))) }
 	}
 	if m := dateTimeType.FindStringSubmatch(name); m != nil {
 		return timestampType(arrow.Second, m[1])
@@ -285,6 +290,13 @@ func scalarType(name string) (arrow.DataType, func(array.Builder, any)) {
 		}
 		b.(*array.StringBuilder).Append(fmt.Sprint(v))
 	}
+}
+
+func fixedStringText(s string) string {
+	if t := strings.TrimRight(s, "\x00"); utf8.ValidString(t) {
+		return t
+	}
+	return strings.ToUpper(hex.EncodeToString([]byte(s)))
 }
 
 func timestampType(unit arrow.TimeUnit, zone string) (arrow.DataType, func(array.Builder, any)) {
