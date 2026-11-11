@@ -24,6 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/ipc"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	arrowutil "github.com/apache/arrow-go/v18/arrow/util"
@@ -310,7 +312,8 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 	}
 	defer reader.Release()
 	stats.PrepareNS = time.Since(started).Nanoseconds()
-	if err := sink.Schema(reader.Schema()); err != nil {
+	schema, fixed := textFixedStrings(reader.Schema())
+	if err := sink.Schema(schema); err != nil {
 		return stats, query.PublicError(err)
 	}
 	for reader.Next() {
@@ -320,6 +323,10 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		record := reader.RecordBatch()
 		if record == nil {
 			return stats, failed(ctx, sourceError(ctx, "Source returned an invalid Arrow batch"), "arrow_stream", endpoint.Hostname(), nil, nil)
+		}
+		if len(fixed) > 0 {
+			// Released at the end of this batch; an early return leaves it to the GC.
+			record = withTextFixedStrings(record, schema, fixed)
 		}
 		if record.NumRows() > e.limits.MaxRows-stats.Rows {
 			return stats, query.NewError("RESOURCE_EXHAUSTED", "Query result exceeds row limit")
@@ -334,6 +341,9 @@ func (e *Engine) Execute(parent context.Context, req query.Request, sink query.S
 		stats.Rows += record.NumRows()
 		stats.Bytes += batchBytes
 		stats.Batches++
+		if len(fixed) > 0 {
+			record.Release()
+		}
 	}
 	if reader.Err() != nil || !framing.complete {
 		return stats, failed(ctx, streamError(ctx, allocator, stream, framing), "arrow_stream", endpoint.Hostname(), nil, nil)
@@ -574,3 +584,45 @@ func (a *boundedAllocator) Free(buf []byte) {
 }
 
 var _ query.Executor = (*Engine)(nil)
+
+// textFixedStrings swaps ClickHouse FixedString columns, which ArrowStream sends
+// as fixed_size_binary, for utf8 so both protocols return the same text as
+// the native path (fixedStringText). It returns the indexes it changed.
+func textFixedStrings(schema *arrow.Schema) (*arrow.Schema, []int) {
+	var fixed []int
+	fields := schema.Fields()
+	for i, f := range fields {
+		if f.Type.ID() == arrow.FIXED_SIZE_BINARY {
+			fields[i].Type = arrow.BinaryTypes.String
+			fixed = append(fixed, i)
+		}
+	}
+	if fixed == nil {
+		return schema, nil
+	}
+	md := schema.Metadata()
+	return arrow.NewSchema(fields, &md), fixed
+}
+
+// withTextFixedStrings returns a new batch (the caller releases it) with the
+// fixed columns rebuilt as text. ponytail: built on the Go allocator, outside
+// the bounded one; the byte limit is checked on the result right after.
+func withTextFixedStrings(record arrow.RecordBatch, schema *arrow.Schema, fixed []int) arrow.RecordBatch {
+	cols := make([]arrow.Array, record.NumCols())
+	copy(cols, record.Columns())
+	for _, i := range fixed {
+		src := record.Column(i).(*array.FixedSizeBinary)
+		b := array.NewStringBuilder(memory.DefaultAllocator)
+		for r := 0; r < src.Len(); r++ {
+			if src.IsNull(r) {
+				b.AppendNull()
+			} else {
+				b.Append(fixedStringText(string(src.Value(r))))
+			}
+		}
+		cols[i] = b.NewArray()
+		b.Release()
+		defer cols[i].Release()
+	}
+	return array.NewRecordBatch(schema, cols, record.NumRows())
+}

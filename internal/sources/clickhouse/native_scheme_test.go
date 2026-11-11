@@ -48,12 +48,20 @@ func TestSourceSchemes(t *testing.T) {
 func TestNativeTypeMapping(t *testing.T) {
 	for name, want := range map[string]string{
 		"Int32": "int32", "UInt64": "uint64", "Nullable(String)": "utf8", "LowCardinality(Nullable(String))": "utf8",
-		"FixedString(4)": "binary", "Date32": "date32", "DateTime": "timestamp[s, tz=UTC]", "DateTime('Asia/Kolkata')": "timestamp[s, tz=Asia/Kolkata]",
+		"FixedString(4)": "utf8", "LowCardinality(FixedString(2))": "utf8", "Date32": "date32", "DateTime": "timestamp[s, tz=UTC]", "DateTime('Asia/Kolkata')": "timestamp[s, tz=Asia/Kolkata]",
 		"DateTime64(3)": "timestamp[ms, tz=UTC]", "DateTime64(9, 'UTC')": "timestamp[ns, tz=UTC]", "Decimal(10, 2)": "decimal(10, 2)",
 		"Decimal(50, 2)": "utf8", "UUID": "utf8", "Array(Int32)": "utf8", "Bool": "bool",
 	} {
 		if got, _, _ := nativeType(name); got.String() != want {
 			t.Errorf("%s: got %s want %s", name, got, want)
+		}
+	}
+}
+
+func TestFixedStringText(t *testing.T) {
+	for in, want := range map[string]string{"IN": "IN", "\x00\x00": "", "ab\x00\x00": "ab", "\xff\x00\x01": "FF0001", "é\x00": "é"} {
+		if got := fixedStringText(in); got != want {
+			t.Errorf("%q: got %q want %q", in, got, want)
 		}
 	}
 }
