@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"time"
+	"unicode/utf8"
 
 	"github.com/SYNEHQ/kelvo-go/operations"
 	"github.com/SYNEHQ/kelvo-go/query"
@@ -99,6 +100,10 @@ func (c *Client) status(ctx context.Context, id string, auth Authority) (QuerySt
 	// Never surface arbitrary upstream diagnostic strings through SDK errors.
 	if status.Error != nil {
 		safe := failure(status.Error.Code)
+		// A source's statement error keeps its text: the caller fixes the SQL.
+		if status.Error.Code == "INVALID_ARGUMENT" && status.Error.Message != "" && len(status.Error.Message) <= 4<<10 && utf8.ValidString(status.Error.Message) {
+			safe.Message = status.Error.Message
+		}
 		status.Error = &query.Error{Code: safe.Code, Message: safe.Message}
 	}
 	return status, nil

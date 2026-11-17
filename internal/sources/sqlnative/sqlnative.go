@@ -43,6 +43,9 @@ type Dialect struct {
 	ConfigureTransaction func(context.Context, *sql.Tx) error
 	// ErrorCode maps driver errors to a bounded public classification, never text.
 	ErrorCode func(error) string
+	// ErrorDetail returns public server text for an error the caller's SQL
+	// caused (syntax, unknown object, type mismatch), or "" for anything else.
+	ErrorDetail func(error) string
 }
 
 type Engine struct {

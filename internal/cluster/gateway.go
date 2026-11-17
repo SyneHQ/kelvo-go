@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/SYNEHQ/kelvo-go/internal/audit"
 	"github.com/SYNEHQ/kelvo-go/internal/httpstream"
@@ -836,6 +837,12 @@ func (g *Gateway) relayResults(w http.ResponseWriter, r *http.Request, t gateway
 			g.auditError(w, op, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED", message)
 			return
 		}
+		// A read the source refused for the caller's SQL: relay the node's
+		// INVALID_ARGUMENT unchanged so the caller can fix the statement.
+		if message, ok := nodeInvalidArgument(resp); ok {
+			g.auditError(w, op, http.StatusBadRequest, "INVALID_ARGUMENT", message)
+			return
+		}
 		g.fail(t, s, "Worker unavailable")
 		g.auditError(w, op, 503, "UNAVAILABLE", "Worker unavailable")
 		return
@@ -1179,4 +1186,22 @@ func nodeCapacityRefusal(resp *http.Response) (retry int, message string, ok boo
 		message = body.Error.Message
 	}
 	return retry, message, true
+}
+
+// nodeInvalidArgument reads a node's 409 {"error": {...}} reply and reports an
+// INVALID_ARGUMENT with its message (the source's statement error). The node
+// already recorded the job's error. Call it after nodeCapacityRefusal, which
+// leaves the body unread for any reply that is not a capacity refusal.
+func nodeInvalidArgument(resp *http.Response) (string, bool) {
+	if resp.StatusCode != http.StatusConflict || !strings.HasPrefix(resp.Header.Get("Content-Type"), "application/json") {
+		return "", false
+	}
+	var body struct {
+		Error query.Error `json:"error"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&body) != nil || body.Error.Code != "INVALID_ARGUMENT" ||
+		body.Error.Message == "" || len(body.Error.Message) > 2048 || !utf8.ValidString(body.Error.Message) {
+		return "", false
+	}
+	return body.Error.Message, true
 }

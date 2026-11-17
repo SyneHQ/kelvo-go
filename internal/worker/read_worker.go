@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/SYNEHQ/kelvo-go/internal/sources/postgres"
 	"io"
 	"net/url"
 	"strings"
@@ -208,7 +209,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 				receipt, err = runOperation(e, withAdmissionClass(quotaCtx, admission.ClassInteractive), e.oneShotAdapter(pool), input, sink)
 			}
 		}
-		return receiptStats(receipt, err), receiptError(receipt, err), true
+		return receiptStats(receipt, err), receiptError(input.Source.Engine, receipt, err), true
 	}
 
 	// execute runs the read on a worker, copying its result to tee if any.
@@ -231,7 +232,7 @@ func (e *Executor) executeOnReadWorker(ctx context.Context, execution delegation
 			}
 			receipt, err = pool.execute(bounded(quotaCtx), e, pool.Adapter, input, sink, copyTo)
 		}
-		return receiptStats(receipt, err), receiptError(receipt, err)
+		return receiptStats(receipt, err), receiptError(input.Source.Engine, receipt, err)
 	}
 	if pool.cache == nil {
 		stats, err := execute(ctx, sink, nil)
@@ -436,9 +437,22 @@ func receiptStats(receipt operations.Receipt, err error) query.Stats {
 
 // receiptError keeps err and turns a kept worker's non-Completed receipt into
 // a public error.
-func receiptError(receipt operations.Receipt, err error) error {
+func receiptError(engine string, receipt operations.Receipt, err error) error {
 	if err != nil || receipt.Outcome == operations.Completed {
 		return err
+	}
+	// A statement the PostgreSQL-family server refused for the caller's SQL
+	// returns the server's text, so the caller can fix it. The worker already
+	// dropped connection and auth classes; postgres.ErrorDetail keeps only
+	// statement classes. MySQL receipts carry no error number, so they keep the
+	// generic error.
+	if se := receipt.SourceError; se != nil && receipt.ErrorCode == "SOURCE_FAILED" {
+		switch engine {
+		case "postgres", "postgresql", "cockroachdb", "alloydb", "redshift":
+			if detail := postgres.ErrorDetail(se.SQLState, se.Message, se.Hint, 0); detail != "" {
+				return query.NewError("INVALID_ARGUMENT", detail)
+			}
+		}
 	}
 	code := receipt.ErrorCode
 	if code == "" {
@@ -512,7 +526,7 @@ func (e *Executor) inspectOneShot(ctx context.Context, source *Executor, id read
 	}
 	// An inspection is an interactive read, never background work.
 	receipt, err := e.ExecuteOperation(withAdmissionClass(ctx, admission.ClassInteractive), e.OperationAdapter, input, sink)
-	return receiptStats(receipt, err), receiptError(receipt, err)
+	return receiptStats(receipt, err), receiptError(input.Source.Engine, receipt, err)
 }
 
 // readWorkerSourceShape accepts a plain relational source whose only secret is
