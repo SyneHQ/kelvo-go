@@ -4,6 +4,7 @@ package sqlnative
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/SYNEHQ/kelvo-go/internal/query"
 )
@@ -23,11 +24,20 @@ func contextError(ctx context.Context, err error) error {
 	return nil
 }
 
-// sourceError never trusts driver text or a driver-supplied query.Error. Only a
-// recognized code from the configured adapter crosses this boundary.
+// sourceError never trusts a driver-supplied query.Error. Driver text crosses
+// only when the adapter's ErrorDetail says the caller's SQL caused the error
+// (syntax, unknown object, type mismatch): it returns INVALID_ARGUMENT with the
+// server's own message so the caller can fix the statement. Every other error
+// (auth, connection, privilege, configuration, timeout, capacity) keeps only a
+// recognized code: its text can name hosts and roles.
 func (e *Engine) sourceError(ctx context.Context, err error, message string) error {
 	if cause := contextError(ctx, err); cause != nil {
 		return cause
+	}
+	if e.dialect.ErrorDetail != nil {
+		if detail := e.dialect.ErrorDetail(err); detail != "" {
+			return query.NewError("INVALID_ARGUMENT", detail)
+		}
 	}
 	code := "QUERY_FAILED"
 	if e.dialect.ErrorCode != nil {
@@ -64,4 +74,13 @@ func localResultError(ctx context.Context, err error, message string) error {
 		return public
 	}
 	return query.NewError("QUERY_FAILED", message)
+}
+
+// DetailText makes server text one line of valid UTF-8, at most 500 runes.
+func DetailText(s string) string {
+	s = strings.Join(strings.Fields(strings.ToValidUTF8(s, "\uFFFD")), " ")
+	if r := []rune(s); len(r) > 500 {
+		s = string(r[:499]) + "…"
+	}
+	return s
 }

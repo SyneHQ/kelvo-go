@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/SYNEHQ/kelvo-go/client/connreuse"
 	"github.com/SYNEHQ/kelvo-go/operations"
@@ -321,6 +323,9 @@ func statusFailure(status int) error {
 // Retry-After as the error's RetryAfter, so a caller can tell capacity from a
 // result limit on every endpoint, not only the single-call read.
 func responseFailure(response *http.Response) error {
+	if e := invalidArgumentBody(response); e != nil {
+		return e
+	}
 	err := statusFailure(response.StatusCode)
 	if e, ok := err.(*Error); ok && response.StatusCode == http.StatusTooManyRequests {
 		if seconds, parseErr := strconv.Atoi(response.Header.Get("Retry-After")); parseErr == nil && seconds > 0 {
@@ -357,4 +362,24 @@ func (c *Client) Close() error {
 	case <-timer.C:
 		return failure("UNAVAILABLE")
 	}
+}
+
+// invalidArgumentBody returns the gateway's INVALID_ARGUMENT error with its
+// message (a source's statement error the caller can fix). Every other body,
+// or one that is not the error envelope, is ignored.
+func invalidArgumentBody(response *http.Response) *Error {
+	if response.StatusCode != http.StatusBadRequest || response.Body == nil {
+		return nil
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if json.NewDecoder(io.LimitReader(response.Body, 4<<10)).Decode(&body) != nil || body.Error.Code != "INVALID_ARGUMENT" ||
+		body.Error.Message == "" || !utf8.ValidString(body.Error.Message) {
+		return nil
+	}
+	return &Error{Code: body.Error.Code, Message: body.Error.Message}
 }

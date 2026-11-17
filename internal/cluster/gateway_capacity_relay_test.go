@@ -30,8 +30,10 @@ func TestGatewayRelaysANodeCapacityRefusalAsRetryable(t *testing.T) {
 		"byte limit":             {409, "", `{"error":{"code":"RESOURCE_EXHAUSTED","message":"Worker result exceeds byte limit"}}`, 503, "", "UNAVAILABLE"},
 		"nonsense marker":        {409, "soon", `{"error":{"code":"RESOURCE_EXHAUSTED","message":"Read worker is busy"}}`, 503, "", "UNAVAILABLE"},
 		"marker on another code": {409, "3", `{"error":{"code":"QUERY_FAILED","message":"Source read failed"}}`, 503, "", "UNAVAILABLE"},
-		"unparseable":            {409, "3", `not json`, 503, "", "UNAVAILABLE"},
-		"worker error":           {500, "9", `{"error":{"code":"RESOURCE_EXHAUSTED","message":"retry after 9s"}}`, 503, "", "UNAVAILABLE"},
+		// A source's statement error reaches the client unchanged.
+		"statement error": {409, "", `{"error":{"code":"INVALID_ARGUMENT","message":"PostgreSQL error 42883: operator does not exist: text = uuid (at character 104)"}}`, 400, "", `{"error":{"code":"INVALID_ARGUMENT","message":"PostgreSQL error 42883: operator does not exist: text = uuid (at character 104)"}}`},
+		"unparseable":     {409, "3", `not json`, 503, "", "UNAVAILABLE"},
+		"worker error":    {500, "9", `{"error":{"code":"RESOURCE_EXHAUSTED","message":"retry after 9s"}}`, 503, "", "UNAVAILABLE"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			store := &compressionRelayStore{

@@ -3,6 +3,9 @@ package postgres
 
 import (
 	"errors"
+	"fmt"
+
+	"github.com/SYNEHQ/kelvo-go/internal/sources/sqlnative"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -36,4 +39,36 @@ func sourceErrorCode(err error) string {
 		return "UNAVAILABLE"
 	}
 	return ""
+}
+
+// sourceErrorDetail returns the server's own text for an error the caller's
+// SQL caused, so the caller can fix the statement; "" for anything else.
+func sourceErrorDetail(err error) string {
+	var server *pgconn.PgError
+	if !errors.As(err, &server) || server == nil {
+		return ""
+	}
+	return ErrorDetail(server.Code, server.Message, server.Hint, server.Position)
+}
+
+// ErrorDetail formats a statement-class SQLSTATE (42 except 42501, 22, 0A, 21)
+// as public text. Other classes (auth, connection, privilege, configuration,
+// resources, cancellation) return "": their text can name hosts and roles.
+func ErrorDetail(code, message, hint string, position int32) string {
+	if len(code) != 5 || code == "42501" || message == "" {
+		return ""
+	}
+	switch code[:2] {
+	case "42", "22", "0A", "21":
+	default:
+		return ""
+	}
+	text := "PostgreSQL error " + code + ": " + message
+	if hint != "" {
+		text += " Hint: " + hint
+	}
+	if position > 0 {
+		text += fmt.Sprintf(" (at character %d)", position)
+	}
+	return sqlnative.DetailText(text)
 }

@@ -32,7 +32,7 @@ func NewCockroachDB(c catalog.Config, l query.Limits) (*Engine, error) {
 func NewAlloyDB(c catalog.Config, l query.Limits) (*Engine, error)  { return family(c, l, "alloydb") }
 func NewRedshift(c catalog.Config, l query.Limits) (*Engine, error) { return family(c, l, "redshift") }
 func family(c catalog.Config, l query.Limits, kind string) (*Engine, error) {
-	dialect := sqlnative.Dialect{SourceType: kind, DriverName: "pgx", ErrorCode: sourceErrorCode, ReadOnlyOption: true, AllowDollarParams: true, ValidateDSN: validateDSN, OpenDB: openDB, ValidateSource: validateSource, OpenSourceDB: openSourceDB}
+	dialect := sqlnative.Dialect{SourceType: kind, DriverName: "pgx", ErrorCode: sourceErrorCode, ErrorDetail: sourceErrorDetail, ReadOnlyOption: true, AllowDollarParams: true, ValidateDSN: validateDSN, OpenDB: openDB, ValidateSource: validateSource, OpenSourceDB: openSourceDB}
 	if kind == "postgres" || kind == "postgresql" {
 		dialect.ConfigureTransaction = configureStatementTimeout
 	}

@@ -23,7 +23,7 @@ func TestQueryStatusPreservesKnownCodesWithoutRemoteDiagnostics(t *testing.T) {
 		{"WORKER_LOST", "Kelvo query worker was lost before completion"},
 		{"UNAUTHENTICATED", "Kelvo service authentication failed"},
 		{"PERMISSION_DENIED", "Kelvo query access denied"},
-		{"INVALID_ARGUMENT", "Invalid Kelvo query request"},
+		// INVALID_ARGUMENT keeps the gateway's text: a source's statement error.
 		{"RESOURCE_EXHAUSTED", "Kelvo query limit reached"},
 		{"UNAVAILABLE", "Kelvo service unavailable"},
 		{"QUERY_FAILED", "Kelvo query failed"},
